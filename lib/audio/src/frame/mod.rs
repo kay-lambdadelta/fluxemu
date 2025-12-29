@@ -34,9 +34,25 @@ pub trait FrameIterator<S: SampleFormat, const CHANNELS: usize>:
         Self: Sized;
 
     /// Repeat the final frame of the source forever
-    fn repeat_last_frame(self) -> impl FrameIterator<S, CHANNELS>
+    fn pad(self) -> impl FrameIterator<S, CHANNELS>
     where
         Self: Sized;
+
+    /// Repeat the final frame of the source forever
+    fn pad_with(self, value: SVector<S, CHANNELS>) -> impl FrameIterator<S, CHANNELS>
+    where
+        Self: Sized;
+
+    /// Amplify by a factor
+    fn amplify(self, factor: S) -> impl FrameIterator<S, CHANNELS>
+    where
+        Self: Sized;
+
+    /// Gain by a factor
+    fn gain(self, db: f32) -> impl FrameIterator<S, CHANNELS>
+    where
+        Self: Sized,
+        S: FromSample<f32>;
 }
 
 impl<S: SampleFormat, const CHANNELS: usize, SourceIterator: Iterator<Item = SVector<S, CHANNELS>>>
@@ -89,19 +105,15 @@ impl<S: SampleFormat, const CHANNELS: usize, SourceIterator: Iterator<Item = SVe
         self.map(|s| s.map(|s| s.normalize()))
     }
 
-    fn repeat_last_frame(self) -> impl FrameIterator<S, CHANNELS> {
-        struct RepeatLastFrame<
-            I: Iterator<Item = SVector<S, CHANNELS>>,
-            S: SampleFormat,
-            const CHANNELS: usize,
-        > {
+    fn pad(self) -> impl FrameIterator<S, CHANNELS> {
+        struct Pad<I: Iterator<Item = SVector<S, CHANNELS>>, S: SampleFormat, const CHANNELS: usize> {
             source: I,
             last_frame: SVector<S, CHANNELS>,
             exhausted: bool,
         }
 
         impl<I: Iterator<Item = SVector<S, CHANNELS>>, S: SampleFormat, const CHANNELS: usize>
-            Iterator for RepeatLastFrame<I, S, CHANNELS>
+            Iterator for Pad<I, S, CHANNELS>
         {
             type Item = SVector<S, CHANNELS>;
 
@@ -123,10 +135,30 @@ impl<S: SampleFormat, const CHANNELS: usize, SourceIterator: Iterator<Item = SVe
             }
         }
 
-        RepeatLastFrame {
+        Pad {
             source: self,
             last_frame: SVector::from_element(S::equilibrium()),
             exhausted: false,
         }
+    }
+
+    fn pad_with(self, value: SVector<S, CHANNELS>) -> impl FrameIterator<S, CHANNELS>
+    where
+        Self: Sized,
+    {
+        self.chain(core::iter::repeat(value))
+    }
+
+    fn amplify(self, factor: S) -> impl FrameIterator<S, CHANNELS> {
+        self.map(move |frame| frame.map(|s| s * factor))
+    }
+
+    fn gain(self, db: f32) -> impl FrameIterator<S, CHANNELS>
+    where
+        Self: Sized,
+        S: FromSample<f32>,
+    {
+        let factor = 10.0f32.powf(db / 20.0);
+        self.amplify(S::from_sample(factor))
     }
 }

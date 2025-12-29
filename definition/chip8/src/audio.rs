@@ -57,7 +57,7 @@ impl Component for Chip8Audio {
         let sample_rate = self.processor_frequency.to_num();
 
         SampleSource {
-            source: Box::new(self.buffer.drain().repeat_last_frame()),
+            source: Box::new(self.buffer.drain().pad()),
             sample_rate,
         }
     }

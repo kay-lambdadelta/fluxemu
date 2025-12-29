@@ -26,6 +26,7 @@ rustc-hash = { workspace = true }
 scc = { workspace = true }
 itertools = { workspace = true }
 rayon = { workspace = true }
+symphonia = { workspace = true }
 egui_extras = { version = "0.33", default-features = false, features = [
     "image",
 ] }

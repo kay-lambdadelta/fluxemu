@@ -90,7 +90,7 @@ impl<P: PlatformExt> Frontend<P> {
         let machine = None;
         let gui = GuiState::new(&environment);
         let gamepads = HashMap::default();
-        let mut audio_runtime = P::AudioRuntime::new();
+        let mut audio_runtime = P::AudioRuntime::new().unwrap();
 
         audio_runtime.play();
 

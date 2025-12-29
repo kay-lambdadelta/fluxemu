@@ -1,7 +1,4 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::{Arc, OnceLock};
 
 use create::{create_vulkan_instance, create_vulkan_swapchain, select_vulkan_device};
 use fluxemu_frontend::{GraphicsRuntime, WindowingHandle, environment::Environment};
@@ -17,8 +14,11 @@ use fluxemu_runtime::{
                     allocator::StandardCommandBufferAllocator,
                 },
                 descriptor_set::allocator::StandardDescriptorSetAllocator,
-                device::{Device, DeviceCreateInfo, Queue, QueueCreateInfo},
+                device::{
+                    Device, DeviceCreateInfo, Queue, QueueCreateInfo, physical::PhysicalDevice,
+                },
                 image::{Image, ImageLayout, sampler::Filter, view::ImageView},
+                instance::Instance,
                 memory::{
                     MemoryProperties,
                     allocator::{GenericMemoryAllocatorCreateInfo, StandardMemoryAllocator},
@@ -44,10 +44,17 @@ use crate::windowing::{DesktopPlatform, WinitWindow};
 mod create;
 mod gui;
 
-static EXISTING_INSTANCE: AtomicBool = AtomicBool::new(false);
+static SINGLETON_STUFF: OnceLock<SingletonStuff> = OnceLock::new();
+
+#[derive(Debug)]
+struct SingletonStuff {
+    library: Arc<VulkanLibrary>,
+    instance: Arc<Instance>,
+}
 
 #[derive(Debug)]
 pub struct VulkanGraphicsRuntime {
+    physical_device: Arc<PhysicalDevice>,
     device: Arc<Device>,
     gui_queue: Arc<Queue>,
     queues_for_components: Arc<Vec<Arc<Queue>>>,
@@ -61,7 +68,6 @@ pub struct VulkanGraphicsRuntime {
     display_api_handle: WinitWindow,
     gui_renderer: VulkanEguiRenderer,
     shader_cache: ShaderCache<SpirvShader>,
-    max_texture_side_size: u32,
 }
 
 impl GraphicsRuntime<DesktopPlatform<Vulkan, Self>> for VulkanGraphicsRuntime {
@@ -73,21 +79,21 @@ impl GraphicsRuntime<DesktopPlatform<Vulkan, Self>> for VulkanGraphicsRuntime {
         preferred_features: <Vulkan as GraphicsApi>::Features,
         environment: &Environment,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        if EXISTING_INSTANCE
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .is_err()
-        {
-            return Err("Cannot create more than one vulkan runtime at a time".into());
+        if SINGLETON_STUFF.get().is_none() {
+            let library = VulkanLibrary::new()?;
+            let instance = create_vulkan_instance(display_api_handle.clone(), library.clone());
+
+            SINGLETON_STUFF
+                .set(SingletonStuff { library, instance })
+                .unwrap();
         }
+        let SingletonStuff { library, instance } = SINGLETON_STUFF.get().unwrap();
 
         let window_dimensions = display_api_handle.physical_size();
         let shader_cache: ShaderCache<SpirvShader> = ShaderCache::default();
 
-        let library = VulkanLibrary::new().unwrap();
-
         tracing::info!("Found vulkan {} implementation", library.api_version());
 
-        let instance = create_vulkan_instance(display_api_handle.clone(), library);
         let surface = Surface::from_window(instance.clone(), display_api_handle.inner()).unwrap();
 
         let Some((physical_device, enabled_device_extensions, queue_family_index)) =
@@ -210,6 +216,7 @@ impl GraphicsRuntime<DesktopPlatform<Vulkan, Self>> for VulkanGraphicsRuntime {
 
         Ok(Self {
             device,
+            physical_device,
             gui_queue,
             queues_for_components,
             swapchain,
@@ -222,7 +229,6 @@ impl GraphicsRuntime<DesktopPlatform<Vulkan, Self>> for VulkanGraphicsRuntime {
             display_api_handle,
             gui_renderer,
             shader_cache,
-            max_texture_side_size: physical_device.properties().max_image_dimension2_d,
         })
     }
 
@@ -320,7 +326,7 @@ impl GraphicsRuntime<DesktopPlatform<Vulkan, Self>> for VulkanGraphicsRuntime {
     }
 
     fn max_texture_side_size(&self) -> u32 {
-        self.max_texture_side_size
+        self.physical_device.properties().max_image_dimension2_d
     }
 }
 
@@ -382,11 +388,5 @@ impl VulkanGraphicsRuntime {
         let swapchain_image = self.swapchain_images[image_index as usize].clone();
 
         (image_index, acquire_future, swapchain_image)
-    }
-}
-
-impl Drop for VulkanGraphicsRuntime {
-    fn drop(&mut self) {
-        EXISTING_INSTANCE.store(false, Ordering::SeqCst);
     }
 }

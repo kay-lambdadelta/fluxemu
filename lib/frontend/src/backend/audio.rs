@@ -2,8 +2,8 @@ use fluxemu_runtime::{machine::Machine, platform::Platform};
 use std::{fmt::Debug, sync::Arc};
 
 /// Audio runtime to provide the frontend
-pub trait AudioRuntime<P: Platform>: Debug {
-    fn new() -> Self;
+pub trait AudioRuntime<P: Platform>: Sized + Debug {
+    fn new() -> Result<Self, Box<dyn std::error::Error>>;
     /// Pause audio playback
     fn pause(&mut self);
     /// Play audio
