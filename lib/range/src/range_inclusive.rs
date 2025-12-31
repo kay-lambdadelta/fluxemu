@@ -53,7 +53,7 @@ impl<Idx: Integer + Clone> RangeIntersection<Idx, Self> for RangeInclusive<Idx> 
 
     #[inline]
     fn intersects(&self, rhs: &Self) -> bool {
-        self.start() <= rhs.end() && rhs.start() <= self.end()
+        !self.intersection(rhs).is_empty()
     }
 }
 
