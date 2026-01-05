@@ -62,23 +62,20 @@ impl ComponentHandle {
 
     /// Interact immutably with a component
     #[inline]
-    pub fn interact<T>(
-        &self,
-        current_timestamp: Period,
-        callback: impl FnOnce(&dyn Component) -> T,
-    ) -> T {
+    pub fn interact<T>(&self, time: Period, callback: impl FnOnce(&dyn Component) -> T) -> T {
         let guard = self.inner.read().unwrap();
 
         if let Some(SynchronizationData {
             updated_timestamp, ..
         }) = &guard.synchronization_data
+            && *updated_timestamp < time
         {
-            let delta = current_timestamp - updated_timestamp;
+            let delta = time - updated_timestamp;
 
             // Check if our current timestamp needs updating
             if guard.component.needs_work(delta) {
                 drop(guard);
-                return self.interact_mut(current_timestamp, |component| callback(component));
+                return self.interact_mut(time, |component| callback(component));
             }
         }
 
@@ -89,21 +86,28 @@ impl ComponentHandle {
     #[inline]
     pub fn interact_mut<T>(
         &self,
-        current_timestamp: Period,
+        time: Period,
         callback: impl FnOnce(&mut dyn Component) -> T,
     ) -> T {
         let mut guard = self.inner.write().unwrap();
         let mut delta;
         let mut last_attempted_allocation = None;
 
-        if guard.synchronization_data.is_some() {
+        if guard.synchronization_data.is_some()
+            && guard
+                .synchronization_data
+                .as_ref()
+                .unwrap()
+                .updated_timestamp
+                < time
+        {
             // Loop until the component is fully updated, processing events when relevant
             loop {
                 let guard_inner = &mut *guard;
                 let synchronization_data = guard_inner.synchronization_data.as_mut().unwrap();
 
                 // Update delta in case something happened when we dropped and reacquired the lock
-                delta = current_timestamp - synchronization_data.updated_timestamp;
+                delta = time - synchronization_data.updated_timestamp;
 
                 // Check if the component is done or there is no allocated time
                 if delta == Period::ZERO || !guard_inner.component.needs_work(delta) {
@@ -113,7 +117,7 @@ impl ComponentHandle {
                 let context = SynchronizationContext {
                     event_manager: &self.event_manager,
                     updated_timestamp: &mut synchronization_data.updated_timestamp,
-                    target_timestamp: current_timestamp,
+                    target_timestamp: time,
                     last_attempted_allocation: &mut last_attempted_allocation,
                     interrupt: &synchronization_data.interrupt,
                 };
@@ -126,7 +130,7 @@ impl ComponentHandle {
                 );
 
                 // Update delta
-                delta = current_timestamp - synchronization_data.updated_timestamp;
+                delta = time - synchronization_data.updated_timestamp;
 
                 // If the component yielded and there is still work, check events and try to run it again
                 if guard_inner.component.needs_work(delta) {
@@ -206,8 +210,8 @@ impl<C: Component> TypedComponentHandle<C> {
     /// The chance of an exclusive access occuring is greatly increased if the
     /// component has lazy task
     #[inline]
-    pub fn interact<T>(&self, current_timestamp: Period, callback: impl FnOnce(&C) -> T) -> T {
-        self.component.interact(current_timestamp, |component| {
+    pub fn interact<T>(&self, time: Period, callback: impl FnOnce(&C) -> T) -> T {
+        self.component.interact(time, |component| {
             debug_assert_eq!(TypeId::of::<C>(), (component as &dyn Any).type_id());
             let component = unsafe { &*std::ptr::from_ref::<dyn Component>(component).cast::<C>() };
 
@@ -217,12 +221,8 @@ impl<C: Component> TypedComponentHandle<C> {
 
     /// Interact mutably with a component
     #[inline]
-    pub fn interact_mut<T>(
-        &self,
-        current_timestamp: Period,
-        callback: impl FnOnce(&mut C) -> T,
-    ) -> T {
-        self.component.interact_mut(current_timestamp, |component| {
+    pub fn interact_mut<T>(&self, time: Period, callback: impl FnOnce(&mut C) -> T) -> T {
+        self.component.interact_mut(time, |component| {
             debug_assert_eq!(TypeId::of::<C>(), (component as &dyn Any).type_id());
             let component =
                 unsafe { &mut *std::ptr::from_mut::<dyn Component>(component).cast::<C>() };

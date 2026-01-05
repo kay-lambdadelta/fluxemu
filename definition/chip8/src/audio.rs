@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
 
-use fluxemu_audio::{FrameIterator, SquareWave};
+use fluxemu_audio::SquareWave;
 use fluxemu_runtime::{
     component::{Component, ComponentConfig, ComponentVersion, SampleSource},
     machine::builder::{ComponentBuilder, SchedulerParticipation},
@@ -11,6 +11,9 @@ use fluxemu_runtime::{
 use nalgebra::SVector;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 
+/// Imaginary chip8 hardware sample rate
+const INTERNAL_SAMPLE_RATE: f32 = 8000.0;
+
 #[derive(Debug)]
 pub struct Chip8Audio {
     // The CPU will set this according to what the program wants
@@ -19,6 +22,7 @@ pub struct Chip8Audio {
     wave_generator: SquareWave<f32, 1>,
     processor_frequency: Frequency,
     timer_accumulator: Period,
+    audio_accumulator: f32,
 }
 
 impl Chip8Audio {
@@ -54,20 +58,26 @@ impl Component for Chip8Audio {
     }
 
     fn get_audio_channel(&mut self, _audio_output_path: &FluxEmuPath) -> SampleSource<'_> {
-        let sample_rate = self.processor_frequency.to_num();
-
         SampleSource {
-            source: Box::new(self.buffer.drain().pad()),
-            sample_rate,
+            source: &mut self.buffer,
+            sample_rate: INTERNAL_SAMPLE_RATE,
         }
     }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
         let timer_period = Period::from_num(60).recip();
+        let samples_per_tick = INTERNAL_SAMPLE_RATE / self.processor_frequency.to_num::<f32>();
 
         for _ in context.allocate(self.processor_frequency.recip(), None) {
-            if self.timer != 0 {
-                self.buffer.enqueue(self.wave_generator.next().unwrap());
+            self.audio_accumulator += samples_per_tick;
+
+            while self.audio_accumulator >= 1.0 {
+                if self.timer > 0 {
+                    let sample = self.wave_generator.next().unwrap();
+                    let _ = self.buffer.enqueue(sample);
+                };
+
+                self.audio_accumulator -= 1.0;
             }
 
             self.timer_accumulator += self.processor_frequency.recip();
@@ -101,10 +111,11 @@ impl<P: Platform> ComponentConfig<P> for Chip8AudioConfig {
 
         Ok(Chip8Audio {
             timer: 0,
-            buffer: AllocRingBuffer::new(440),
-            wave_generator: SquareWave::new(440.0, self.processor_frequency.to_num(), 0.5),
+            buffer: AllocRingBuffer::new((INTERNAL_SAMPLE_RATE * 10.0) as _),
+            wave_generator: SquareWave::new(440.0, INTERNAL_SAMPLE_RATE, 0.5),
             processor_frequency: self.processor_frequency,
             timer_accumulator: Period::ZERO,
+            audio_accumulator: 0.0,
         })
     }
 }

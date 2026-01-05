@@ -1,4 +1,4 @@
-use std::{fs::File, ops::Deref, str::FromStr, time::Duration};
+use std::{fs::File, ops::Deref, str::FromStr};
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use fluxemu_definition_nes::Nes;
@@ -7,6 +7,7 @@ use fluxemu_runtime::{
     machine::{Machine, MachineFactory, builder::MachineBuilder},
     platform::TestPlatform,
     program::{ProgramManager, RomId},
+    scheduler::Period,
 };
 
 fn criterion_benchmark(c: &mut Criterion) {
@@ -27,10 +28,9 @@ fn criterion_benchmark(c: &mut Criterion) {
         Machine::build(Some(program_specification), program_manager, None, None);
     let machine = Nes.construct(machine).build(());
 
-    let one_second = Duration::from_secs(1);
     c.bench_function("nes_one_second", |b| {
         b.iter(|| {
-            machine.run_duration(one_second);
+            machine.run(Period::ONE);
         })
     });
 }

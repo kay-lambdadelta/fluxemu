@@ -7,6 +7,7 @@ use fluxemu_runtime::{
     machine::{Machine, MachineFactory, builder::MachineBuilder},
     platform::TestPlatform,
     program::{ProgramManager, RomId},
+    scheduler::Period,
 };
 
 fn criterion_benchmark(c: &mut Criterion) {
@@ -27,10 +28,9 @@ fn criterion_benchmark(c: &mut Criterion) {
         Machine::build(Some(program_specification), program_manager, None, None);
     let machine = Atari2600.construct(machine).build(());
 
-    let one_second = Duration::from_secs(1);
     c.bench_function("atari_2600_one_second", |b| {
         b.iter(|| {
-            machine.run_duration(one_second);
+            machine.run(Period::ONE);
         })
     });
 }

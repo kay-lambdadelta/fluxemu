@@ -7,9 +7,10 @@ use std::{
     sync::Weak,
 };
 
-use fluxemu_audio::FrameIterator;
 use fluxemu_range::ContiguousRange;
 pub use handle::*;
+use nalgebra::SVector;
+use ringbuffer::AllocRingBuffer;
 
 use crate::{
     graphics::GraphicsApi,
@@ -141,6 +142,6 @@ pub struct LateInitializedData<P: Platform> {
 pub type ComponentVersion = u64;
 
 pub struct SampleSource<'a> {
-    pub source: Box<dyn FrameIterator<f32, 1> + 'a>,
+    pub source: &'a mut AllocRingBuffer<SVector<f32, 1>>,
     pub sample_rate: f32,
 }

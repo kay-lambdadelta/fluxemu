@@ -1,12 +1,9 @@
 use std::{
     collections::HashMap,
     fmt::Debug,
-    sync::Arc,
-    thread::sleep,
-    time::{Duration, Instant},
+    sync::{Arc, Mutex},
 };
 
-use crossbeam::atomic::AtomicCell;
 pub(crate) use event::{EventManager, EventType, PreemptionSignal, QueuedEvent};
 use fixed::{FixedU128, types::extra::U64};
 use rustc_hash::FxBuildHasher;
@@ -16,6 +13,7 @@ use crate::{component::ComponentHandle, path::FluxEmuPath};
 mod event;
 #[cfg(test)]
 mod tests;
+mod worker;
 
 #[derive(Debug)]
 pub struct DrivenComponent {
@@ -30,7 +28,8 @@ pub struct DrivenComponent {
 pub(crate) struct Scheduler {
     pub event_queue: Arc<EventManager>,
     driven: HashMap<FluxEmuPath, DrivenComponent, FxBuildHasher>,
-    now: AtomicCell<Period>,
+    current_driven_time: Mutex<Period>,
+    start_time: Period,
 }
 
 impl Scheduler {
@@ -38,8 +37,17 @@ impl Scheduler {
         Scheduler {
             event_queue: Arc::default(),
             driven: HashMap::default(),
-            now: AtomicCell::default(),
+            current_driven_time: Mutex::default(),
+            start_time: Period::default(),
         }
+    }
+
+    pub fn now(&self) -> Period {
+        *self.current_driven_time.lock().unwrap()
+    }
+
+    pub fn start_time(&self) -> Period {
+        self.start_time
     }
 
     pub fn register_driven_component(&mut self, path: FluxEmuPath, component: ComponentHandle) {
@@ -47,58 +55,19 @@ impl Scheduler {
     }
 
     pub fn run(&self, allocated_time: Period) {
-        let mut now = self.now.load();
+        let mut current_driven_time_guard = self.current_driven_time.lock().unwrap();
 
-        now += allocated_time;
-        self.now.store(now);
-        self.update_driver_components(now);
-    }
+        *current_driven_time_guard += allocated_time;
+        let current_driven_time = *current_driven_time_guard;
 
-    pub fn update_driver_components(&self, now: Period) {
         for driven in self.driven.values() {
-            driven.component.interact_mut(now, |_| {})
+            driven.component.interact_mut(current_driven_time, |_| {})
         }
-    }
-
-    pub fn now(&self) -> Period {
-        self.now.load()
     }
 }
 
 pub type Period = FixedU128<U64>;
 pub type Frequency = FixedU128<U64>;
-
-/// Tries to find a reasonable sleep resolution for the dedicated thread based
-/// upon several heuristic methods.
-fn find_reasonable_sleep_resolution() -> Duration {
-    let min_exponent = 10;
-    // ~32 milliseconds, if the system can't keep up with this, oh well
-    let max_exponent = 25;
-    let trials = 5;
-
-    for exponent in min_exponent..=max_exponent {
-        let nanos = 2u64.pow(exponent);
-        let duration = Duration::from_nanos(nanos);
-        let mut total_error = Duration::ZERO;
-
-        for _ in 0..trials {
-            let start = Instant::now();
-
-            sleep(duration);
-            let time_taken = start.elapsed();
-
-            let error = time_taken.abs_diff(duration);
-            total_error += error;
-        }
-
-        let avg_error = total_error / trials;
-        if avg_error <= duration / 10 {
-            return duration;
-        }
-    }
-
-    Duration::from_millis(16)
-}
 
 #[derive(Debug)]
 pub struct SynchronizationContext<'a> {

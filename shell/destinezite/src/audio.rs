@@ -5,16 +5,18 @@ use cpal::{
     Device, Host, Stream,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
-use fluxemu_audio::{Cubic, FrameIterator};
+use fluxemu_audio::{Cubic, FrameIterator, Linear, SampleFormat};
 use fluxemu_frontend::AudioRuntime;
-use fluxemu_runtime::{machine::Machine, platform::Platform};
+use fluxemu_runtime::{machine::Machine, platform::Platform, scheduler::Period};
 use itertools::Itertools;
+use nalgebra::SVector;
+use ringbuffer::RingBuffer;
 
-#[allow(unused)]
 pub struct CpalAudioRuntime {
+    #[allow(unused)]
     host: Host,
+    #[allow(unused)]
     device: Device,
-    sample_rate: f32,
     stream: Stream,
     machine: Arc<ArcSwapOption<Machine>>,
 }
@@ -62,31 +64,35 @@ impl<P: Platform> AudioRuntime<P> for CpalAudioRuntime {
                 {
                     let machine = machine.clone();
 
-                    move |buffer, info| {
+                    move |buffer, _info| {
                         let machine = machine.load();
 
                         if let Some(machine) = machine.as_ref() {
+                            let buffer: &mut [SVector<f32, _>] = bytemuck::cast_slice_mut(buffer);
+                            buffer.fill(SVector::from_element(f32::equilibrium()));
+
+                            let representing_time =
+                                Period::from_num(buffer.len() as f32 / sample_rate);
+
                             for audio_stream in &machine.audio_outputs {
                                 machine
                                     .interact_dyn_mut(audio_stream, |component| {
                                         let audio_source =
                                             component.get_audio_channel(audio_stream);
 
-                                        for (source, destination) in audio_source
+                                        let audio_generator = audio_source
                                             .source
+                                            .drain()
+                                            .pad()
                                             .resample::<f32>(
                                                 audio_source.sample_rate,
-                                                config.sample_rate() as f32,
-                                                Cubic,
+                                                sample_rate,
+                                                Linear,
                                             )
-                                            .remix::<2>()
-                                            .zip(
-                                                buffer
-                                                    .as_chunks_mut::<2>()
-                                                    .0
-                                                    .iter_mut()
-                                                    .map(bytemuck::cast_mut),
-                                            )
+                                            .remix::<2>();
+
+                                        for (destination, source) in
+                                            buffer.iter_mut().zip(audio_generator)
                                         {
                                             *destination = source;
                                         }
@@ -103,13 +109,10 @@ impl<P: Platform> AudioRuntime<P> for CpalAudioRuntime {
             )
             .unwrap();
 
-        stream.play().unwrap();
-
         Ok(Self {
             host,
             device,
             stream,
-            sample_rate,
             machine,
         })
     }

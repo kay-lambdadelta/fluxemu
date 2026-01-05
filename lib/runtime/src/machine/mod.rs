@@ -2,6 +2,10 @@
 //!
 //! The main runtime for the FluxEMU emulator framework
 
+use nohash::BuildNoHashHasher;
+use num::FromPrimitive;
+use rustc_hash::FxBuildHasher;
+use serde::{Serialize, de::DeserializeOwned};
 use std::{
     any::Any,
     cmp::Reverse,
@@ -11,11 +15,6 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-
-use nohash::BuildNoHashHasher;
-use num::FromPrimitive;
-use rustc_hash::FxBuildHasher;
-use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
     component::{Component, ComponentHandle, TypedComponentHandle},
@@ -176,6 +175,10 @@ impl Machine {
         self.scheduler.now()
     }
 
+    pub fn start_time(&self) -> Period {
+        self.scheduler.start_time()
+    }
+
     // Shadow these registry operations so that we can implement them in a way
     // that forces driver components forward
     //
@@ -187,7 +190,6 @@ impl Machine {
         callback: impl FnOnce(&C) -> T,
     ) -> Option<T> {
         let now = self.now();
-        self.scheduler.update_driver_components(now);
 
         self.registry.interact(path, now, callback)
     }
@@ -198,7 +200,6 @@ impl Machine {
         callback: impl FnOnce(&mut C) -> T,
     ) -> Option<T> {
         let now = self.now();
-        self.scheduler.update_driver_components(now);
 
         self.registry.interact_mut(path, now, callback)
     }
@@ -209,7 +210,6 @@ impl Machine {
         callback: impl FnOnce(&dyn Component) -> T,
     ) -> Option<T> {
         let now = self.now();
-        self.scheduler.update_driver_components(now);
 
         self.registry.interact_dyn(path, now, callback)
     }
@@ -220,7 +220,6 @@ impl Machine {
         callback: impl FnOnce(&mut dyn Component) -> T,
     ) -> Option<T> {
         let now = self.now();
-        self.scheduler.update_driver_components(now);
 
         self.registry.interact_dyn_mut(path, now, callback)
     }

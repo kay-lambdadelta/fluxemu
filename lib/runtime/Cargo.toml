@@ -30,7 +30,6 @@ data-encoding = { workspace = true }
 rangemap = { workspace = true }
 bitvec = { workspace = true }
 rayon = { workspace = true }
-crossbeam = { workspace = true }
 versions = { workspace = true }
 indexmap = { workspace = true }
 ron = { workspace = true }

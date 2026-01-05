@@ -1,6 +1,5 @@
 use std::{borrow::Cow, fmt::Display, sync::Arc};
 
-use crossbeam::atomic::AtomicCell;
 use rustc_hash::FxBuildHasher;
 use serde::{Deserialize, Serialize};
 use uuid::{NonNilUuid, Uuid};
@@ -37,7 +36,6 @@ impl Display for RealGamepadId {
 pub struct RealGamepad {
     metadata: RealGamepadMetadata,
     state: scc::HashMap<Input, InputState, FxBuildHasher>,
-    battery_level: AtomicCell<Option<f32>>,
 }
 
 impl RealGamepad {
@@ -45,7 +43,6 @@ impl RealGamepad {
         Arc::new(Self {
             metadata,
             state: Default::default(),
-            battery_level: AtomicCell::default(),
         })
     }
 
@@ -65,15 +62,6 @@ impl RealGamepad {
             .as_deref()
             .copied()
             .unwrap_or_default()
-    }
-
-    pub fn get_battery_level(&self) -> Option<f32> {
-        self.battery_level.load()
-    }
-
-    pub fn set_battery_level(&self, battery_level: f32) {
-        self.battery_level
-            .store(Some(battery_level.clamp(0.0, 1.0)));
     }
 }
 
