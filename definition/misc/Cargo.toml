@@ -15,11 +15,8 @@ rmp-serde = { workspace = true }
 
 [target.'cfg(any(target_family = "unix", target_os = "windows"))'.dev-dependencies]
 criterion = { workspace = true }
+bytes = { workspace = true }
 
 [[bench]]
-name = "read"
-harness = false
-
-[[bench]]
-name = "write"
+name = "bench"
 harness = false

@@ -1,27 +1,27 @@
 use std::ops::RangeInclusive;
 
 use fluxemu_range::{ContiguousRange, RangeIntersection};
-use num::traits::ToBytes;
+use num::traits::{ToBytes, ops::bytes::NumBytes};
 
 use super::AddressSpace;
 use crate::{
     memory::{
-        Address, AddressSpaceCache, ComputedTablePageTarget, Members, MemoryError, MemoryErrorType,
+        Address, AddressSpaceCache, Members, MemoryError, MemoryErrorType, PageTarget,
         overlapping::Item,
     },
     scheduler::Period,
 };
 
 impl AddressSpace {
-    #[inline(always)]
-    pub(super) fn write_internal(
+    #[inline]
+    pub(super) fn write_internal<B: NumBytes + ?Sized>(
         &self,
         mut address: Address,
         current_timestamp: Period,
         members: &Members,
-        buffer: &[u8],
+        buffer: &B,
     ) -> Result<(), MemoryError> {
-        let mut remaining_buffer = buffer;
+        let mut remaining_buffer = buffer.as_ref();
 
         while !remaining_buffer.is_empty() {
             let address_masked = address & self.width_mask;
@@ -45,7 +45,7 @@ impl AddressSpace {
                 handled = true;
 
                 match target {
-                    ComputedTablePageTarget::Component {
+                    PageTarget::Component {
                         mirror_start,
                         component,
                     } => {
@@ -71,7 +71,7 @@ impl AddressSpace {
                             },
                         )?;
                     }
-                    ComputedTablePageTarget::Memory(_) => {
+                    PageTarget::Memory(_) => {
                         unreachable!()
                     }
                 }
@@ -92,7 +92,7 @@ impl AddressSpace {
     }
 
     /// Given a location, read a little endian value
-    #[inline(always)]
+    #[inline]
     pub(super) fn write_le_value_internal<T: ToBytes>(
         &self,
         address: Address,
@@ -109,7 +109,7 @@ impl AddressSpace {
     }
 
     /// Given a location, read a big endian value
-    #[inline(always)]
+    #[inline]
     pub(super) fn write_be_value_internal<T: ToBytes>(
         &self,
         address: Address,

@@ -11,6 +11,8 @@ use palette::{
 };
 
 fn criterion_benchmark(c: &mut Criterion) {
+    let mut group = c.benchmark_group(env!("CARGO_PKG_NAME"));
+
     let mut renderer = SoftwareEguiRenderer::default();
 
     for resolution in [
@@ -18,43 +20,36 @@ fn criterion_benchmark(c: &mut Criterion) {
         Vector2::new(1280, 720),
         Vector2::new(1920, 1080),
     ] {
-        {
-            c.bench_function(
-                &format!("software_rendering_{}x{}_bgra", resolution.x, resolution.y),
-                |b| {
-                    b.iter_with_large_drop(|| {
-                        let (context, full_output) =
-                            setup_output(Vector2::new(resolution.x as f32, resolution.y as f32));
+        let (context, full_output) =
+            setup_output(Vector2::new(resolution.x as f32, resolution.y as f32));
 
-                        let mut texture = black_box(DMatrix::from_element(
-                            resolution.x,
-                            resolution.y,
-                            Packed::pack(BLACK.into()),
-                        ));
+        let mut texture = black_box(DMatrix::from_element(
+            resolution.x,
+            resolution.y,
+            Packed::pack(BLACK.into()),
+        ));
+        group.bench_function(
+            format!("software_rendering_{}x{}_bgra", resolution.x, resolution.y),
+            |b| {
+                b.iter_with_large_drop(|| {
+                    renderer.render::<Bgra>(&context, texture.as_view_mut(), full_output.clone());
+                })
+            },
+        );
 
-                        renderer.render::<Bgra>(&context, texture.as_view_mut(), full_output);
-                    })
-                },
-            );
-
-            c.bench_function(
-                &format!("software_rendering_{}x{}_rgba", resolution.x, resolution.y),
-                |b| {
-                    b.iter(|| {
-                        let (context, full_output) =
-                            setup_output(Vector2::new(resolution.x as f32, resolution.y as f32));
-
-                        let mut texture = black_box(DMatrix::from_element(
-                            resolution.x,
-                            resolution.y,
-                            Packed::pack(BLACK.into()),
-                        ));
-
-                        renderer.render::<Rgba>(&context, texture.as_view_mut(), full_output);
-                    })
-                },
-            );
-        }
+        let mut texture = black_box(DMatrix::from_element(
+            resolution.x,
+            resolution.y,
+            Packed::pack(BLACK.into()),
+        ));
+        group.bench_function(
+            format!("software_rendering_{}x{}_rgba", resolution.x, resolution.y),
+            |b| {
+                b.iter_with_large_drop(|| {
+                    renderer.render::<Rgba>(&context, texture.as_view_mut(), full_output.clone());
+                })
+            },
+        );
     }
 }
 

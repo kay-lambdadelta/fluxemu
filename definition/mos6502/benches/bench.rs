@@ -1,4 +1,4 @@
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use fluxemu_definition_misc::memory::standard::{
     StandardMemoryConfig, StandardMemoryInitialContents,
 };
@@ -18,12 +18,17 @@ pub const PROGRAM: [u8; 9] = [
 ];
 
 fn criterion_benchmark(c: &mut Criterion) {
+    let frequency = 1000000;
+
+    let mut group = c.benchmark_group(env!("CARGO_PKG_NAME"));
+    group.throughput(Throughput::Elements(frequency));
+
     let (machine, cpu_address_space_id) = Machine::build_test_minimal().insert_address_space(16);
 
     let (machine, cpu) = machine.insert_component(
         "mos6502",
         Mos6502Config {
-            frequency: Frequency::from_num(1000000),
+            frequency: Frequency::from_num(frequency),
             assigned_address_space: cpu_address_space_id,
             kind: Mos6502Kind::Mos6502,
             broken_ror: false,
@@ -57,16 +62,20 @@ fn criterion_benchmark(c: &mut Criterion) {
         .write_le_value(RESET_VECTOR as Address, machine.now(), None, 0x8000)
         .unwrap();
 
-    let one_second = Period::ONE;
     let mut timestamp = Period::ZERO;
 
-    c.bench_function("mos6502_raw_execution_speed_1sec_1mhz", |b| {
-        b.iter(|| {
-            timestamp += one_second;
+    group.bench_function("execution_speed", |b| {
+        b.iter_custom(|iters| {
+            let start = std::time::Instant::now();
+            timestamp += Period::from_num(iters);
 
             cpu.interact_mut(timestamp, |_| {});
+
+            start.elapsed()
         })
     });
+
+    group.finish();
 }
 
 criterion_group!(benches, criterion_benchmark);

@@ -23,5 +23,5 @@ rangemap = { workspace = true }
 criterion = { workspace = true }
 
 [[bench]]
-name = "raw_execution"
+name = "bench"
 harness = false

@@ -7,10 +7,7 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelI
 
 use crate::{
     machine::registry::ComponentRegistry,
-    memory::{
-        Address, ComputedTablePage, ComputedTablePageTarget, MappingEntry, MemoryMappingTable,
-        PAGE_SIZE,
-    },
+    memory::{Address, MappingEntry, MemoryMappingTable, PAGE_SIZE, Page, PageEntry, PageTarget},
     path::FluxEmuPath,
 };
 
@@ -76,7 +73,7 @@ impl MemoryMappingTable {
                 let end = base + PAGE_SIZE - 1;
                 let page_range = base..=end;
 
-                *page = self
+                let mut page_entries: Vec<PageEntry> = self
                     .master
                     .overlapping(page_range.clone())
                     .map(|(range, component)| (range.clone(), component))
@@ -84,9 +81,9 @@ impl MemoryMappingTable {
                         MappingEntry::Component(path) => {
                             let component = registry.handle(path).unwrap();
 
-                            vec![ComputedTablePage {
+                            vec![PageEntry {
                                 range: source_range,
-                                target: ComputedTablePageTarget::Component {
+                                target: PageTarget::Component {
                                     mirror_start: None,
                                     component,
                                 },
@@ -129,9 +126,9 @@ impl MemoryMappingTable {
                                             let component =
                                                 registry.handle(component_path).unwrap();
 
-                                            ComputedTablePage {
+                                            PageEntry {
                                                 range: calculated_source_range,
-                                                target: ComputedTablePageTarget::Component {
+                                                target: PageTarget::Component {
                                                     mirror_start: Some(*destination_range.start()),
                                                     component,
                                                 },
@@ -157,9 +154,9 @@ impl MemoryMappingTable {
 
                                             let memory = memory.slice(buffer_subrange);
 
-                                            ComputedTablePage {
+                                            PageEntry {
                                                 range: calculated_source_range,
-                                                target: ComputedTablePageTarget::Memory(memory),
+                                                target: PageTarget::Memory(memory),
                                             }
                                         }
                                     }
@@ -171,14 +168,20 @@ impl MemoryMappingTable {
 
                             assert_eq!(memory.len(), source_range.len());
 
-                            vec![ComputedTablePage {
+                            vec![PageEntry {
                                 range: source_range,
-                                target: ComputedTablePageTarget::Memory(memory.clone()),
+                                target: PageTarget::Memory(memory.clone()),
                             }]
                         }
                     })
                     .sorted_by_key(|entry| *entry.range.start())
                     .collect();
+
+                *page = match page_entries.len() {
+                    0 => None,
+                    1 => Some(Page::Single(page_entries.remove(0))),
+                    _ => Some(Page::Multi(page_entries.into())),
+                };
             });
     }
 }

@@ -1595,6 +1595,7 @@ dependencies = [
 name = "fluxemu-definition-misc"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "criterion",
  "fluxemu-range",
  "fluxemu-runtime",

@@ -1,7 +1,7 @@
 use std::{fs::File, ops::Deref, str::FromStr};
 
-use criterion::{Criterion, criterion_group, criterion_main};
-use fluxemu_definition_nes::Nes;
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
+use fluxemu_definition_atari2600::Atari2600;
 use fluxemu_frontend::environment::{ENVIRONMENT_LOCATION, Environment};
 use fluxemu_runtime::{
     machine::{Machine, MachineFactory, builder::MachineBuilder},
@@ -11,6 +11,9 @@ use fluxemu_runtime::{
 };
 
 fn criterion_benchmark(c: &mut Criterion) {
+    let mut group = c.benchmark_group(env!("CARGO_PKG_NAME"));
+    group.throughput(Throughput::Elements(1));
+
     let environment_file = File::create(ENVIRONMENT_LOCATION.deref()).unwrap();
     let environment: Environment = ron::de::from_reader(environment_file).unwrap_or_default();
 
@@ -20,17 +23,20 @@ fn criterion_benchmark(c: &mut Criterion) {
     )
     .unwrap();
     let program_specification = program_manager
-        .identify_program([RomId::from_str("3737eefc3c7b1934e929b551251cf1ea98f5f451").unwrap()])
+        .identify_program([RomId::from_str("6e6e37ec8d66aea1c13ed444863e3db91497aa35").unwrap()])
         .unwrap()
-        .expect("You need a copy of \"BurgerTime (USA)\" to run this benchmark");
+        .expect("You need a copy of \"Donkey Kong (USA)\" to run this benchmark");
 
     let machine: MachineBuilder<TestPlatform> =
         Machine::build(Some(program_specification), program_manager, None, None);
-    let machine = Nes.construct(machine).build(());
+    let machine = Atari2600.construct(machine).build(());
 
-    c.bench_function("nes_one_second", |b| {
-        b.iter(|| {
-            machine.run(Period::ONE);
+    group.bench_function("execution_speed", |b| {
+        b.iter_custom(|iters| {
+            let start = std::time::Instant::now();
+            machine.run(Period::from_num(iters));
+
+            start.elapsed()
         })
     });
 }

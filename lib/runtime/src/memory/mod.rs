@@ -172,30 +172,6 @@ impl AddressSpace {
     }
 }
 
-#[derive(Clone)]
-pub enum ComputedTablePageTarget {
-    Component {
-        mirror_start: Option<Address>,
-        component: ComponentHandle,
-    },
-    Memory(Bytes),
-}
-
-#[derive(Clone)]
-struct ComputedTablePage {
-    /// Full, uncropped relevant range
-    pub range: RangeInclusive<Address>,
-    pub target: ComputedTablePageTarget,
-}
-
-impl Debug for ComputedTablePage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TableEntry")
-            .field("range", &self.range)
-            .finish()
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MappingEntry {
     Component(FluxEmuPath),
@@ -207,9 +183,31 @@ pub enum MappingEntry {
 }
 
 #[derive(Debug, Clone)]
+pub enum PageTarget {
+    Component {
+        mirror_start: Option<Address>,
+        component: ComponentHandle,
+    },
+    Memory(Bytes),
+}
+
+#[derive(Debug, Clone)]
+pub struct PageEntry {
+    /// Full, uncropped relevant range
+    pub range: RangeInclusive<Address>,
+    pub target: PageTarget,
+}
+
+#[derive(Debug, Clone)]
+pub enum Page {
+    Single(PageEntry),
+    Multi(Box<[PageEntry]>),
+}
+
+#[derive(Debug, Clone)]
 pub struct MemoryMappingTable {
     master: RangeInclusiveMap<Address, MappingEntry>,
-    computed_table: Vec<Vec<ComputedTablePage>>,
+    computed_table: Vec<Option<Page>>,
 }
 
 impl MemoryMappingTable {

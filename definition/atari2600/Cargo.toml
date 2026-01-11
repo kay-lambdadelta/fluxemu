@@ -28,5 +28,5 @@ vulkan = ["fluxemu-runtime/vulkan"]
 opengl = ["fluxemu-runtime/opengl"]
 
 [[bench]]
-name = "machine_cycle"
+name = "bench"
 harness = false

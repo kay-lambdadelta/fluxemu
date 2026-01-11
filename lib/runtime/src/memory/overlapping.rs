@@ -2,10 +2,11 @@ use std::ops::RangeInclusive;
 
 use fluxemu_range::RangeIntersection;
 
-use crate::memory::{Address, ComputedTablePageTarget, MemoryMappingTable, PAGE_SIZE};
+use crate::memory::{Address, MemoryMappingTable, PAGE_SIZE, Page, PageTarget};
 
 pub struct OverlappingMappingsIter<'a> {
     table: &'a MemoryMappingTable,
+    cursor_page: &'a Option<Page>,
     access_range: RangeInclusive<Address>,
     page_index: usize,
     end_page: usize,
@@ -22,6 +23,7 @@ impl MemoryMappingTable {
         let end_page = access_range.end() / PAGE_SIZE;
 
         OverlappingMappingsIter {
+            cursor_page: &self.computed_table[start_page],
             table: self,
             access_range,
             page_index: start_page,
@@ -33,7 +35,7 @@ impl MemoryMappingTable {
 
 pub struct Item<'a> {
     pub entry_assigned_range: &'a RangeInclusive<Address>,
-    pub target: &'a ComputedTablePageTarget,
+    pub target: &'a PageTarget,
 }
 
 impl<'a> Iterator for OverlappingMappingsIter<'a> {
@@ -42,24 +44,40 @@ impl<'a> Iterator for OverlappingMappingsIter<'a> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         while self.page_index <= self.end_page {
-            let page = &self.table.computed_table[self.page_index];
+            match self.cursor_page {
+                Some(Page::Single(entry)) => {
+                    if self.entry_index == 0 && self.access_range.intersects(&entry.range) {
+                        self.entry_index = 1;
 
-            while self.entry_index < page.len() {
-                let entry = &page[self.entry_index];
-
-                self.entry_index += 1;
-
-                if self.access_range.intersects(&entry.range) {
-                    return Some(Item {
-                        entry_assigned_range: &entry.range,
-                        target: &entry.target,
-                    });
+                        return Some(Item {
+                            entry_assigned_range: &entry.range,
+                            target: &entry.target,
+                        });
+                    }
                 }
+                Some(Page::Multi(entries)) => {
+                    while self.entry_index < entries.len() {
+                        let entry = &entries[self.entry_index];
+
+                        self.entry_index += 1;
+
+                        if self.access_range.intersects(&entry.range) {
+                            return Some(Item {
+                                entry_assigned_range: &entry.range,
+                                target: &entry.target,
+                            });
+                        }
+                    }
+                }
+                None => {}
             }
 
-            // move to next page
             self.page_index += 1;
             self.entry_index = 0;
+
+            if self.page_index <= self.end_page {
+                self.cursor_page = &self.table.computed_table[self.page_index];
+            }
         }
 
         None

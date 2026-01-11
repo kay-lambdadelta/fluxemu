@@ -1,12 +1,12 @@
 use std::ops::RangeInclusive;
 
 use fluxemu_range::{ContiguousRange, RangeIntersection};
-use num::traits::FromBytes;
+use num::traits::{FromBytes, ops::bytes::NumBytes};
 
 use super::AddressSpace;
 use crate::{
     memory::{
-        Address, AddressSpaceCache, ComputedTablePageTarget, Members, MemoryError, MemoryErrorType,
+        Address, AddressSpaceCache, Members, MemoryError, MemoryErrorType, PageTarget,
         overlapping::Item,
     },
     scheduler::Period,
@@ -14,16 +14,16 @@ use crate::{
 
 impl AddressSpace {
     /// Force code into the generic read_*_value functions
-    #[inline(always)]
-    pub(super) fn read_internal(
+    #[inline]
+    pub(super) fn read_internal<B: NumBytes + ?Sized>(
         &self,
         mut address: Address,
         current_timestamp: Period,
         members: &Members,
         avoid_side_effects: bool,
-        buffer: &mut [u8],
+        buffer: &mut B,
     ) -> Result<(), MemoryError> {
-        let mut remaining_buffer = buffer;
+        let mut remaining_buffer = buffer.as_mut();
 
         while !remaining_buffer.is_empty() {
             let address_masked = address & self.width_mask;
@@ -47,7 +47,7 @@ impl AddressSpace {
                 handled = true;
 
                 match target {
-                    ComputedTablePageTarget::Component {
+                    PageTarget::Component {
                         mirror_start,
                         component,
                     } => {
@@ -74,7 +74,7 @@ impl AddressSpace {
                             },
                         )?;
                     }
-                    ComputedTablePageTarget::Memory(bytes) => {
+                    PageTarget::Memory(bytes) => {
                         let memory_access_range = entry_assigned_range.intersection(&access_range);
 
                         let memory_offset =
@@ -108,7 +108,7 @@ impl AddressSpace {
     }
 
     /// Given a location, read a little endian value
-    #[inline(always)]
+    #[inline]
     pub(super) fn read_le_value_internal<T: FromBytes>(
         &self,
         address: Address,
@@ -125,13 +125,13 @@ impl AddressSpace {
             current_timestamp,
             members,
             avoid_side_effects,
-            buffer.as_mut(),
+            &mut buffer,
         )?;
         Ok(T::from_le_bytes(&buffer))
     }
 
     /// Given a location, read a big endian value
-    #[inline(always)]
+    #[inline]
     pub(super) fn read_be_value_internal<T: FromBytes>(
         &self,
         address: Address,
@@ -148,7 +148,7 @@ impl AddressSpace {
             current_timestamp,
             members,
             avoid_side_effects,
-            buffer.as_mut(),
+            &mut buffer,
         )?;
         Ok(T::from_be_bytes(&buffer))
     }
