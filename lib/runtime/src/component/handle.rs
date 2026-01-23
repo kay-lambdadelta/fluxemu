@@ -206,9 +206,6 @@ impl<C: Component> TypedComponentHandle<C> {
     /// Interact immutably with a component
     ///
     /// Note that this may or may not do an exclusively lock on the component.
-    ///
-    /// The chance of an exclusive access occuring is greatly increased if the
-    /// component has lazy task
     #[inline]
     pub fn interact<T>(&self, time: Period, callback: impl FnOnce(&C) -> T) -> T {
         self.component.interact(time, |component| {

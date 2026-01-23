@@ -90,7 +90,7 @@ impl<'a> SynchronizationContext<'a> {
         let mut stop_time = self.target_timestamp;
 
         if let Some(next_event) = self.event_manager.next_event() {
-            stop_time = stop_time.min(next_event)
+            stop_time = stop_time.min(next_event);
         }
 
         let mut budget = (stop_time.saturating_sub(*self.updated_timestamp) / period)
@@ -125,7 +125,7 @@ impl Iterator for QuantaIterator<'_, '_> {
             let mut stop_time = self.context.target_timestamp;
 
             if let Some(next_event) = self.context.event_manager.next_event() {
-                stop_time = stop_time.min(next_event)
+                stop_time = stop_time.min(next_event);
             }
 
             let new_budget = (stop_time.saturating_sub(*self.context.updated_timestamp)

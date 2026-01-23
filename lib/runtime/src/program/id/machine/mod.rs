@@ -54,41 +54,41 @@ impl MachineId {
     /// Converts the name to a "Nointro" convention string
     pub fn to_nointro_string(&self) -> &'static str {
         match self {
-            MachineId::Nintendo(NintendoSystem::GameBoy) => "Nintendo - Game Boy",
-            MachineId::Nintendo(NintendoSystem::GameBoyColor) => "Nintendo - Game Boy Color",
-            MachineId::Nintendo(NintendoSystem::GameBoyAdvance) => "Nintendo - Game Boy Advance",
-            MachineId::Nintendo(NintendoSystem::GameCube) => "Nintendo - Nintendo GameCube",
-            MachineId::Nintendo(NintendoSystem::Wii) => "Nintendo - Wii",
-            MachineId::Nintendo(NintendoSystem::WiiU) => "Nintendo - Wii U",
-            MachineId::Nintendo(NintendoSystem::SuperNintendoEntertainmentSystem) => {
+            Self::Nintendo(NintendoSystem::GameBoy) => "Nintendo - Game Boy",
+            Self::Nintendo(NintendoSystem::GameBoyColor) => "Nintendo - Game Boy Color",
+            Self::Nintendo(NintendoSystem::GameBoyAdvance) => "Nintendo - Game Boy Advance",
+            Self::Nintendo(NintendoSystem::GameCube) => "Nintendo - Nintendo GameCube",
+            Self::Nintendo(NintendoSystem::Wii) => "Nintendo - Wii",
+            Self::Nintendo(NintendoSystem::WiiU) => "Nintendo - Wii U",
+            Self::Nintendo(NintendoSystem::SuperNintendoEntertainmentSystem) => {
                 "Nintendo - Super Nintendo Entertainment System"
             }
-            MachineId::Nintendo(NintendoSystem::NintendoEntertainmentSystem) => {
+            Self::Nintendo(NintendoSystem::NintendoEntertainmentSystem) => {
                 "Nintendo - Nintendo Entertainment System"
             }
-            MachineId::Nintendo(NintendoSystem::Nintendo64) => "Nintendo - Nintendo 64",
-            MachineId::Nintendo(NintendoSystem::NintendoDS) => "Nintendo - Nintendo DS",
-            MachineId::Nintendo(NintendoSystem::NintendoDSi) => "Nintendo - Nintendo DSi",
-            MachineId::Nintendo(NintendoSystem::Nintendo3DS) => "Nintendo - Nintendo 3DS",
-            MachineId::Nintendo(NintendoSystem::PokemonMini) => "Nintendo - Pokemon Mini",
-            MachineId::Nintendo(NintendoSystem::VirtualBoy) => "Nintendo - Virtual Boy",
-            MachineId::Sony(SonySystem::Playstation) => "Sony - PlayStation",
-            MachineId::Sony(SonySystem::Playstation2) => "Sony - PlayStation 2",
-            MachineId::Sony(SonySystem::Playstation3) => "Sony - PlayStation 3",
-            MachineId::Sony(SonySystem::PlaystationPortable) => "Sony - PlayStation Portable",
-            MachineId::Sony(SonySystem::PlaystationVita) => "Sony - PlayStation Vita",
-            MachineId::Sega(SegaSystem::MasterSystem) => "Sega - Master System",
-            MachineId::Sega(SegaSystem::GameGear) => "Sega - Game Gear",
-            MachineId::Sega(SegaSystem::Genesis) => "Sega - Mega Drive - Genesis",
-            MachineId::Sega(SegaSystem::SegaCD) => "Sega - Sega CD",
-            MachineId::Sega(SegaSystem::Sega32X) => "Sega - 32X",
-            MachineId::Other(OtherSystem::Chip8) => "Other - Chip8",
-            MachineId::Atari(AtariSystem::Atari2600) => "Atari - 2600",
-            MachineId::Atari(AtariSystem::Atari5200) => "Atari - 5200",
-            MachineId::Atari(AtariSystem::Atari7800) => "Atari - 7800",
-            MachineId::Atari(AtariSystem::Lynx) => "Atari - Atari Lynx",
-            MachineId::Atari(AtariSystem::Jaguar) => "Atari - Jaguar",
-            MachineId::Unknown => "Unknown",
+            Self::Nintendo(NintendoSystem::Nintendo64) => "Nintendo - Nintendo 64",
+            Self::Nintendo(NintendoSystem::NintendoDS) => "Nintendo - Nintendo DS",
+            Self::Nintendo(NintendoSystem::NintendoDSi) => "Nintendo - Nintendo DSi",
+            Self::Nintendo(NintendoSystem::Nintendo3DS) => "Nintendo - Nintendo 3DS",
+            Self::Nintendo(NintendoSystem::PokemonMini) => "Nintendo - Pokemon Mini",
+            Self::Nintendo(NintendoSystem::VirtualBoy) => "Nintendo - Virtual Boy",
+            Self::Sony(SonySystem::Playstation) => "Sony - PlayStation",
+            Self::Sony(SonySystem::Playstation2) => "Sony - PlayStation 2",
+            Self::Sony(SonySystem::Playstation3) => "Sony - PlayStation 3",
+            Self::Sony(SonySystem::PlaystationPortable) => "Sony - PlayStation Portable",
+            Self::Sony(SonySystem::PlaystationVita) => "Sony - PlayStation Vita",
+            Self::Sega(SegaSystem::MasterSystem) => "Sega - Master System",
+            Self::Sega(SegaSystem::GameGear) => "Sega - Game Gear",
+            Self::Sega(SegaSystem::Genesis) => "Sega - Mega Drive - Genesis",
+            Self::Sega(SegaSystem::SegaCD) => "Sega - Sega CD",
+            Self::Sega(SegaSystem::Sega32X) => "Sega - 32X",
+            Self::Other(OtherSystem::Chip8) => "Other - Chip8",
+            Self::Atari(AtariSystem::Atari2600) => "Atari - 2600",
+            Self::Atari(AtariSystem::Atari5200) => "Atari - 5200",
+            Self::Atari(AtariSystem::Atari7800) => "Atari - 7800",
+            Self::Atari(AtariSystem::Lynx) => "Atari - Atari Lynx",
+            Self::Atari(AtariSystem::Jaguar) => "Atari - Jaguar",
+            Self::Unknown => "Unknown",
         }
     }
 

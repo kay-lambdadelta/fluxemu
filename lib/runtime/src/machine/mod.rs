@@ -108,6 +108,9 @@ impl Machine {
         address_space.remap(commands, &self.registry);
     }
 
+    // TODO: Move these elsewhere so components don't have to have a reference to the machine
+    //
+    // Its a design smell.
     pub fn schedule_event<C: Component>(
         &self,
         time: Period,

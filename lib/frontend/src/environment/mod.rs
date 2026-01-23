@@ -19,19 +19,23 @@ use crate::{
 
 /// Audio related config types
 pub mod audio;
+/// Gamepad configuration
+pub mod gamepad;
 /// Graphics related config types
 pub mod graphics;
 
-pub mod gamepad;
-
 cfg_if::cfg_if! {
     if #[cfg(miri)] {
+        /// Directory that fluxemu will use as a "home" folder
         pub static STORAGE_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(PathBuf::default);
     } else if #[cfg(target_os = "espidf")] {
+        /// Directory that fluxemu will use as a "home" folder
         pub static STORAGE_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| PathBuf::from("/fluxemu"));
     } else if #[cfg(target_os = "horizon")] {
+        /// Directory that fluxemu will use as a "home" folder
         pub static STORAGE_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| PathBuf::from("sdmc:/fluxemu"));
     } else if #[cfg(target_os = "psp")] {
+        /// Directory that fluxemu will use as a "home" folder
         pub static STORAGE_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| PathBuf::from("ms0:/fluxemu"));
     } else if #[cfg(any(target_family = "unix", target_os = "windows"))] {
         /// Directory that fluxemu will use as a "home" folder
@@ -50,8 +54,7 @@ pub static ENVIRONMENT_LOCATION: LazyLock<PathBuf> =
 #[derive(Serialize, Deserialize, Debug)]
 /// Miscellaneous settings that the runtime and machine must obey
 ///
-/// The canonical on-disk representation for this config is RON but any type
-/// will do
+/// The canonical on-disk representation for this config is RON but any type will do
 pub struct Environment {
     #[serde(default)]
     /// Gamepad configs populated by machines or edited by the user
@@ -85,12 +88,12 @@ pub struct Environment {
 }
 
 impl Environment {
-    /// Store the config from a file
+    /// Persist the environment to a file in ron format
     pub fn save(&self, writer: impl Write) -> Result<(), ron::Error> {
         ron::Options::default().to_io_writer_pretty(writer, self, PrettyConfig::new())
     }
 
-    /// Load the config from a file
+    /// Load the environment from a file in ron format
     pub fn load(reader: impl Read) -> Result<Self, ron::Error> {
         Ok(ron::de::from_reader(reader)?)
     }

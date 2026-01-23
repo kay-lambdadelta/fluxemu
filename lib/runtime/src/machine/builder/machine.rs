@@ -151,7 +151,7 @@ impl<P: Platform> MachineBuilder<P> {
     /// Insert the required information to construct a address space
     pub fn insert_address_space(mut self, address_space_width: u8) -> (Self, AddressSpaceId) {
         assert!(
-            (address_space_width <= usize::BITS as u8),
+            (address_space_width as u32 <= usize::BITS),
             "This host machine cannot handle an address space of {address_space_width} bits"
         );
 

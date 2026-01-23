@@ -135,6 +135,7 @@ impl<P: PlatformExt> Frontend<P> {
         self.in_focus = focused;
     }
 
+    /// Acquire a reference to the machine if it exists
     pub fn machine(&self) -> Option<&Machine> {
         self.machine.as_deref()
     }
@@ -146,8 +147,7 @@ impl<P: PlatformExt> Frontend<P> {
 
     /// Late initialization of the display API handle
     ///
-    /// Comes up on desktop platforms since they send to give a window handle
-    /// asynchronously
+    /// This is required for platforms that late initialize the display handle, like ones supported by winit
     pub fn set_windowing_handle(
         &mut self,
         windowing_handle: <P::GraphicsRuntime as GraphicsRuntime<P>>::WindowingHandle,
@@ -187,6 +187,7 @@ impl<P: PlatformExt> Frontend<P> {
         }
     }
 
+    /// Register a gamepad with the frontend
     pub fn insert_gamepad(&mut self, id: RealGamepadId, real_gamepad: Arc<RealGamepad>) {
         tracing::info!(
             "Gamepad with id {} and name {} added",
@@ -203,10 +204,12 @@ impl<P: PlatformExt> Frontend<P> {
         );
     }
 
+    /// Deregister a gamepad with the frontend
     pub fn remove_gamepad(&mut self, id: RealGamepadId) {
         self.gamepads.remove(&id);
     }
 
+    /// Access a registered gamepad
     pub fn get_gamepad(&mut self, id: RealGamepadId) -> Option<Arc<RealGamepad>> {
         self.gamepads.get(&id).map(|data| data.gamepad.clone())
     }

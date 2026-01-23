@@ -10,8 +10,7 @@ use crate::{
 };
 
 #[derive(Default, Debug)]
-/// Marker train for opengl rendering, supported on major desktop platforms,
-/// lesser to the vulkan one
+/// Marker train for opengl rendering, supported on major desktop platforms, lesser to the vulkan one
 pub struct Opengl;
 
 #[derive(Debug, Default, Clone)]

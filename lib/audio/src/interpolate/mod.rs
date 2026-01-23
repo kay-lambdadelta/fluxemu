@@ -11,8 +11,7 @@ pub use linear::Linear;
 
 /// Trait for interpolators, generic over frame size and sample format
 pub trait Interpolator<S: SampleFormat, const CHANNELS: usize, INTERMEDIATE: Float + SampleFormat> {
-    /// Interpolates a sequence of samples from a source rate to a target rate
-    /// given an interpolator
+    /// Interpolates a sequence of samples from a source rate to a target rate given an interpolator
     fn interpolate(
         self,
         source_rate: f32,

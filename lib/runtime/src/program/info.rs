@@ -42,8 +42,7 @@ pub enum ProgramInfo {
         ///
         /// Note that this is the languages a coherent title supports
         ///
-        /// If alternate files are required a different database entry is
-        /// required
+        /// If alternate files are required a different database entry is required
         languages: BTreeSet<Iso639Alpha3>,
         /// The version or revision of the program
         #[serde_as(as = "Option<DisplayFromStr>")]

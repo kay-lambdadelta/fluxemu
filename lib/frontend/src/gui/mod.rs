@@ -124,6 +124,7 @@ pub struct MenuOutput {
 }
 
 impl<P: PlatformExt> Frontend<P> {
+    /// Build a menu for the frontend
     pub fn run_menu(&mut self, input: RawInput) -> MenuOutput {
         let mut new_program = None;
 
@@ -223,8 +224,7 @@ pub fn setup_egui_context() -> Context {
     egui_context
 }
 
-/// I'm not operating two color libraries at once especially since eguis is far
-/// less powerful
+// I'm not operating two color libraries at once especially since eguis is far less powerful
 fn to_egui_color(color: impl Into<Srgba<u8>>) -> Color32 {
     let color = color.into();
 

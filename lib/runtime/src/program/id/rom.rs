@@ -12,8 +12,7 @@ use thiserror::Error;
 pub struct RomId(pub [u8; 20]);
 
 impl RomId {
-    // I would greatly prefer if sha256 was the one used for identity but some rom
-    // datsheets only have sha1 or worse
+    // I would greatly prefer if sha256 was the one used for identity but some rom datsheets only have sha1 or worse
 
     /// Calculate the rom id (SHA-1) of a rom
     pub fn calculate_id(data: &mut impl Read) -> Result<Self, std::io::Error> {

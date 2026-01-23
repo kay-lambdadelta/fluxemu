@@ -9,9 +9,7 @@ pub trait FrameIterator<S: SampleFormat, const CHANNELS: usize>:
     Iterator<Item = SVector<S, CHANNELS>>
 {
     /// Convert the samples in the iterator to another sample type
-    fn rescale<S2: SampleFormat + FromSample<S>>(self) -> impl FrameIterator<S2, CHANNELS>
-    where
-        Self: Sized;
+    fn rescale<S2: SampleFormat + FromSample<S>>(self) -> impl FrameIterator<S2, CHANNELS>;
 
     /// Use the specified [Interpolator] to resample the iterator
     fn resample<F: Float + SampleFormat>(
@@ -19,44 +17,33 @@ pub trait FrameIterator<S: SampleFormat, const CHANNELS: usize>:
         source_rate: f32,
         target_rate: f32,
         interpolator: impl Interpolator<S, CHANNELS, F>,
-    ) -> impl FrameIterator<S, CHANNELS>
-    where
-        Self: Sized;
+    ) -> impl FrameIterator<S, CHANNELS>;
 
     /// Mix the channels of the iterator into a different number of channels
-    fn remix<const CHANNELS2: usize>(self) -> impl FrameIterator<S, CHANNELS2>
-    where
-        Self: Sized;
+    fn remix<const CHANNELS2: usize>(self) -> impl FrameIterator<S, CHANNELS2>;
 
     /// Normalize the samples in the iterator
-    fn normalize(self) -> impl FrameIterator<S, CHANNELS>
-    where
-        Self: Sized;
+    fn normalize(self) -> impl FrameIterator<S, CHANNELS>;
 
     /// Repeat the final frame of the source forever
-    fn pad(self) -> impl FrameIterator<S, CHANNELS>
-    where
-        Self: Sized;
+    fn pad(self) -> impl FrameIterator<S, CHANNELS>;
 
     /// Repeat the final frame of the source forever
-    fn pad_with(self, value: SVector<S, CHANNELS>) -> impl FrameIterator<S, CHANNELS>
-    where
-        Self: Sized;
+    fn pad_with(self, value: SVector<S, CHANNELS>) -> impl FrameIterator<S, CHANNELS>;
 
     /// Amplify by a factor
-    fn amplify(self, factor: S) -> impl FrameIterator<S, CHANNELS>
-    where
-        Self: Sized;
+    fn amplify(self, factor: S) -> impl FrameIterator<S, CHANNELS>;
 
     /// Gain by a factor
     fn gain(self, db: f32) -> impl FrameIterator<S, CHANNELS>
     where
-        Self: Sized,
         S: FromSample<f32>;
 }
 
 impl<S: SampleFormat, const CHANNELS: usize, SourceIterator: Iterator<Item = SVector<S, CHANNELS>>>
     FrameIterator<S, CHANNELS> for SourceIterator
+where
+    Self: Sized,
 {
     fn rescale<S2: SampleFormat + FromSample<S>>(self) -> impl FrameIterator<S2, CHANNELS> {
         self.map(|s| s.map(|s| s.into_sample()))
@@ -155,7 +142,6 @@ impl<S: SampleFormat, const CHANNELS: usize, SourceIterator: Iterator<Item = SVe
 
     fn gain(self, db: f32) -> impl FrameIterator<S, CHANNELS>
     where
-        Self: Sized,
         S: FromSample<f32>,
     {
         let factor = 10.0f32.powf(db / 20.0);
