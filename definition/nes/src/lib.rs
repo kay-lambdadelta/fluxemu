@@ -45,7 +45,7 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> MachineFactory<P>
         let Filesystem::Single { rom_id, .. } =
             machine.program_specification().unwrap().info.filesystem()
         else {
-            panic!("No atari 2600 game has a structured filesystem")
+            panic!("No nes game has a structured filesystem")
         };
         let rom = *rom_id;
 
