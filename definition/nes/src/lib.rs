@@ -58,7 +58,7 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> MachineFactory<P>
                 assigned_address_space: cpu_address_space,
                 initial_contents: RangeInclusiveMap::from_iter([(
                     0x0000..=0x07ff,
-                    StandardMemoryInitialContents::Random,
+                    StandardMemoryInitialContents::Value(0),
                 )]),
                 sram: false,
             },
@@ -204,25 +204,6 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> MachineFactory<P>
             DefaultExpansionDevice::科王Keyboard => todo!(),
             DefaultExpansionDevice::泽诚Keyboard => todo!(),
         };
-
-        /*
-        let (machine, _) = machine.insert_component(
-            "forced-execution-vector",
-            StandardMemoryConfig {
-                readable: true,
-                writable: true,
-                assigned_range: 0xfffc..=0xfffd,
-                assigned_address_space: cpu_address_space,
-                initial_contents: RangeInclusiveMap::from_iter([(
-                    0xfffc..=0xfffd,
-                    StandardMemoryInitialContents::Array(std::borrow::Cow::Owned(
-                        (0xc000u16).to_le_bytes().to_vec(),
-                    )),
-                )]),
-                sram: false,
-            },
-        );
-        */
 
         match header.timing_mode {
             // FIXME: Implementing Multi as NTSC for now

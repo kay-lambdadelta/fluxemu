@@ -35,13 +35,13 @@ impl Component for Apu {
         buffer: &mut [u8],
     ) -> Result<(), MemoryError> {
         match address {
-            STATUS => {
-                todo!()
-            }
+            STATUS => {}
             _ => {
                 unreachable!()
             }
         }
+
+        Ok(())
     }
 
     fn memory_write(

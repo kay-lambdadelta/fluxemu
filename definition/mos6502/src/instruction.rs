@@ -3,7 +3,14 @@ use std::fmt::Display;
 use fluxemu_runtime::processor::InstructionSet;
 use serde::{Deserialize, Serialize};
 
-use crate::Mos6502Kind;
+use crate::{
+    Mos6502, Mos6502Kind,
+    cycle::{
+        AddToPointerLikeRegisterSource, ArithmeticOperandInterpretation, BusMode, Cycle, Flag,
+        GeneralPurposeRegister, IncrementOperand, MoveDestination, MoveSource, Phi1, Phi2,
+        PointerLikeRegister, SetAddressBusSource, ShiftDirection,
+    },
+};
 
 // https://www.pagetable.com/c64ref/6502/?tab=2
 
@@ -44,27 +51,6 @@ impl AddressingMode {
                 self,
                 AddressingMode::Mos6502(_) | AddressingMode::Wdc65C02(_)
             ),
-        }
-    }
-}
-
-impl AddressingMode {
-    #[inline]
-    pub fn added_instruction_length(&self) -> u16 {
-        match self {
-            AddressingMode::Mos6502(Mos6502AddressingMode::Immediate) => 1,
-            AddressingMode::Mos6502(Mos6502AddressingMode::Absolute) => 2,
-            AddressingMode::Mos6502(Mos6502AddressingMode::XIndexedAbsolute) => 2,
-            AddressingMode::Mos6502(Mos6502AddressingMode::YIndexedAbsolute) => 2,
-            AddressingMode::Mos6502(Mos6502AddressingMode::AbsoluteIndirect) => 2,
-            AddressingMode::Mos6502(Mos6502AddressingMode::ZeroPage) => 1,
-            AddressingMode::Mos6502(Mos6502AddressingMode::XIndexedZeroPage) => 1,
-            AddressingMode::Mos6502(Mos6502AddressingMode::YIndexedZeroPage) => 1,
-            AddressingMode::Mos6502(Mos6502AddressingMode::XIndexedZeroPageIndirect) => 1,
-            AddressingMode::Mos6502(Mos6502AddressingMode::ZeroPageIndirectYIndexed) => 1,
-            AddressingMode::Mos6502(Mos6502AddressingMode::Relative) => 1,
-            AddressingMode::Mos6502(Mos6502AddressingMode::Accumulator) => 0,
-            AddressingMode::Wdc65C02(Wdc65C02AddressingMode::ZeroPageIndirect) => 1,
         }
     }
 }
@@ -189,103 +175,1228 @@ pub struct Mos6502InstructionSet {
     pub addressing_mode: Option<AddressingMode>,
 }
 
-impl Mos6502InstructionSet {
-    pub fn is_addressing_mode_valid(&self, kind: Mos6502Kind) -> bool {
-        match self.opcode {
-            Opcode::Mos6502(opcode) => match opcode {
-                Mos6502Opcode::Adc => todo!(),
-                Mos6502Opcode::Anc => todo!(),
-                Mos6502Opcode::And => todo!(),
-                Mos6502Opcode::Arr => todo!(),
-                Mos6502Opcode::Asl => todo!(),
-                Mos6502Opcode::Asr => todo!(),
-                Mos6502Opcode::Bcc => todo!(),
-                Mos6502Opcode::Bcs => todo!(),
-                Mos6502Opcode::Beq => todo!(),
-                Mos6502Opcode::Bit => todo!(),
-                Mos6502Opcode::Bmi => todo!(),
-                Mos6502Opcode::Bne => todo!(),
-                Mos6502Opcode::Bpl => todo!(),
-                Mos6502Opcode::Brk => todo!(),
-                Mos6502Opcode::Bvc => todo!(),
-                Mos6502Opcode::Bvs => todo!(),
-                Mos6502Opcode::Clc => todo!(),
-                Mos6502Opcode::Cld => todo!(),
-                Mos6502Opcode::Cli => todo!(),
-                Mos6502Opcode::Clv => todo!(),
-                Mos6502Opcode::Cmp => todo!(),
-                Mos6502Opcode::Cpx => todo!(),
-                Mos6502Opcode::Cpy => todo!(),
-                Mos6502Opcode::Dcp => todo!(),
-                Mos6502Opcode::Dec => todo!(),
-                Mos6502Opcode::Dex => todo!(),
-                Mos6502Opcode::Dey => todo!(),
-                Mos6502Opcode::Eor => todo!(),
-                Mos6502Opcode::Inc => todo!(),
-                Mos6502Opcode::Inx => todo!(),
-                Mos6502Opcode::Iny => todo!(),
-                Mos6502Opcode::Isc => todo!(),
-                Mos6502Opcode::Jam => todo!(),
-                Mos6502Opcode::Jmp => todo!(),
-                Mos6502Opcode::Jsr => todo!(),
-                Mos6502Opcode::Las => todo!(),
-                Mos6502Opcode::Lax => todo!(),
-                Mos6502Opcode::Lda => todo!(),
-                Mos6502Opcode::Ldx => todo!(),
-                Mos6502Opcode::Ldy => todo!(),
-                Mos6502Opcode::Lsr => todo!(),
-                Mos6502Opcode::Nop => todo!(),
-                Mos6502Opcode::Ora => todo!(),
-                Mos6502Opcode::Pha => todo!(),
-                Mos6502Opcode::Php => todo!(),
-                Mos6502Opcode::Pla => todo!(),
-                Mos6502Opcode::Plp => todo!(),
-                Mos6502Opcode::Rla => todo!(),
-                Mos6502Opcode::Rol => todo!(),
-                Mos6502Opcode::Ror => todo!(),
-                Mos6502Opcode::Rra => todo!(),
-                Mos6502Opcode::Rti => todo!(),
-                Mos6502Opcode::Rts => todo!(),
-                Mos6502Opcode::Sax => todo!(),
-                Mos6502Opcode::Sbc => todo!(),
-                Mos6502Opcode::Sbx => todo!(),
-                Mos6502Opcode::Sec => todo!(),
-                Mos6502Opcode::Sed => todo!(),
-                Mos6502Opcode::Sei => todo!(),
-                Mos6502Opcode::Sha => todo!(),
-                Mos6502Opcode::Shs => todo!(),
-                Mos6502Opcode::Shx => todo!(),
-                Mos6502Opcode::Shy => todo!(),
-                Mos6502Opcode::Slo => todo!(),
-                Mos6502Opcode::Sre => todo!(),
-                Mos6502Opcode::Sta => todo!(),
-                Mos6502Opcode::Stx => todo!(),
-                Mos6502Opcode::Sty => todo!(),
-                Mos6502Opcode::Tax => todo!(),
-                Mos6502Opcode::Tay => todo!(),
-                Mos6502Opcode::Tsx => todo!(),
-                Mos6502Opcode::Txa => todo!(),
-                Mos6502Opcode::Txs => todo!(),
-                Mos6502Opcode::Tya => todo!(),
-                Mos6502Opcode::Xaa => todo!(),
-            },
-            Opcode::Wdc65C02(opcode) => match opcode {
-                Wdc65C02Opcode::Bra => todo!(),
-                Wdc65C02Opcode::Phx => todo!(),
-                Wdc65C02Opcode::Phy => todo!(),
-                Wdc65C02Opcode::Plx => todo!(),
-                Wdc65C02Opcode::Ply => todo!(),
-                Wdc65C02Opcode::Stz => todo!(),
-                Wdc65C02Opcode::Trb => todo!(),
-                Wdc65C02Opcode::Tsb => todo!(),
-                Wdc65C02Opcode::Stp => todo!(),
-                Wdc65C02Opcode::Wai => todo!(),
-            },
-        }
-    }
-}
-
 impl InstructionSet for Mos6502InstructionSet {
     type Opcode = Opcode;
     type AddressingMode = AddressingMode;
+}
+
+impl Mos6502 {
+    pub(super) fn push_steps_for_instruction(&mut self, instruction: &Mos6502InstructionSet) {
+        if let Some(addressing_mode) = instruction.addressing_mode {
+            match addressing_mode {
+                AddressingMode::Mos6502(Mos6502AddressingMode::Absolute) => {
+                    self.instruction_queue.extend([
+                        Cycle::new(
+                            BusMode::Read,
+                            Some(Phi1::SetAddressBus {
+                                source: SetAddressBusSource::InstructionPointer,
+                            }),
+                            [
+                                Phi2::IncrementInstructionPointer,
+                                Phi2::Move {
+                                    source: MoveSource::Data,
+                                    destination: MoveDestination::EffectiveAddress,
+                                },
+                            ],
+                        ),
+                        Cycle::new(
+                            BusMode::Read,
+                            Some(Phi1::SetAddressBus {
+                                source: SetAddressBusSource::InstructionPointer,
+                            }),
+                            [
+                                Phi2::IncrementInstructionPointer,
+                                Phi2::Move {
+                                    source: MoveSource::Data,
+                                    destination: MoveDestination::EffectiveAddress,
+                                },
+                            ],
+                        ),
+                    ]);
+                }
+                AddressingMode::Mos6502(
+                    Mos6502AddressingMode::Immediate | Mos6502AddressingMode::Relative,
+                ) => {
+                    self.instruction_queue.extend([Cycle::new(
+                        BusMode::Read,
+                        Some(Phi1::SetAddressBus {
+                            source: SetAddressBusSource::InstructionPointer,
+                        }),
+                        [Phi2::IncrementInstructionPointer],
+                    )]);
+                }
+                AddressingMode::Mos6502(Mos6502AddressingMode::XIndexedAbsolute) => {
+                    self.register_indexed_absolute(GeneralPurposeRegister::X);
+                }
+                AddressingMode::Mos6502(Mos6502AddressingMode::YIndexedAbsolute) => {
+                    self.register_indexed_absolute(GeneralPurposeRegister::Y);
+                }
+                AddressingMode::Mos6502(Mos6502AddressingMode::AbsoluteIndirect) => {
+                    self.instruction_queue.extend([
+                        Cycle::new(
+                            BusMode::Read,
+                            Some(Phi1::SetAddressBus {
+                                source: SetAddressBusSource::InstructionPointer,
+                            }),
+                            [
+                                Phi2::IncrementInstructionPointer,
+                                Phi2::Move {
+                                    source: MoveSource::Data,
+                                    destination: MoveDestination::EffectiveAddress,
+                                },
+                            ],
+                        ),
+                        Cycle::new(
+                            BusMode::Read,
+                            Some(Phi1::SetAddressBus {
+                                source: SetAddressBusSource::InstructionPointer,
+                            }),
+                            [
+                                Phi2::IncrementInstructionPointer,
+                                Phi2::Move {
+                                    source: MoveSource::Data,
+                                    destination: MoveDestination::EffectiveAddress,
+                                },
+                            ],
+                        ),
+                        Cycle::new(
+                            BusMode::Read,
+                            Some(Phi1::SetAddressBus {
+                                source: SetAddressBusSource::EffectiveAddress,
+                            }),
+                            [
+                                Phi2::Move {
+                                    source: MoveSource::Data,
+                                    destination: MoveDestination::EffectiveAddress,
+                                },
+                                Phi2::AddToPointerLikeRegister {
+                                    source: AddToPointerLikeRegisterSource::Constant(1),
+                                    destination: PointerLikeRegister::AddressBus,
+                                    interpretation: ArithmeticOperandInterpretation::Unsigned,
+                                    // Insert carry cycle if the bug is not present
+                                    insert_adjustment_cycle_upon_carry: !self
+                                        .config
+                                        .kind
+                                        .has_absolute_indirect_page_wrap_errata(),
+                                },
+                            ],
+                        ),
+                        Cycle::new(
+                            BusMode::Read,
+                            None,
+                            [Phi2::Move {
+                                source: MoveSource::Data,
+                                destination: MoveDestination::EffectiveAddress,
+                            }],
+                        ),
+                    ]);
+                }
+                AddressingMode::Mos6502(Mos6502AddressingMode::XIndexedZeroPageIndirect) => {
+                    self.instruction_queue.extend([
+                        Cycle::new(
+                            BusMode::Read,
+                            Some(Phi1::SetAddressBus {
+                                source: SetAddressBusSource::InstructionPointer,
+                            }),
+                            [
+                                Phi2::IncrementInstructionPointer,
+                                Phi2::Move {
+                                    source: MoveSource::Data,
+                                    destination: MoveDestination::EffectiveAddress,
+                                },
+                            ],
+                        ),
+                        Cycle::new(
+                            BusMode::Read,
+                            Some(Phi1::SetAddressBus {
+                                source: SetAddressBusSource::EffectiveAddress,
+                            }),
+                            [Phi2::AddToPointerLikeRegister {
+                                source: AddToPointerLikeRegisterSource::Register(
+                                    GeneralPurposeRegister::X,
+                                ),
+                                destination: PointerLikeRegister::AddressBus,
+                                insert_adjustment_cycle_upon_carry: false,
+                                interpretation: ArithmeticOperandInterpretation::Unsigned,
+                            }],
+                        ),
+                        Cycle::new(
+                            BusMode::Read,
+                            None,
+                            [
+                                Phi2::Move {
+                                    source: MoveSource::Data,
+                                    destination: MoveDestination::EffectiveAddress,
+                                },
+                                Phi2::AddToPointerLikeRegister {
+                                    source: AddToPointerLikeRegisterSource::Constant(1),
+                                    destination: PointerLikeRegister::AddressBus,
+                                    interpretation: ArithmeticOperandInterpretation::Unsigned,
+                                    insert_adjustment_cycle_upon_carry: false,
+                                },
+                            ],
+                        ),
+                        Cycle::new(
+                            BusMode::Read,
+                            None,
+                            [Phi2::Move {
+                                source: MoveSource::Data,
+                                destination: MoveDestination::EffectiveAddress,
+                            }],
+                        ),
+                    ]);
+                }
+                AddressingMode::Mos6502(Mos6502AddressingMode::ZeroPageIndirectYIndexed) => {
+                    self.instruction_queue.extend([
+                        Cycle::new(
+                            BusMode::Read,
+                            Some(Phi1::SetAddressBus {
+                                source: SetAddressBusSource::InstructionPointer,
+                            }),
+                            [
+                                Phi2::IncrementInstructionPointer,
+                                Phi2::Move {
+                                    source: MoveSource::Data,
+                                    destination: MoveDestination::EffectiveAddress,
+                                },
+                            ],
+                        ),
+                        Cycle::new(
+                            BusMode::Read,
+                            Some(Phi1::SetAddressBus {
+                                source: SetAddressBusSource::EffectiveAddress,
+                            }),
+                            [
+                                Phi2::Move {
+                                    source: MoveSource::Data,
+                                    destination: MoveDestination::EffectiveAddress,
+                                },
+                                Phi2::AddToPointerLikeRegister {
+                                    source: AddToPointerLikeRegisterSource::Constant(1),
+                                    destination: PointerLikeRegister::AddressBus,
+                                    interpretation: ArithmeticOperandInterpretation::Unsigned,
+                                    insert_adjustment_cycle_upon_carry: false,
+                                },
+                            ],
+                        ),
+                        Cycle::new(
+                            BusMode::Read,
+                            None,
+                            [
+                                Phi2::Move {
+                                    source: MoveSource::Data,
+                                    destination: MoveDestination::EffectiveAddress,
+                                },
+                                Phi2::AddToPointerLikeRegister {
+                                    source: AddToPointerLikeRegisterSource::Register(
+                                        GeneralPurposeRegister::Y,
+                                    ),
+                                    destination: PointerLikeRegister::EffectiveAddress,
+                                    interpretation: ArithmeticOperandInterpretation::Unsigned,
+                                    insert_adjustment_cycle_upon_carry: true,
+                                },
+                            ],
+                        ),
+                    ]);
+                }
+                AddressingMode::Mos6502(Mos6502AddressingMode::XIndexedZeroPage) => {
+                    self.register_indexed_zero_page(GeneralPurposeRegister::X);
+                }
+                AddressingMode::Mos6502(Mos6502AddressingMode::YIndexedZeroPage) => {
+                    self.register_indexed_zero_page(GeneralPurposeRegister::Y);
+                }
+                AddressingMode::Mos6502(Mos6502AddressingMode::ZeroPage) => {
+                    self.instruction_queue.extend([Cycle::new(
+                        BusMode::Read,
+                        Some(Phi1::SetAddressBus {
+                            source: SetAddressBusSource::InstructionPointer,
+                        }),
+                        [
+                            Phi2::IncrementInstructionPointer,
+                            Phi2::Move {
+                                source: MoveSource::Data,
+                                destination: MoveDestination::EffectiveAddress,
+                            },
+                        ],
+                    )]);
+                }
+                AddressingMode::Mos6502(Mos6502AddressingMode::Accumulator) => {
+                    self.instruction_queue.extend([Cycle::dummy()]);
+                }
+                AddressingMode::Wdc65C02(Wdc65C02AddressingMode::ZeroPageIndirect) => {
+                    todo!()
+                }
+            }
+        } else {
+            self.instruction_queue.extend([Cycle::dummy()]);
+        }
+
+        match instruction.opcode {
+            Opcode::Mos6502(Mos6502Opcode::Adc) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [
+                        Phi2::Move {
+                            source: MoveSource::Data,
+                            destination: MoveDestination::Operand,
+                        },
+                        Phi2::Add {
+                            invert_operand: false,
+                        },
+                    ],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Anc) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::And) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [
+                        Phi2::Move {
+                            source: MoveSource::Data,
+                            destination: MoveDestination::Operand,
+                        },
+                        Phi2::And { writeback: true },
+                    ],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Arr) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Asl) => {
+                if instruction.addressing_mode
+                    == Some(AddressingMode::Mos6502(Mos6502AddressingMode::Accumulator))
+                {
+                    self.patch_read_maybe_effective_address_dependent(
+                        instruction,
+                        [Phi2::Shift {
+                            direction: ShiftDirection::Left,
+                            rotate: false,
+                            a_is_operand: true,
+                        }],
+                    );
+                } else {
+                    self.insert_rmw_effective_address_dependent([Phi2::Shift {
+                        direction: ShiftDirection::Left,
+                        rotate: false,
+                        a_is_operand: false,
+                    }]);
+                }
+            }
+            Opcode::Mos6502(Mos6502Opcode::Asr) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Bit) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [
+                        Phi2::Move {
+                            source: MoveSource::Data,
+                            destination: MoveDestination::Operand,
+                        },
+                        Phi2::And { writeback: false },
+                    ],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Brk) => {
+                todo!()
+            }
+            Opcode::Mos6502(Mos6502Opcode::Clc) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [Phi2::SetFlag {
+                        flag: Flag::Carry,
+                        value: false,
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Cld) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [Phi2::SetFlag {
+                        flag: Flag::Decimal,
+                        value: false,
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Cli) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [Phi2::SetFlag {
+                        flag: Flag::InterruptDisable,
+                        value: false,
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Clv) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [Phi2::SetFlag {
+                        flag: Flag::Overflow,
+                        value: false,
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Cmp) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [
+                        Phi2::Move {
+                            source: MoveSource::Data,
+                            destination: MoveDestination::Operand,
+                        },
+                        Phi2::Compare {
+                            register: GeneralPurposeRegister::A,
+                        },
+                    ],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Cpx) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [
+                        Phi2::Move {
+                            source: MoveSource::Data,
+                            destination: MoveDestination::Operand,
+                        },
+                        Phi2::Compare {
+                            register: GeneralPurposeRegister::X,
+                        },
+                    ],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Cpy) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [
+                        Phi2::Move {
+                            source: MoveSource::Data,
+                            destination: MoveDestination::Operand,
+                        },
+                        Phi2::Compare {
+                            register: GeneralPurposeRegister::Y,
+                        },
+                    ],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Dcp) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Dec) => {
+                self.insert_rmw_effective_address_dependent([Phi2::Increment {
+                    operand: IncrementOperand::Operand,
+                    subtract: true,
+                }]);
+            }
+            Opcode::Mos6502(Mos6502Opcode::Dex) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [Phi2::Increment {
+                        operand: IncrementOperand::X,
+                        subtract: true,
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Dey) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [Phi2::Increment {
+                        operand: IncrementOperand::Y,
+                        subtract: true,
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Eor) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [
+                        Phi2::Move {
+                            source: MoveSource::Data,
+                            destination: MoveDestination::Operand,
+                        },
+                        Phi2::Xor,
+                    ],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Inc) => {
+                self.insert_rmw_effective_address_dependent([Phi2::Increment {
+                    operand: IncrementOperand::Operand,
+                    subtract: false,
+                }]);
+            }
+            Opcode::Mos6502(Mos6502Opcode::Inx) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [Phi2::Increment {
+                        operand: IncrementOperand::X,
+                        subtract: false,
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Iny) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [Phi2::Increment {
+                        operand: IncrementOperand::Y,
+                        subtract: false,
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Isc) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Jam) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Jmp) => {
+                // Note that this is correct for all actual existing addressing modes for JMP
+                self.instruction_queue
+                    .iter_mut()
+                    .last()
+                    .unwrap()
+                    .phi2
+                    .push(Phi2::LoadInstructionPointerFromEffectiveAddress);
+            }
+            Opcode::Mos6502(Mos6502Opcode::Jsr) => {
+                self.instruction_queue.clear();
+
+                self.instruction_queue.extend([
+                    Cycle::new(
+                        BusMode::Read,
+                        Some(Phi1::SetAddressBus {
+                            source: SetAddressBusSource::InstructionPointer,
+                        }),
+                        [
+                            Phi2::IncrementInstructionPointer,
+                            Phi2::Move {
+                                source: MoveSource::Data,
+                                destination: MoveDestination::EffectiveAddress,
+                            },
+                        ],
+                    ),
+                    Cycle::new(
+                        BusMode::Write,
+                        Some(Phi1::SetAddressBus {
+                            source: SetAddressBusSource::Stack,
+                        }),
+                        [
+                            Phi2::Move {
+                                source: MoveSource::InstructionPointer { offset: 1 },
+                                destination: MoveDestination::Data,
+                            },
+                            Phi2::IncrementStack { subtract: true },
+                        ],
+                    ),
+                    Cycle::new(
+                        BusMode::Write,
+                        Some(Phi1::SetAddressBus {
+                            source: SetAddressBusSource::Stack,
+                        }),
+                        [
+                            Phi2::Move {
+                                source: MoveSource::InstructionPointer { offset: 0 },
+                                destination: MoveDestination::Data,
+                            },
+                            Phi2::IncrementStack { subtract: true },
+                        ],
+                    ),
+                    Cycle::new(
+                        BusMode::Read,
+                        Some(Phi1::SetAddressBus {
+                            source: SetAddressBusSource::InstructionPointer,
+                        }),
+                        [
+                            Phi2::IncrementInstructionPointer,
+                            Phi2::Move {
+                                source: MoveSource::Data,
+                                destination: MoveDestination::EffectiveAddress,
+                            },
+                        ],
+                    ),
+                    Cycle::new(
+                        BusMode::Read,
+                        None,
+                        [Phi2::LoadInstructionPointerFromEffectiveAddress],
+                    ),
+                ]);
+            }
+            Opcode::Mos6502(Mos6502Opcode::Las) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Lax) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Lda) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [Phi2::Move {
+                        source: MoveSource::Data,
+                        destination: MoveDestination::Register {
+                            register: GeneralPurposeRegister::A,
+                            update_nz: true,
+                        },
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Ldx) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [Phi2::Move {
+                        source: MoveSource::Data,
+                        destination: MoveDestination::Register {
+                            register: GeneralPurposeRegister::X,
+                            update_nz: true,
+                        },
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Ldy) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [Phi2::Move {
+                        source: MoveSource::Data,
+                        destination: MoveDestination::Register {
+                            register: GeneralPurposeRegister::Y,
+                            update_nz: true,
+                        },
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Lsr) => {
+                if instruction.addressing_mode
+                    == Some(AddressingMode::Mos6502(Mos6502AddressingMode::Accumulator))
+                {
+                    self.patch_read_maybe_effective_address_dependent(
+                        instruction,
+                        [Phi2::Shift {
+                            direction: ShiftDirection::Right,
+                            rotate: false,
+                            a_is_operand: true,
+                        }],
+                    );
+                } else {
+                    self.insert_rmw_effective_address_dependent([Phi2::Shift {
+                        direction: ShiftDirection::Right,
+                        rotate: false,
+                        a_is_operand: false,
+                    }]);
+                }
+            }
+            Opcode::Mos6502(Mos6502Opcode::Nop) => {
+                // Nothing happens
+            }
+            Opcode::Mos6502(Mos6502Opcode::Ora) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [
+                        Phi2::Move {
+                            source: MoveSource::Data,
+                            destination: MoveDestination::Operand,
+                        },
+                        Phi2::Or,
+                    ],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Pha) => {
+                self.push_stack_item(MoveSource::Register {
+                    register: GeneralPurposeRegister::A,
+                });
+            }
+            Opcode::Mos6502(Mos6502Opcode::Php) => {
+                self.push_stack_item(MoveSource::Flags { break_: true });
+            }
+            Opcode::Mos6502(Mos6502Opcode::Pla) => {
+                self.pull_stack_item(MoveDestination::Register {
+                    register: GeneralPurposeRegister::A,
+                    update_nz: true,
+                });
+            }
+            Opcode::Mos6502(Mos6502Opcode::Plp) => {
+                self.pull_stack_item(MoveDestination::Flags);
+            }
+            Opcode::Mos6502(Mos6502Opcode::Rla) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Rol) => {
+                if instruction.addressing_mode
+                    == Some(AddressingMode::Mos6502(Mos6502AddressingMode::Accumulator))
+                {
+                    self.patch_read_maybe_effective_address_dependent(
+                        instruction,
+                        [Phi2::Shift {
+                            direction: ShiftDirection::Left,
+                            rotate: true,
+                            a_is_operand: true,
+                        }],
+                    );
+                } else {
+                    self.insert_rmw_effective_address_dependent([Phi2::Shift {
+                        direction: ShiftDirection::Left,
+                        rotate: true,
+                        a_is_operand: false,
+                    }]);
+                }
+            }
+            Opcode::Mos6502(Mos6502Opcode::Ror) => {
+                if instruction.addressing_mode
+                    == Some(AddressingMode::Mos6502(Mos6502AddressingMode::Accumulator))
+                {
+                    self.patch_read_maybe_effective_address_dependent(
+                        instruction,
+                        [Phi2::Shift {
+                            direction: ShiftDirection::Right,
+                            rotate: true,
+                            a_is_operand: true,
+                        }],
+                    );
+                } else {
+                    self.insert_rmw_effective_address_dependent([Phi2::Shift {
+                        direction: ShiftDirection::Right,
+                        rotate: true,
+                        a_is_operand: false,
+                    }]);
+                }
+            }
+            Opcode::Mos6502(Mos6502Opcode::Rra) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Rti) => {
+                self.instruction_queue.clear();
+
+                self.instruction_queue.extend([
+                    Cycle::new(
+                        BusMode::Read,
+                        None,
+                        [Phi2::IncrementStack { subtract: false }],
+                    ),
+                    Cycle::new(
+                        BusMode::Read,
+                        Some(Phi1::SetAddressBus {
+                            source: SetAddressBusSource::Stack,
+                        }),
+                        [
+                            Phi2::Move {
+                                source: MoveSource::Data,
+                                destination: MoveDestination::Flags,
+                            },
+                            Phi2::IncrementStack { subtract: false },
+                        ],
+                    ),
+                    Cycle::new(
+                        BusMode::Read,
+                        Some(Phi1::SetAddressBus {
+                            source: SetAddressBusSource::Stack,
+                        }),
+                        [
+                            Phi2::Move {
+                                source: MoveSource::Data,
+                                destination: MoveDestination::EffectiveAddress,
+                            },
+                            Phi2::IncrementStack { subtract: false },
+                        ],
+                    ),
+                    Cycle::new(
+                        BusMode::Read,
+                        Some(Phi1::SetAddressBus {
+                            source: SetAddressBusSource::Stack,
+                        }),
+                        [Phi2::Move {
+                            source: MoveSource::Data,
+                            destination: MoveDestination::EffectiveAddress,
+                        }],
+                    ),
+                    Cycle::new(
+                        BusMode::Read,
+                        None,
+                        [Phi2::LoadInstructionPointerFromEffectiveAddress],
+                    ),
+                ]);
+            }
+            Opcode::Mos6502(Mos6502Opcode::Rts) => {
+                self.instruction_queue.clear();
+
+                self.instruction_queue.extend([
+                    Cycle::new(
+                        BusMode::Read,
+                        None,
+                        [Phi2::IncrementStack { subtract: false }],
+                    ),
+                    Cycle::new(
+                        BusMode::Read,
+                        Some(Phi1::SetAddressBus {
+                            source: SetAddressBusSource::Stack,
+                        }),
+                        [
+                            Phi2::Move {
+                                source: MoveSource::Data,
+                                destination: MoveDestination::EffectiveAddress,
+                            },
+                            Phi2::IncrementStack { subtract: false },
+                        ],
+                    ),
+                    Cycle::new(
+                        BusMode::Read,
+                        Some(Phi1::SetAddressBus {
+                            source: SetAddressBusSource::Stack,
+                        }),
+                        [Phi2::Move {
+                            source: MoveSource::Data,
+                            destination: MoveDestination::EffectiveAddress,
+                        }],
+                    ),
+                    Cycle::new(
+                        BusMode::Read,
+                        None,
+                        [Phi2::LoadInstructionPointerFromEffectiveAddress],
+                    ),
+                    Cycle::new(BusMode::Read, None, [Phi2::IncrementInstructionPointer]),
+                ]);
+            }
+            Opcode::Mos6502(Mos6502Opcode::Sax) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Sbc) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [
+                        Phi2::Move {
+                            source: MoveSource::Data,
+                            destination: MoveDestination::Operand,
+                        },
+                        Phi2::Add {
+                            invert_operand: true,
+                        },
+                    ],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Sbx) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Sec) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [Phi2::SetFlag {
+                        flag: Flag::Carry,
+                        value: true,
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Sed) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [Phi2::SetFlag {
+                        flag: Flag::Decimal,
+                        value: true,
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Sei) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [Phi2::SetFlag {
+                        flag: Flag::InterruptDisable,
+                        value: true,
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Sha) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Shs) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Shx) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Shy) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Slo) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Sre) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Sta) => {
+                self.insert_write_effective_address_dependent(
+                    instruction,
+                    [Phi2::Move {
+                        source: MoveSource::Register {
+                            register: GeneralPurposeRegister::A,
+                        },
+                        destination: MoveDestination::Data,
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Stx) => {
+                self.insert_write_effective_address_dependent(
+                    instruction,
+                    [Phi2::Move {
+                        source: MoveSource::Register {
+                            register: GeneralPurposeRegister::X,
+                        },
+                        destination: MoveDestination::Data,
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Sty) => {
+                self.insert_write_effective_address_dependent(
+                    instruction,
+                    [Phi2::Move {
+                        source: MoveSource::Register {
+                            register: GeneralPurposeRegister::Y,
+                        },
+                        destination: MoveDestination::Data,
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Tax) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [Phi2::Move {
+                        source: MoveSource::Register {
+                            register: GeneralPurposeRegister::A,
+                        },
+                        destination: MoveDestination::Register {
+                            register: GeneralPurposeRegister::X,
+                            update_nz: true,
+                        },
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Tay) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [Phi2::Move {
+                        source: MoveSource::Register {
+                            register: GeneralPurposeRegister::A,
+                        },
+                        destination: MoveDestination::Register {
+                            register: GeneralPurposeRegister::Y,
+                            update_nz: true,
+                        },
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Tsx) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [Phi2::Move {
+                        source: MoveSource::Stack,
+                        destination: MoveDestination::Register {
+                            register: GeneralPurposeRegister::X,
+                            update_nz: true,
+                        },
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Txa) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [Phi2::Move {
+                        source: MoveSource::Register {
+                            register: GeneralPurposeRegister::X,
+                        },
+                        destination: MoveDestination::Register {
+                            register: GeneralPurposeRegister::A,
+                            update_nz: true,
+                        },
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Txs) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [Phi2::Move {
+                        source: MoveSource::Register {
+                            register: GeneralPurposeRegister::X,
+                        },
+                        destination: MoveDestination::Stack,
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Tya) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [Phi2::Move {
+                        source: MoveSource::Register {
+                            register: GeneralPurposeRegister::Y,
+                        },
+                        destination: MoveDestination::Register {
+                            register: GeneralPurposeRegister::A,
+                            update_nz: true,
+                        },
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Xaa) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Bvs)
+            | Opcode::Mos6502(Mos6502Opcode::Bvc)
+            | Opcode::Mos6502(Mos6502Opcode::Beq)
+            | Opcode::Mos6502(Mos6502Opcode::Bne)
+            | Opcode::Mos6502(Mos6502Opcode::Bcs)
+            | Opcode::Mos6502(Mos6502Opcode::Bcc)
+            | Opcode::Mos6502(Mos6502Opcode::Bmi)
+            | Opcode::Mos6502(Mos6502Opcode::Bpl)
+            | Opcode::Wdc65C02(Wdc65C02Opcode::Bra) => {
+                let branch_taken = match instruction.opcode {
+                    Opcode::Mos6502(Mos6502Opcode::Bvs) => self.flags.overflow,
+                    Opcode::Mos6502(Mos6502Opcode::Bvc) => !self.flags.overflow,
+                    Opcode::Mos6502(Mos6502Opcode::Beq) => self.flags.zero,
+                    Opcode::Mos6502(Mos6502Opcode::Bne) => !self.flags.zero,
+                    Opcode::Mos6502(Mos6502Opcode::Bcs) => self.flags.carry,
+                    Opcode::Mos6502(Mos6502Opcode::Bcc) => !self.flags.carry,
+                    Opcode::Mos6502(Mos6502Opcode::Bmi) => self.flags.negative,
+                    Opcode::Mos6502(Mos6502Opcode::Bpl) => !self.flags.negative,
+                    Opcode::Wdc65C02(Wdc65C02Opcode::Bra) => true,
+                    _ => unreachable!(),
+                };
+
+                if branch_taken {
+                    self.patch_read_maybe_effective_address_dependent(
+                        instruction,
+                        [Phi2::Move {
+                            source: MoveSource::Data,
+                            destination: MoveDestination::Operand,
+                        }],
+                    );
+
+                    self.instruction_queue.extend([Cycle::new(
+                        BusMode::Read,
+                        None,
+                        [Phi2::AddToPointerLikeRegister {
+                            insert_adjustment_cycle_upon_carry: true,
+                            source: AddToPointerLikeRegisterSource::Operand,
+                            destination: PointerLikeRegister::InstructionPointer,
+                            interpretation: ArithmeticOperandInterpretation::Signed,
+                        }],
+                    )]);
+                }
+            }
+            Opcode::Wdc65C02(Wdc65C02Opcode::Phx) => {
+                self.push_stack_item(MoveSource::Register {
+                    register: GeneralPurposeRegister::X,
+                });
+            }
+            Opcode::Wdc65C02(Wdc65C02Opcode::Phy) => {
+                self.push_stack_item(MoveSource::Register {
+                    register: GeneralPurposeRegister::Y,
+                });
+            }
+            Opcode::Wdc65C02(Wdc65C02Opcode::Plx) => {
+                todo!()
+            }
+            Opcode::Wdc65C02(Wdc65C02Opcode::Ply) => {
+                todo!()
+            }
+            Opcode::Wdc65C02(Wdc65C02Opcode::Stz) => {
+                self.insert_write_effective_address_dependent(
+                    instruction,
+                    [Phi2::Move {
+                        source: MoveSource::Constant(0),
+                        destination: MoveDestination::Data,
+                    }],
+                );
+            }
+            Opcode::Wdc65C02(Wdc65C02Opcode::Trb) => {
+                todo!()
+            }
+            Opcode::Wdc65C02(Wdc65C02Opcode::Tsb) => {
+                todo!()
+            }
+            Opcode::Wdc65C02(Wdc65C02Opcode::Stp) => {
+                todo!()
+            }
+            Opcode::Wdc65C02(Wdc65C02Opcode::Wai) => {
+                todo!()
+            }
+        }
+    }
+
+    #[inline]
+    fn register_indexed_zero_page(&mut self, register: GeneralPurposeRegister) {
+        assert!(
+            matches!(
+                register,
+                GeneralPurposeRegister::X | GeneralPurposeRegister::Y,
+            ),
+            "The A register cannot be used for indexing"
+        );
+
+        self.instruction_queue.extend([
+            Cycle::new(
+                BusMode::Read,
+                Some(Phi1::SetAddressBus {
+                    source: SetAddressBusSource::InstructionPointer,
+                }),
+                [
+                    Phi2::IncrementInstructionPointer,
+                    Phi2::Move {
+                        source: MoveSource::Data,
+                        destination: MoveDestination::EffectiveAddress,
+                    },
+                ],
+            ),
+            Cycle::new(
+                BusMode::Read,
+                None,
+                [Phi2::AddToPointerLikeRegister {
+                    source: AddToPointerLikeRegisterSource::Register(register),
+                    destination: PointerLikeRegister::EffectiveAddress,
+                    interpretation: ArithmeticOperandInterpretation::Unsigned,
+                    insert_adjustment_cycle_upon_carry: false,
+                }],
+            ),
+        ]);
+    }
+
+    #[inline]
+    fn register_indexed_absolute(&mut self, register: GeneralPurposeRegister) {
+        assert!(
+            matches!(
+                register,
+                GeneralPurposeRegister::X | GeneralPurposeRegister::Y,
+            ),
+            "The A register cannot be used for indexing"
+        );
+
+        self.instruction_queue.extend([
+            Cycle::new(
+                BusMode::Read,
+                Some(Phi1::SetAddressBus {
+                    source: SetAddressBusSource::InstructionPointer,
+                }),
+                [
+                    Phi2::IncrementInstructionPointer,
+                    Phi2::Move {
+                        source: MoveSource::Data,
+                        destination: MoveDestination::EffectiveAddress,
+                    },
+                ],
+            ),
+            Cycle::new(
+                BusMode::Read,
+                Some(Phi1::SetAddressBus {
+                    source: SetAddressBusSource::InstructionPointer,
+                }),
+                [
+                    Phi2::IncrementInstructionPointer,
+                    Phi2::Move {
+                        source: MoveSource::Data,
+                        destination: MoveDestination::EffectiveAddress,
+                    },
+                    Phi2::AddToPointerLikeRegister {
+                        source: AddToPointerLikeRegisterSource::Register(register),
+                        destination: PointerLikeRegister::EffectiveAddress,
+                        insert_adjustment_cycle_upon_carry: true,
+                        interpretation: ArithmeticOperandInterpretation::Unsigned,
+                    },
+                ],
+            ),
+        ]);
+    }
+
+    #[inline]
+    fn pull_stack_item(&mut self, item: MoveDestination) {
+        self.instruction_queue.clear();
+
+        self.instruction_queue.extend([
+            Cycle::new(BusMode::Read, None, []),
+            Cycle::new(
+                BusMode::Read,
+                None,
+                [Phi2::IncrementStack { subtract: false }],
+            ),
+            Cycle::new(
+                BusMode::Read,
+                Some(Phi1::SetAddressBus {
+                    source: SetAddressBusSource::Stack,
+                }),
+                [Phi2::Move {
+                    source: MoveSource::Data,
+                    destination: item,
+                }],
+            ),
+        ]);
+    }
+
+    #[inline]
+    fn push_stack_item(&mut self, item: MoveSource) {
+        self.instruction_queue.push_back(Cycle::new(
+            BusMode::Write,
+            Some(Phi1::SetAddressBus {
+                source: SetAddressBusSource::Stack,
+            }),
+            [
+                Phi2::Move {
+                    source: item,
+                    destination: MoveDestination::Data,
+                },
+                Phi2::IncrementStack { subtract: true },
+            ],
+        ));
+    }
+
+    #[inline]
+    fn patch_read_maybe_effective_address_dependent(
+        &mut self,
+        instruction: &Mos6502InstructionSet,
+        steps: impl IntoIterator<Item = Phi2>,
+    ) {
+        match instruction.addressing_mode {
+            // These instructions don't actually use the effective address system
+            //
+            // They either don't operate on memory or they operate on memory so implicit address resolution isn't done
+            None
+            | Some(AddressingMode::Mos6502(
+                Mos6502AddressingMode::Accumulator
+                | Mos6502AddressingMode::Immediate
+                | Mos6502AddressingMode::Relative,
+            )) => {
+                // These instructions have a final semi-dummy cycle that can be leeched off
+                self.instruction_queue
+                    .iter_mut()
+                    .last()
+                    .unwrap()
+                    .phi2
+                    .extend(steps);
+            }
+            _ => {
+                self.instruction_queue.push_back(Cycle::new(
+                    BusMode::Read,
+                    Some(Phi1::SetAddressBus {
+                        source: SetAddressBusSource::EffectiveAddress,
+                    }),
+                    steps,
+                ));
+            }
+        }
+    }
+
+    #[inline]
+    fn insert_rmw_effective_address_dependent(&mut self, steps: impl IntoIterator<Item = Phi2>) {
+        self.instruction_queue.extend([
+            Cycle::new(
+                BusMode::Read,
+                Some(Phi1::SetAddressBus {
+                    source: SetAddressBusSource::EffectiveAddress,
+                }),
+                [Phi2::Move {
+                    source: MoveSource::Data,
+                    destination: MoveDestination::Operand,
+                }],
+            ),
+            Cycle::new(
+                BusMode::Write,
+                None,
+                [Phi2::Move {
+                    source: MoveSource::Operand,
+                    destination: MoveDestination::Data,
+                }],
+            ),
+            Cycle::new(
+                BusMode::Write,
+                None,
+                steps.into_iter().chain(std::iter::once(Phi2::Move {
+                    source: MoveSource::Operand,
+                    destination: MoveDestination::Data,
+                })),
+            ),
+        ]);
+    }
+
+    #[inline]
+    fn insert_write_effective_address_dependent(
+        &mut self,
+        instruction: &Mos6502InstructionSet,
+        steps: impl IntoIterator<Item = Phi2>,
+    ) {
+        match instruction.addressing_mode {
+            // It's impossible to have a instruction that writes but does not form an effective address
+            //
+            // Additionally merging with the previous cycle is impossible because all addressing mode resolution cycles are read
+            None
+            | Some(AddressingMode::Mos6502(
+                Mos6502AddressingMode::Accumulator
+                | Mos6502AddressingMode::Immediate
+                | Mos6502AddressingMode::Relative,
+            )) => {
+                unreachable!()
+            }
+            _ => {
+                self.instruction_queue.push_back(Cycle::new(
+                    BusMode::Write,
+                    Some(Phi1::SetAddressBus {
+                        source: SetAddressBusSource::EffectiveAddress,
+                    }),
+                    steps,
+                ));
+            }
+        }
+    }
 }
