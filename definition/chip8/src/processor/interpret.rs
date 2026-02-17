@@ -5,7 +5,7 @@ use bitvec::{
     view::BitView,
 };
 use nalgebra::Point2;
-use rand::Rng;
+use rand::RngExt;
 
 use super::{
     ExecutionState,

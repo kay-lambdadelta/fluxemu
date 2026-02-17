@@ -13,7 +13,7 @@ use fluxemu_runtime::{
     platform::Platform,
     program::{ProgramManager, RomId, RomRequirement},
 };
-use rand::RngCore;
+use rand::Rng;
 use rangemap::RangeInclusiveMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
