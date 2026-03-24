@@ -19,12 +19,12 @@ use wgpu::{
     BufferDescriptor, BufferUsages, ColorTargetState, ColorWrites, CommandEncoderDescriptor,
     CompositeAlphaMode, Device, DeviceDescriptor, ExperimentalFeatures, FilterMode, FragmentState,
     Instance, InstanceDescriptor, LoadOp, MemoryHints, MultisampleState, Operations,
-    PipelineCompilationOptions, PipelineLayoutDescriptor, PresentMode, PrimitiveState, Queue,
-    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
-    Sampler, SamplerBindingType, SamplerDescriptor, ShaderModuleDescriptor, ShaderSource,
-    ShaderStages, StoreOp, Surface, SurfaceConfiguration, TextureSampleType, TextureUsages,
-    TextureViewDescriptor, TextureViewDimension, Trace, VertexState,
-    util::initialize_adapter_from_env_or_default,
+    PipelineCompilationOptions, PipelineLayoutDescriptor, PollType, PresentMode, PrimitiveState,
+    Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
+    RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor,
+    ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, Surface, SurfaceConfiguration,
+    TextureSampleType, TextureUsages, TextureViewDescriptor, TextureViewDimension, Trace,
+    VertexState, util::initialize_adapter_from_env_or_default,
 };
 use winit::window::Window;
 
@@ -150,6 +150,8 @@ impl GraphicsRuntime for WebgpuGraphicsRuntime {
 
                 render_pass.set_pipeline(&self.pipeline);
 
+                // We lock the guards until the operation is done to stop race conditions
+                let mut used_framebuffer_guards = Vec::default();
                 let framebuffers = machine.framebuffers();
 
                 for (display_path, framebuffer) in framebuffers.iter() {
@@ -196,14 +198,26 @@ impl GraphicsRuntime for WebgpuGraphicsRuntime {
 
                     render_pass.set_bind_group(0, &bind_group, &[]);
                     render_pass.draw(0..3, 0..1);
+
+                    used_framebuffer_guards.push(framebuffer_guard);
                 }
 
                 drop(render_pass);
 
                 let command_buffer = encoder.finish();
-                let _submission_index = self.queue.submit([command_buffer]);
+                let submission_index = self.queue.submit([command_buffer]);
 
                 surface_texture.present();
+
+                self.device
+                    .poll(PollType::Wait {
+                        submission_index: Some(submission_index),
+                        timeout: None,
+                    })
+                    .unwrap();
+
+                // Allow those display components to continue again
+                drop(used_framebuffer_guards);
             }
             Err(_) => {
                 self.refresh_surface();
