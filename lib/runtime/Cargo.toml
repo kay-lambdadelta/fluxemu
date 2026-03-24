@@ -1,0 +1,37 @@
+[package]
+name = "fluxemu-runtime"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+arc-swap = { workspace = true }
+bitvec = { workspace = true }
+bytes = { workspace = true }
+fixed = { workspace = true }
+fluxemu-input = { workspace = true }
+fluxemu-program = { workspace = true }
+fluxemu-range = { workspace = true }
+itertools = { workspace = true }
+lz4_flex = "0.13"
+nalgebra = { workspace = true }
+num = { workspace = true }
+palette = { workspace = true }
+rangemap = { workspace = true }
+redb = { workspace = true }
+ringbuffer = { workspace = true }
+rmp-serde = { workspace = true }
+rustc-hash = { workspace = true }
+scc = { workspace = true }
+sealed = { workspace = true }
+serde = { workspace = true }
+serde_with = { workspace = true }
+strum = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+versions = { workspace = true }
+wgpu = { workspace = true, optional = true }
+
+[features]
+std = []
+webgpu = ["dep:wgpu"]

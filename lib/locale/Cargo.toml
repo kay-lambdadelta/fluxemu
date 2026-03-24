@@ -1,0 +1,16 @@
+[package]
+name = "fluxemu-locale"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+serde = { workspace = true }
+
+[build-dependencies]
+csv = "1.4"
+prettyplease = "0.2"
+proc-macro2 = "1.0"
+quote = "1.0"
+serde = { workspace = true }
+syn = { version = "2.0", features = ["full"] }

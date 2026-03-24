@@ -1,0 +1,4 @@
+format_strings = true
+group_imports = "StdExternalCrate"
+imports_granularity = "Crate"
+hex_literal_case = "Lower"

@@ -1,0 +1,55 @@
+[package]
+name = "fluxemu-shell-destinezite"
+version = "0.1.0"
+edition = "2024"
+description = "A multi system emulator"
+license = "GPL-3.0-or-later"
+
+[package.metadata.deb]
+maintainer = "Kay <lambdadeltakay@proton.me>"
+
+[dependencies]
+arc-swap = { workspace = true }
+bytemuck = { workspace = true }
+clap = { workspace = true }
+cpal = "0.17"
+egui = "0.33"
+egui-wgpu = { version = "0.33", optional = true }
+egui-winit = "0.33"
+fluxemu-audio = { workspace = true }
+fluxemu-definition-atari2600 = { workspace = true }
+fluxemu-definition-atarilynx = { workspace = true }
+fluxemu-definition-chip8 = { workspace = true }
+fluxemu-definition-nes = { workspace = true }
+fluxemu-environment = { workspace = true }
+fluxemu-frontend = { workspace = true }
+fluxemu-input = { workspace = true }
+fluxemu-program = { workspace = true }
+fluxemu-runtime = { workspace = true, features = ["std"] }
+gilrs = "0.11"
+itertools = { workspace = true }
+nalgebra = { workspace = true }
+palette = { workspace = true }
+pollster = { workspace = true }
+redb = { workspace = true }
+ringbuffer = { workspace = true }
+ron = { workspace = true }
+softbuffer = "0.4"
+strum = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+wgpu = { workspace = true, optional = true }
+winit = "0.30"
+
+[features]
+default = ["webgpu"]
+webgpu = [
+  "dep:egui-wgpu",
+  "dep:wgpu",
+  "fluxemu-definition-atari2600/webgpu",
+  "fluxemu-definition-atarilynx/webgpu",
+  "fluxemu-definition-chip8/webgpu",
+  "fluxemu-definition-nes/webgpu",
+  "fluxemu-frontend/webgpu",
+]

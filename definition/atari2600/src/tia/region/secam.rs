@@ -1,0 +1,19 @@
+use fluxemu_runtime::scheduler::Frequency;
+
+use super::Region;
+use crate::tia::color::TiaColor;
+
+#[derive(Debug)]
+pub struct Secam;
+
+impl Region for Secam {
+    const TOTAL_SCANLINES: u16 = 312;
+
+    fn frequency() -> Frequency {
+        todo!()
+    }
+
+    fn color_to_srgb(_color: TiaColor) -> palette::Srgb<u8> {
+        todo!()
+    }
+}

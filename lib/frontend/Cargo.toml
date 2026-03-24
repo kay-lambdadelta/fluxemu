@@ -1,0 +1,41 @@
+[package]
+name = "fluxemu-frontend"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+byte-unit = "5.2"
+egui = { workspace = true }
+egui_extras = "0.33"
+egui-phosphor = "0.11"
+fluxemu-environment = { workspace = true }
+fluxemu-input = { workspace = true }
+fluxemu-program = { workspace = true }
+fluxemu-range = { workspace = true }
+fluxemu-runtime = { workspace = true }
+indexmap = { workspace = true }
+itertools = { workspace = true }
+nalgebra = { workspace = true }
+num = { workspace = true }
+palette = { workspace = true }
+pollster = { workspace = true }
+ringbuffer = { workspace = true }
+ron = { workspace = true }
+rustc-hash = { workspace = true }
+scc = { workspace = true }
+serde = { workspace = true }
+strum = { workspace = true }
+sysinfo = "0.38"
+time = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+versions = { workspace = true }
+
+[target.'cfg(any(target_family = "unix", target_os = "windows", target_arch = "wasm32"))'.dependencies]
+rfd = "0.17"
+
+[features]
+webgpu = [
+  "fluxemu-runtime/webgpu",
+]

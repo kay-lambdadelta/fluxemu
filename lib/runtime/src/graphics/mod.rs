@@ -1,0 +1,18 @@
+//! Main graphics definition things for fluxemu
+
+mod backend;
+
+pub use backend::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+/// Version specifier used in this library
+pub struct GraphicsVersion {
+    /// Major
+    pub major: u32,
+    /// Minor
+    pub minor: u32,
+}
+
+/// Boolean type shaders use
+pub type ShaderBool = u32;

@@ -1,0 +1,86 @@
+use std::sync::{Arc, Weak};
+
+use fluxemu_runtime::{
+    component::{Component, ComponentConfig, LateContext, LateInitializedData},
+    machine::{Machine, builder::ComponentBuilder},
+    platform::Platform,
+};
+
+// mod decode;
+// mod instruction;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+pub enum Intel8080Kind {
+    #[default]
+    Intel8080,
+    Zilog80,
+    SharpLr35902,
+}
+
+#[derive(Debug)]
+pub struct Intel8080 {
+    config: Intel8080Config,
+    machine: Weak<Machine>,
+}
+
+impl Component for Intel8080 {
+    fn store_snapshot(
+        &self,
+        _writer: &mut dyn std::io::Write,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        Ok(())
+    }
+
+    fn load_snapshot(
+        &mut self,
+        _version: fluxemu_runtime::component::ComponentVersion,
+        _reader: &mut dyn std::io::Read,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        Ok(())
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct Intel8080Config {
+    pub kind: Intel8080Kind,
+}
+
+impl Intel8080Config {
+    pub fn lr35902() -> Self {
+        Self {
+            kind: Intel8080Kind::SharpLr35902,
+        }
+    }
+
+    pub fn z80() -> Self {
+        Self {
+            kind: Intel8080Kind::Zilog80,
+        }
+    }
+
+    pub fn i8080() -> Self {
+        Self {
+            kind: Intel8080Kind::Intel8080,
+        }
+    }
+}
+
+impl<P: Platform> ComponentConfig<P> for Intel8080Config {
+    type Component = Intel8080;
+
+    fn late_initialize(
+        component: &mut Self::Component,
+        data: &LateContext<P>,
+    ) -> LateInitializedData<P> {
+        component.machine = Arc::downgrade(&data.machine);
+
+        LateInitializedData::default()
+    }
+
+    fn build_component(
+        self,
+        _component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
+    ) -> Result<Self::Component, Box<dyn std::error::Error>> {
+        todo!()
+    }
+}

@@ -1,0 +1,28 @@
+[package]
+name = "fluxemu-definition-chip8"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+arrayvec = { workspace = true }
+bitvec = { workspace = true }
+bytemuck = { workspace = true }
+fluxemu-audio = { workspace = true }
+fluxemu-definition-memory = { workspace = true }
+fluxemu-input = { workspace = true }
+fluxemu-program = { workspace = true }
+fluxemu-runtime = { workspace = true }
+nalgebra = { workspace = true }
+palette = { workspace = true }
+rand = { workspace = true }
+rangemap = { workspace = true }
+ringbuffer = { workspace = true }
+rmp-serde = { workspace = true }
+serde = { workspace = true }
+strum = { workspace = true }
+tracing = { workspace = true }
+wgpu = { workspace = true, optional = true }
+
+[features]
+webgpu = ["dep:wgpu", "fluxemu-runtime/webgpu"]

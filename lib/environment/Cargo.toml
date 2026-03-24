@@ -1,0 +1,18 @@
+[package]
+name = "fluxemu-environment"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cfg-if = { workspace = true }
+fluxemu-input = { workspace = true }
+fluxemu-program = { workspace = true }
+fluxemu-runtime = { workspace = true }
+indexmap = { workspace = true }
+serde = { workspace = true }
+serde-inline-default = { workspace = true }
+serde_with = { workspace = true }
+strum = { workspace = true }
+
+[target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
+dirs = "6.0"
