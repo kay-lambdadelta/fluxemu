@@ -24,10 +24,12 @@ use egui::{
 };
 use egui_extras::{Column, TableBuilder};
 use fluxemu_environment::{Environment, input::PhysicalGamepadConfiguration};
-use fluxemu_input::{InputId, InputState, physical::PhysicalInputDeviceId};
+use fluxemu_input::{
+    InputId, InputState,
+    physical::{PhysicalInputDeviceId, hotkey::Hotkey},
+};
 use fluxemu_program::{MachineId, ProgramManager, ProgramSpecification, RomId};
 use fluxemu_runtime::{
-    component::Event,
     graphics::GraphicsApi,
     machine::{
         Machine,
@@ -37,6 +39,7 @@ use fluxemu_runtime::{
     persistence::SnapshotSlot,
     platform::Platform,
 };
+use indexmap::IndexMap;
 pub use input::PhysicalInputDeviceMetadata;
 pub use machine_factories::MachineFactories;
 use palette::Srgba;
@@ -80,6 +83,9 @@ struct MachineContext {
 struct PhysicalInputDeviceState {
     pub is_id_stable: bool,
     pub metadata: PhysicalInputDeviceMetadata,
+    // Should the runtime translate this input device into something egui can understand
+    pub feed_into_gui: bool,
+    pub gui_relevant_input_state: IndexMap<InputId, InputState>,
 }
 
 enum MachineInitializationStep<P: Platform> {
@@ -102,7 +108,7 @@ enum MachineInitializationStep<P: Platform> {
 #[allow(clippy::type_complexity)]
 pub struct Frontend<P: FrontendPlatform> {
     pub environment: Environment,
-    machine: Option<MachineContext>,
+    machine_context: Option<MachineContext>,
     pending_machine: Option<SealedMachineBuilder<P>>,
     audio_runtime: P::AudioRuntime,
     current_snapshot_slot: Wrapping<SnapshotSlot>,
@@ -111,7 +117,7 @@ pub struct Frontend<P: FrontendPlatform> {
     machine_loading: bool,
     frontend_overlay_active: bool,
     current_tab: TabId,
-    input_devices: HashMap<PhysicalInputDeviceId, PhysicalInputDeviceState>,
+    physical_input_devices: HashMap<PhysicalInputDeviceId, PhysicalInputDeviceState>,
     egui_context: Context,
     file_browser: FileBrowserState,
     machine_initialization_step: Option<MachineInitializationStep<P>>,
@@ -139,7 +145,7 @@ impl<P: FrontendPlatform> Frontend<P> {
 
         Self {
             file_browser: FileBrowserState::new(environment.file_browser_home_directory.clone()),
-            machine: None,
+            machine_context: None,
             pending_machine: None,
             environment,
             audio_runtime,
@@ -149,7 +155,7 @@ impl<P: FrontendPlatform> Frontend<P> {
             machine_loading: false,
             frontend_overlay_active: true,
             current_tab: TabId::Library,
-            input_devices: HashMap::default(),
+            physical_input_devices: HashMap::default(),
             egui_context: setup_egui_context(),
             native_file_picker_dialog_job: None,
             machine_initialization_step: initial_program_initialization_step,
@@ -161,7 +167,7 @@ impl<P: FrontendPlatform> Frontend<P> {
     }
 
     pub fn machine(&self) -> Option<&Machine> {
-        self.machine
+        self.machine_context
             .as_ref()
             .map(|context| context.machine.as_ref())
     }
@@ -176,7 +182,7 @@ impl<P: FrontendPlatform> Frontend<P> {
             offload_handle,
             machine,
             physical_input_to_virtual_mapping: _,
-        }) = self.machine.take()
+        }) = self.machine_context.take()
         {
             // Hang up
             drop(offload_communication);
@@ -192,109 +198,193 @@ impl<P: FrontendPlatform> Frontend<P> {
     pub fn add_input_device(
         &mut self,
         id: PhysicalInputDeviceId,
-        is_id_stable: bool,
         metadata: PhysicalInputDeviceMetadata,
+        is_id_stable: bool,
+        feed_into_gui: bool,
     ) {
-        self.input_devices.insert(
+        self.physical_input_devices.insert(
             id,
             PhysicalInputDeviceState {
                 is_id_stable,
                 metadata,
+                feed_into_gui,
+                gui_relevant_input_state: IndexMap::default(),
             },
         );
     }
 
     pub fn remove_input_device(&mut self, id: PhysicalInputDeviceId) {
-        self.input_devices.remove(&id);
+        self.physical_input_devices.remove(&id);
     }
 
     pub fn change_input_state(
         &mut self,
         origin: PhysicalInputDeviceId,
-        input: InputId,
+        input_id: InputId,
         state: InputState,
-        _skip_passing_to_gui: bool,
     ) {
-        let Some(device) = self.input_devices.get(&origin) else {
+        let Some(device) = self.physical_input_devices.get_mut(&origin) else {
+            tracing::warn!("Ignoring unknown device {}", origin);
+
             return;
         };
 
-        if !device.metadata.present_inputs.contains(&input) {
+        if !device.metadata.present_inputs.contains(&input_id) {
+            tracing::warn!(
+                "Ignoring unknown input {:?} from device {} in state {:?}",
+                input_id,
+                origin,
+                state
+            );
+
             return;
         }
 
-        let Some(machine_context) = &self.machine else {
-            return;
-        };
+        device.gui_relevant_input_state.insert(input_id, state);
+        let mut was_relevant_for_hotkeys = false;
 
-        let Some(program_specification) = machine_context.machine.program_specification() else {
-            return;
-        };
-
-        let Some(input_path) = machine_context
-            .physical_input_to_virtual_mapping
-            .get(&origin)
-        else {
-            return;
-        };
-
-        let Some(logical_device) = machine_context.machine.input_devices().get(input_path) else {
-            return;
-        };
-
-        let transformed = self
-            .environment
-            .physical_input_configs
-            .get(&origin)
-            .and_then(|physical_gamepad_configuration| {
-                let PhysicalGamepadConfiguration {
-                    program_overrides, ..
-                } = physical_gamepad_configuration;
-                program_overrides
-                    .get(&program_specification.id)
-                    .and_then(|mapping| mapping.get(input_path))
-                    .and_then(|mapping| mapping.get(&input).copied())
-            })
-            .or_else(|| {
-                logical_device
-                    .metadata()
-                    .default_mappings
-                    .get(&input)
+        // Check for hotkeys
+        for (combinations, action) in self.environment.hotkeys.iter() {
+            let is_activated = combinations.iter().all(|input_id| {
+                device
+                    .gui_relevant_input_state
+                    .get(input_id)
                     .copied()
+                    .unwrap_or(InputState::RELEASED)
+                    .as_digital(None)
             });
 
-        let Some(transformed) = transformed else {
-            return;
-        };
+            if is_activated {
+                was_relevant_for_hotkeys = true;
 
-        if !logical_device
-            .metadata()
-            .present_inputs
-            .contains(&transformed)
+                match action {
+                    Hotkey::ToggleMenu => {
+                        if self.frontend_overlay_active {
+                            if let Some(MachineContext {
+                                offload_communication,
+                                ..
+                            }) = &mut self.machine_context
+                            {
+                                // Unpause emulation
+                                offload_communication
+                                    .send(machine_thread::Message::Pause(false))
+                                    .unwrap();
+
+                                // We don't allow the overlay to be deactivated if there isn't an active machine
+                                self.frontend_overlay_active = false;
+                            }
+                        } else {
+                            // Pause machine if one is active
+                            if let Some(MachineContext {
+                                offload_communication,
+                                machine,
+                                ..
+                            }) = &mut self.machine_context
+                            {
+                                // Unset ALL inputs
+                                for (logical_input_device_path, logical_input_device) in
+                                    machine.input_devices()
+                                {
+                                    let unset_inputs = logical_input_device
+                                        .metadata()
+                                        .present_inputs
+                                        .iter()
+                                        .copied()
+                                        .map(|input_id| (input_id, InputState::RELEASED));
+
+                                    machine.insert_inputs(logical_input_device_path, unset_inputs);
+                                }
+
+                                // Pause machine if one exists
+                                offload_communication
+                                    .send(machine_thread::Message::Pause(true))
+                                    .unwrap();
+                            }
+
+                            self.frontend_overlay_active = true;
+                        }
+                    }
+                    Hotkey::FastForward => {}
+                    Hotkey::LoadSnapshot => {}
+                    Hotkey::StoreSnapshot => {}
+                    Hotkey::IncrementSnapshotCounter => {
+                        self.current_snapshot_slot += 1;
+                    }
+                    Hotkey::DecrementSnapshotCounter => {
+                        self.current_snapshot_slot -= 1;
+                    }
+                }
+            }
+        }
+
+        // Ignore if that key participated in a hotkey(s)
+        if !was_relevant_for_hotkeys
+            && !self.frontend_overlay_active
+            && let Some(MachineContext {
+                machine,
+                physical_input_to_virtual_mapping,
+                ..
+            }) = &self.machine_context
         {
-            tracing::error!(
-                "Transformed input targets unknown emulated input: {:?} on {:?}",
-                transformed,
-                logical_device
-            );
-            return;
-        }
+            let Some(program_specification) = machine.program_specification() else {
+                return;
+            };
 
-        if logical_device.get_state(transformed) == state {
-            return;
-        }
+            let Some(input_path) = physical_input_to_virtual_mapping.get(&origin) else {
+                return;
+            };
 
-        logical_device.set_state(transformed, state);
-        machine_context
-            .machine
-            .interact_dyn_mut(input_path.parent().unwrap(), |component| {
-                component.handle_event(Event::Input {
-                    name: input_path.name(),
-                    id: transformed,
-                    state,
+            let Some(logical_device) = machine.input_devices().get(input_path) else {
+                return;
+            };
+
+            let transformed = self
+                .environment
+                .physical_input_configs
+                .get(&origin)
+                .and_then(|physical_gamepad_configuration| {
+                    let PhysicalGamepadConfiguration {
+                        program_overrides, ..
+                    } = physical_gamepad_configuration;
+                    program_overrides
+                        .get(&program_specification.id)
+                        .and_then(|mapping| mapping.get(input_path))
+                        .and_then(|mapping| mapping.get(&input_id).copied())
+                })
+                .or_else(|| {
+                    logical_device
+                        .metadata()
+                        .default_mappings
+                        .get(&input_id)
+                        .copied()
                 });
-            })
-            .unwrap();
+
+            let Some(transformed_input_id) = transformed else {
+                return;
+            };
+
+            if !logical_device
+                .metadata()
+                .present_inputs
+                .contains(&transformed_input_id)
+            {
+                tracing::error!(
+                    "Transformed input targets unknown emulated input: {:?} on {:?}",
+                    transformed_input_id,
+                    logical_device
+                );
+                return;
+            }
+
+            if logical_device.get_state(transformed_input_id) == state {
+                return;
+            }
+
+            logical_device.set_state(transformed_input_id, state);
+
+            // Insert that input into the machine
+            machine.insert_inputs(input_path, [(transformed_input_id, state)]);
+        }
     }
 
     fn build_machine_for_specification(&mut self, specification: ProgramSpecification) {
@@ -366,7 +456,7 @@ impl<P: FrontendPlatform> Frontend<P> {
                     HashMap::default()
                 };
 
-            self.machine = Some(MachineContext {
+            self.machine_context = Some(MachineContext {
                 offload_communication: offload_communication_sender,
                 offload_handle,
                 machine,

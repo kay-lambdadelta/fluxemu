@@ -11,13 +11,14 @@ use std::{
     time::Duration,
 };
 
+use fluxemu_input::{InputId, InputState};
 use fluxemu_program::{ProgramManager, ProgramSpecification};
 use num::FromPrimitive;
 use rustc_hash::FxBuildHasher;
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
-    component::{Component, ComponentHandle, TypedComponentHandle},
+    component::{Component, ComponentHandle, Event, TypedComponentHandle},
     input::LogicalInputDevice,
     machine::{builder::MachineBuilder, registry::ComponentRegistry},
     memory::{AddressSpace, AddressSpaceId},
@@ -167,6 +168,28 @@ impl Machine {
 
     pub fn audio_outputs(&self) -> &HashSet<ResourcePath> {
         &self.audio_outputs
+    }
+
+    pub fn insert_inputs(
+        &self,
+        path: &ResourcePath,
+        inputs: impl IntoIterator<Item = (InputId, InputState)>,
+    ) {
+        let logical_input_device = self.input_devices.get(path).unwrap();
+
+        // Insert the input into the state tracker and give the component an event
+        self.interact_dyn_mut(path.parent().unwrap(), |component| {
+            for (input_id, state) in inputs {
+                logical_input_device.set_state(input_id, state);
+
+                component.handle_event(Event::Input {
+                    name: path.name(),
+                    id: input_id,
+                    state,
+                });
+            }
+        })
+        .unwrap();
     }
 
     pub fn input_devices(&self) -> &HashMap<ResourcePath, Arc<LogicalInputDevice>, FxBuildHasher> {

@@ -106,54 +106,11 @@ impl<R: WinitCompatibleGraphicsRuntime> ApplicationHandler<()> for DesktopEventL
             egui_winit_context,
         } = self.windowing_context.as_mut().unwrap();
 
-        // If the overlay is not active, event to egui and handle them ourselves
-        //
-        // Otherwise, pass them to egui
-        if !self.frontend.frontend_overlay_active() {
-            match &event {
-                WindowEvent::KeyboardInput {
-                    event,
-                    is_synthetic,
-                    ..
-                } => {
-                    if !self.added_keyboard {
-                        self.frontend.add_input_device(
-                            PhysicalInputDeviceId::PLATFORM_RESERVED,
-                            true,
-                            PhysicalInputDeviceMetadata {
-                                name: Cow::Borrowed("Keyboard"),
-                                present_inputs: KeyboardInputId::iter()
-                                    .map(InputId::Keyboard)
-                                    .collect(),
-                            },
-                        );
-
-                        self.added_keyboard = true;
-                    }
-
-                    if !is_synthetic && let Some(key) = winit2key(event.physical_key) {
-                        self.frontend.change_input_state(
-                            PhysicalInputDeviceId::PLATFORM_RESERVED,
-                            InputId::Keyboard(key),
-                            if event.state == ElementState::Pressed {
-                                InputState::Digital(true)
-                            } else {
-                                InputState::Digital(false)
-                            },
-                            // Skip passing keyboard events to the egui because egui-winit does it for us
-                            true,
-                        );
-                    }
-                }
-                WindowEvent::MouseInput { .. } => {}
-
-                _ => {}
-            }
-        } else {
+        // Pass events to egui if the frontend overlay is active
+        if self.frontend.frontend_overlay_active() {
             let _ = egui_winit_context.on_window_event(window, &event);
         }
 
-        // Events we handle no matter what
         match event {
             WindowEvent::Resized(_) => {
                 self.refresh_surface = true;
@@ -175,6 +132,43 @@ impl<R: WinitCompatibleGraphicsRuntime> ApplicationHandler<()> for DesktopEventL
                 }
 
                 window.request_redraw();
+            }
+            WindowEvent::KeyboardInput {
+                event,
+                is_synthetic,
+                ..
+            } => {
+                if !self.added_keyboard {
+                    self.frontend.add_input_device(
+                        PhysicalInputDeviceId::PLATFORM_RESERVED,
+                        PhysicalInputDeviceMetadata {
+                            name: Cow::Borrowed("Keyboard"),
+                            present_inputs: KeyboardInputId::iter()
+                                .map(InputId::Keyboard)
+                                .collect(),
+                        },
+                        true,
+                        // egui winit takes care of this for us
+                        false,
+                    );
+
+                    self.added_keyboard = true;
+                }
+
+                if !is_synthetic
+                    && !event.repeat
+                    && let Some(key) = winit2key(event.physical_key)
+                {
+                    self.frontend.change_input_state(
+                        PhysicalInputDeviceId::PLATFORM_RESERVED,
+                        InputId::Keyboard(key),
+                        if event.state == ElementState::Pressed {
+                            InputState::PRESSED
+                        } else {
+                            InputState::RELEASED
+                        },
+                    );
+                }
             }
             WindowEvent::CloseRequested => {
                 event_loop.exit();
