@@ -1,20 +1,18 @@
 use std::{
     io::{Read, Write},
     marker::PhantomData,
-    sync::{Arc, Mutex, Weak},
+    sync::{Arc, Mutex},
 };
 
 use arrayvec::ArrayVec;
 use fluxemu_runtime::{
+    RuntimeHandle,
     component::{
         Component, ComponentConfig, ComponentVersion, LateContext, LateInitializedData,
         TypedComponentHandle,
     },
     input::LogicalInputDevice,
-    machine::{
-        Machine,
-        builder::{ComponentBuilder, SchedulerParticipation},
-    },
+    machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::AddressSpaceId,
     path::ComponentPath,
     platform::Platform,
@@ -54,9 +52,6 @@ enum ExecutionState {
     AwaitingVsync,
     Halted,
 }
-
-// This is extremely complex because the chip8 cpu has a lot of non cpu
-// machinery
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct Chip8ProcessorRegisters {
@@ -103,7 +98,7 @@ pub struct Chip8Processor<G: SupportedGraphicsApiChip8Display> {
     audio: TypedComponentHandle<Chip8Audio>,
     timer: TypedComponentHandle<Chip8Timer>,
     config: Chip8ProcessorConfig<G>,
-    machine: Weak<Machine>,
+    runtime: Option<RuntimeHandle>,
     timestamp: Period,
 }
 
@@ -144,8 +139,9 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
     }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
-        let machine = self.machine.upgrade().unwrap();
-        let address_space = machine
+        let runtime = self.runtime.as_ref().unwrap().get();
+
+        let address_space = runtime
             .address_space(self.config.cpu_address_space)
             .unwrap();
 
@@ -256,7 +252,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
         component: &mut Self::Component,
         data: &LateContext<P>,
     ) -> LateInitializedData<P> {
-        component.machine = Arc::downgrade(&data.machine);
+        component.runtime = Some(data.runtime_handle.clone());
 
         LateInitializedData::default()
     }
@@ -285,7 +281,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
             timer: component_builder
                 .typed_component_handle(&self.timer)
                 .unwrap(),
-            machine: Weak::default(),
+            runtime: None,
             config: self,
             timestamp: Period::default(),
         })

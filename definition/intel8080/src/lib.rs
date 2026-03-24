@@ -1,8 +1,7 @@
-use std::sync::{Arc, Weak};
-
 use fluxemu_runtime::{
+    RuntimeHandle,
     component::{Component, ComponentConfig, LateContext, LateInitializedData},
-    machine::{Machine, builder::ComponentBuilder},
+    machine::builder::ComponentBuilder,
     platform::Platform,
 };
 
@@ -20,7 +19,7 @@ pub enum Intel8080Kind {
 #[derive(Debug)]
 pub struct Intel8080 {
     config: Intel8080Config,
-    machine: Weak<Machine>,
+    runtime: Option<RuntimeHandle>,
 }
 
 impl Component for Intel8080 {
@@ -72,7 +71,7 @@ impl<P: Platform> ComponentConfig<P> for Intel8080Config {
         component: &mut Self::Component,
         data: &LateContext<P>,
     ) -> LateInitializedData<P> {
-        component.machine = Arc::downgrade(&data.machine);
+        component.runtime = Some(data.runtime_handle.clone());
 
         LateInitializedData::default()
     }

@@ -1,8 +1,4 @@
-use std::{
-    collections::HashMap,
-    marker::PhantomData,
-    sync::{Arc, Weak},
-};
+use std::{collections::HashMap, marker::PhantomData};
 
 use fluxemu_definition_mos6502::Mos6502;
 use fluxemu_runtime::{
@@ -41,7 +37,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>> ComponentConf
         component: &mut Self::Component,
         data: &LateContext<P>,
     ) -> LateInitializedData<P> {
-        component.machine = Arc::downgrade(&data.machine);
+        component.runtime = Some(data.runtime_handle.clone());
 
         let backend = <P::GraphicsApi as SupportedGraphicsApiTia>::Backend::new(
             data.graphics_initialization_data.clone(),
@@ -102,7 +98,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>> ComponentConf
             playfield: Default::default(),
             high_playfield_ball_priority: false,
             background_color: Default::default(),
-            machine: Weak::new(),
+            runtime: None,
             framebuffer_path,
             staging_buffer,
             timestamp: Period::default(),

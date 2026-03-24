@@ -1,20 +1,15 @@
 use std::{
     fmt::Debug,
     ops::RangeInclusive,
-    sync::{
-        Arc, Weak,
-        atomic::{AtomicU8, Ordering},
-    },
+    sync::atomic::{AtomicU8, Ordering},
 };
 
 use fluxemu_definition_memory::{InitialContents, MemoryConfig};
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
+    RuntimeHandle,
     component::{Component, ComponentConfig, LateContext, LateInitializedData},
-    machine::{
-        Machine,
-        builder::{ComponentBuilder, SchedulerParticipation},
-    },
+    machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::{
         Address, AddressSpaceId, MapTarget, MemoryError, MemoryErrorType, MemoryRemappingCommand,
         Permissions,
@@ -56,7 +51,7 @@ pub struct Mos6532Riot {
     instat: AtomicU8,
     timer_configuration: Option<TimerConfiguration>,
     timestamp: Period,
-    machine: Weak<Machine>,
+    runtime: Option<RuntimeHandle>,
     config: Mos6532RiotConfig,
 }
 
@@ -135,7 +130,7 @@ impl Component for Mos6532Riot {
                     self.swacnt = *buffer_section != 0;
 
                     if let Some(swacnt) = &self.config.swcha {
-                        let machine = self.machine.upgrade().unwrap();
+                        let runtime = self.runtime.as_ref().unwrap().get();
                         let address = self.swcha_address();
 
                         let permissions = if self.swbcnt {
@@ -150,7 +145,7 @@ impl Component for Mos6532Riot {
                             }
                         };
 
-                        machine.remap_address_space(
+                        runtime.remap_address_space(
                             self.config.assigned_address_space,
                             [MemoryRemappingCommand::Map {
                                 range: address..=address,
@@ -167,7 +162,7 @@ impl Component for Mos6532Riot {
                     self.swbcnt = *buffer_section != 0;
 
                     if let Some(swbcnt) = &self.config.swchb {
-                        let machine = self.machine.upgrade().unwrap();
+                        let runtime = self.runtime.as_ref().unwrap().get();
                         let address = self.swchb_address();
 
                         let permissions = if self.swbcnt {
@@ -182,7 +177,7 @@ impl Component for Mos6532Riot {
                             }
                         };
 
-                        machine.remap_address_space(
+                        runtime.remap_address_space(
                             self.config.assigned_address_space,
                             [MemoryRemappingCommand::Map {
                                 range: address..=address,
@@ -269,7 +264,7 @@ impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
         component: &mut Self::Component,
         data: &LateContext<P>,
     ) -> LateInitializedData<P> {
-        component.machine = Arc::downgrade(&data.machine);
+        component.runtime = Some(data.runtime_handle.clone());
 
         LateInitializedData::default()
     }
@@ -323,7 +318,7 @@ impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
             config: self,
             timer_configuration: None,
             timestamp: Period::default(),
-            machine: Weak::default(),
+            runtime: None,
         })
     }
 }

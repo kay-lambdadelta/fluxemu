@@ -1,9 +1,8 @@
-use std::sync::{Arc, Weak};
-
 use bitvec::{field::BitField, prelude::Lsb0, view::BitView};
 use fluxemu_runtime::{
+    RuntimeHandle,
     component::{Component, ComponentConfig, LateContext, LateInitializedData},
-    machine::{Machine, builder::ComponentBuilder},
+    machine::builder::ComponentBuilder,
     memory::{
         Address, AddressSpaceId, MapTarget, MemoryError, MemoryRemappingCommand, Permissions,
     },
@@ -21,7 +20,7 @@ pub struct Mapctl {
     config: MapctlConfig,
     status: MapctlStatus,
     my_path: ComponentPath,
-    machine: Weak<Machine>,
+    runtime: Option<RuntimeHandle>,
 }
 
 impl Component for Mapctl {
@@ -43,7 +42,8 @@ impl Component for Mapctl {
         _address_space: AddressSpaceId,
         buffer: &[u8],
     ) -> Result<(), MemoryError> {
-        let machine = self.machine.upgrade().unwrap();
+        let runtime = self.runtime.as_ref().unwrap().get();
+
         self.status = MapctlStatus::from_byte(buffer[0]);
 
         let mut remapping_commands = Vec::default();
@@ -89,7 +89,7 @@ impl Component for Mapctl {
             permissions: Permissions::all(),
         });
 
-        machine.remap_address_space(self.config.cpu_address_space, remapping_commands);
+        runtime.remap_address_space(self.config.cpu_address_space, remapping_commands);
 
         Ok(())
     }
@@ -111,7 +111,7 @@ impl<P: Platform> ComponentConfig<P> for MapctlConfig {
         component: &mut Self::Component,
         data: &LateContext<P>,
     ) -> LateInitializedData<P> {
-        component.machine = Arc::downgrade(&data.machine);
+        component.runtime = Some(data.runtime_handle.clone());
 
         LateInitializedData::default()
     }
@@ -128,7 +128,7 @@ impl<P: Platform> ComponentConfig<P> for MapctlConfig {
             config: self,
             status: Default::default(),
             my_path,
-            machine: Weak::new(),
+            runtime: None,
         })
     }
 }

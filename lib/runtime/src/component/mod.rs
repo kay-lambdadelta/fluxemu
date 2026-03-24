@@ -6,7 +6,6 @@ use std::{
     fmt::Debug,
     io::{Read, Write},
     ops::RangeInclusive,
-    sync::Arc,
 };
 
 use fluxemu_input::{InputId, InputState};
@@ -16,8 +15,9 @@ use nalgebra::SVector;
 use ringbuffer::AllocRingBuffer;
 
 use crate::{
+    api::RuntimeHandle,
     graphics::GraphicsApi,
-    machine::{Machine, builder::ComponentBuilder},
+    machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId, MemoryError, MemoryErrorType},
     platform::Platform,
     scheduler::{Period, SynchronizationContext},
@@ -105,13 +105,9 @@ pub trait ComponentConfig<P: Platform>: Debug + Sized + Sync + Send {
 }
 
 /// Data that the runtime will provide at the end of the initialization sequence
-#[derive(Debug)]
 pub struct LateContext<P: Platform> {
-    /// Graphics related data
     pub graphics_initialization_data: <P::GraphicsApi as GraphicsApi>::InitializationData,
-
-    /// Machine
-    pub machine: Arc<Machine>,
+    pub runtime_handle: RuntimeHandle,
 }
 
 pub struct LateInitializedData<P: Platform> {

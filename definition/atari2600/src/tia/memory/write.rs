@@ -85,7 +85,9 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
                 // The TIA runs 3 times as fast as the cpu
                 self.cpu_rdy.store(false);
 
-                self.machine.upgrade().unwrap().insert_sync_point(
+                let runtime = self.runtime.as_ref().unwrap().get();
+
+                runtime.insert_sync_point(
                     self.timestamp + until,
                     self.framebuffer_path.parent().unwrap(),
                     WAKEUP_CPU_VIA_RDY,

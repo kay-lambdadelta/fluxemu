@@ -4,7 +4,6 @@
 
 use std::{
     any::Any,
-    borrow::Cow,
     collections::{HashMap, HashSet},
     fmt::Debug,
     path::PathBuf,
@@ -19,14 +18,13 @@ use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
     component::{Component, ComponentHandle, TypedComponentHandle},
-    graphics::GraphicsApi,
     input::LogicalInputDevice,
     machine::{builder::MachineBuilder, registry::ComponentRegistry},
-    memory::{AddressSpace, AddressSpaceId, MemoryRemappingCommand},
+    memory::{AddressSpace, AddressSpaceId},
     path::{ComponentPath, ResourcePath},
     persistence::{SaveManager, SnapshotManager},
     platform::{Platform, TestPlatform},
-    scheduler::{EventType, Frequency, Period, PreemptionSignal, Scheduler},
+    scheduler::{Period, PreemptionSignal, Scheduler},
 };
 
 /// Machine builder
@@ -49,16 +47,16 @@ where
     /// Component Registry
     pub(crate) registry: ComponentRegistry,
     /// All framebuffers this machine has
-    framebuffers: HashMap<ResourcePath, Mutex<Box<dyn Any + Send + Sync>>>,
+    pub(crate) framebuffers: HashMap<ResourcePath, Mutex<Box<dyn Any + Send + Sync>>>,
     /// All audio outputs this machine has
-    audio_outputs: HashSet<ResourcePath>,
+    pub(crate) audio_outputs: HashSet<ResourcePath>,
     /// The program that this machine was set up with, if any
     program_specification: Option<ProgramSpecification>,
     #[allow(unused)]
     save_manager: SaveManager,
     #[allow(unused)]
     snapshot_manager: SnapshotManager,
-    preemption_signals: Vec<Arc<PreemptionSignal>>,
+    pub(crate) preemption_signals: Vec<Arc<PreemptionSignal>>,
 }
 
 impl Machine {
@@ -97,55 +95,6 @@ impl Machine {
     #[inline]
     pub fn address_space(&self, address_space_id: AddressSpaceId) -> Option<&AddressSpace> {
         self.address_spaces.get(&address_space_id)
-    }
-
-    pub fn remap_address_space(
-        &self,
-        address_space_id: AddressSpaceId,
-        commands: impl IntoIterator<Item = MemoryRemappingCommand>,
-    ) {
-        let address_space = &self.address_spaces[&address_space_id];
-        address_space.remap(commands, &self.registry);
-    }
-
-    pub fn insert_sync_point(
-        &self,
-        time: Period,
-        target_path: &ComponentPath,
-        name: impl Into<Cow<'static, str>>,
-    ) {
-        let component = self.registry.handle(target_path).unwrap();
-
-        self.scheduler
-            .sync_point_manager
-            .queue(component, time, EventType::Once, name.into());
-
-        self.interrupt_in_flight_synchronization();
-    }
-
-    pub fn insert_sync_point_with_frequency(
-        &self,
-        time: Period,
-        frequency: Frequency,
-        target_path: &ComponentPath,
-        name: impl Into<Cow<'static, str>>,
-    ) {
-        let component = self.registry.handle(target_path).unwrap();
-
-        self.scheduler.sync_point_manager.queue(
-            component,
-            time,
-            EventType::Repeating { frequency },
-            name.into(),
-        );
-
-        self.interrupt_in_flight_synchronization();
-    }
-
-    fn interrupt_in_flight_synchronization(&self) {
-        for signal in &self.preemption_signals {
-            signal.event_occured();
-        }
     }
 
     pub fn run_duration(&self, allocated_time: Duration) {
@@ -205,15 +154,15 @@ impl Machine {
         self.registry.interact_dyn_mut(path, now, callback)
     }
 
-    pub fn typed_handle<C: Component>(
+    pub fn component_handle(&self, path: &ComponentPath) -> Option<ComponentHandle> {
+        self.registry.handle(path)
+    }
+
+    pub fn typed_component_handle<C: Component>(
         &self,
         path: &ComponentPath,
     ) -> Option<TypedComponentHandle<C>> {
         self.registry.typed_handle(path)
-    }
-
-    pub fn component_handle(&self, path: &ComponentPath) -> Option<ComponentHandle> {
-        self.registry.handle(path)
     }
 
     pub fn audio_outputs(&self) -> &HashSet<ResourcePath> {
@@ -222,25 +171,6 @@ impl Machine {
 
     pub fn input_devices(&self) -> &HashMap<ResourcePath, Arc<LogicalInputDevice>, FxBuildHasher> {
         &self.input_devices
-    }
-
-    pub fn commit_framebuffer<G: GraphicsApi>(
-        &self,
-        path: &ResourcePath,
-        callback: impl FnOnce(&mut G::Texture),
-    ) {
-        let mut framebuffer_guard = self
-            .framebuffers
-            .get(path)
-            .expect("Could not find framebuffer")
-            .lock()
-            .unwrap();
-
-        callback(
-            framebuffer_guard
-                .downcast_mut()
-                .expect("This item is not a valid framebuffer"),
-        )
     }
 
     pub fn framebuffers(&self) -> &HashMap<ResourcePath, Mutex<Box<dyn Any + Send + Sync>>> {

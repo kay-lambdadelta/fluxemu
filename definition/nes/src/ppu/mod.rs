@@ -3,7 +3,7 @@ use std::{
     marker::PhantomData,
     ops::RangeInclusive,
     sync::{
-        Arc, Weak,
+        Arc,
         atomic::{AtomicBool, AtomicU8, Ordering},
     },
 };
@@ -13,12 +13,10 @@ use bitvec::{array::BitArray, field::BitField, prelude::Lsb0, view::BitView};
 use fluxemu_definition_mos6502::{Mos6502, NmiFlag, RdyFlag};
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
+    RuntimeHandle,
     component::{Component, ComponentConfig, Event, LateContext, LateInitializedData},
     graphics::software::Texture,
-    machine::{
-        Machine,
-        builder::{ComponentBuilder, SchedulerParticipation},
-    },
+    machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::{Address, AddressSpaceCache, AddressSpaceId, MemoryError},
     path::{ComponentPath, ResourcePath},
     platform::Platform,
@@ -105,7 +103,7 @@ pub struct Ppu<R: Region, G: SupportedGraphicsApiPpu> {
     processor_nmi: Arc<NmiFlag>,
     ppu_address_space_cache: Option<AddressSpaceCache>,
     framebuffer_path: ResourcePath,
-    machine: Weak<Machine>,
+    runtime: Option<RuntimeHandle>,
     staging_buffer: Texture<Srgba<u8>>,
     timestamp: Period,
     period: Period,
@@ -120,10 +118,11 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
         component: &mut Self::Component,
         data: &LateContext<P>,
     ) -> LateInitializedData<P> {
-        component.machine = Arc::downgrade(&data.machine);
+        component.runtime = Some(data.runtime_handle.clone());
 
         component.ppu_address_space_cache = Some(
-            data.machine
+            data.runtime_handle
+                .get()
                 .address_space(component.ppu_address_space)
                 .unwrap()
                 .create_cache(),
@@ -276,7 +275,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
             ppu_address_space: self.ppu_address_space,
             ppu_address_space_cache: None,
             framebuffer_path,
-            machine: Weak::new(),
+            runtime: None,
             timestamp: Period::default(),
             period: frequency.recip(),
         })
@@ -333,7 +332,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                 CpuAccessibleRegister::PpuScroll => todo!(),
                 CpuAccessibleRegister::PpuAddr => todo!(),
                 CpuAccessibleRegister::PpuData => {
-                    let machine = self.machine.upgrade().unwrap();
+                    let machine = self.runtime.as_ref().unwrap().get();
                     let ppu_address_space = machine.address_space(self.ppu_address_space).unwrap();
 
                     if avoid_side_effects {
@@ -465,7 +464,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         self.state.cycle_counter
                     );
 
-                    let machine = self.machine.upgrade().unwrap();
+                    let machine = self.runtime.as_ref().unwrap().get();
                     let ppu_address_space = machine.address_space(self.ppu_address_space).unwrap();
 
                     // Redirect into the ppu address space
@@ -482,8 +481,8 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         )) & 0b0111_1111_1111_1111;
                 }
                 CpuAccessibleRegister::OamDma => {
-                    let machine = self.machine.upgrade().unwrap();
-                    let cpu_address_space = machine.address_space(self.cpu_address_space).unwrap();
+                    let runtime = self.runtime.as_ref().unwrap().get();
+                    let cpu_address_space = runtime.address_space(self.cpu_address_space).unwrap();
 
                     let page = u16::from(*buffer) << 8;
 
@@ -496,7 +495,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         self.timestamp + (processor_frequency.recip() * 514);
 
                     // Make sure we wake up eventually
-                    machine.insert_sync_point(
+                    runtime.insert_sync_point(
                         next_processor_rdy_high,
                         self.framebuffer_path.parent().unwrap(),
                         WAKEUP_CPU_VIA_RDY,
@@ -531,12 +530,12 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     }
                 }
                 VBLANK_END => {
-                    let machine = self.machine.upgrade().unwrap();
+                    let runtime = self.runtime.as_ref().unwrap().get();
 
                     self.state.entered_vblank.store(false, Ordering::Release);
                     self.processor_nmi.store(true);
 
-                    machine.commit_framebuffer::<G>(&self.framebuffer_path, |framebuffer| {
+                    runtime.commit_framebuffer::<G>(&self.framebuffer_path, |framebuffer| {
                         self.backend
                             .as_mut()
                             .unwrap()
@@ -557,10 +556,8 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
     }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
-        let machine = self.machine.upgrade().unwrap();
-        let ppu_address_space = machine.address_space(self.ppu_address_space).unwrap();
-
-        let _backend = self.backend.as_mut().unwrap();
+        let runtime = self.runtime.as_ref().unwrap().get();
+        let ppu_address_space = runtime.address_space(self.ppu_address_space).unwrap();
 
         for now in context.allocate(self.period, None) {
             self.timestamp = now;

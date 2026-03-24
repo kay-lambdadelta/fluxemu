@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
-    sync::{Arc, Weak},
+    sync::Arc,
 };
 
 pub(crate) use backend::SupportedGraphicsApiTia;
@@ -13,9 +13,9 @@ use bitvec::{
 use color::TiaColor;
 use fluxemu_definition_mos6502::RdyFlag;
 use fluxemu_runtime::{
+    RuntimeHandle,
     component::{Component, Event},
     graphics::software::Texture,
-    machine::Machine,
     memory::{Address, AddressSpaceId, MemoryError},
     path::ResourcePath,
     scheduler::{Period, SynchronizationContext},
@@ -127,7 +127,7 @@ pub(crate) struct Tia<R: Region, G: SupportedGraphicsApiTia> {
     backend: Option<G::Backend<R>>,
     cpu_rdy: Arc<RdyFlag>,
     staging_buffer: Texture<Srgba<u8>>,
-    machine: Weak<Machine>,
+    runtime: Option<RuntimeHandle>,
     timestamp: Period,
     framebuffer_path: ResourcePath,
 }
@@ -189,11 +189,11 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
             self.timestamp = now;
 
             if let Some(cycles) = self.cycles_waiting_for_vsync {
-                let machine = self.machine.upgrade().unwrap();
+                let runtime = self.runtime.as_ref().unwrap().get();
                 self.cycles_waiting_for_vsync = Some(cycles.saturating_sub(1));
 
                 if self.cycles_waiting_for_vsync == Some(0) {
-                    machine.commit_framebuffer::<G>(&self.framebuffer_path, |framebuffer| {
+                    runtime.commit_framebuffer::<G>(&self.framebuffer_path, |framebuffer| {
                         self.backend
                             .as_mut()
                             .unwrap()

@@ -8,7 +8,6 @@ use cpal::{
 use fluxemu_audio::{FrameIterator, Linear, SampleFormat};
 use fluxemu_frontend::AudioRuntime;
 use fluxemu_runtime::{machine::Machine, scheduler::Period};
-use itertools::Itertools;
 use nalgebra::SVector;
 use ringbuffer::RingBuffer;
 

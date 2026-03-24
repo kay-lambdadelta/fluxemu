@@ -3,7 +3,7 @@ use std::{
     fmt::Debug,
     io::{Read, Write},
     sync::{
-        Arc, Weak,
+        Arc,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -11,11 +11,9 @@ use std::{
 use arrayvec::ArrayVec;
 use bitvec::{prelude::Lsb0, view::BitView};
 use fluxemu_runtime::{
+    RuntimeHandle,
     component::{Component, ComponentConfig, ComponentVersion, LateContext, LateInitializedData},
-    machine::{
-        Machine,
-        builder::{ComponentBuilder, SchedulerParticipation},
-    },
+    machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::{Address, AddressSpaceCache, AddressSpaceId},
     platform::Platform,
     scheduler::{Frequency, Period, SynchronizationContext},
@@ -164,7 +162,7 @@ pub struct Mos6502 {
     nmi: Arc<NmiFlag>,
     config: Mos6502Config,
     address_space_cache: Option<AddressSpaceCache>,
-    machine: Weak<Machine>,
+    runtime: Option<RuntimeHandle>,
     timestamp: Period,
     period: Period,
 }
@@ -188,8 +186,9 @@ impl Component for Mos6502 {
     }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
-        let machine = self.machine.upgrade().unwrap();
-        let address_space = machine
+        let runtime = self.runtime.as_ref().unwrap().get();
+
+        let address_space = runtime
             .address_space(self.config.assigned_address_space)
             .unwrap();
 
@@ -311,9 +310,10 @@ impl<P: Platform> ComponentConfig<P> for Mos6502Config {
         component: &mut Self::Component,
         data: &LateContext<P>,
     ) -> LateInitializedData<P> {
-        component.machine = Arc::downgrade(&data.machine);
+        component.runtime = Some(data.runtime_handle.clone());
         component.address_space_cache = Some(
-            data.machine
+            data.runtime_handle
+                .get()
                 .address_space(component.config.assigned_address_space)
                 .unwrap()
                 .create_cache(),
@@ -346,7 +346,7 @@ impl<P: Platform> ComponentConfig<P> for Mos6502Config {
             rdy: Arc::default(),
             irq: Arc::default(),
             nmi: Arc::default(),
-            machine: Weak::default(),
+            runtime: None,
             address_space_cache: None,
             period: self.frequency.recip(),
             config: self,

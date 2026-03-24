@@ -6,9 +6,7 @@ use std::{
     time::SystemTime,
 };
 
-use egui::{
-    Align, Button, ComboBox, Frame, Layout, ScrollArea, Stroke, TextBuffer, TextEdit, TextWrapMode,
-};
+use egui::{Align, Button, ComboBox, Frame, Layout, ScrollArea, Stroke, TextEdit, TextWrapMode};
 use indexmap::IndexMap;
 use palette::{
     WithAlpha,

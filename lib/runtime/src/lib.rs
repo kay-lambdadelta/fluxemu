@@ -4,6 +4,8 @@
 
 #![allow(async_fn_in_trait)]
 
+/// Component facing runtime api
+mod api;
 /// Basic types relating to the fundemental unit of this emulator
 pub mod component;
 /// Graphics definitions
@@ -24,3 +26,5 @@ pub mod platform;
 pub mod processor;
 /// Emulator scheduler
 pub mod scheduler;
+
+pub use api::*;

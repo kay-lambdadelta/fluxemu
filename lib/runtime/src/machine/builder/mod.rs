@@ -1,6 +1,7 @@
 use std::{borrow::Cow, collections::HashMap, ops::DerefMut, sync::Arc};
 
 use crate::{
+    api::RuntimeHandle,
     component::{Component, LateContext, LateInitializedData},
     graphics::GraphicsApi,
     input::LogicalInputDevice,
@@ -98,7 +99,7 @@ impl<P: Platform> SealedMachineBuilder<P> {
     ) -> Arc<Machine> {
         let late_initialized_data = LateContext {
             graphics_initialization_data,
-            machine: self.machine.clone(),
+            runtime_handle: RuntimeHandle(Arc::downgrade(&self.machine)),
         };
 
         for (path, initializer) in self.component_late_initializers.drain() {

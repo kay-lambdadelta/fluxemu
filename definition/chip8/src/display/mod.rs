@@ -2,20 +2,17 @@ use std::{
     collections::HashMap,
     fmt::Debug,
     io::{Read, Write},
-    sync::{Arc, Weak},
 };
 
 use bitvec::{order::Msb0, view::BitView};
 use fluxemu_runtime::{
+    RuntimeHandle,
     component::{Component, ComponentConfig, ComponentVersion, LateContext, LateInitializedData},
     graphics::{
         GraphicsApi,
         software::{Texture, TextureImplMut},
     },
-    machine::{
-        Machine,
-        builder::{ComponentBuilder, SchedulerParticipation},
-    },
+    machine::builder::{ComponentBuilder, SchedulerParticipation},
     path::ResourcePath,
     platform::Platform,
     scheduler::{Period, SynchronizationContext},
@@ -47,10 +44,10 @@ pub struct Chip8Display<G: SupportedGraphicsApiChip8Display> {
     /// The cpu reads this to see if it can continue execution post draw call
     pub vsync_occurred: bool,
     staging_buffer: Texture<Srgba<u8>>,
-    machine: Weak<Machine>,
     hires: bool,
     framebuffer_path: ResourcePath,
     config: Chip8DisplayConfig,
+    runtime: Option<RuntimeHandle>,
 }
 
 impl<G: SupportedGraphicsApiChip8Display> Chip8Display<G> {
@@ -195,10 +192,10 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Display<G> {
         }
 
         if commit_staging_buffer {
-            let machine = self.machine.upgrade().unwrap();
+            let runtime = self.runtime.as_ref().unwrap().get();
 
             // Commit the framebuffer
-            machine.commit_framebuffer::<G>(&self.framebuffer_path, |framebuffer| {
+            runtime.commit_framebuffer::<G>(&self.framebuffer_path, |framebuffer| {
                 self.backend
                     .as_mut()
                     .unwrap()
@@ -238,7 +235,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
         component: &mut Self::Component,
         data: &LateContext<P>,
     ) -> LateInitializedData<P> {
-        component.machine = Arc::downgrade(&data.machine);
+        component.runtime = Some(data.runtime_handle.clone());
 
         let backend = <P::GraphicsApi as SupportedGraphicsApiChip8Display>::Backend::new(
             data.graphics_initialization_data.clone(),
@@ -265,7 +262,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
             backend: None,
             hires: false,
             vsync_occurred: false,
-            machine: Weak::default(),
+            runtime: None,
             staging_buffer: Texture::new(LORES.x as usize, LORES.y as usize, BLACK.into()),
             framebuffer_path,
             config: self,
