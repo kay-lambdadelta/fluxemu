@@ -11,7 +11,7 @@ use crate::{
     component::{Component, ComponentHandle, ComponentVersion, TypedComponentHandle},
     machine::builder::SchedulerParticipation,
     path::ComponentPath,
-    scheduler::{Period, PreemptionSignal, SyncPointManager},
+    scheduler::{Period, PreemptionSignal},
 };
 
 struct ComponentInfo {
@@ -27,25 +27,17 @@ impl Debug for ComponentInfo {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 /// The store for components
 pub struct ComponentRegistry
 // This absolutely has to be thread-safe
 where
     Self: Send + Sync,
 {
-    sync_point_manager: Arc<SyncPointManager>,
     components: HashMap<ComponentPath, ComponentInfo, FxBuildHasher>,
 }
 
 impl ComponentRegistry {
-    pub fn new(sync_point_manager: Arc<SyncPointManager>) -> Self {
-        Self {
-            sync_point_manager,
-            components: HashMap::default(),
-        }
-    }
-
     pub(crate) fn insert_component<C: Component>(
         &mut self,
         path: ComponentPath,
@@ -60,7 +52,6 @@ impl ComponentRegistry {
             ComponentInfo {
                 component: ComponentHandle::new(
                     scheduler_participation,
-                    Arc::downgrade(&self.sync_point_manager),
                     preemption_signal,
                     path,
                     component,

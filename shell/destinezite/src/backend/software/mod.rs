@@ -52,7 +52,7 @@ impl GraphicsRuntime for SoftwareGraphicsRuntime {
         }
     }
 
-    fn present_machine(&mut self, machine: &Machine) {
+    fn present_machine(&mut self, machine: &Arc<Machine>) {
         if let Ok(mut surface_buffer) = self.surface.buffer_mut() {
             let width = surface_buffer.width();
             let height = surface_buffer.height();

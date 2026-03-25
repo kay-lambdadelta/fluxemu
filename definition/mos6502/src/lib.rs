@@ -162,7 +162,6 @@ pub struct Mos6502 {
     nmi: Arc<NmiFlag>,
     config: Mos6502Config,
     address_space_cache: Option<AddressSpaceCache>,
-    runtime: Option<RuntimeHandle>,
     timestamp: Period,
     period: Period,
 }
@@ -186,7 +185,7 @@ impl Component for Mos6502 {
     }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
-        let runtime = self.runtime.as_ref().unwrap().get();
+        let runtime = RuntimeHandle::current();
 
         let address_space = runtime
             .address_space(self.config.assigned_address_space)
@@ -308,12 +307,12 @@ impl<P: Platform> ComponentConfig<P> for Mos6502Config {
 
     fn late_initialize(
         component: &mut Self::Component,
-        data: &LateContext<P>,
+        _data: &LateContext<P>,
     ) -> LateInitializedData<P> {
-        component.runtime = Some(data.runtime_handle.clone());
+        let runtime = RuntimeHandle::current();
+
         component.address_space_cache = Some(
-            data.runtime_handle
-                .get()
+            runtime
                 .address_space(component.config.assigned_address_space)
                 .unwrap()
                 .create_cache(),
@@ -346,7 +345,6 @@ impl<P: Platform> ComponentConfig<P> for Mos6502Config {
             rdy: Arc::default(),
             irq: Arc::default(),
             nmi: Arc::default(),
-            runtime: None,
             address_space_cache: None,
             period: self.frequency.recip(),
             config: self,

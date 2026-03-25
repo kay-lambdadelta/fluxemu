@@ -15,7 +15,6 @@ use nalgebra::SVector;
 use ringbuffer::AllocRingBuffer;
 
 use crate::{
-    api::RuntimeHandle,
     graphics::GraphicsApi,
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId, MemoryError, MemoryErrorType},
@@ -107,7 +106,6 @@ pub trait ComponentConfig<P: Platform>: Debug + Sized + Sync + Send {
 /// Data that the runtime will provide at the end of the initialization sequence
 pub struct LateContext<P: Platform> {
     pub graphics_initialization_data: <P::GraphicsApi as GraphicsApi>::InitializationData,
-    pub runtime_handle: RuntimeHandle,
 }
 
 pub struct LateInitializedData<P: Platform> {

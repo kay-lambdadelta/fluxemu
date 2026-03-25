@@ -47,7 +47,6 @@ pub struct Chip8Display<G: SupportedGraphicsApiChip8Display> {
     hires: bool,
     framebuffer_path: ResourcePath,
     config: Chip8DisplayConfig,
-    runtime: Option<RuntimeHandle>,
 }
 
 impl<G: SupportedGraphicsApiChip8Display> Chip8Display<G> {
@@ -192,7 +191,7 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Display<G> {
         }
 
         if commit_staging_buffer {
-            let runtime = self.runtime.as_ref().unwrap().get();
+            let runtime = RuntimeHandle::current();
 
             // Commit the framebuffer
             runtime.commit_framebuffer::<G>(&self.framebuffer_path, |framebuffer| {
@@ -235,8 +234,6 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
         component: &mut Self::Component,
         data: &LateContext<P>,
     ) -> LateInitializedData<P> {
-        component.runtime = Some(data.runtime_handle.clone());
-
         let backend = <P::GraphicsApi as SupportedGraphicsApiChip8Display>::Backend::new(
             data.graphics_initialization_data.clone(),
         );
@@ -262,7 +259,6 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
             backend: None,
             hires: false,
             vsync_occurred: false,
-            runtime: None,
             staging_buffer: Texture::new(LORES.x as usize, LORES.y as usize, BLACK.into()),
             framebuffer_path,
             config: self,

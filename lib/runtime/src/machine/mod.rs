@@ -15,9 +15,9 @@ use fluxemu_input::{InputId, InputState};
 use fluxemu_program::{ProgramManager, ProgramSpecification};
 use num::FromPrimitive;
 use rustc_hash::FxBuildHasher;
-use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
+    RuntimeCurrentThreadContext,
     component::{Component, ComponentHandle, Event, TypedComponentHandle},
     input::LogicalInputDevice,
     machine::{builder::MachineBuilder, registry::ComponentRegistry},
@@ -98,13 +98,14 @@ impl Machine {
         self.address_spaces.get(&address_space_id)
     }
 
-    pub fn run_duration(&self, allocated_time: Duration) {
+    pub fn run_duration(self: &Arc<Self>, allocated_time: Duration) {
         let allocated_time = Period::from_f32(allocated_time.as_secs_f32()).unwrap_or_default();
-        self.scheduler.run(allocated_time);
+
+        self.run(allocated_time);
     }
 
-    pub fn run(&self, allocated_time: Period) {
-        self.scheduler.run(allocated_time);
+    pub fn run(self: &Arc<Self>, allocated_time: Period) {
+        RuntimeCurrentThreadContext::enter(self.clone(), || self.scheduler.run(allocated_time))
     }
 
     pub fn now(&self) -> Period {
@@ -116,43 +117,51 @@ impl Machine {
     }
 
     pub fn interact<C: Component, T>(
-        &self,
+        self: &Arc<Self>,
         path: &ComponentPath,
         callback: impl FnOnce(&C) -> T,
     ) -> Option<T> {
         let now = self.now();
 
-        self.registry.interact(path, now, callback)
+        RuntimeCurrentThreadContext::enter(self.clone(), || {
+            self.registry.interact(path, now, callback)
+        })
     }
 
     pub fn interact_mut<C: Component, T: 'static>(
-        &self,
+        self: &Arc<Self>,
         path: &ComponentPath,
         callback: impl FnOnce(&mut C) -> T,
     ) -> Option<T> {
         let now = self.now();
 
-        self.registry.interact_mut(path, now, callback)
+        RuntimeCurrentThreadContext::enter(self.clone(), || {
+            self.registry.interact_mut(path, now, callback)
+        })
     }
 
     pub fn interact_dyn<T>(
-        &self,
+        self: &Arc<Self>,
         path: &ComponentPath,
         callback: impl FnOnce(&dyn Component) -> T,
     ) -> Option<T> {
         let now = self.now();
 
-        self.registry.interact_dyn(path, now, callback)
+        RuntimeCurrentThreadContext::enter(self.clone(), || {
+            self.registry.interact_dyn(path, now, callback)
+        })
     }
 
     pub fn interact_dyn_mut<T>(
-        &self,
+        self: &Arc<Self>,
         path: &ComponentPath,
         callback: impl FnOnce(&mut dyn Component) -> T,
     ) -> Option<T> {
         let now = self.now();
 
-        self.registry.interact_dyn_mut(path, now, callback)
+        RuntimeCurrentThreadContext::enter(self.clone(), || {
+            self.registry.interact_dyn_mut(path, now, callback)
+        })
     }
 
     pub fn component_handle(&self, path: &ComponentPath) -> Option<ComponentHandle> {
@@ -171,7 +180,7 @@ impl Machine {
     }
 
     pub fn insert_inputs(
-        &self,
+        self: &Arc<Self>,
         path: &ResourcePath,
         inputs: impl IntoIterator<Item = (InputId, InputState)>,
     ) {
@@ -204,6 +213,3 @@ impl Machine {
         self.program_specification.as_ref()
     }
 }
-
-pub trait Quirks: Serialize + DeserializeOwned + Debug + Clone + Default + 'static {}
-impl<T: Serialize + DeserializeOwned + Debug + Clone + Default + 'static> Quirks for T {}

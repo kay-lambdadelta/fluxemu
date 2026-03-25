@@ -1,5 +1,4 @@
 use fluxemu_runtime::{
-    RuntimeHandle,
     component::{Component, ComponentConfig, LateContext, LateInitializedData},
     machine::builder::ComponentBuilder,
     platform::Platform,
@@ -19,7 +18,6 @@ pub enum Intel8080Kind {
 #[derive(Debug)]
 pub struct Intel8080 {
     config: Intel8080Config,
-    runtime: Option<RuntimeHandle>,
 }
 
 impl Component for Intel8080 {
@@ -68,11 +66,9 @@ impl<P: Platform> ComponentConfig<P> for Intel8080Config {
     type Component = Intel8080;
 
     fn late_initialize(
-        component: &mut Self::Component,
-        data: &LateContext<P>,
+        _component: &mut Self::Component,
+        _data: &LateContext<P>,
     ) -> LateInitializedData<P> {
-        component.runtime = Some(data.runtime_handle.clone());
-
         LateInitializedData::default()
     }
 

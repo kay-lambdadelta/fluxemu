@@ -1,7 +1,6 @@
 use std::{borrow::Cow, collections::HashMap, ops::DerefMut, sync::Arc};
 
 use crate::{
-    api::RuntimeHandle,
     component::{Component, LateContext, LateInitializedData},
     graphics::GraphicsApi,
     input::LogicalInputDevice,
@@ -99,13 +98,11 @@ impl<P: Platform> SealedMachineBuilder<P> {
     ) -> Arc<Machine> {
         let late_initialized_data = LateContext {
             graphics_initialization_data,
-            runtime_handle: RuntimeHandle(Arc::downgrade(&self.machine)),
         };
 
         for (path, initializer) in self.component_late_initializers.drain() {
             self.machine
-                .registry
-                .interact_dyn_mut(&path, Period::ZERO, |mut component| {
+                .interact_dyn_mut(&path, |mut component| {
                     let provided_data = initializer(component.deref_mut(), &late_initialized_data);
 
                     for (framebuffer_name, framebuffer) in provided_data.framebuffers {

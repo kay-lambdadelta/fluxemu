@@ -1,18 +1,19 @@
 use std::{
     any::{Any, TypeId},
     marker::PhantomData,
-    sync::{Arc, RwLock, RwLockWriteGuard, Weak},
+    sync::{Arc, RwLock, RwLockWriteGuard},
 };
 
 use crate::{
+    RuntimeHandle,
     component::Component,
     machine::builder::SchedulerParticipation,
     path::ComponentPath,
-    scheduler::{Period, PreemptionSignal, SyncPointManager, SynchronizationContext},
+    scheduler::{Period, PreemptionSignal, SynchronizationContext},
 };
 
 #[derive(Debug)]
-struct SynchronizationData {
+pub(crate) struct SynchronizationData {
     /// Timestamp this component is actually updated to
     updated_timestamp: Period,
     /// Interrupt receiver
@@ -21,7 +22,7 @@ struct SynchronizationData {
 
 // HACK: Add a generic so we can coerce this unsized
 #[derive(Debug)]
-struct HandleInner<T: ?Sized> {
+pub(crate) struct HandleInner<T: ?Sized> {
     synchronization_data: Option<SynchronizationData>,
     component: T,
 }
@@ -31,13 +32,11 @@ struct HandleInner<T: ?Sized> {
 pub struct ComponentHandle {
     inner: Arc<RwLock<HandleInner<dyn Component>>>,
     path: ComponentPath,
-    sync_point_manager: Weak<SyncPointManager>,
 }
 
 impl ComponentHandle {
     pub(crate) fn new(
         scheduler_participation: SchedulerParticipation,
-        sync_point_manager: Weak<SyncPointManager>,
         preemption_signal: Arc<PreemptionSignal>,
         path: ComponentPath,
         component: impl Component,
@@ -60,7 +59,6 @@ impl ComponentHandle {
                 synchronization_data,
             })),
             path,
-            sync_point_manager,
         }
     }
 
@@ -81,7 +79,7 @@ impl ComponentHandle {
                 .updated_timestamp
                 < time
         {
-            let sync_point_manager = self.sync_point_manager.upgrade().unwrap();
+            let runtime = RuntimeHandle::current();
 
             // Loop until the component is fully updated, processing events when relevant
             loop {
@@ -97,7 +95,7 @@ impl ComponentHandle {
                 }
 
                 let context = SynchronizationContext {
-                    event_manager: &sync_point_manager,
+                    event_manager: runtime.sync_point_manager(),
                     updated_timestamp: &mut synchronization_data.updated_timestamp,
                     target_timestamp: time,
                     last_attempted_allocation: &mut last_attempted_allocation,
@@ -124,7 +122,7 @@ impl ComponentHandle {
                     drop(guard);
 
                     // consume our sync points
-                    sync_point_manager.consume(timestamp);
+                    runtime.sync_point_manager().consume(timestamp);
 
                     // Reacquire lock
                     guard = self.inner.write().unwrap();

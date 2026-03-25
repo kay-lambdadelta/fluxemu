@@ -1,5 +1,5 @@
 use bitvec::{field::BitField, order::Msb0, slice::BitSlice, view::BitView};
-use fluxemu_runtime::scheduler::Period;
+use fluxemu_runtime::{RuntimeHandle, scheduler::Period};
 use nalgebra::Point2;
 
 use super::WriteRegisters;
@@ -85,7 +85,7 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
                 // The TIA runs 3 times as fast as the cpu
                 self.cpu_rdy.store(false);
 
-                let runtime = self.runtime.as_ref().unwrap().get();
+                let runtime = RuntimeHandle::current();
 
                 runtime.insert_sync_point(
                     self.timestamp + until,

@@ -166,10 +166,10 @@ impl<P: FrontendPlatform> Frontend<P> {
         &self.egui_context
     }
 
-    pub fn machine(&self) -> Option<&Machine> {
+    pub fn machine(&self) -> Option<&Arc<Machine>> {
         self.machine_context
             .as_ref()
-            .map(|context| context.machine.as_ref())
+            .map(|context| &context.machine)
     }
 
     pub fn frontend_overlay_active(&self) -> bool {
@@ -421,13 +421,13 @@ impl<P: FrontendPlatform> Frontend<P> {
         if let Some(sealed_machine_builder) = self.pending_machine.take() {
             self.egui_context = setup_egui_context();
 
+            // NOTE: This will block the ui
+            self.bring_down_current_machine();
+
             let graphics_initialization_data =
                 callback(&self.egui_context, &sealed_machine_builder);
 
             let machine = sealed_machine_builder.build(graphics_initialization_data);
-
-            // NOTE: This will block the ui
-            self.bring_down_current_machine();
 
             let (offload_communication_sender, offload_communication_receiver) = mpsc::channel();
 

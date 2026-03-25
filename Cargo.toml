@@ -67,3 +67,6 @@ debug = true
 
 [profile.dev]
 opt-level = 1
+
+[profile.release]
+debug = true

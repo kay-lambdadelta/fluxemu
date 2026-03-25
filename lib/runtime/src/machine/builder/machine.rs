@@ -380,7 +380,7 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
         let mut preemption_signals = Vec::default();
         let mut address_spaces = HashMap::default();
         let mut remapping_commands: HashMap<_, Vec<_>> = HashMap::default();
-        let mut registry = ComponentRegistry::new(scheduler.sync_point_manager.clone());
+        let mut registry = ComponentRegistry::default();
         let mut graphics_requirements = GraphicsRequirements::default();
 
         // The machine builder local command queue does not recieve any more items from now

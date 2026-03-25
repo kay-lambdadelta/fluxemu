@@ -103,7 +103,6 @@ pub struct Ppu<R: Region, G: SupportedGraphicsApiPpu> {
     processor_nmi: Arc<NmiFlag>,
     ppu_address_space_cache: Option<AddressSpaceCache>,
     framebuffer_path: ResourcePath,
-    runtime: Option<RuntimeHandle>,
     staging_buffer: Texture<Srgba<u8>>,
     timestamp: Period,
     period: Period,
@@ -118,11 +117,10 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
         component: &mut Self::Component,
         data: &LateContext<P>,
     ) -> LateInitializedData<P> {
-        component.runtime = Some(data.runtime_handle.clone());
+        let runtime = RuntimeHandle::current();
 
         component.ppu_address_space_cache = Some(
-            data.runtime_handle
-                .get()
+            runtime
                 .address_space(component.ppu_address_space)
                 .unwrap()
                 .create_cache(),
@@ -275,7 +273,6 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
             ppu_address_space: self.ppu_address_space,
             ppu_address_space_cache: None,
             framebuffer_path,
-            runtime: None,
             timestamp: Period::default(),
             period: frequency.recip(),
         })
@@ -332,8 +329,8 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                 CpuAccessibleRegister::PpuScroll => todo!(),
                 CpuAccessibleRegister::PpuAddr => todo!(),
                 CpuAccessibleRegister::PpuData => {
-                    let machine = self.runtime.as_ref().unwrap().get();
-                    let ppu_address_space = machine.address_space(self.ppu_address_space).unwrap();
+                    let runtime = RuntimeHandle::current();
+                    let ppu_address_space = runtime.address_space(self.ppu_address_space).unwrap();
 
                     if avoid_side_effects {
                         *buffer = ppu_address_space.read_le_value_pure(
@@ -464,8 +461,8 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         self.state.cycle_counter
                     );
 
-                    let machine = self.runtime.as_ref().unwrap().get();
-                    let ppu_address_space = machine.address_space(self.ppu_address_space).unwrap();
+                    let runtime = RuntimeHandle::current();
+                    let ppu_address_space = runtime.address_space(self.ppu_address_space).unwrap();
 
                     // Redirect into the ppu address space
                     ppu_address_space.write_le_value(
@@ -481,7 +478,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         )) & 0b0111_1111_1111_1111;
                 }
                 CpuAccessibleRegister::OamDma => {
-                    let runtime = self.runtime.as_ref().unwrap().get();
+                    let runtime = RuntimeHandle::current();
                     let cpu_address_space = runtime.address_space(self.cpu_address_space).unwrap();
 
                     let page = u16::from(*buffer) << 8;
@@ -530,7 +527,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     }
                 }
                 VBLANK_END => {
-                    let runtime = self.runtime.as_ref().unwrap().get();
+                    let runtime = RuntimeHandle::current();
 
                     self.state.entered_vblank.store(false, Ordering::Release);
                     self.processor_nmi.store(true);
@@ -556,7 +553,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
     }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
-        let runtime = self.runtime.as_ref().unwrap().get();
+        let runtime = RuntimeHandle::current();
         let ppu_address_space = runtime.address_space(self.ppu_address_space).unwrap();
 
         for now in context.allocate(self.period, None) {

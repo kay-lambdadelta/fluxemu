@@ -127,7 +127,6 @@ pub(crate) struct Tia<R: Region, G: SupportedGraphicsApiTia> {
     backend: Option<G::Backend<R>>,
     cpu_rdy: Arc<RdyFlag>,
     staging_buffer: Texture<Srgba<u8>>,
-    runtime: Option<RuntimeHandle>,
     timestamp: Period,
     framebuffer_path: ResourcePath,
 }
@@ -189,7 +188,8 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
             self.timestamp = now;
 
             if let Some(cycles) = self.cycles_waiting_for_vsync {
-                let runtime = self.runtime.as_ref().unwrap().get();
+                let runtime = RuntimeHandle::current();
+
                 self.cycles_waiting_for_vsync = Some(cycles.saturating_sub(1));
 
                 if self.cycles_waiting_for_vsync == Some(0) {

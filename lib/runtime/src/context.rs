@@ -1,26 +1,29 @@
-use std::{
-    borrow::Cow,
-    sync::{Arc, Weak},
-};
+use std::{borrow::Cow, cell::RefCell, collections::HashMap, sync::Arc};
 
 use fluxemu_program::ProgramSpecification;
+use guardian::ArcMutexGuardian;
+use rustc_hash::FxBuildHasher;
 
 use crate::{
-    component::{Component, ComponentHandle, TypedComponentHandle},
+    component::{Component, ComponentHandle, HandleInner, TypedComponentHandle},
     graphics::GraphicsApi,
     machine::Machine,
     memory::{AddressSpace, AddressSpaceId, MemoryRemappingCommand},
     path::{ComponentPath, ResourcePath},
-    scheduler::{EventType, Frequency, Period},
+    scheduler::{EventType, Frequency, Period, SyncPointManager},
 };
 
-#[derive(Debug, Clone)]
-pub struct RuntimeHandle(pub(crate) Weak<Machine>);
-
 #[derive(Debug)]
-pub struct Runtime(Arc<Machine>);
+pub struct RuntimeHandle(Arc<Machine>);
 
-impl Runtime {
+impl RuntimeHandle {
+    #[inline]
+    pub fn current() -> Self {
+        RuntimeCurrentThreadContext::interact(|context| {
+            RuntimeHandle(context.current_machine.clone())
+        })
+    }
+
     pub fn address_space(&self, address_space_id: AddressSpaceId) -> Option<&AddressSpace> {
         self.0.address_space(address_space_id)
     }
@@ -144,12 +147,70 @@ impl Runtime {
             signal.event_occured();
         }
     }
+
+    pub(crate) fn sync_point_manager(&self) -> &SyncPointManager {
+        &self.0.scheduler.sync_point_manager
+    }
 }
 
-impl RuntimeHandle {
-    pub fn get(&self) -> Runtime {
-        let machine = self.0.upgrade().expect("Machine has been dropped");
+thread_local! {
+    static RUNTIME_CURRENT_THREAD_CONTEXT: RefCell<Option<RuntimeCurrentThreadContext>> = RefCell::default();
+}
 
-        Runtime(machine)
+pub(crate) struct RuntimeCurrentThreadContext {
+    pub guard_cache: HashMap<usize, ArcMutexGuardian<HandleInner<dyn Component>>, FxBuildHasher>,
+    pub current_machine: Arc<Machine>,
+}
+
+impl RuntimeCurrentThreadContext {
+    #[inline]
+    pub fn enter<T>(machine: Arc<Machine>, callback: impl FnOnce() -> T) -> T {
+        RUNTIME_CURRENT_THREAD_CONTEXT.with(|context| {
+            let mut context_guard = context.borrow_mut();
+
+            if context_guard.is_some() {
+                panic!("Reentrancy on the runtime is not allowed");
+            }
+
+            *context_guard = Some(RuntimeCurrentThreadContext {
+                current_machine: machine,
+                guard_cache: HashMap::default(),
+            });
+            drop(context_guard);
+
+            let item = callback();
+
+            // Unset context
+            let mut context_guard = context.borrow_mut();
+            *context_guard = None;
+
+            item
+        })
+    }
+
+    #[inline]
+    pub fn interact<T>(callback: impl FnOnce(&RuntimeCurrentThreadContext) -> T) -> T {
+        RUNTIME_CURRENT_THREAD_CONTEXT.with(|context| {
+            let context_guard = context.borrow();
+
+            if let Some(context) = context_guard.as_ref() {
+                callback(context)
+            } else {
+                panic!("Not inside of runtime context");
+            }
+        })
+    }
+
+    #[inline]
+    pub fn interact_mut<T>(callback: impl FnOnce(&mut RuntimeCurrentThreadContext) -> T) -> T {
+        RUNTIME_CURRENT_THREAD_CONTEXT.with(|context| {
+            let mut context_guard = context.borrow_mut();
+
+            if let Some(context) = context_guard.as_mut() {
+                callback(context)
+            } else {
+                panic!("Not inside of runtime context");
+            }
+        })
     }
 }

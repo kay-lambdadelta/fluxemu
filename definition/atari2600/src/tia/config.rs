@@ -37,8 +37,6 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>> ComponentConf
         component: &mut Self::Component,
         data: &LateContext<P>,
     ) -> LateInitializedData<P> {
-        component.runtime = Some(data.runtime_handle.clone());
-
         let backend = <P::GraphicsApi as SupportedGraphicsApiTia>::Backend::new(
             data.graphics_initialization_data.clone(),
         );
@@ -98,7 +96,6 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>> ComponentConf
             playfield: Default::default(),
             high_playfield_ball_priority: false,
             background_color: Default::default(),
-            runtime: None,
             framebuffer_path,
             staging_buffer,
             timestamp: Period::default(),

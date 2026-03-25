@@ -98,7 +98,6 @@ pub struct Chip8Processor<G: SupportedGraphicsApiChip8Display> {
     audio: TypedComponentHandle<Chip8Audio>,
     timer: TypedComponentHandle<Chip8Timer>,
     config: Chip8ProcessorConfig<G>,
-    runtime: Option<RuntimeHandle>,
     timestamp: Period,
 }
 
@@ -139,7 +138,7 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
     }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
-        let runtime = self.runtime.as_ref().unwrap().get();
+        let runtime = RuntimeHandle::current();
 
         let address_space = runtime
             .address_space(self.config.cpu_address_space)
@@ -249,11 +248,9 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
     type Component = Chip8Processor<P::GraphicsApi>;
 
     fn late_initialize(
-        component: &mut Self::Component,
-        data: &LateContext<P>,
+        _component: &mut Self::Component,
+        _data: &LateContext<P>,
     ) -> LateInitializedData<P> {
-        component.runtime = Some(data.runtime_handle.clone());
-
         LateInitializedData::default()
     }
 
@@ -281,7 +278,6 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
             timer: component_builder
                 .typed_component_handle(&self.timer)
                 .unwrap(),
-            runtime: None,
             config: self,
             timestamp: Period::default(),
         })

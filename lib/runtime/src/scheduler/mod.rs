@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fmt::Debug,
-    sync::{Arc, Mutex},
+    sync::Mutex,
 };
 
 use fixed::{FixedU128, types::extra::U64};
@@ -24,7 +24,7 @@ pub struct DrivenComponent {
 /// order execution stuff
 #[derive(Debug)]
 pub(crate) struct Scheduler {
-    pub sync_point_manager: Arc<SyncPointManager>,
+    pub sync_point_manager: SyncPointManager,
     driven: HashMap<ComponentPath, DrivenComponent, FxBuildHasher>,
     pub(crate) current_driven_time: Mutex<Period>,
     start_time: Period,
@@ -33,7 +33,7 @@ pub(crate) struct Scheduler {
 impl Scheduler {
     pub fn new() -> Self {
         Scheduler {
-            sync_point_manager: Arc::default(),
+            sync_point_manager: SyncPointManager::default(),
             driven: HashMap::default(),
             current_driven_time: Mutex::default(),
             start_time: Period::default(),

@@ -105,9 +105,16 @@ impl GraphicsRuntime for WebgpuGraphicsRuntime {
                 );
 
                 let command_buffer = encoder.finish();
-                let _submission_index = self.queue.submit([command_buffer]);
+                let submission_index = self.queue.submit([command_buffer]);
 
                 surface_texture.present();
+
+                self.device
+                    .poll(PollType::Wait {
+                        submission_index: Some(submission_index),
+                        timeout: None,
+                    })
+                    .unwrap();
 
                 for remove_texture_id in full_output.textures_delta.free {
                     tracing::trace!("Freeing egui texture {:?}", remove_texture_id);
@@ -120,7 +127,7 @@ impl GraphicsRuntime for WebgpuGraphicsRuntime {
         }
     }
 
-    fn present_machine(&mut self, machine: &Machine) {
+    fn present_machine(&mut self, machine: &Arc<Machine>) {
         match self.surface.get_current_texture() {
             Ok(surface_texture) => {
                 let surface_texture_size = surface_texture.texture.size();

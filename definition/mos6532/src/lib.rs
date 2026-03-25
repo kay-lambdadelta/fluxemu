@@ -8,7 +8,7 @@ use fluxemu_definition_memory::{InitialContents, MemoryConfig};
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
     RuntimeHandle,
-    component::{Component, ComponentConfig, LateContext, LateInitializedData},
+    component::{Component, ComponentConfig},
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::{
         Address, AddressSpaceId, MapTarget, MemoryError, MemoryErrorType, MemoryRemappingCommand,
@@ -51,7 +51,6 @@ pub struct Mos6532Riot {
     instat: AtomicU8,
     timer_configuration: Option<TimerConfiguration>,
     timestamp: Period,
-    runtime: Option<RuntimeHandle>,
     config: Mos6532RiotConfig,
 }
 
@@ -130,7 +129,7 @@ impl Component for Mos6532Riot {
                     self.swacnt = *buffer_section != 0;
 
                     if let Some(swacnt) = &self.config.swcha {
-                        let runtime = self.runtime.as_ref().unwrap().get();
+                        let runtime = RuntimeHandle::current();
                         let address = self.swcha_address();
 
                         let permissions = if self.swbcnt {
@@ -162,7 +161,7 @@ impl Component for Mos6532Riot {
                     self.swbcnt = *buffer_section != 0;
 
                     if let Some(swbcnt) = &self.config.swchb {
-                        let runtime = self.runtime.as_ref().unwrap().get();
+                        let runtime = RuntimeHandle::current();
                         let address = self.swchb_address();
 
                         let permissions = if self.swbcnt {
@@ -260,15 +259,6 @@ impl Component for Mos6532Riot {
 impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
     type Component = Mos6532Riot;
 
-    fn late_initialize(
-        component: &mut Self::Component,
-        data: &LateContext<P>,
-    ) -> LateInitializedData<P> {
-        component.runtime = Some(data.runtime_handle.clone());
-
-        LateInitializedData::default()
-    }
-
     fn build_component(
         self,
         component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
@@ -318,7 +308,6 @@ impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
             config: self,
             timer_configuration: None,
             timestamp: Period::default(),
-            runtime: None,
         })
     }
 }

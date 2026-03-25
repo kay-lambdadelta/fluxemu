@@ -20,7 +20,6 @@ pub struct Mapctl {
     config: MapctlConfig,
     status: MapctlStatus,
     my_path: ComponentPath,
-    runtime: Option<RuntimeHandle>,
 }
 
 impl Component for Mapctl {
@@ -42,7 +41,7 @@ impl Component for Mapctl {
         _address_space: AddressSpaceId,
         buffer: &[u8],
     ) -> Result<(), MemoryError> {
-        let runtime = self.runtime.as_ref().unwrap().get();
+        let runtime = RuntimeHandle::current();
 
         self.status = MapctlStatus::from_byte(buffer[0]);
 
@@ -108,11 +107,9 @@ impl<P: Platform> ComponentConfig<P> for MapctlConfig {
     type Component = Mapctl;
 
     fn late_initialize(
-        component: &mut Self::Component,
-        data: &LateContext<P>,
+        _component: &mut Self::Component,
+        _data: &LateContext<P>,
     ) -> LateInitializedData<P> {
-        component.runtime = Some(data.runtime_handle.clone());
-
         LateInitializedData::default()
     }
 
@@ -128,7 +125,6 @@ impl<P: Platform> ComponentConfig<P> for MapctlConfig {
             config: self,
             status: Default::default(),
             my_path,
-            runtime: None,
         })
     }
 }
