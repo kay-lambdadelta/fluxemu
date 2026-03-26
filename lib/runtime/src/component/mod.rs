@@ -79,7 +79,7 @@ pub trait Component: Send + Sync + Debug + Any {
         false
     }
 
-    fn handle_event(&mut self, event: Event) {}
+    fn handle_event(&mut self, name: &str, event: EventType) {}
 }
 
 #[allow(unused)]
@@ -139,13 +139,31 @@ fn denied_range(address: Address, len: usize) -> MemoryError {
     )
 }
 
-pub enum Event<'a> {
-    SyncPoint {
-        name: &'a str,
-    },
-    Input {
-        name: &'a str,
-        id: InputId,
-        state: InputState,
-    },
+#[derive(Debug)]
+pub enum EventType {
+    // Synchronization point, intended to force a component to be updated at a time
+    SyncPoint,
+    // Input event, for listening inputs
+    Input { id: InputId, state: InputState },
+    // Custom event, for sending custom data to components
+    Custom { data: Box<dyn EventImpl> },
 }
+
+impl EventType {
+    pub fn sync_point() -> Self {
+        Self::SyncPoint
+    }
+
+    pub fn input(id: InputId, state: InputState) -> Self {
+        Self::Input { id, state }
+    }
+
+    pub fn custom(data: impl EventImpl) -> Self {
+        Self::Custom {
+            data: Box::new(data),
+        }
+    }
+}
+
+pub trait EventImpl: Any + Send + Debug {}
+impl<T: Any + Send + Debug> EventImpl for T {}

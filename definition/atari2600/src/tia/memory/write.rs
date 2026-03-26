@@ -1,5 +1,9 @@
 use bitvec::{field::BitField, order::Msb0, slice::BitSlice, view::BitView};
-use fluxemu_runtime::{RuntimeHandle, scheduler::Period};
+use fluxemu_runtime::{
+    RuntimeHandle,
+    component::EventType,
+    scheduler::{EventRequeueMode, Period},
+};
 use nalgebra::Point2;
 
 use super::WriteRegisters;
@@ -85,12 +89,12 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
                 // The TIA runs 3 times as fast as the cpu
                 self.cpu_rdy.store(false);
 
-                let runtime = RuntimeHandle::current();
-
-                runtime.insert_sync_point(
+                RuntimeHandle::current().insert_event(
+                    WAKEUP_CPU_VIA_RDY,
                     self.timestamp + until,
                     self.framebuffer_path.parent().unwrap(),
-                    WAKEUP_CPU_VIA_RDY,
+                    EventRequeueMode::Once,
+                    EventType::sync_point(),
                 );
             }
             WriteRegisters::Rsync => {

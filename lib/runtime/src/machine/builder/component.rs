@@ -8,12 +8,12 @@ use fluxemu_input::InputId;
 use fluxemu_program::{ProgramManager, RomId};
 
 use crate::{
-    component::{Component, ComponentConfig, ComponentVersion, TypedComponentHandle},
+    component::{Component, ComponentConfig, ComponentVersion, EventType, TypedComponentHandle},
     input::{LogicalInputDevice, LogicalInputDeviceMetadata},
     machine::{
         builder::{
-            ComponentLateInitializer, MachineBuilder, MachineBuilderCommand, PartialSyncPoint,
-            RomRequirement, SchedulerParticipation,
+            ComponentLateInitializer, MachineBuilder, MachineBuilderCommand, RomRequirement,
+            SchedulerParticipation,
         },
         graphics::GraphicsRequirements,
         registry::ComponentRegistry,
@@ -21,7 +21,7 @@ use crate::{
     memory::{Address, AddressSpaceId, MapTarget, MemoryRemappingCommand, Permissions},
     path::{ComponentPath, ResourcePath},
     platform::Platform,
-    scheduler::{EventType, Frequency, Period, PreemptionSignal},
+    scheduler::{EventRequeueMode, Period, PreemptionSignal},
 };
 
 /// Overall data extracted from components needed for machine initialization
@@ -29,7 +29,6 @@ pub(super) struct ComponentData<'a, P: Platform> {
     pub audio_outputs: HashSet<ResourcePath>,
     pub late_initializer: ComponentLateInitializer<P>,
     pub scheduler_participation: SchedulerParticipation,
-    pub sync_points: Vec<PartialSyncPoint>,
     pub preemption_signal: Arc<PreemptionSignal>,
     pub save_version: Option<ComponentVersion>,
     pub snapshot_version: Option<ComponentVersion>,
@@ -47,7 +46,6 @@ impl<P: Platform> ComponentData<'_, P> {
                 B::late_initialize(component, data)
             }),
             scheduler_participation: SchedulerParticipation::None,
-            sync_points: Vec::default(),
             preemption_signal: Arc::default(),
             save_version: None,
             snapshot_version: None,
@@ -351,27 +349,23 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
         self
     }
 
-    pub fn insert_sync_point(self, time: Period, name: impl Into<Cow<'static, str>>) -> Self {
-        self.component_data.sync_points.push(PartialSyncPoint {
-            ty: EventType::Once,
-            time,
-            name: name.into(),
-        });
-
-        self
-    }
-
-    pub fn insert_sync_point_with_frequency(
+    pub fn insert_event(
         self,
-        time: Period,
-        frequency: Frequency,
         name: impl Into<Cow<'static, str>>,
+        time: Period,
+        target_path: &ComponentPath,
+        requeue_mode: EventRequeueMode,
+        ty: EventType,
     ) -> Self {
-        self.component_data.sync_points.push(PartialSyncPoint {
-            ty: EventType::Repeating { frequency },
-            time,
-            name: name.into(),
-        });
+        self.component_data
+            .local_commands
+            .push(MachineBuilderCommand::InsertEvent {
+                name: name.into(),
+                ty,
+                requeue_mode,
+                time,
+                path: target_path.clone(),
+            });
 
         self
     }

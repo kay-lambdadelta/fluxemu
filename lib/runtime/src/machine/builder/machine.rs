@@ -15,8 +15,8 @@ use crate::{
     machine::{
         Machine,
         builder::{
-            ComponentBuilder, ComponentData, MachineBuilderCommand, PartialSyncPoint,
-            RomRequirement, SchedulerParticipation, SealedMachineBuilder,
+            ComponentBuilder, ComponentData, MachineBuilderCommand, RomRequirement,
+            SchedulerParticipation, SealedMachineBuilder,
         },
         graphics::GraphicsRequirements,
         registry::ComponentRegistry,
@@ -412,15 +412,6 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
                         scheduler.register_driven_component(path, component_handle.clone());
                     }
 
-                    for PartialSyncPoint { ty, time, name } in data.sync_points {
-                        scheduler.sync_point_manager.queue(
-                            component_handle.clone(),
-                            time,
-                            ty,
-                            name,
-                        );
-                    }
-
                     // Append local commands to the start of the global queue
                     data.local_commands.reverse();
                     global_command_queue.extend(data.local_commands);
@@ -450,6 +441,19 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
                 }
                 MachineBuilderCommand::AddGraphicsRequirements { requirements } => {
                     graphics_requirements = graphics_requirements.clone() | requirements;
+                }
+                MachineBuilderCommand::InsertEvent {
+                    name,
+                    ty,
+                    requeue_mode,
+                    time,
+                    path,
+                } => {
+                    let component = registry.handle(&path).unwrap();
+
+                    scheduler
+                        .event_manager
+                        .queue(name, time, component, requeue_mode, ty);
                 }
             }
         }

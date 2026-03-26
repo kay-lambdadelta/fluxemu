@@ -4,6 +4,7 @@
 
 use std::{
     any::Any,
+    borrow::Cow,
     collections::{HashMap, HashSet},
     fmt::Debug,
     path::PathBuf,
@@ -18,14 +19,14 @@ use rustc_hash::FxBuildHasher;
 
 use crate::{
     RuntimeCurrentThreadContext,
-    component::{Component, ComponentHandle, Event, TypedComponentHandle},
+    component::{Component, ComponentHandle, EventType, TypedComponentHandle},
     input::LogicalInputDevice,
     machine::{builder::MachineBuilder, registry::ComponentRegistry},
     memory::{AddressSpace, AddressSpaceId},
     path::{ComponentPath, ResourcePath},
     persistence::{SaveManager, SnapshotManager},
     platform::{Platform, TestPlatform},
-    scheduler::{Period, PreemptionSignal, Scheduler},
+    scheduler::{EventRequeueMode, Period, PreemptionSignal, Scheduler},
 };
 
 /// Machine builder
@@ -186,19 +187,18 @@ impl Machine {
     ) {
         let logical_input_device = self.input_devices.get(path).unwrap();
 
-        // Insert the input into the state tracker and give the component an event
-        self.interact_dyn_mut(path.parent().unwrap(), |component| {
-            for (input_id, state) in inputs {
-                logical_input_device.set_state(input_id, state);
+        for (input_id, state) in inputs {
+            logical_input_device.set_state(input_id, state);
+            let component = self.component_handle(path.parent().unwrap()).unwrap();
 
-                component.handle_event(Event::Input {
-                    name: path.name(),
-                    id: input_id,
-                    state,
-                });
-            }
-        })
-        .unwrap();
+            self.scheduler.event_manager.queue(
+                Cow::Owned(path.name().to_string()),
+                self.now(),
+                component,
+                EventRequeueMode::Once,
+                EventType::input(input_id, state),
+            );
+        }
     }
 
     pub fn input_devices(&self) -> &HashMap<ResourcePath, Arc<LogicalInputDevice>, FxBuildHasher> {

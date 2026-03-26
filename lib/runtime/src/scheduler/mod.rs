@@ -1,16 +1,13 @@
-use std::{
-    collections::HashMap,
-    fmt::Debug,
-    sync::Mutex,
-};
+use std::{collections::HashMap, fmt::Debug, sync::Mutex};
 
+pub use event::EventRequeueMode;
+pub(crate) use event::{EventManager, PreemptionSignal};
 use fixed::{FixedU128, types::extra::U64};
 use rustc_hash::FxBuildHasher;
-pub(crate) use sync_point::{EventType, PreemptionSignal, SyncPointManager};
 
 use crate::{component::ComponentHandle, path::ComponentPath};
 
-pub(crate) mod sync_point;
+pub(crate) mod event;
 mod worker;
 
 #[derive(Debug)]
@@ -24,7 +21,7 @@ pub struct DrivenComponent {
 /// order execution stuff
 #[derive(Debug)]
 pub(crate) struct Scheduler {
-    pub sync_point_manager: SyncPointManager,
+    pub event_manager: EventManager,
     driven: HashMap<ComponentPath, DrivenComponent, FxBuildHasher>,
     pub(crate) current_driven_time: Mutex<Period>,
     start_time: Period,
@@ -33,7 +30,7 @@ pub(crate) struct Scheduler {
 impl Scheduler {
     pub fn new() -> Self {
         Scheduler {
-            sync_point_manager: SyncPointManager::default(),
+            event_manager: EventManager::default(),
             driven: HashMap::default(),
             current_driven_time: Mutex::default(),
             start_time: Period::default(),
@@ -69,7 +66,7 @@ pub type Frequency = FixedU128<U64>;
 
 #[derive(Debug)]
 pub struct SynchronizationContext<'a> {
-    pub(crate) event_manager: &'a SyncPointManager,
+    pub(crate) event_manager: &'a EventManager,
     pub(crate) updated_timestamp: &'a mut Period,
     pub(crate) target_timestamp: Period,
     pub(crate) last_attempted_allocation: &'a mut Option<Period>,

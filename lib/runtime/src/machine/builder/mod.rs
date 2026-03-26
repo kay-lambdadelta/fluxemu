@@ -1,14 +1,14 @@
 use std::{borrow::Cow, collections::HashMap, ops::DerefMut, sync::Arc};
 
 use crate::{
-    component::{Component, LateContext, LateInitializedData},
+    component::{Component, EventType, LateContext, LateInitializedData},
     graphics::GraphicsApi,
     input::LogicalInputDevice,
     machine::{Machine, graphics::GraphicsRequirements, registry::ComponentRegistry},
     memory::{AddressSpaceId, MemoryRemappingCommand},
     path::{ComponentPath, ResourcePath},
     platform::Platform,
-    scheduler::{EventType, Period},
+    scheduler::{EventRequeueMode, Period},
 };
 
 mod component;
@@ -38,12 +38,6 @@ pub enum RomRequirement {
     Required,
 }
 
-struct PartialSyncPoint {
-    ty: EventType,
-    time: Period,
-    name: Cow<'static, str>,
-}
-
 #[allow(type_alias_bounds)]
 type ComponentConstructor<'a, P: Platform> = Box<
     dyn for<'b> FnOnce(
@@ -63,6 +57,13 @@ enum MachineBuilderCommand<'a, P: Platform> {
     CreateAddressSpace {
         id: AddressSpaceId,
         width: u8,
+    },
+    InsertEvent {
+        name: Cow<'static, str>,
+        ty: EventType,
+        requeue_mode: EventRequeueMode,
+        time: Period,
+        path: ComponentPath,
     },
     MemoryMap {
         address_space: AddressSpaceId,

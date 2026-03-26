@@ -5,12 +5,12 @@ use guardian::ArcMutexGuardian;
 use rustc_hash::FxBuildHasher;
 
 use crate::{
-    component::{Component, ComponentHandle, HandleInner, TypedComponentHandle},
+    component::{Component, ComponentHandle, EventType, HandleInner, TypedComponentHandle},
     graphics::GraphicsApi,
     machine::Machine,
     memory::{AddressSpace, AddressSpaceId, MemoryRemappingCommand},
     path::{ComponentPath, ResourcePath},
-    scheduler::{EventType, Frequency, Period, SyncPointManager},
+    scheduler::{EventManager, EventRequeueMode, Period},
 };
 
 #[derive(Debug)]
@@ -28,37 +28,20 @@ impl RuntimeHandle {
         self.0.address_space(address_space_id)
     }
 
-    pub fn insert_sync_point(
+    pub fn insert_event(
         &self,
+        name: impl Into<Cow<'static, str>>,
         time: Period,
         target_path: &ComponentPath,
-        name: impl Into<Cow<'static, str>>,
+        requeue_mode: EventRequeueMode,
+        data: EventType,
     ) {
         let component = self.0.registry.handle(target_path).unwrap();
 
         self.0
             .scheduler
-            .sync_point_manager
-            .queue(component, time, EventType::Once, name.into());
-
-        self.interrupt_in_flight_synchronization();
-    }
-
-    pub fn insert_sync_point_with_frequency(
-        &self,
-        time: Period,
-        frequency: Frequency,
-        target_path: &ComponentPath,
-        name: impl Into<Cow<'static, str>>,
-    ) {
-        let component = self.0.registry.handle(target_path).unwrap();
-
-        self.0.scheduler.sync_point_manager.queue(
-            component,
-            time,
-            EventType::Repeating { frequency },
-            name.into(),
-        );
+            .event_manager
+            .queue(name.into(), time, component, requeue_mode, data);
 
         self.interrupt_in_flight_synchronization();
     }
@@ -148,8 +131,8 @@ impl RuntimeHandle {
         }
     }
 
-    pub(crate) fn sync_point_manager(&self) -> &SyncPointManager {
-        &self.0.scheduler.sync_point_manager
+    pub(crate) fn sync_point_manager(&self) -> &EventManager {
+        &self.0.scheduler.event_manager
     }
 }
 

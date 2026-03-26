@@ -14,13 +14,13 @@ use fluxemu_definition_mos6502::{Mos6502, NmiFlag, RdyFlag};
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
     RuntimeHandle,
-    component::{Component, ComponentConfig, Event, LateContext, LateInitializedData},
+    component::{Component, ComponentConfig, EventType, LateContext, LateInitializedData},
     graphics::software::Texture,
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::{Address, AddressSpaceCache, AddressSpaceId, MemoryError},
     path::{ComponentPath, ResourcePath},
     platform::Platform,
-    scheduler::{Period, SynchronizationContext},
+    scheduler::{EventRequeueMode, Period, SynchronizationContext},
 };
 use nalgebra::{Point2, Vector2};
 use palette::{Srgba, named::BLACK};
@@ -167,6 +167,8 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
         let vblank_end_from_initial_position =
             (Period::from_num(TOTAL_SCANLINE_LENGTH) * 261 + Period::from_num(1)) / frequency;
 
+        let my_path = component_builder.path().clone();
+
         component_builder
             .memory_map_component_write(
                 self.cpu_address_space,
@@ -206,17 +208,25 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
                 self.cpu_address_space,
                 CpuAccessibleRegister::OamDma as usize..=CpuAccessibleRegister::OamDma as usize,
             )
-            .insert_sync_point_with_frequency(
+            .insert_event(
                 // x: 1, y: 241
-                vblank_start_from_initial_position,
-                framerate,
                 VBLANK_START,
+                vblank_start_from_initial_position,
+                &my_path,
+                EventRequeueMode::Repeating {
+                    frequency: framerate,
+                },
+                EventType::sync_point(),
             )
-            .insert_sync_point_with_frequency(
+            .insert_event(
                 // x: 1, y: 261
-                vblank_end_from_initial_position,
-                framerate,
                 VBLANK_END,
+                vblank_end_from_initial_position,
+                &my_path,
+                EventRequeueMode::Repeating {
+                    frequency: framerate,
+                },
+                EventType::sync_point(),
             );
 
         let staging_buffer = Texture::new(
@@ -492,10 +502,12 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         self.timestamp + (processor_frequency.recip() * 514);
 
                     // Make sure we wake up eventually
-                    runtime.insert_sync_point(
+                    runtime.insert_event(
+                        WAKEUP_CPU_VIA_RDY,
                         next_processor_rdy_high,
                         self.framebuffer_path.parent().unwrap(),
-                        WAKEUP_CPU_VIA_RDY,
+                        EventRequeueMode::Once,
+                        EventType::sync_point(),
                     );
 
                     // Read off OAM data immediately, this is done for performance and should not
@@ -516,9 +528,9 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
         Ok(())
     }
 
-    fn handle_event(&mut self, event: Event) {
+    fn handle_event(&mut self, name: &str, event: EventType) {
         match event {
-            Event::SyncPoint { name, .. } => match name {
+            EventType::SyncPoint => match name {
                 VBLANK_START => {
                     self.state.entered_vblank.store(true, Ordering::Release);
 

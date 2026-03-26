@@ -14,7 +14,7 @@ use color::TiaColor;
 use fluxemu_definition_mos6502::RdyFlag;
 use fluxemu_runtime::{
     RuntimeHandle,
-    component::{Component, Event},
+    component::{Component, EventType},
     graphics::software::Texture,
     memory::{Address, AddressSpaceId, MemoryError},
     path::ResourcePath,
@@ -172,9 +172,9 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
         }
     }
 
-    fn handle_event(&mut self, event: Event) {
+    fn handle_event(&mut self, name: &str, event: EventType) {
         match event {
-            Event::SyncPoint { name } if name == WAKEUP_CPU_VIA_RDY => {
+            EventType::SyncPoint if name == WAKEUP_CPU_VIA_RDY => {
                 self.cpu_rdy.store(true);
             }
             _ => {
