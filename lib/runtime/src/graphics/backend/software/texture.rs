@@ -25,6 +25,16 @@ pub trait TextureImpl<T: Sized>: Index<Point2<usize>, Output = T> + Sized {
 
     fn as_view(&'_ self) -> TextureView<'_, T>;
     fn slice(&self, x: impl RangeBounds<usize>, y: impl RangeBounds<usize>) -> TextureView<'_, T>;
+
+    fn iter_pixels(&self, mut callback: impl FnMut(Point2<usize>, &T)) {
+        for y in 0..self.height() {
+            for x in 0..self.width() {
+                let point = Point2::new(x, y);
+
+                callback(point, &self[point]);
+            }
+        }
+    }
 }
 
 pub trait TextureImplMut<T: Sized>: TextureImpl<T> + IndexMut<Point2<usize>> {
@@ -127,6 +137,16 @@ pub trait TextureImplMut<T: Sized>: TextureImpl<T> + IndexMut<Point2<usize>> {
 
                 self[first_coord] = b;
                 self[second_coord] = a;
+            }
+        }
+    }
+
+    fn iter_pixels_mut(&mut self, mut callback: impl FnMut(Point2<usize>, &mut T)) {
+        for y in 0..self.height() {
+            for x in 0..self.width() {
+                let point = Point2::new(x, y);
+
+                callback(point, &mut self[point]);
             }
         }
     }

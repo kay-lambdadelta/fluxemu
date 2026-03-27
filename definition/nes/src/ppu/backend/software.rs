@@ -2,12 +2,15 @@ use std::fmt::Debug;
 
 use fluxemu_runtime::graphics::{
     GraphicsApi,
-    software::{Software, Texture, TextureImplMut},
+    software::{Software, Texture},
 };
-use palette::{Srgba, named::BLACK};
+use palette::named::BLACK;
 
 use super::{PpuDisplayBackend, SupportedGraphicsApiPpu};
-use crate::ppu::{VISIBLE_SCANLINE_LENGTH, region::Region};
+use crate::ppu::{
+    VISIBLE_SCANLINE_LENGTH, backend::convert_paletted_staging_buffer, color::PpuColorIndex,
+    region::Region,
+};
 
 pub struct SoftwareState;
 
@@ -36,10 +39,10 @@ impl<R: Region> PpuDisplayBackend<R> for SoftwareState {
 
     fn commit_staging_buffer(
         &mut self,
-        staging_buffer: &Texture<Srgba<u8>>,
+        staging_buffer: &Texture<PpuColorIndex>,
         framebuffer: &mut <Self::GraphicsApi as GraphicsApi>::Texture,
     ) {
-        framebuffer.copy_from(staging_buffer, .., ..);
+        convert_paletted_staging_buffer::<R>(staging_buffer, framebuffer);
     }
 }
 

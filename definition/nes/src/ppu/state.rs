@@ -5,7 +5,6 @@ use fluxemu_runtime::{
     scheduler::Period,
 };
 use nalgebra::{Point2, Vector2};
-use palette::Srgb;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
@@ -13,7 +12,7 @@ use crate::ppu::{
     ATTRIBUTE_BASE_ADDRESS, BACKGROUND_PALETTE_BASE_ADDRESS, BackgroundPipelineState,
     ColorEmphasis, NAMETABLE_BASE_ADDRESS, SPRITE_PALETTE_BASE_ADDRESS,
     background::{BackgroundState, SpritePipelineState},
-    color::PpuColor,
+    color::PpuColorIndex,
     oam::{CurrentlyRenderingSprite, OamSprite, OamState},
     region::Region,
 };
@@ -269,26 +268,19 @@ impl State {
         timestamp: Period,
         attribute: u8,
         color: u8,
-    ) -> Srgb<u8> {
+    ) -> PpuColorIndex {
         let color_bits = color & 0b11;
 
         // Combine into a 4-bit palette index
         let palette_index = color_bits | (attribute << 2);
 
-        let color_value: u8 = ppu_address_space
+        ppu_address_space
             .read_le_value(
                 BACKGROUND_PALETTE_BASE_ADDRESS + palette_index as usize,
                 timestamp,
                 Some(ppu_address_space_cache),
             )
-            .unwrap();
-
-        let color = PpuColor {
-            hue: color_value & 0b1111,
-            luminance: (color_value >> 4) & 0b11,
-        };
-
-        R::color_to_srgb(color)
+            .unwrap()
     }
 
     #[inline]
@@ -299,10 +291,10 @@ impl State {
         timestamp: Period,
         sprite: OamSprite,
         color: u8,
-    ) -> Srgb<u8> {
+    ) -> PpuColorIndex {
         let color_bits = color & 0b11;
 
-        let color_value: u8 = ppu_address_space
+        ppu_address_space
             .read_le_value(
                 SPRITE_PALETTE_BASE_ADDRESS
                     + (usize::from(sprite.palette_index) * 4)
@@ -310,14 +302,7 @@ impl State {
                 timestamp,
                 Some(ppu_address_space_cache),
             )
-            .unwrap();
-
-        let color = PpuColor {
-            hue: color_value & 0b1111,
-            luminance: (color_value >> 4) & 0b11,
-        };
-
-        R::color_to_srgb(color)
+            .unwrap()
     }
 }
 

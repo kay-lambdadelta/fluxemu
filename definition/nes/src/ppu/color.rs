@@ -1,9 +1,3 @@
-use serde::{Deserialize, Serialize};
+pub type PpuColorIndex = u8;
 
-#[derive(
-    Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default,
-)]
-pub struct PpuColor {
-    pub luminance: u8,
-    pub hue: u8,
-}
+pub const PPU_BLACK_INDEX: PpuColorIndex = 0x0f;

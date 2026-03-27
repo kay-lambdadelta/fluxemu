@@ -23,13 +23,13 @@ use fluxemu_runtime::{
     scheduler::{EventRequeueMode, Period, SynchronizationContext},
 };
 use nalgebra::{Point2, Vector2};
-use palette::{Srgba, named::BLACK};
 use serde::{Deserialize, Serialize};
 use strum::FromRepr;
 
 use crate::ppu::{
     backend::{PpuDisplayBackend, SupportedGraphicsApiPpu},
     background::{BackgroundPipelineState, BackgroundState, SpritePipelineState},
+    color::{PPU_BLACK_INDEX, PpuColorIndex},
     oam::{OamSprite, OamState, SpriteEvaluationState},
     region::Region,
     state::{State, VramAddressPointerContents},
@@ -103,7 +103,7 @@ pub struct Ppu<R: Region, G: SupportedGraphicsApiPpu> {
     processor_nmi: Arc<NmiFlag>,
     ppu_address_space_cache: Option<AddressSpaceCache>,
     framebuffer_path: ResourcePath,
-    staging_buffer: Texture<Srgba<u8>>,
+    staging_buffer: Texture<PpuColorIndex>,
     timestamp: Period,
     period: Period,
 }
@@ -232,7 +232,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
         let staging_buffer = Texture::new(
             VISIBLE_SCANLINE_LENGTH as usize,
             R::VISIBLE_SCANLINES as usize,
-            BLACK.into(),
+            PPU_BLACK_INDEX,
         );
 
         Ok(Ppu {
@@ -623,7 +623,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         self.timestamp,
                     );
 
-                    let mut sprite_pixel = None;
+                    let mut sprite_color_index = None;
 
                     let potential_sprite = self
                         .state
@@ -657,7 +657,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         });
 
                     if let Some((sprite, color_index)) = potential_sprite {
-                        sprite_pixel = Some(self.state.calculate_sprite_color::<R>(
+                        sprite_color_index = Some(self.state.calculate_sprite_color::<R>(
                             ppu_address_space,
                             self.ppu_address_space_cache.as_mut().unwrap(),
                             self.timestamp,
@@ -685,7 +685,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     self.state.background.pattern_low_shift <<= 1;
                     self.state.background.pattern_high_shift <<= 1;
 
-                    let background_pixel = self.state.calculate_background_color::<R>(
+                    let background_color_index = self.state.calculate_background_color::<R>(
                         ppu_address_space,
                         self.ppu_address_space_cache.as_mut().unwrap(),
                         self.timestamp,
@@ -693,21 +693,21 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         color_index as u8,
                     );
 
-                    let pixel = if self.state.oam.rendering_enabled {
-                        sprite_pixel
+                    let color_index = if self.state.oam.rendering_enabled {
+                        sprite_color_index
                     } else {
                         None
                     }
                     .or(if self.state.background.rendering_enabled {
-                        Some(background_pixel)
+                        Some(background_color_index)
                     } else {
                         None
                     })
-                    .unwrap_or(BLACK);
+                    .unwrap_or(PPU_BLACK_INDEX);
 
                     let point = Point2::new(scanline_position_x, self.state.cycle_counter.y);
 
-                    self.staging_buffer[point.cast()] = pixel.into();
+                    self.staging_buffer[point.cast()] = color_index;
                 }
 
                 if let 65..=256 = self.state.cycle_counter.x {
