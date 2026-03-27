@@ -13,9 +13,9 @@ arc-swap = { workspace = true }
 bytemuck = { workspace = true }
 clap = { workspace = true }
 cpal = "0.17"
-egui = "0.33"
-egui-wgpu = { version = "0.33", optional = true }
-egui-winit = "0.33"
+egui = { workspace = true }
+egui-wgpu = { version = "0.34", optional = true }
+egui-winit = "0.34"
 fluxemu-audio = { workspace = true }
 fluxemu-definition-atari2600 = { workspace = true }
 fluxemu-definition-atarilynx = { workspace = true }

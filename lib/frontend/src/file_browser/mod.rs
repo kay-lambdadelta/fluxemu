@@ -7,6 +7,12 @@ use std::{
 };
 
 use egui::{Align, Button, ComboBox, Frame, Layout, ScrollArea, Stroke, TextEdit, TextWrapMode};
+#[cfg(any(target_family = "unix", target_os = "windows", target_arch = "wasm32"))]
+use egui_material_icons::icons::ICON_OPEN_IN_NEW;
+use egui_material_icons::icons::{
+    ICON_ARROW_DOWNWARD, ICON_ARROW_UPWARD, ICON_DIRECTORY_SYNC, ICON_EDIT, ICON_FOLDER_OPEN,
+    ICON_LOCK, ICON_VISIBILITY,
+};
 use indexmap::IndexMap;
 use palette::{
     WithAlpha,
@@ -80,7 +86,7 @@ impl<P: FrontendPlatform> Frontend<P> {
         ui.horizontal_top(|ui| {
             #[cfg(any(target_family = "unix", target_os = "windows", target_arch = "wasm32"))]
             if ui
-                .button(egui_phosphor::regular::UPLOAD_SIMPLE)
+                .button(ICON_OPEN_IN_NEW)
                 .on_hover_text("Open native file picker")
                 .clicked()
                 && self.native_file_picker_dialog_job.is_none()
@@ -111,7 +117,7 @@ impl<P: FrontendPlatform> Frontend<P> {
                     ui.add_space(2.0);
 
                     if ui
-                        .button(egui_phosphor::regular::PENCIL)
+                        .button(ICON_EDIT)
                         .on_hover_text("Manually edit path bar")
                         .clicked()
                     {
@@ -148,7 +154,7 @@ impl<P: FrontendPlatform> Frontend<P> {
 
         ui.horizontal_top(|ui| {
             if ui
-                .button(egui_phosphor::regular::ARROWS_CLOCKWISE)
+                .button(ICON_DIRECTORY_SYNC)
                 .on_hover_text("Refresh file browser file listings")
                 .clicked()
                 && let PathBarState::Normal(path) = &pathbar_state
@@ -160,9 +166,9 @@ impl<P: FrontendPlatform> Frontend<P> {
 
             if ui
                 .button(if *reverse_sorting {
-                    egui_phosphor::regular::ARROW_UP
+                    ICON_ARROW_UPWARD
                 } else {
-                    egui_phosphor::regular::ARROW_DOWN
+                    ICON_ARROW_DOWNWARD
                 })
                 .on_hover_text("Toggle sort order")
                 .clicked()
@@ -179,7 +185,7 @@ impl<P: FrontendPlatform> Frontend<P> {
                 .response
                 .on_hover_text("Swap the file browser sorting method");
 
-            ui.toggle_value(show_hidden, egui_phosphor::regular::EYE_CLOSED)
+            ui.toggle_value(show_hidden, ICON_VISIBILITY)
                 .on_hover_text("Toggle hidden file visiblity");
 
             if old_settings != (*sorting_method, *reverse_sorting, *show_hidden) {
@@ -216,9 +222,9 @@ impl<P: FrontendPlatform> Frontend<P> {
                         }
 
                         let label = if *is_directory {
-                            format!("{} {}", egui_phosphor::regular::FOLDER_OPEN, name_str)
+                            format!("{} {}", ICON_FOLDER_OPEN.codepoint, name_str)
                         } else if !*readable {
-                            format!("{} {}", name_str, egui_phosphor::regular::LOCK)
+                            format!("{} {}", name_str, ICON_LOCK.codepoint)
                         } else {
                             name_str.to_string()
                         };

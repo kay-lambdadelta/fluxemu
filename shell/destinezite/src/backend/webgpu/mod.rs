@@ -17,10 +17,10 @@ use wgpu::{
     BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingResource, BindingType, BlendState, Buffer, BufferBindingType,
     BufferDescriptor, BufferUsages, ColorTargetState, ColorWrites, CommandEncoderDescriptor,
-    CompositeAlphaMode, Device, DeviceDescriptor, ExperimentalFeatures, FilterMode, FragmentState,
-    Instance, InstanceDescriptor, LoadOp, MemoryHints, MultisampleState, Operations,
-    PipelineCompilationOptions, PipelineLayoutDescriptor, PollType, PresentMode, PrimitiveState,
-    Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
+    CompositeAlphaMode, CurrentSurfaceTexture, Device, DeviceDescriptor, ExperimentalFeatures,
+    FilterMode, FragmentState, Instance, InstanceDescriptor, LoadOp, MemoryHints, MultisampleState,
+    Operations, PipelineCompilationOptions, PipelineLayoutDescriptor, PollType, PresentMode,
+    PrimitiveState, Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
     RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor,
     ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, Surface, SurfaceConfiguration,
     TextureSampleType, TextureUsages, TextureViewDescriptor, TextureViewDimension, Trace,
@@ -50,7 +50,7 @@ impl GraphicsRuntime for WebgpuGraphicsRuntime {
         let primitives = context.tessellate(full_output.shapes, full_output.pixels_per_point);
 
         match self.surface.get_current_texture() {
-            Ok(surface_texture) => {
+            CurrentSurfaceTexture::Success(surface_texture) => {
                 let surface_texture_size = surface_texture.texture.size();
                 let surface_texture_view = surface_texture
                     .texture
@@ -96,6 +96,7 @@ impl GraphicsRuntime for WebgpuGraphicsRuntime {
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
+                    multiview_mask: None,
                 });
 
                 self.renderer.render(
@@ -121,7 +122,7 @@ impl GraphicsRuntime for WebgpuGraphicsRuntime {
                     self.renderer.free_texture(&remove_texture_id);
                 }
             }
-            Err(_) => {
+            _ => {
                 self.refresh_surface();
             }
         }
@@ -129,7 +130,7 @@ impl GraphicsRuntime for WebgpuGraphicsRuntime {
 
     fn present_machine(&mut self, machine: &Arc<Machine>) {
         match self.surface.get_current_texture() {
-            Ok(surface_texture) => {
+            CurrentSurfaceTexture::Success(surface_texture) => {
                 let surface_texture_size = surface_texture.texture.size();
                 let surface_texture_view = surface_texture
                     .texture
@@ -153,6 +154,7 @@ impl GraphicsRuntime for WebgpuGraphicsRuntime {
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
+                    multiview_mask: None,
                 });
 
                 render_pass.set_pipeline(&self.pipeline);
@@ -226,7 +228,7 @@ impl GraphicsRuntime for WebgpuGraphicsRuntime {
                 // Allow those display components to continue again
                 drop(used_framebuffer_guards);
             }
-            Err(_) => {
+            _ => {
                 self.refresh_surface();
             }
         }
@@ -266,7 +268,9 @@ impl WinitCompatibleGraphicsRuntime for WebgpuGraphicsRuntime {
     fn new(window: Arc<Window>, requirements: GraphicsRequirements<Self::GraphicsApi>) -> Self {
         let window_size = window.inner_size();
 
-        let instance = Instance::new(&InstanceDescriptor::from_env_or_default());
+        let instance = Instance::new(InstanceDescriptor::new_with_display_handle_from_env(
+            Box::new(window.clone()),
+        ));
 
         let surface = instance.create_surface(window.clone()).unwrap();
 
@@ -369,8 +373,8 @@ impl WinitCompatibleGraphicsRuntime for WebgpuGraphicsRuntime {
 
         let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
             label: None,
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bind_group_layout)],
+            immediate_size: 0,
         });
 
         let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
@@ -395,7 +399,7 @@ impl WinitCompatibleGraphicsRuntime for WebgpuGraphicsRuntime {
             primitive: PrimitiveState::default(),
             depth_stencil: None,
             multisample: MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 

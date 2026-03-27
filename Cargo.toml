@@ -12,7 +12,7 @@ cfg-if = "1.0"
 clap = { version = "4.6", features = ["derive"] }
 criterion = "0.8"
 data-encoding = "2.10"
-egui = "0.33"
+egui = "0.34"
 fixed = { version = "1.30", features = ["num-traits", "serde"] }
 fluxemu-audio = { path = "lib/audio" }
 fluxemu-definition-atari2600 = { path = "definition/atari2600" }
@@ -60,7 +60,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1.22", features = ["serde", "v4"] }
 versions = "7.0"
-wgpu = "27.0"
+wgpu = "29.0"
 
 [profile.bench]
 debug = true

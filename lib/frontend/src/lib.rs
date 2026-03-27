@@ -9,7 +9,6 @@ mod machine_thread;
 mod platform;
 mod settings;
 
-#[cfg(any(target_family = "unix", target_os = "windows", target_arch = "wasm32"))]
 use std::thread::JoinHandle;
 use std::{
     collections::HashMap,
@@ -19,10 +18,14 @@ use std::{
 
 pub use backend::*;
 use egui::{
-    CentralPanel, Color32, ComboBox, Context, FontDefinitions, FontFamily, Frame, FullOutput, Id,
-    Modal, RawInput, RichText, TextEdit, TextStyle, TopBottomPanel,
+    CentralPanel, Color32, ComboBox, Context, FontFamily, Frame, FullOutput, Id, Modal, Panel,
+    RawInput, RichText, TextEdit, TextStyle,
 };
 use egui_extras::{Column, TableBuilder};
+use egui_material_icons::MaterialIcon;
+use egui_material_icons::icons::{
+    ICON_FOLDER, ICON_GAMEPAD, ICON_INFO, ICON_SETTINGS, ICON_VIDEO_LIBRARY,
+};
 use fluxemu_environment::{Environment, input::PhysicalGamepadConfiguration};
 use fluxemu_input::{
     InputId, InputState,
@@ -61,13 +64,13 @@ pub enum TabId {
 }
 
 impl TabId {
-    fn icon(self) -> &'static str {
+    fn icon(self) -> MaterialIcon {
         match self {
-            Self::FileBrowser => egui_phosphor::regular::FOLDERS,
-            Self::Library => egui_phosphor::regular::BOOK,
-            Self::Settings => egui_phosphor::regular::GEAR,
-            Self::Controller => egui_phosphor::regular::GAME_CONTROLLER,
-            Self::About => egui_phosphor::regular::INFO,
+            Self::FileBrowser => ICON_FOLDER,
+            Self::Library => ICON_VIDEO_LIBRARY,
+            Self::Settings => ICON_SETTINGS,
+            Self::Controller => ICON_GAMEPAD,
+            Self::About => ICON_INFO,
         }
     }
 }
@@ -469,15 +472,15 @@ impl<P: FrontendPlatform> Frontend<P> {
     }
 
     pub fn run_menu(&mut self, external_input: RawInput) -> FullOutput {
-        self.egui_context.clone().run(external_input, |ctx| {
+        self.egui_context.clone().run_ui(external_input, |ctx| {
             if let Some(machine_initialization_step) = self.machine_initialization_step.take() {
                 self.service_machine_initialization_step(machine_initialization_step);
             }
 
-            TopBottomPanel::top("menu_selection")
+            Panel::top("menu_selection")
                 .resizable(false)
-                .min_height(50.0)
-                .show(ctx, |ui| {
+                .min_size(50.0)
+                .show_inside(ctx, |ui| {
                     ui.horizontal(|ui| {
                         for tab in TabId::iter() {
                             let mut item_icon = RichText::new(tab.icon()).size(32.0);
@@ -493,7 +496,7 @@ impl<P: FrontendPlatform> Frontend<P> {
                     });
                 });
 
-            CentralPanel::default().show(ctx, |ui| {
+            CentralPanel::default().show_inside(ctx, |ui| {
                 ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
                     Frame::new()
                         .inner_margin(10.0)
@@ -619,11 +622,9 @@ fn specification_fillout_clarification_modal(
 
 fn setup_egui_context() -> Context {
     let egui_context = Context::default();
-    let mut fonts = FontDefinitions::default();
-    egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
-    egui_context.set_fonts(fonts);
+    egui_material_icons::initialize(&egui_context);
 
-    egui_context.style_mut(|style| {
+    egui_context.global_style_mut(|style| {
         style.text_styles.insert(
             TextStyle::Body,
             egui::FontId::new(18.0, FontFamily::Proportional),
