@@ -8,7 +8,9 @@ license = "GPL-3.0-or-later"
 byte-unit = "5.2"
 egui = { workspace = true }
 egui_extras = "0.34"
-egui_material_icons = "0.6"
+egui_material_icons = { version = "0.6", default-features = false, features = [
+  "filled"
+] }
 fluxemu-environment = { workspace = true }
 fluxemu-input = { workspace = true }
 fluxemu-program = { workspace = true }
