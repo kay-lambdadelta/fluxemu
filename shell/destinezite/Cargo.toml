@@ -22,9 +22,10 @@ fluxemu-definition-atarilynx = { workspace = true }
 fluxemu-definition-chip8 = { workspace = true }
 fluxemu-definition-nes = { workspace = true }
 fluxemu-environment = { workspace = true }
-fluxemu-frontend = { workspace = true }
+fluxemu-frontend = { workspace = true, features = ["external-file-dialog"] }
 fluxemu-input = { workspace = true }
-fluxemu-program = { workspace = true }
+# Any platform this crate supports will have memmap or at least won't have compile errors if it doesn't work
+fluxemu-program = { workspace = true, features = ["mmap"] }
 fluxemu-runtime = { workspace = true, features = ["std"] }
 gilrs = "0.11"
 itertools = { workspace = true }

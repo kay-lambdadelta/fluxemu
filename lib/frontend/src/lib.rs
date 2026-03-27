@@ -125,7 +125,7 @@ pub struct Frontend<P: FrontendPlatform> {
     file_browser: FileBrowserState,
     machine_initialization_step: Option<MachineInitializationStep<P>>,
 
-    #[cfg(any(target_family = "unix", target_os = "windows"))]
+    #[cfg(feature = "external-file-dialog")]
     native_file_picker_dialog_job: Option<JoinHandle<Option<rfd::FileHandle>>>,
 }
 
@@ -160,6 +160,7 @@ impl<P: FrontendPlatform> Frontend<P> {
             current_tab: TabId::Library,
             physical_input_devices: HashMap::default(),
             egui_context: setup_egui_context(),
+            #[cfg(feature = "external-file-dialog")]
             native_file_picker_dialog_job: None,
             machine_initialization_step: initial_program_initialization_step,
         }

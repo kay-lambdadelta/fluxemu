@@ -22,6 +22,7 @@ nalgebra = { workspace = true }
 num = { workspace = true }
 palette = { workspace = true }
 pollster = { workspace = true }
+rfd = { version = "0.17", optional = true }
 ringbuffer = { workspace = true }
 ron = { workspace = true }
 rustc-hash = { workspace = true }
@@ -34,10 +35,8 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 versions = { workspace = true }
 
-[target.'cfg(any(target_family = "unix", target_os = "windows", target_arch = "wasm32"))'.dependencies]
-rfd = "0.17"
-
 [features]
+external-file-dialog = ["dep:rfd"]
 webgpu = [
   "fluxemu-runtime/webgpu",
 ]

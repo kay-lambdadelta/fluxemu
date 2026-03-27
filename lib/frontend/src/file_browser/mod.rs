@@ -7,8 +7,6 @@ use std::{
 };
 
 use egui::{Align, Button, ComboBox, Frame, Layout, ScrollArea, Stroke, TextEdit, TextWrapMode};
-#[cfg(any(target_family = "unix", target_os = "windows", target_arch = "wasm32"))]
-use egui_material_icons::icons::ICON_OPEN_IN_NEW;
 use egui_material_icons::icons::{
     ICON_ARROW_DOWNWARD, ICON_ARROW_UPWARD, ICON_DIRECTORY_SYNC, ICON_EDIT, ICON_FOLDER_OPEN,
     ICON_LOCK, ICON_VISIBILITY,
@@ -84,9 +82,9 @@ impl<P: FrontendPlatform> Frontend<P> {
         } = &mut self.file_browser;
 
         ui.horizontal_top(|ui| {
-            #[cfg(any(target_family = "unix", target_os = "windows", target_arch = "wasm32"))]
+            #[cfg(feature = "external-file-dialog")]
             if ui
-                .button(ICON_OPEN_IN_NEW)
+                .button(egui_material_icons::icons::ICON_OPEN_IN_NEW)
                 .on_hover_text("Open native file picker")
                 .clicked()
                 && self.native_file_picker_dialog_job.is_none()

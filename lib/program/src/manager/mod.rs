@@ -73,26 +73,8 @@ impl ProgramManager {
 
     pub fn register_external(&self, path: impl AsRef<Path>) -> Result<RomId, Error> {
         let path = path.as_ref();
-
-        #[allow(unused_mut)]
-        let mut rom_file = File::open(path)?;
-
-        // Memmap the file on supported platforms
-        #[cfg(any(target_family = "unix", target_os = "windows"))]
-        let rom_bytes = {
-            use memmap2::Mmap;
-            let rom_bytes = unsafe { Mmap::map(&rom_file) }?;
-
-            Bytes::from_owner(rom_bytes)
-        };
-
-        #[cfg(not(any(target_family = "unix", target_os = "windows")))]
-        let rom_bytes = {
-            let mut rom_bytes = Vec::new();
-            rom_file.read_to_end(&mut rom_bytes).await?;
-
-            Bytes::from(rom_bytes)
-        };
+        let rom_file = File::open(path)?;
+        let rom_bytes = load_rom_bytes(rom_file)?;
 
         // Find the ID of the rom
         let mut hasher = Sha1::new();
@@ -240,12 +222,14 @@ impl ProgramManager {
 }
 
 fn load_rom_bytes(mut rom_file: File) -> Result<Bytes, Error> {
-    #[cfg(any(target_os = "windows", target_family = "unix"))]
+    #[cfg(feature = "mmap")]
     {
         use memmap2::Mmap;
 
         if let Ok(buffer) = unsafe { Mmap::map(&rom_file) } {
             return Ok(Bytes::from_owner(buffer));
+        } else {
+            tracing::warn!("Failed to memory-map ROM file, falling back to loading into memory");
         }
     }
 
