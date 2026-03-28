@@ -269,7 +269,9 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                         });
                 }
 
-                self.state.execution_state = ExecutionState::AwaitingVsync;
+                if self.config.stall_on_draw_until_vsync {
+                    self.state.execution_state = ExecutionState::AwaitingVsync;
+                }
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Skpr { key }) => {
                 let key = Chip8KeyCode(self.state.registers.work_registers[key as usize]);

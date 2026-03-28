@@ -41,7 +41,7 @@ struct Snapshot {
 pub struct Chip8Display<G: SupportedGraphicsApiChip8Display> {
     backend: Option<G::Backend>,
     /// The cpu reads this to see if it can continue execution post draw call
-    pub vsync_occurred: bool,
+    vsync_occurred: bool,
     staging_buffer: Texture<Srgba<u8>>,
     hires: bool,
     framebuffer_path: ResourcePath,
@@ -49,6 +49,10 @@ pub struct Chip8Display<G: SupportedGraphicsApiChip8Display> {
 }
 
 impl<G: SupportedGraphicsApiChip8Display> Chip8Display<G> {
+    pub fn vsync_occurred(&self) -> bool {
+        self.vsync_occurred
+    }
+
     pub fn set_hires(&mut self, is_hires: bool) {
         if self.config.clear_on_resolution_change {
             self.clear_display();

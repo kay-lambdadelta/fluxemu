@@ -210,7 +210,7 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
                     ExecutionState::AwaitingVsync => {
                         let vsync_occured = self
                             .display
-                            .interact(self.timestamp, |component| component.vsync_occurred);
+                            .interact(self.timestamp, |component| component.vsync_occurred());
 
                         if vsync_occured {
                             self.state.execution_state = ExecutionState::Normal;
@@ -239,6 +239,7 @@ pub struct Chip8ProcessorConfig<G: SupportedGraphicsApiChip8Display> {
     pub frequency: Frequency,
     pub force_mode: Option<Chip8Mode>,
     pub always_shr_in_place: bool,
+    pub stall_on_draw_until_vsync: bool,
     pub _phantom: PhantomData<fn() -> G>,
 }
 

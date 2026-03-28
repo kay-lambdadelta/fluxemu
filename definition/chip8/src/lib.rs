@@ -42,7 +42,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> MachineFactory<
         let (machine, audio) = machine.component(
             "audio",
             Chip8AudioConfig {
-                processor_frequency: Frequency::from_num(1000),
+                processor_frequency: Frequency::from_num(600),
             },
         );
         let (machine, display) = machine.default_component::<Chip8DisplayConfig>("display");
@@ -56,6 +56,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> MachineFactory<
                 frequency: Frequency::from_num(1000),
                 force_mode: None,
                 always_shr_in_place: false,
+                stall_on_draw_until_vsync: false,
                 _phantom: PhantomData,
             },
         );
