@@ -1,4 +1,3 @@
-use bitvec::{field::BitField, prelude::Lsb0, view::BitView};
 use fluxemu_runtime::{
     RuntimeHandle,
     component::{Component, ComponentConfig, LateContext, LateInitializedData},
@@ -140,35 +139,23 @@ pub struct MapctlStatus {
 }
 
 impl MapctlStatus {
-    /// Load from a single byte (bit 0 = suzy, bit 1 = mikey, etc.)
     pub fn from_byte(byte: u8) -> Self {
-        let byte = byte.view_bits::<Lsb0>();
-
         Self {
-            suzy: byte[0],
-            mikey: byte[1],
-            rom: byte[2],
-            vector: byte[3],
-            reserved: byte[4..7].load::<u8>(),
-            sequential_disable: byte[7],
+            suzy: byte & 0b0000_0001 != 0,
+            mikey: byte & 0b0000_0010 != 0,
+            rom: byte & 0b0000_0100 != 0,
+            vector: byte & 0b0000_1000 != 0,
+            reserved: (byte & 0b0111_0000) >> 4,
+            sequential_disable: byte & 0b1000_0000 != 0,
         }
     }
 
-    /// Convert back into a packed byte
     pub fn to_byte(self) -> u8 {
-        let mut byte = 0u8;
-
-        {
-            let byte = byte.view_bits_mut::<Lsb0>();
-
-            byte.set(0, self.suzy);
-            byte.set(1, self.mikey);
-            byte.set(2, self.rom);
-            byte.set(3, self.vector);
-            byte[4..7].copy_from_bitslice(&self.reserved.view_bits::<Lsb0>()[0..3]);
-            byte.set(7, self.sequential_disable);
-        }
-
-        byte
+        (self.suzy as u8)
+            | (self.mikey as u8) << 1
+            | (self.rom as u8) << 2
+            | (self.vector as u8) << 3
+            | (self.reserved & 0b0000_0111) << 4
+            | (self.sequential_disable as u8) << 7
     }
 }

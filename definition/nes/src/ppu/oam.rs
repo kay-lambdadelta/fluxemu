@@ -1,5 +1,4 @@
 use arrayvec::ArrayVec;
-use bitvec::{field::BitField, order::Lsb0, view::BitView};
 use nalgebra::{Point2, Vector2};
 use serde::{Deserialize, Serialize};
 use serde_with::{Bytes, serde_as};
@@ -16,12 +15,14 @@ pub struct OamSprite {
 impl OamSprite {
     pub fn from_bytes(bytes: [u8; 4]) -> Self {
         let position = Point2::new(bytes[3], bytes[0]);
-        let tile_index = bytes[1];
 
-        let attribute_bits = bytes[2].view_bits::<Lsb0>();
-        let palette_index = attribute_bits[0..=1].load::<u8>();
-        let priority = attribute_bits[5];
-        let flip = Vector2::new(attribute_bits[6], attribute_bits[7]);
+        let tile_index = bytes[1];
+        let attributes = bytes[2];
+
+        let palette_index = attributes & 0b0000_0011;
+        let priority = attributes & 0b0010_0000 != 0;
+
+        let flip = Vector2::new(attributes & 0b0100_0000 != 0, attributes & 0b1000_0000 != 0);
 
         OamSprite {
             position,
@@ -37,15 +38,11 @@ impl OamSprite {
         let mut bytes = [0; 4];
         bytes[0] = self.position.y;
         bytes[1] = self.tile_index;
-        bytes[3] = self.position.y;
-
-        let attribute_bits = bytes[2].view_bits_mut::<Lsb0>();
-
-        attribute_bits[0..=1].store(self.palette_index);
-        attribute_bits.set(5, self.behind_background);
-        attribute_bits.set(6, self.flip.x);
-        attribute_bits.set(7, self.flip.y);
-
+        bytes[3] = self.position.x;
+        bytes[2] = (self.palette_index & 0b0000_0011)
+            | (self.behind_background as u8) << 5
+            | (self.flip.x as u8) << 6
+            | (self.flip.y as u8) << 7;
         bytes
     }
 }

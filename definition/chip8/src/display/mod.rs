@@ -4,7 +4,6 @@ use std::{
     io::{Read, Write},
 };
 
-use bitvec::{order::Msb0, view::BitView};
 use fluxemu_runtime::{
     RuntimeHandle,
     component::{Component, ComponentConfig, ComponentVersion, LateContext, LateInitializedData},
@@ -73,8 +72,12 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Display<G> {
 
         let mut hit_detection = false;
 
-        for (y, sprite_row) in sprite.view_bits::<Msb0>().chunks(16).enumerate() {
-            for (x, sprite_pixel) in sprite_row.iter().enumerate() {
+        for (y, sprite_row) in sprite.chunks(2).enumerate() {
+            let row_bits = u16::from_be_bytes([sprite_row[0], sprite_row[1]]);
+
+            for x in 0..16 {
+                let sprite_pixel = row_bits & (1 << (15 - x)) != 0;
+
                 let position = position + Vector2::new(x, y);
 
                 if position.x >= screen_size.x as usize || position.y >= screen_size.y as usize {
@@ -82,12 +85,11 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Display<G> {
                 }
 
                 let old_sprite_pixel = self.staging_buffer[position] != BLACK.into();
-
-                if *sprite_pixel && old_sprite_pixel {
+                if sprite_pixel && old_sprite_pixel {
                     hit_detection = true;
                 }
 
-                self.staging_buffer[position] = if *sprite_pixel ^ old_sprite_pixel {
+                self.staging_buffer[position] = if sprite_pixel ^ old_sprite_pixel {
                     WHITE
                 } else {
                     BLACK
@@ -117,21 +119,21 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Display<G> {
         }
         let mut hit_detection = false;
 
-        for (y, sprite_row) in sprite.view_bits::<Msb0>().chunks(8).enumerate() {
-            for (x, sprite_pixel) in sprite_row.iter().enumerate() {
-                let position = position + Vector2::new(x, y);
+        for (y, sprite_byte) in sprite.iter().enumerate() {
+            for x in 0..8 {
+                let sprite_pixel = sprite_byte & (1 << (7 - x)) != 0;
 
+                let position = position + Vector2::new(x, y);
                 if position.x >= screen_size.x as usize || position.y >= screen_size.y as usize {
                     continue;
                 }
 
                 let old_sprite_pixel = self.staging_buffer[position] != BLACK.into();
-
-                if *sprite_pixel && old_sprite_pixel {
+                if sprite_pixel && old_sprite_pixel {
                     hit_detection = true;
                 }
 
-                self.staging_buffer[position] = if *sprite_pixel ^ old_sprite_pixel {
+                self.staging_buffer[position] = if sprite_pixel ^ old_sprite_pixel {
                     WHITE
                 } else {
                     BLACK

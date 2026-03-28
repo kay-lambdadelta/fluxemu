@@ -1,6 +1,6 @@
-use std::{collections::HashMap, fmt::Debug, ops::RangeInclusive};
+use std::{collections::HashMap, fmt::Debug, io::Cursor, ops::RangeInclusive};
 
-use bitvec::{field::BitField, prelude::Msb0, ptr::BitSpanError, view::BitView};
+use bitstream_io::{BigEndian, BitRead2, BitReader};
 use expansion_device::DefaultExpansionDevice;
 use thiserror::Error;
 
@@ -12,8 +12,6 @@ pub const HEADER_SIZE: usize = 16;
 
 #[derive(Error, Debug)]
 pub enum ParsingError {
-    #[error("Bitvec error: {0:#?}")]
-    BitvecError(#[from] BitSpanError<u8>),
     #[error("Bad magic {bytes:?}")]
     BadMagic { bytes: [u8; 4] },
     #[error("Bad version {version}")]
@@ -24,6 +22,8 @@ pub enum ParsingError {
     DisagreeingNonVolatileMemory,
     #[error("Not enough bytes left to be valid")]
     EarlyEOF,
+    #[error("IO error")]
+    Io(#[from] std::io::Error),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -83,126 +83,82 @@ impl INes {
                 bytes: bytes[0..4].try_into().unwrap(),
             });
         }
-        let bytes = &bytes[4..];
 
-        let mut remaining = bytes.try_view_bits::<Msb0>()?;
+        let total_bits = bytes[4..].len() * u8::BITS as usize;
 
-        let mut prg_bank_count = remaining[0..8].load::<u16>();
-        remaining = &remaining[8..];
+        let mut reader = BitReader::endian(Cursor::new(&bytes[4..]), BigEndian);
 
-        let mut chr_bank_count = remaining[0..8].load::<u16>();
-        remaining = &remaining[8..];
+        let mut prg_bank_count: u16 = reader.read(8)?;
+        let mut chr_bank_count: u16 = reader.read(8)?;
 
-        let mut mapper = remaining[0..4].load::<u16>();
-        remaining = &remaining[4..];
-
-        let alternative_nametables = remaining[0];
-        remaining = &remaining[1..];
-
-        let trainer = remaining[0];
-        remaining = &remaining[1..];
-
-        let non_volatile_memory = remaining[0];
-        remaining = &remaining[1..];
-
-        let mirroring = if remaining[0] {
+        let mut mapper: u16 = reader.read(4)?;
+        let alternative_nametables = reader.read_bit()?;
+        let trainer = reader.read_bit()?;
+        let non_volatile_memory = reader.read_bit()?;
+        let mirroring = if reader.read_bit()? {
             Mirroring::Vertical
         } else {
             Mirroring::Horizontal
         };
-        remaining = &remaining[1..];
 
-        mapper |= remaining
-            .get(0..4)
-            .ok_or(ParsingError::EarlyEOF)?
-            .load::<u16>()
-            << 4;
-        remaining = &remaining[4..];
+        mapper |= reader.read::<u16>(4)? << 4;
 
-        // Get INES version
-        let version = remaining
-            .get(0..2)
-            .ok_or(ParsingError::EarlyEOF)?
-            .load::<u8>();
-        let (version, timing_mode) = match version {
-            0b00 => {
-                remaining = &remaining[2..];
+        let version_bits: u8 = reader.read(2)?;
+        let (version, timing_mode) = match version_bits {
+            0b00 => (INesVersion::V1, TimingMode::Ntsc),
 
-                (INesVersion::V1, TimingMode::Ntsc)
-            }
             0b10 => {
-                remaining = &remaining[2..];
-
-                let console_type = match remaining[0..2].load::<u8>() {
+                let console_type = match reader.read::<u8>(2)? {
                     0b00 => Some(ConsoleType::NintendoEntertainmentSystem),
                     0b01 => Some(ConsoleType::NintendoVsSystem),
                     0b10 => Some(ConsoleType::NintendoPlaychoice10),
                     0b11 => None,
                     _ => unreachable!(),
                 };
-                remaining = &remaining[2..];
 
-                let submapper = remaining[0..4].load::<u8>();
-                remaining = &remaining[4..];
+                let submapper: u8 = reader.read(4)?;
 
-                mapper |= remaining[0..4].load::<u16>() << 8;
-                remaining = &remaining[4..];
+                mapper |= reader.read::<u16>(4)? << 8;
+                prg_bank_count |= reader.read::<u16>(4)? << 8;
+                chr_bank_count |= reader.read::<u16>(4)? << 8;
 
-                prg_bank_count |= remaining[0..4].load::<u16>() << 8;
-                remaining = &remaining[4..];
-
-                chr_bank_count |= remaining[0..4].load::<u16>() << 8;
-                remaining = &remaining[4..];
-
-                let prg_nvram_shift_count = remaining[0..4].load::<u8>();
-                remaining = &remaining[4..];
-
-                let prg_ram_shift_count = remaining[0..4].load::<u8>();
-                remaining = &remaining[4..];
+                let prg_nvram_shift_count: u8 = reader.read(4)?;
+                let prg_ram_shift_count: u8 = reader.read(4)?;
 
                 if !non_volatile_memory && (prg_nvram_shift_count != 0 || prg_ram_shift_count != 0)
                 {
                     return Err(ParsingError::DisagreeingNonVolatileMemory);
                 }
 
-                let _chr_nvram_shift_count = remaining[0..4].load::<u8>();
-                remaining = &remaining[4..];
+                let _chr_nvram_shift_count: u8 = reader.read(4)?;
+                let _chr_ram_shift_count: u8 = reader.read(4)?;
 
-                let _chr_ram_shift_count = remaining[0..4].load::<u8>();
-                remaining = &remaining[4..];
+                reader.skip(6);
 
-                // Skip unused bits
-                remaining = &remaining[6..];
-
-                let timing_mode = match remaining[0..2].load::<u8>() {
+                let timing_mode = match reader.read::<u8>(2)? {
                     0b00 => TimingMode::Ntsc,
                     0b01 => TimingMode::Pal,
                     0b10 => TimingMode::Multi,
                     0b11 => TimingMode::Dendy,
                     _ => unreachable!(),
                 };
-                remaining = &remaining[2..];
 
-                let _vs_system_type = remaining[0..4].load::<u8>();
-                remaining = &remaining[4..];
+                let _vs_system_type: u8 = reader.read(4)?;
+                let _vs_ppu_type: u8 = reader.read(4)?;
 
-                let _vs_ppu_type = remaining[0..4].load::<u8>();
-                remaining = &remaining[4..];
+                reader.skip(6);
 
-                // Skip unused bits
-                remaining = &remaining[6..];
+                let misc_rom_count: u8 = reader.read(2)?;
 
-                let misc_rom_count = remaining[0..2].load::<u8>();
-                remaining = &remaining[2..];
+                reader.skip(2);
 
-                // Skip unused bits
-                remaining = &remaining[2..];
+                let default_expansion_device = DefaultExpansionDevice::new(reader.read(6)?);
 
-                let default_expansion_device =
-                    DefaultExpansionDevice::new(remaining[0..6].load::<u8>());
-                remaining = &remaining[6..];
-
-                assert_eq!(remaining.len(), 0, "Parser misalignment");
+                assert_eq!(
+                    reader.position_in_bits()?,
+                    total_bits as u64,
+                    "Parser misalignment"
+                );
 
                 (
                     INesVersion::V2 {
@@ -214,7 +170,12 @@ impl INes {
                     timing_mode,
                 )
             }
-            _ => return Err(ParsingError::BadVersion { version }),
+
+            _ => {
+                return Err(ParsingError::BadVersion {
+                    version: version_bits,
+                });
+            }
         };
 
         let mut roms = HashMap::new();
@@ -231,7 +192,6 @@ impl INes {
 
         let chr_bank_size = chr_bank_count as usize * CHR_BANK_SIZE;
         roms.insert(RomType::Chr, cursor..=(cursor + chr_bank_size - 1));
-        // cursor += chr_bank_size;
 
         Ok(Self {
             mapper,
@@ -256,6 +216,3 @@ impl INes {
             .map_or(1, |rom| rom.clone().count() / CHR_BANK_SIZE)
     }
 }
-
-#[cfg(test)]
-mod tests {}

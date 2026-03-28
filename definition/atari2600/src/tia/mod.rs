@@ -5,11 +5,6 @@ use std::{
 };
 
 pub(crate) use backend::SupportedGraphicsApiTia;
-use bitvec::{
-    array::BitArray,
-    order::{Lsb0, Msb0},
-    view::BitView,
-};
 use color::TiaColor;
 use fluxemu_definition_mos6502::RdyFlag;
 use fluxemu_runtime::{
@@ -91,7 +86,7 @@ struct Playfield {
     color: TiaColor,
     score_mode: bool,
     // 20 bits
-    data: BitArray<[u8; 3], Lsb0>,
+    data: [bool; 20],
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
@@ -159,12 +154,11 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
         buffer: &[u8],
     ) -> Result<(), MemoryError> {
         let data = buffer[0];
-        let data_bits = data.view_bits::<Lsb0>();
 
         if let Some(address) = WriteRegisters::from_repr(address as u16) {
             tracing::trace!("Writing to TIA register: {:?} = {:02x}", address, data);
 
-            self.handle_write_register(data, data_bits, address);
+            self.handle_write_register(data, address);
 
             Ok(())
         } else {
@@ -306,34 +300,20 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
     #[inline]
     fn get_player_color(&self, index: usize) -> Option<TiaColor> {
         let player = &self.players[index];
-
         if let Some(sprite_pixel) = self
             .electron_beam
             .x
             .checked_sub(player.position)
             .map(usize::from)
+            && sprite_pixel < 8
         {
-            if player.mirror {
-                let slice = player.graphic.view_bits::<Lsb0>();
-
-                if let Some(sprite_pixel) = slice.get(sprite_pixel).as_deref() {
-                    return if *sprite_pixel {
-                        Some(player.color)
-                    } else {
-                        None
-                    };
-                }
+            let bit = if player.mirror {
+                player.graphic & (1 << sprite_pixel) != 0
             } else {
-                let slice = player.graphic.view_bits::<Msb0>();
+                player.graphic & (1 << (7 - sprite_pixel)) != 0
+            };
 
-                if let Some(sprite_pixel) = slice.get(sprite_pixel).as_deref() {
-                    return if *sprite_pixel {
-                        Some(player.color)
-                    } else {
-                        None
-                    };
-                }
-            }
+            return if bit { Some(player.color) } else { None };
         }
 
         None

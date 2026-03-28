@@ -1,6 +1,5 @@
 use std::{collections::HashMap, sync::Arc};
 
-use bitvec::{prelude::Lsb0, view::BitView};
 use fluxemu_input::{GamepadInputId, InputId, InputState, KeyboardInputId};
 use fluxemu_runtime::{
     component::{Component, ComponentConfig},
@@ -24,60 +23,45 @@ impl Component for Atari2600Joystick {
         _avoid_side_effects: bool,
         buffer: &mut [u8],
     ) -> Result<(), fluxemu_runtime::memory::MemoryError> {
-        // If this function is called we are mapped to swcha
+        // Player 1
+        let up = self
+            .player1
+            .get_state(InputId::Gamepad(GamepadInputId::LeftStickUp))
+            .as_digital(None);
+        let down = self
+            .player1
+            .get_state(InputId::Gamepad(GamepadInputId::LeftStickDown))
+            .as_digital(None);
+        let left = self
+            .player1
+            .get_state(InputId::Gamepad(GamepadInputId::LeftStickLeft))
+            .as_digital(None);
+        let right = self
+            .player1
+            .get_state(InputId::Gamepad(GamepadInputId::LeftStickRight))
+            .as_digital(None);
 
-        let value_bits = buffer.view_bits_mut::<Lsb0>();
-        let (player1, player2) = value_bits.split_at_mut(4);
+        buffer[0] = (up as u8) | (down as u8) << 1 | (left as u8) << 2 | (right as u8) << 3;
 
-        player1.set(
-            0,
-            self.player1
-                .get_state(InputId::Gamepad(GamepadInputId::LeftStickUp))
-                .as_digital(None),
-        );
-        player1.set(
-            1,
-            self.player1
-                .get_state(InputId::Gamepad(GamepadInputId::LeftStickDown))
-                .as_digital(None),
-        );
-        player1.set(
-            2,
-            self.player1
-                .get_state(InputId::Gamepad(GamepadInputId::LeftStickLeft))
-                .as_digital(None),
-        );
-        player1.set(
-            3,
-            self.player1
-                .get_state(InputId::Gamepad(GamepadInputId::LeftStickRight))
-                .as_digital(None),
-        );
+        // Player 2
+        let up = self
+            .player2
+            .get_state(InputId::Gamepad(GamepadInputId::LeftStickUp))
+            .as_digital(None);
+        let down = self
+            .player2
+            .get_state(InputId::Gamepad(GamepadInputId::LeftStickDown))
+            .as_digital(None);
+        let left = self
+            .player2
+            .get_state(InputId::Gamepad(GamepadInputId::LeftStickLeft))
+            .as_digital(None);
+        let right = self
+            .player2
+            .get_state(InputId::Gamepad(GamepadInputId::LeftStickRight))
+            .as_digital(None);
 
-        player2.set(
-            0,
-            self.player2
-                .get_state(InputId::Gamepad(GamepadInputId::LeftStickUp))
-                .as_digital(None),
-        );
-        player2.set(
-            1,
-            self.player2
-                .get_state(InputId::Gamepad(GamepadInputId::LeftStickDown))
-                .as_digital(None),
-        );
-        player2.set(
-            2,
-            self.player2
-                .get_state(InputId::Gamepad(GamepadInputId::LeftStickLeft))
-                .as_digital(None),
-        );
-        player2.set(
-            3,
-            self.player2
-                .get_state(InputId::Gamepad(GamepadInputId::LeftStickRight))
-                .as_digital(None),
-        );
+        buffer[0] |= (up as u8) << 4 | (down as u8) << 5 | (left as u8) << 6 | (right as u8) << 7;
 
         Ok(())
     }

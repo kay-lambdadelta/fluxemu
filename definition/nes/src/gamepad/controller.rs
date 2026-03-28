@@ -1,6 +1,5 @@
 use std::sync::{Arc, Mutex};
 
-use bitvec::{prelude::Lsb0, view::BitView};
 use fluxemu_input::{GamepadInputId, InputId, KeyboardInputId};
 use fluxemu_runtime::{
     component::{Component, ComponentConfig},
@@ -59,18 +58,15 @@ impl Component for NesController {
         buffer: &mut [u8],
     ) -> Result<(), MemoryError> {
         let mut state_guard = self.state.lock().unwrap();
-        let buffer_bits = buffer.view_bits_mut::<Lsb0>();
 
-        buffer_bits.set(
-            0,
-            if (0..READ_ORDER.len() as u8).contains(&state_guard.current_read) {
-                self.input_state
-                    .get_state(READ_ORDER[state_guard.current_read as usize])
-                    .as_digital(None)
-            } else {
-                true
-            },
-        );
+        let key_value = if (0..READ_ORDER.len() as u8).contains(&state_guard.current_read) {
+            self.input_state
+                .get_state(READ_ORDER[state_guard.current_read as usize])
+                .as_digital(None)
+        } else {
+            true
+        };
+        buffer[0] = (buffer[0] & 0b1111_1110) | key_value as u8;
 
         if !avoid_side_effects
             && !state_guard.strobe
@@ -89,7 +85,7 @@ impl Component for NesController {
         buffer: &[u8],
     ) -> Result<(), MemoryError> {
         let mut state = self.state.lock().unwrap();
-        state.strobe = buffer.view_bits::<Lsb0>()[0];
+        state.strobe = buffer[0] & 0b0000_0001 != 0;
 
         if state.strobe {
             state.current_read = 0;

@@ -6,7 +6,6 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 arc-swap = { workspace = true }
-bitvec = { workspace = true }
 bytes = { workspace = true }
 fixed = { workspace = true }
 fluxemu-input = { workspace = true }

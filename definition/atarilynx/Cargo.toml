@@ -5,7 +5,6 @@ edition = "2024"
 license = "GPL-3.0-or-later"
 
 [dependencies]
-bitvec = { workspace = true }
 fluxemu-definition-memory = { workspace = true }
 fluxemu-definition-mos6502 = { workspace = true }
 fluxemu-program = { workspace = true }

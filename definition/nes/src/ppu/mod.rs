@@ -9,7 +9,6 @@ use std::{
 };
 
 use arrayvec::ArrayVec;
-use bitvec::{array::BitArray, field::BitField, prelude::Lsb0, view::BitView};
 use fluxemu_definition_mos6502::{Mos6502, NmiFlag, RdyFlag};
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
@@ -321,14 +320,13 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
             match register {
                 CpuAccessibleRegister::PpuMask => todo!(),
                 CpuAccessibleRegister::PpuStatus => {
-                    let buffer_bits = buffer.view_bits_mut::<Lsb0>();
-
-                    // Currently in vblank
-                    if avoid_side_effects {
-                        buffer_bits.set(7, self.state.entered_vblank.load(Ordering::Acquire));
+                    let bit = if avoid_side_effects {
+                        self.state.entered_vblank.load(Ordering::Acquire)
                     } else {
-                        buffer_bits.set(7, self.state.entered_vblank.swap(false, Ordering::AcqRel));
-                    }
+                        self.state.entered_vblank.swap(false, Ordering::AcqRel)
+                    };
+
+                    *buffer = (*buffer & 0b0111_1111) | (bit as u8) << 7;
                 }
                 CpuAccessibleRegister::OamAddr => {
                     *buffer = self.state.oam.oam_addr;
@@ -384,38 +382,32 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
 
             match register {
                 CpuAccessibleRegister::PpuCtrl => {
-                    let data_bits = buffer.view_bits::<Lsb0>();
-
                     let mut shadow_vram_address_pointer =
                         VramAddressPointerContents::from(self.state.shadow_vram_address_pointer);
 
-                    shadow_vram_address_pointer.nametable.x = data_bits[0];
-                    shadow_vram_address_pointer.nametable.y = data_bits[1];
+                    shadow_vram_address_pointer.nametable.x = *buffer & 0b0000_0001 != 0;
+                    shadow_vram_address_pointer.nametable.y = *buffer & 0b0000_0010 != 0;
 
                     self.state.vram_address_pointer_increment_amount =
-                        if data_bits[2] { 32 } else { 1 };
+                        if *buffer & 0b0000_0100 != 0 { 32 } else { 1 };
 
-                    self.state.oam.sprite_8x8_pattern_table_index = u8::from(data_bits[3]);
-                    self.state.background.pattern_table_index = u8::from(data_bits[4]);
+                    self.state.oam.sprite_8x8_pattern_table_index =
+                        (*buffer & 0b0000_1000 != 0) as u8;
 
-                    self.state.vblank_nmi_enabled = data_bits[7];
+                    self.state.background.pattern_table_index = (*buffer & 0b0001_0000 != 0) as u8;
 
+                    self.state.vblank_nmi_enabled = *buffer & 0b1000_0000 != 0;
                     self.state.shadow_vram_address_pointer = shadow_vram_address_pointer.into();
                 }
                 CpuAccessibleRegister::PpuMask => {
-                    let data_bits = buffer.view_bits::<Lsb0>();
-
-                    self.state.greyscale = data_bits[0];
-
-                    self.state.show_background_leftmost_pixels = data_bits[1];
-                    self.state.oam.show_sprites_leftmost_pixels = data_bits[2];
-
-                    self.state.background.rendering_enabled = data_bits[3];
-                    self.state.oam.rendering_enabled = data_bits[4];
-
-                    self.state.color_emphasis.red = data_bits[5];
-                    self.state.color_emphasis.green = data_bits[6];
-                    self.state.color_emphasis.blue = data_bits[7];
+                    self.state.greyscale = *buffer & 0b0000_0001 != 0;
+                    self.state.show_background_leftmost_pixels = *buffer & 0b0000_0010 != 0;
+                    self.state.oam.show_sprites_leftmost_pixels = *buffer & 0b0000_0100 != 0;
+                    self.state.background.rendering_enabled = *buffer & 0b0000_1000 != 0;
+                    self.state.oam.rendering_enabled = *buffer & 0b0001_0000 != 0;
+                    self.state.color_emphasis.red = *buffer & 0b0010_0000 != 0;
+                    self.state.color_emphasis.green = *buffer & 0b0100_0000 != 0;
+                    self.state.color_emphasis.blue = *buffer & 0b1000_0000 != 0;
                 }
                 CpuAccessibleRegister::OamAddr => {
                     self.state.oam.oam_addr = *buffer;
@@ -425,23 +417,19 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     self.state.oam.oam_addr = self.state.oam.oam_addr.wrapping_add(1);
                 }
                 CpuAccessibleRegister::PpuScroll => {
-                    // Convert the byte into a bit slice
-                    let data_bits = BitArray::<_, Lsb0>::from(u16::from(*buffer));
                     let mut shadow_vram_address_pointer =
                         VramAddressPointerContents::from(self.state.shadow_vram_address_pointer);
-
                     if self.state.vram_address_pointer_write_phase {
                         // fine scroll y
-                        shadow_vram_address_pointer.fine_y = data_bits[0..=2].load();
+                        shadow_vram_address_pointer.fine_y = *buffer & 0b0000_0111;
                         // coarse scroll y
-                        shadow_vram_address_pointer.coarse.y = data_bits[3..=7].load();
+                        shadow_vram_address_pointer.coarse.y = (*buffer & 0b1111_1000) >> 3;
                     } else {
                         // fine scroll x
-                        self.state.background.fine_x_scroll = data_bits[0..=2].load();
+                        self.state.background.fine_x_scroll = *buffer & 0b0000_0111;
                         // coarse scroll x
-                        shadow_vram_address_pointer.coarse.x = data_bits[3..=7].load();
+                        shadow_vram_address_pointer.coarse.x = (*buffer & 0b1111_1000) >> 3;
                     }
-
                     self.state.vram_address_pointer_write_phase =
                         !self.state.vram_address_pointer_write_phase;
 

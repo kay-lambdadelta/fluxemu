@@ -6,7 +6,7 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 arrayvec = { workspace = true }
-bitvec = { workspace = true }
+bitstream-io = "4.9"
 bytemuck = { workspace = true }
 bytes = { workspace = true }
 fluxemu-audio = { workspace = true }

@@ -9,7 +9,6 @@ use std::{
 };
 
 use arrayvec::ArrayVec;
-use bitvec::{prelude::Lsb0, view::BitView};
 use fluxemu_runtime::{
     RuntimeHandle,
     component::{Component, ComponentConfig, ComponentVersion, LateContext, LateInitializedData},
@@ -89,31 +88,24 @@ pub struct FlagRegister {
 
 impl FlagRegister {
     pub fn to_byte(&self, break_: bool) -> u8 {
-        let mut byte = 0;
-        let bits = byte.view_bits_mut::<Lsb0>();
-
-        bits.set(7, self.negative);
-        bits.set(6, self.overflow);
-        bits.set(5, true);
-        bits.set(4, break_);
-        bits.set(3, self.decimal);
-        bits.set(2, self.interrupt_disable);
-        bits.set(1, self.zero);
-        bits.set(0, self.carry);
-
-        byte
+        (self.negative as u8) << 7
+            | (self.overflow as u8) << 6
+            | 1 << 5
+            | (break_ as u8) << 4
+            | (self.decimal as u8) << 3
+            | (self.interrupt_disable as u8) << 2
+            | (self.zero as u8) << 1
+            | (self.carry as u8)
     }
 
     pub fn from_byte(byte: u8) -> Self {
-        let bits = byte.view_bits::<Lsb0>();
-
         Self {
-            negative: bits[7],
-            overflow: bits[6],
-            decimal: bits[3],
-            interrupt_disable: bits[2],
-            zero: bits[1],
-            carry: bits[0],
+            negative: (byte >> 7) & 0b0000_0001 != 0,
+            overflow: (byte >> 6) & 0b0000_0001 != 0,
+            decimal: (byte >> 3) & 0b0000_0001 != 0,
+            interrupt_disable: (byte >> 2) & 0b0000_0001 != 0,
+            zero: (byte >> 1) & 0b0000_0001 != 0,
+            carry: byte & 1 != 0,
         }
     }
 }

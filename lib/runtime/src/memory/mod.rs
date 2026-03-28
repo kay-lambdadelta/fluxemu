@@ -1,7 +1,6 @@
 use std::{fmt::Debug, hash::Hash, ops::RangeInclusive, sync::Arc};
 
 use arc_swap::{ArcSwap, Cache};
-use bitvec::{field::BitField, order::Lsb0};
 use bytes::Bytes;
 pub use commit::{MapTarget, MemoryRemappingCommand, Permissions};
 use fluxemu_range::RangeIntersection;
@@ -34,9 +33,12 @@ pub struct AddressSpace {
 
 impl AddressSpace {
     pub(crate) fn new(id: AddressSpaceId, width: u8) -> Self {
-        let mut mask = bitvec::bitvec![usize, Lsb0; 0; usize::BITS as usize];
-        mask[..width as usize].fill(true);
-        let width_mask = mask.load_le();
+        assert!(
+            width as usize <= usize::BITS as usize,
+            "width exceeds usize::BITS"
+        );
+
+        let width_mask: usize = (1 << width) - 1;
 
         Self {
             id,

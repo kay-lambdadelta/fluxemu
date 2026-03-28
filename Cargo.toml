@@ -5,7 +5,6 @@ members = ["definition/*", "lib/*", "shell/*"]
 [workspace.dependencies]
 arc-swap = "1.9"
 arrayvec = { version = "0.7", features = ["serde"] }
-bitvec = { version = "1.0", features = ["serde"] }
 bytemuck = { version = "1.25", features = ["derive"] }
 bytes = "1.11"
 cfg-if = "1.0"
@@ -13,7 +12,7 @@ clap = { version = "4.6", features = ["derive"] }
 criterion = "0.8"
 data-encoding = "2.10"
 egui = "0.34"
-fixed = { version = "1.30", features = ["num-traits", "serde"] }
+fixed = { version = "1", features = ["num-traits", "serde"] }
 fluxemu-audio = { path = "lib/audio" }
 fluxemu-definition-atari2600 = { path = "definition/atari2600" }
 fluxemu-definition-atarilynx = { path = "definition/atarilynx" }
@@ -67,6 +66,3 @@ debug = true
 
 [profile.dev]
 opt-level = 1
-
-[profile.release]
-debug = true

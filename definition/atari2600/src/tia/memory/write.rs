@@ -1,4 +1,3 @@
-use bitvec::{field::BitField, order::Msb0, slice::BitSlice, view::BitView};
 use fluxemu_runtime::{
     RuntimeHandle,
     component::EventType,
@@ -16,15 +15,10 @@ const PLAYER_RESP_OFFSET: u16 = 3;
 const OTHER_RESP_OFFSET: u16 = 2;
 
 impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
-    pub(crate) fn handle_write_register(
-        &mut self,
-        data: u8,
-        data_bits: &BitSlice<u8>,
-        address: WriteRegisters,
-    ) {
+    pub(crate) fn handle_write_register(&mut self, data: u8, address: WriteRegisters) {
         match address {
             WriteRegisters::Vsync => {
-                if data_bits[1] {
+                if data & 0b0000_0010 != 0 {
                     self.electron_beam = Point2::new(0, 0);
                     self.cycles_waiting_for_vsync = Some(SCANLINE_LENGTH * 3);
                 } else {
@@ -38,49 +32,27 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
                 }
             }
             WriteRegisters::Vblank => {
-                self.vblank_active = data_bits[1];
+                self.vblank_active = data & 0b0000_0010 != 0;
 
-                self.input_control[0] = if data_bits[7] {
+                let bit = if data & 0b1000_0000 != 0 {
                     InputControl::LatchedOrDumped
                 } else {
                     InputControl::Normal
                 };
 
-                self.input_control[1] = if data_bits[7] {
+                self.input_control[0] = bit;
+                self.input_control[1] = bit;
+                self.input_control[2] = bit;
+                self.input_control[3] = bit;
+
+                let bit = if data & 0b0100_0000 != 0 {
                     InputControl::LatchedOrDumped
                 } else {
                     InputControl::Normal
                 };
 
-                self.input_control[2] = if data_bits[7] {
-                    InputControl::LatchedOrDumped
-                } else {
-                    InputControl::Normal
-                };
-
-                self.input_control[3] = if data_bits[7] {
-                    InputControl::LatchedOrDumped
-                } else {
-                    InputControl::Normal
-                };
-
-                self.input_control[4] = if data_bits[7] {
-                    InputControl::LatchedOrDumped
-                } else {
-                    InputControl::Normal
-                };
-
-                self.input_control[4] = if data_bits[6] {
-                    InputControl::LatchedOrDumped
-                } else {
-                    InputControl::Normal
-                };
-
-                self.input_control[5] = if data_bits[6] {
-                    InputControl::LatchedOrDumped
-                } else {
-                    InputControl::Normal
-                };
+                self.input_control[4] = bit;
+                self.input_control[5] = bit;
             }
             WriteRegisters::Wsync => {
                 let until =
@@ -103,48 +75,55 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
             WriteRegisters::Nusiz0 => {}
             WriteRegisters::Nusiz1 => {}
             WriteRegisters::Colup0 => {
-                let color = extract_color(data_bits);
+                let color = extract_color(data);
 
                 self.players[0].color = color;
                 self.missiles[0].color = color;
             }
             WriteRegisters::Colup1 => {
-                let color = extract_color(data_bits);
+                let color = extract_color(data);
 
                 self.players[1].color = color;
                 self.missiles[1].color = color;
             }
             WriteRegisters::Colupf => {
-                let color = extract_color(data_bits);
+                let color = extract_color(data);
 
                 self.playfield.color = color;
             }
             WriteRegisters::Colubk => {
-                let color = extract_color(data_bits);
+                let color = extract_color(data);
 
                 self.background_color = color;
             }
             WriteRegisters::Ctrlpf => {
-                self.playfield.mirror = data_bits[0];
-                self.playfield.score_mode = data_bits[1];
-                self.high_playfield_ball_priority = data_bits[2];
-                self.ball.size = 2u8.pow(data_bits[4..=5].load());
+                self.playfield.mirror = data & 0b0000_0001 != 0;
+                self.playfield.score_mode = data & 0b0000_0010 != 0;
+
+                self.high_playfield_ball_priority = data & 0b0000_0100 != 0;
+
+                self.ball.size = 2u8.pow(((data & 0b0011_0000) >> 4) as u32);
             }
             WriteRegisters::Refp0 => {
-                self.players[0].mirror = data_bits[3];
+                self.players[0].mirror = data & 0b0000_1000 != 0;
             }
             WriteRegisters::Refp1 => {
-                self.players[1].mirror = data_bits[3];
+                self.players[1].mirror = data & 0b0000_1000 != 0;
             }
             WriteRegisters::Pf0 => {
-                self.playfield.data[0..=3].copy_from_bitslice(&data_bits[0..=3]);
+                for i in 0..4 {
+                    self.playfield.data[i] = data & (1 << i) != 0;
+                }
             }
             WriteRegisters::Pf1 => {
-                self.playfield.data[4..=11].copy_from_bitslice(data_bits);
-                self.playfield.data[4..=11].reverse();
+                for i in 0..8 {
+                    self.playfield.data[4 + (7 - i)] = data & (1 << i) != 0;
+                }
             }
             WriteRegisters::Pf2 => {
-                self.playfield.data[12..=19].copy_from_bitslice(data_bits);
+                for i in 0..8 {
+                    self.playfield.data[12 + i] = data & (1 << i) != 0;
+                }
             }
             WriteRegisters::Resp0 => {
                 self.players[0].position = self.electron_beam.x;
@@ -210,39 +189,39 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
                 }
             }
             WriteRegisters::Enam0 => {
-                self.missiles[0].enabled = data_bits[1];
+                self.missiles[0].enabled = data & 0b0000_0010 != 0;
             }
             WriteRegisters::Enam1 => {
-                self.missiles[1].enabled = data_bits[1];
+                self.missiles[1].enabled = data & 0b0000_0010 != 0;
             }
             WriteRegisters::Enabl => {
                 if matches!(
                     self.ball.delay_enable_change,
                     DelayEnableChangeBall::Disabled
                 ) {
-                    self.ball.enabled = data_bits[1];
+                    self.ball.enabled = data & 0b0000_0010 != 0;
                 } else {
                     self.ball.delay_enable_change =
-                        DelayEnableChangeBall::Enabled(Some(data_bits[1]));
+                        DelayEnableChangeBall::Enabled(Some(data & 0b0000_0010 != 0));
                 }
             }
             WriteRegisters::Hmp0 => {
-                self.players[0].motion = data.view_bits::<Msb0>()[0..4].load();
+                self.players[0].motion = extract_motion(data);
             }
             WriteRegisters::Hmp1 => {
-                self.players[1].motion = data.view_bits::<Msb0>()[0..4].load();
+                self.players[1].motion = extract_motion(data);
             }
             WriteRegisters::Hmm0 => {
-                self.missiles[0].motion = data.view_bits::<Msb0>()[0..4].load();
+                self.missiles[0].motion = extract_motion(data);
             }
             WriteRegisters::Hmm1 => {
-                self.missiles[1].motion = data.view_bits::<Msb0>()[0..4].load();
+                self.missiles[1].motion = extract_motion(data);
             }
             WriteRegisters::Hmbl => {
-                self.ball.motion = data.view_bits::<Msb0>()[0..4].load();
+                self.ball.motion = extract_motion(data);
             }
             WriteRegisters::Vdelp0 => {
-                if data_bits[0] {
+                if data & 0b000_0001 != 0 {
                     if matches!(
                         self.players[0].delay_change_graphic,
                         DelayChangeGraphicPlayer::Disabled
@@ -255,7 +234,7 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
                 }
             }
             WriteRegisters::Vdelp1 => {
-                if data_bits[0] {
+                if data & 0b000_0001 != 0 {
                     if matches!(
                         self.players[1].delay_change_graphic,
                         DelayChangeGraphicPlayer::Disabled
@@ -268,7 +247,7 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
                 }
             }
             WriteRegisters::Vdelbl => {
-                if data_bits[0] {
+                if data & 0b000_0001 != 0 {
                     if matches!(
                         self.ball.delay_enable_change,
                         DelayEnableChangeBall::Disabled
@@ -280,10 +259,10 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
                 }
             }
             WriteRegisters::Resmp0 => {
-                self.missiles[0].locked = data_bits[1];
+                self.missiles[0].locked = data & 0b000_0010 != 0;
             }
             WriteRegisters::Resmp1 => {
-                self.missiles[1].locked = data_bits[1];
+                self.missiles[1].locked = data & 0b000_0010 != 0;
             }
             WriteRegisters::Hmove => {
                 for player in &mut self.players {
@@ -317,9 +296,16 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
     }
 }
 
-fn extract_color(data_bits: &BitSlice<u8>) -> TiaColor {
-    let luminance = data_bits[1..=3].load();
-    let hue = data_bits[4..=7].load();
+#[inline]
+fn extract_color(data: u8) -> TiaColor {
+    let luminance = (data & 0b0000_1110) >> 1;
+    let hue = (data & 0b1111_0000) >> 4;
 
     TiaColor { luminance, hue }
+}
+
+#[inline]
+fn extract_motion(data: u8) -> i8 {
+    let raw = (data & 0b1111_0000) >> 4;
+    ((raw as i8) << 4) >> 4
 }

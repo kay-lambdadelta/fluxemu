@@ -74,7 +74,7 @@ impl Chip8DisplayBackend for State {
         self.queue.write_texture(
             TexelCopyTextureInfo {
                 texture: framebuffer,
-                mip_level: 1,
+                mip_level: 0,
                 origin: Origin3d::ZERO,
                 aspect: TextureAspect::All,
             },

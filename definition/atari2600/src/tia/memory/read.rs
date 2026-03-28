@@ -1,5 +1,3 @@
-use bitvec::{order::Msb0, prelude::Lsb0, view::BitView};
-
 use super::ReadRegisters;
 use crate::tia::{ObjectId, SupportedGraphicsApiTia, Tia, region::Region};
 
@@ -54,9 +52,7 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
                     .get(&ObjectId::Ball)
                     .is_some_and(|set| set.contains(&ObjectId::Playfield));
 
-                let data_bits = data.view_bits_mut::<Lsb0>();
-
-                data_bits.set(7, collision);
+                *data = (*data & 0b0111_1111) | (collision as u8) << 7;
             }
             ReadRegisters::Cxppmm => {
                 self.read_collision_register(
@@ -80,15 +76,11 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
             .collision_matrix
             .get(&pair1[0])
             .is_some_and(|set| set.contains(&pair1[1]));
-
         let collision2 = self
             .collision_matrix
             .get(&pair2[0])
             .is_some_and(|set| set.contains(&pair2[1]));
 
-        let data_bits = data.view_bits_mut::<Msb0>();
-
-        data_bits.set(0, collision1);
-        data_bits.set(1, collision2);
+        *data = (*data & 0b0011_1111) | (collision1 as u8) << 7 | (collision2 as u8) << 6;
     }
 }

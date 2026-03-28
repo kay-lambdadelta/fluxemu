@@ -1,9 +1,4 @@
 use arrayvec::ArrayVec;
-use bitvec::{
-    field::BitField,
-    prelude::{Lsb0, Msb0},
-    view::BitView,
-};
 use fluxemu_runtime::memory::AddressSpace;
 use nalgebra::Point2;
 use rand::RngExt;
@@ -162,11 +157,10 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                 if *mode_guard == Chip8Mode::Chip8 || self.config.always_shr_in_place {
                     destination_value = self.state.registers.work_registers[value as usize];
                 }
-
-                let overflow = destination_value.view_bits::<Lsb0>()[0];
+                let overflow = destination_value & 0b0000_0001;
 
                 self.state.registers.work_registers[register as usize] = destination_value >> 1;
-                self.state.registers.work_registers[0xf] = u8::from(overflow);
+                self.state.registers.work_registers[0xf] = overflow;
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Subn {
                 destination,
@@ -187,10 +181,10 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                     destination_value = self.state.registers.work_registers[value as usize];
                 }
 
-                let overflow = destination_value.view_bits::<Lsb0>()[7];
+                let overflow = (destination_value & 0b1000_0000) >> 7;
 
                 self.state.registers.work_registers[register as usize] = destination_value << 1;
-                self.state.registers.work_registers[0xf] = u8::from(overflow);
+                self.state.registers.work_registers[0xf] = overflow;
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Skrne { param_1, param_2 }) => {
                 let param_1_value = self.state.registers.work_registers[param_1 as usize];
@@ -207,13 +201,11 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                 let address = if *mode_guard == Chip8Mode::Chip8 {
                     address.wrapping_add(u16::from(self.state.registers.work_registers[0x0]))
                 } else {
-                    let register = address.view_bits::<Msb0>()[4..8].load::<u8>();
-
+                    let register = ((address & 0x0f00) >> 8) as u8;
                     address.wrapping_add(u16::from(
                         self.state.registers.work_registers[register as usize],
                     ))
                 };
-
                 self.state.registers.program = address;
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Rand {
