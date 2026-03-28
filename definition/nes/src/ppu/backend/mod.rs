@@ -18,11 +18,11 @@ pub(crate) trait PpuDisplayBackend<R: Region>:
     type GraphicsApi: GraphicsApi;
 
     fn new(initialization_data: <Self::GraphicsApi as GraphicsApi>::InitializationData) -> Self;
-    fn create_framebuffer(&self) -> <Self::GraphicsApi as GraphicsApi>::Texture;
+    fn create_framebuffer(&self) -> <Self::GraphicsApi as GraphicsApi>::Framebuffer;
     fn commit_staging_buffer(
         &mut self,
         staging_buffer: &Texture<PpuColorIndex>,
-        framebuffer: &mut <Self::GraphicsApi as GraphicsApi>::Texture,
+        framebuffer: &mut <Self::GraphicsApi as GraphicsApi>::Framebuffer,
     );
 }
 

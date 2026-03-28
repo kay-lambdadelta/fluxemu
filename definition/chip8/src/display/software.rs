@@ -17,14 +17,14 @@ impl Chip8DisplayBackend for SoftwareState {
         Self
     }
 
-    fn create_framebuffer(&self) -> <Self::GraphicsApi as GraphicsApi>::Texture {
+    fn create_framebuffer(&self) -> <Self::GraphicsApi as GraphicsApi>::Framebuffer {
         Texture::new(LORES.x as usize, LORES.y as usize, BLACK.into())
     }
 
     fn commit_staging_buffer(
         &mut self,
         staging_buffer: &Texture<Srgba<u8>>,
-        framebuffer: &mut <Self::GraphicsApi as GraphicsApi>::Texture,
+        framebuffer: &mut <Self::GraphicsApi as GraphicsApi>::Framebuffer,
     ) {
         framebuffer.resize(
             staging_buffer.width(),

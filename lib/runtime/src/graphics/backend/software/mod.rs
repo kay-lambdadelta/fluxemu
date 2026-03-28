@@ -5,19 +5,20 @@ pub use texture::*;
 
 use crate::graphics::GraphicsApi;
 
+mod rgb565;
 mod texture;
 
-#[derive(Default, Debug)]
 /// Marker trait for software rendering
 ///
 /// This is the only graphics api that is guaranteed to always work anywhere
+#[derive(Default, Debug)]
 pub struct Software;
 
 #[derive(Default, Clone, Debug)]
 /// Does not actually require any extensions
-pub struct Features;
+pub struct Requirements;
 
-impl BitOr for Features {
+impl BitOr for Requirements {
     type Output = Self;
 
     fn bitor(self, rhs: Self) -> Self::Output {
@@ -27,6 +28,6 @@ impl BitOr for Features {
 
 impl GraphicsApi for Software {
     type InitializationData = ();
-    type Texture = Texture<Srgba<u8>>;
-    type Requirements = Features;
+    type Framebuffer = Texture<Srgba<u8>>;
+    type Requirements = Requirements;
 }

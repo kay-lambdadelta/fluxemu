@@ -104,7 +104,7 @@ impl RuntimeHandle {
     pub fn commit_framebuffer<G: GraphicsApi>(
         &self,
         path: &ResourcePath,
-        callback: impl FnOnce(&mut G::Texture),
+        callback: impl FnOnce(&mut G::Framebuffer),
     ) {
         let mut framebuffer_guard = self
             .0

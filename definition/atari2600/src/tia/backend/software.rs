@@ -26,7 +26,7 @@ impl<R: Region> TiaDisplayBackend<R> for SoftwareState {
         SoftwareState
     }
 
-    fn create_framebuffer(&self) -> <Self::GraphicsApi as GraphicsApi>::Texture {
+    fn create_framebuffer(&self) -> <Self::GraphicsApi as GraphicsApi>::Framebuffer {
         Texture::new(
             VISIBLE_SCANLINE_LENGTH as usize,
             R::TOTAL_SCANLINES as usize,
@@ -37,7 +37,7 @@ impl<R: Region> TiaDisplayBackend<R> for SoftwareState {
     fn commit_staging_buffer(
         &mut self,
         staging_buffer: &Texture<Srgba<u8>>,
-        framebuffer: &mut <Self::GraphicsApi as GraphicsApi>::Texture,
+        framebuffer: &mut <Self::GraphicsApi as GraphicsApi>::Framebuffer,
     ) {
         framebuffer.copy_from(staging_buffer, .., ..);
     }

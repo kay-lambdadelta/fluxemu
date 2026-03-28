@@ -37,7 +37,7 @@ impl<R: Region> PpuDisplayBackend<R> for State {
         }
     }
 
-    fn create_framebuffer(&self) -> <Self::GraphicsApi as GraphicsApi>::Texture {
+    fn create_framebuffer(&self) -> <Self::GraphicsApi as GraphicsApi>::Framebuffer {
         self.device.create_texture(&TextureDescriptor {
             label: None,
             size: Extent3d {
@@ -57,7 +57,7 @@ impl<R: Region> PpuDisplayBackend<R> for State {
     fn commit_staging_buffer(
         &mut self,
         staging_buffer: &software::Texture<PpuColorIndex>,
-        framebuffer: &mut <Self::GraphicsApi as GraphicsApi>::Texture,
+        framebuffer: &mut <Self::GraphicsApi as GraphicsApi>::Framebuffer,
     ) {
         convert_paletted_staging_buffer::<R>(staging_buffer, &mut self.staging_texture);
 

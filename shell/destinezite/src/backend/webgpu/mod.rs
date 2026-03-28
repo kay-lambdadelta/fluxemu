@@ -168,7 +168,7 @@ impl GraphicsRuntime for WebgpuGraphicsRuntime {
                     machine.interact_dyn(display_path.parent().unwrap(), |_| {});
 
                     let framebuffer_guard = framebuffer.lock().unwrap();
-                    let framebuffer_texture: &<Self::GraphicsApi as GraphicsApi>::Texture =
+                    let framebuffer_texture: &<Self::GraphicsApi as GraphicsApi>::Framebuffer =
                         framebuffer_guard.downcast_ref().unwrap();
 
                     let texture_view =

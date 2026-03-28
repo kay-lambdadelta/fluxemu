@@ -109,7 +109,7 @@ pub struct LateContext<P: Platform> {
 }
 
 pub struct LateInitializedData<P: Platform> {
-    pub framebuffers: HashMap<Cow<'static, str>, <P::GraphicsApi as GraphicsApi>::Texture>,
+    pub framebuffers: HashMap<Cow<'static, str>, <P::GraphicsApi as GraphicsApi>::Framebuffer>,
 }
 
 impl<P: Platform> Default for LateInitializedData<P> {

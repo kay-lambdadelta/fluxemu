@@ -9,11 +9,11 @@ mod machine_thread;
 mod platform;
 mod settings;
 
-use std::thread::JoinHandle;
 use std::{
     collections::HashMap,
     num::Wrapping,
     sync::{Arc, mpsc},
+    thread::JoinHandle,
 };
 
 pub use backend::*;
@@ -22,9 +22,9 @@ use egui::{
     RawInput, RichText, TextEdit, TextStyle,
 };
 use egui_extras::{Column, TableBuilder};
-use egui_material_icons::MaterialIcon;
-use egui_material_icons::icons::{
-    ICON_FOLDER, ICON_GAMEPAD, ICON_INFO, ICON_SETTINGS, ICON_VIDEO_LIBRARY,
+use egui_material_icons::{
+    MaterialIcon,
+    icons::{ICON_FOLDER, ICON_GAMEPAD, ICON_INFO, ICON_SETTINGS, ICON_VIDEO_LIBRARY},
 };
 use fluxemu_environment::{Environment, input::PhysicalGamepadConfiguration};
 use fluxemu_input::{

@@ -218,11 +218,11 @@ pub(crate) trait Chip8DisplayBackend: Send + Sync + Debug + 'static {
     type GraphicsApi: GraphicsApi;
 
     fn new(initialization_data: <Self::GraphicsApi as GraphicsApi>::InitializationData) -> Self;
-    fn create_framebuffer(&self) -> <Self::GraphicsApi as GraphicsApi>::Texture;
+    fn create_framebuffer(&self) -> <Self::GraphicsApi as GraphicsApi>::Framebuffer;
     fn commit_staging_buffer(
         &mut self,
         staging_buffer: &Texture<Srgba<u8>>,
-        framebuffer: &mut <Self::GraphicsApi as GraphicsApi>::Texture,
+        framebuffer: &mut <Self::GraphicsApi as GraphicsApi>::Framebuffer,
     );
 }
 

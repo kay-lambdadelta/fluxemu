@@ -4,7 +4,7 @@ use fluxemu_frontend::{GraphicsRuntime, software::EguiRenderer};
 use fluxemu_runtime::{
     graphics::{
         GraphicsApi,
-        software::{Features, Software, TextureImplMut, TextureViewMut},
+        software::{Requirements, Software, TextureImplMut, TextureViewMut},
     },
     machine::{Machine, graphics::GraphicsRequirements},
 };
@@ -72,7 +72,7 @@ impl GraphicsRuntime for SoftwareGraphicsRuntime {
                 machine.interact_dyn(display_path.parent().unwrap(), |_| {});
 
                 let framebuffer_guard = framebuffer.lock().unwrap();
-                let framebuffer_texture: &<Self::GraphicsApi as GraphicsApi>::Texture =
+                let framebuffer_texture: &<Self::GraphicsApi as GraphicsApi>::Framebuffer =
                     framebuffer_guard.downcast_ref().unwrap();
 
                 let mut framebuffer_texture = framebuffer_texture.clone();
@@ -93,7 +93,7 @@ impl GraphicsRuntime for SoftwareGraphicsRuntime {
     fn created_requirements(
         &self,
     ) -> <Self::GraphicsApi as fluxemu_runtime::graphics::GraphicsApi>::Requirements {
-        Features
+        Requirements
     }
 
     fn max_texture_side(&self) -> u32 {

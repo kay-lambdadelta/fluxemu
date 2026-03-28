@@ -1,5 +1,7 @@
 use std::fmt::Debug;
 
+use palette::Srgb;
+
 use crate::graphics::{GraphicsApi, software::Software};
 
 /// A trait abstracting over the various things the platform requires

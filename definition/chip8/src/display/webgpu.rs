@@ -28,7 +28,7 @@ impl Chip8DisplayBackend for State {
         }
     }
 
-    fn create_framebuffer(&self) -> <Self::GraphicsApi as GraphicsApi>::Texture {
+    fn create_framebuffer(&self) -> <Self::GraphicsApi as GraphicsApi>::Framebuffer {
         self.device.create_texture(&TextureDescriptor {
             label: None,
             size: Extent3d {
@@ -48,7 +48,7 @@ impl Chip8DisplayBackend for State {
     fn commit_staging_buffer(
         &mut self,
         staging_buffer: &software::Texture<Srgba<u8>>,
-        framebuffer: &mut <Self::GraphicsApi as GraphicsApi>::Texture,
+        framebuffer: &mut <Self::GraphicsApi as GraphicsApi>::Framebuffer,
     ) {
         if staging_buffer.width() != framebuffer.width() as usize
             || staging_buffer.height() != framebuffer.height() as usize

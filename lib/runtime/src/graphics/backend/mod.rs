@@ -8,11 +8,11 @@ pub mod software;
 pub mod webgpu;
 
 /// Trait for marker structs representing rendering backends
-pub trait GraphicsApi: Default + Debug + Any + Sized + Send + Sync + 'static {
+pub trait GraphicsApi: Debug + Any + Sized + Send + Sync + 'static {
     /// Data components need to do their graphics operations
     type InitializationData: Clone + Debug + 'static;
     /// The component framebuffer type
-    type Texture: Any + Send + Sync + Debug + 'static;
+    type Framebuffer: Any + Send + Sync + Debug + 'static;
     /// How components describe what they require out of a graphics context
     type Requirements: Default
         + BitOr<Output = Self::Requirements>

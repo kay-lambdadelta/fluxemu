@@ -29,7 +29,7 @@ impl<R: Region> PpuDisplayBackend<R> for SoftwareState {
         SoftwareState
     }
 
-    fn create_framebuffer(&self) -> <Self::GraphicsApi as GraphicsApi>::Texture {
+    fn create_framebuffer(&self) -> <Self::GraphicsApi as GraphicsApi>::Framebuffer {
         Texture::new(
             VISIBLE_SCANLINE_LENGTH as usize,
             R::VISIBLE_SCANLINES as usize,
@@ -40,7 +40,7 @@ impl<R: Region> PpuDisplayBackend<R> for SoftwareState {
     fn commit_staging_buffer(
         &mut self,
         staging_buffer: &Texture<PpuColorIndex>,
-        framebuffer: &mut <Self::GraphicsApi as GraphicsApi>::Texture,
+        framebuffer: &mut <Self::GraphicsApi as GraphicsApi>::Framebuffer,
     ) {
         convert_paletted_staging_buffer::<R>(staging_buffer, framebuffer);
     }
