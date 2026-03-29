@@ -132,9 +132,12 @@ impl GraphicsRuntime for WebgpuGraphicsRuntime {
         match self.surface.get_current_texture() {
             CurrentSurfaceTexture::Success(surface_texture) => {
                 let surface_texture_size = surface_texture.texture.size();
-                let surface_texture_view = surface_texture
-                    .texture
-                    .create_view(&TextureViewDescriptor::default());
+
+                let surface_texture_view =
+                    surface_texture.texture.create_view(&TextureViewDescriptor {
+                        format: Some(surface_texture.texture.format().add_srgb_suffix()),
+                        ..Default::default()
+                    });
 
                 let mut encoder = self
                     .device
