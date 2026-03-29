@@ -59,6 +59,7 @@ impl<'a> ComponentRegistry<'a> {
         Self { runtime, data }
     }
 
+    /// Release all components currently available for releasing
     pub(crate) fn unmitigate_components(&self, context: &mut RuntimeCurrentThreadContext) {
         for (index, handle) in context.local_component_store.drain(..).enumerate() {
             if let Some(handle) = handle {
@@ -119,6 +120,13 @@ impl<'a> ComponentRegistry<'a> {
                 component_info_guard.threads_awaiting.push(thread.clone());
                 drop(component_info_guard);
 
+                // Release all components we can while blocked
+                RUNTIME_CONTEXT.with_borrow_mut(|runtime_context| {
+                    let runtime_context = runtime_context.as_mut().unwrap();
+
+                    self.unmitigate_components(runtime_context);
+                });
+
                 // Await for that component to potentially become available
                 std::thread::park();
 
@@ -172,14 +180,13 @@ impl<'a> ComponentRegistry<'a> {
         let mut component_handle = self.mitigate_component(id);
         let item = component_handle.interact(self.runtime, time, callback);
 
-        RUNTIME_CONTEXT.with(
+        RUNTIME_CONTEXT.with_borrow_mut(
             #[inline]
             |runtime_context| {
-                let mut runtime_context_guard = runtime_context.borrow_mut();
-                let runtime_context_guard = runtime_context_guard.as_mut().unwrap();
+                let runtime_context = runtime_context.as_mut().unwrap();
 
                 let entry =
-                    get_or_initialize_default(id, &mut runtime_context_guard.local_component_store);
+                    get_or_initialize_default(id, &mut runtime_context.local_component_store);
 
                 *entry = Some(component_handle);
             },
@@ -203,14 +210,13 @@ impl<'a> ComponentRegistry<'a> {
         let mut component_handle = self.mitigate_component(id);
         let item = component_handle.interact_mut(self.runtime, time, callback);
 
-        RUNTIME_CONTEXT.with(
+        RUNTIME_CONTEXT.with_borrow_mut(
             #[inline]
             |runtime_context| {
-                let mut runtime_context_guard = runtime_context.borrow_mut();
-                let runtime_context_guard = runtime_context_guard.as_mut().unwrap();
+                let runtime_context = runtime_context.as_mut().unwrap();
 
                 let entry =
-                    get_or_initialize_default(id, &mut runtime_context_guard.local_component_store);
+                    get_or_initialize_default(id, &mut runtime_context.local_component_store);
 
                 *entry = Some(component_handle);
             },

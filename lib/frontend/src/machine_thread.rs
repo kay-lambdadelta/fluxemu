@@ -30,13 +30,12 @@ pub fn machine_thread(
         machine,
     }: MachineThreadContext,
 ) {
-    let mut execution_timeslice = Duration::milliseconds(2);
+    let min_timeslice = Duration::milliseconds(4);
+    let mut execution_timeslice = min_timeslice;
     let mut sleep_threshold = Duration::milliseconds(1);
     let mut error = Duration::ZERO;
     let mut average_sleep_overshoot = Duration::ZERO;
     let mut paused = false;
-
-    let min_timeslice = Duration::milliseconds(1);
 
     // Ring buffers for smoothing
     let mut execution_time_buffer = ConstGenericRingBuffer::<Duration, SMOOTHING_WINDOW>::new();
