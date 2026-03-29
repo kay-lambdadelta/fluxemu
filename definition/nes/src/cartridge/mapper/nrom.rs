@@ -1,5 +1,5 @@
 use fluxemu_runtime::{
-    component::{Component, ComponentConfig},
+    component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
     platform::Platform,
 };

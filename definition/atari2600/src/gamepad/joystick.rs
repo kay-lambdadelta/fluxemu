@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use fluxemu_input::{GamepadInputId, InputId, InputState, KeyboardInputId};
 use fluxemu_runtime::{
-    component::{Component, ComponentConfig},
+    component::{Component, config::ComponentConfig},
     input::LogicalInputDevice,
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId},

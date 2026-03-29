@@ -5,8 +5,11 @@ use std::{
 };
 
 use fluxemu_runtime::{
-    RuntimeHandle,
-    component::{Component, ComponentConfig, ComponentVersion, LateContext, LateInitializedData},
+    RuntimeApi,
+    component::{
+        Component, ComponentVersion,
+        config::{ComponentConfig, LateContext, LateInitializedData},
+    },
     graphics::{
         GraphicsApi,
         software::{Texture, TextureImplMut},
@@ -197,7 +200,7 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Display<G> {
         }
 
         if commit_staging_buffer {
-            let runtime = RuntimeHandle::current();
+            let runtime = RuntimeApi::current();
 
             // Commit the framebuffer
             runtime.commit_framebuffer::<G>(&self.framebuffer_path, |framebuffer| {
@@ -258,7 +261,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
         component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         let (_, framebuffer_path) = component_builder
-            .scheduler_participation(SchedulerParticipation::OnAccess)
+            .scheduler_participation(Some(SchedulerParticipation::OnAccess))
             .framebuffer("framebuffer");
 
         Ok(Chip8Display {

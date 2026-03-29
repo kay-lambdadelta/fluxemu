@@ -1,14 +1,18 @@
 use std::{borrow::Cow, collections::HashMap, ops::DerefMut, sync::Arc};
 
 use crate::{
-    component::{Component, EventType, LateContext, LateInitializedData},
-    graphics::GraphicsApi,
+    component::{
+        Component, ComponentRegistry,
+        config::{LateContext, LateInitializedData},
+    },
+    event::{EventRequeueMode, EventType},
+    graphics::{GraphicsApi, GraphicsRequirements},
     input::LogicalInputDevice,
-    machine::{Machine, graphics::GraphicsRequirements, registry::ComponentRegistry},
+    machine::Machine,
     memory::{AddressSpaceId, MemoryRemappingCommand},
     path::{ComponentPath, ResourcePath},
     platform::Platform,
-    scheduler::{EventRequeueMode, Period},
+    scheduler::Period,
 };
 
 mod component;
@@ -19,8 +23,6 @@ pub use machine::*;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum SchedulerParticipation {
-    /// The scheduler will make no attempt to time synchronize this component
-    None,
     /// [`crate::component::Component::synchronize`] will only be called upon interaction
     OnAccess,
     /// [`crate::component::Component::synchronize`] will also be called when the scheduler advances time
@@ -59,11 +61,11 @@ enum MachineBuilderCommand<'a, P: Platform> {
         width: u8,
     },
     InsertEvent {
+        path: ComponentPath,
         name: Cow<'static, str>,
         ty: EventType,
         requeue_mode: EventRequeueMode,
         time: Period,
-        path: ComponentPath,
     },
     MemoryMap {
         address_space: AddressSpaceId,
@@ -101,9 +103,12 @@ impl<P: Platform> SealedMachineBuilder<P> {
             graphics_initialization_data,
         };
 
+        let runtime_guard = self.machine.enter_runtime();
+
         for (path, initializer) in self.component_late_initializers.drain() {
-            self.machine
-                .interact_dyn_mut(&path, |mut component| {
+            runtime_guard
+                .registry()
+                .interact_dyn_mut(&path, Period::ZERO, |mut component| {
                     let provided_data = initializer(component.deref_mut(), &late_initialized_data);
 
                     for (framebuffer_name, framebuffer) in provided_data.framebuffers {
@@ -124,6 +129,8 @@ impl<P: Platform> SealedMachineBuilder<P> {
                 })
                 .unwrap();
         }
+
+        drop(runtime_guard);
 
         self.machine
     }

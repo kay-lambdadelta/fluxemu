@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use fluxemu_input::{InputId, physical::hotkey::Hotkey};
 use fluxemu_program::ProgramId;
-use fluxemu_runtime::path::ResourcePath;
+use fluxemu_runtime::ResourcePath;
 use serde::{Deserialize, Serialize};
 
 pub type InputMapping = BTreeMap<InputId, InputId>;

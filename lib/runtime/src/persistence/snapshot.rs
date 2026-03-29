@@ -4,7 +4,8 @@ use fluxemu_program::RomId;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    component::ComponentVersion, machine::registry::ComponentRegistry, path::ComponentPath,
+    component::{ComponentRegistry, ComponentVersion},
+    path::ComponentPath,
     persistence::CompressionFormat,
 };
 
@@ -21,6 +22,7 @@ pub struct ComponentSnapshotInfo {
     pub version: ComponentVersion,
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 pub struct SnapshotManager {
     snapshot_directory: Option<PathBuf>,

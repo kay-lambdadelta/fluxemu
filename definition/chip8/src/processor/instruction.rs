@@ -1,6 +1,5 @@
 use std::{fmt::Display, ops::Range};
 
-use fluxemu_runtime::processor::InstructionSet;
 use nalgebra::Point2;
 use serde::{Deserialize, Serialize};
 use strum::FromRepr;
@@ -187,9 +186,4 @@ impl Display for Chip8InstructionSet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{self:?}")
     }
-}
-
-impl InstructionSet for Chip8InstructionSet {
-    type Opcode = Self;
-    type AddressingMode = ();
 }

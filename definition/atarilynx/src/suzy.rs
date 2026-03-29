@@ -1,7 +1,7 @@
 use std::ops::RangeInclusive;
 
 use fluxemu_runtime::{
-    component::{Component, ComponentConfig},
+    component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId, MemoryError},
     platform::Platform,

@@ -1,5 +1,8 @@
 use fluxemu_runtime::{
-    component::{Component, ComponentConfig, LateContext, LateInitializedData},
+    component::{
+        Component,
+        config::{ComponentConfig, LateContext, LateInitializedData},
+    },
     machine::builder::ComponentBuilder,
     platform::Platform,
 };

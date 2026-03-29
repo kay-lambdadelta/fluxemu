@@ -3,10 +3,10 @@ use std::sync::Arc;
 use fluxemu_frontend::{GraphicsRuntime, software::EguiRenderer};
 use fluxemu_runtime::{
     graphics::{
-        GraphicsApi,
+        GraphicsApi, GraphicsRequirements,
         software::{Requirements, Software, TextureImplMut, TextureViewMut},
     },
-    machine::{Machine, graphics::GraphicsRequirements},
+    machine::Machine,
 };
 use palette::{cast::Packed, named::BLACK, rgb::channels::Bgra};
 use softbuffer::{Context, Surface};
@@ -65,11 +65,17 @@ impl GraphicsRuntime for SoftwareGraphicsRuntime {
                 );
             surface_texture.fill(BLACK.into());
 
-            let framebuffers = machine.framebuffers();
+            let runtime_guard = machine.enter_runtime();
+
+            let framebuffers = runtime_guard.framebuffers();
 
             for (display_path, framebuffer) in framebuffers.iter() {
                 // Ensure we are at least on this frame for this component
-                machine.interact_dyn(display_path.parent().unwrap(), |_| {});
+                runtime_guard.registry().interact_dyn(
+                    display_path.parent().unwrap(),
+                    runtime_guard.now(),
+                    |_| {},
+                );
 
                 let framebuffer_guard = framebuffer.lock().unwrap();
                 let framebuffer_texture: &<Self::GraphicsApi as GraphicsApi>::Framebuffer =

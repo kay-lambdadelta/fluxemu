@@ -1,7 +1,7 @@
 use fluxemu_runtime::{
-    RuntimeHandle,
-    component::EventType,
-    scheduler::{EventRequeueMode, Period},
+    RuntimeApi,
+    event::{EventRequeueMode, EventType},
+    scheduler::Period,
 };
 use nalgebra::Point2;
 
@@ -61,10 +61,10 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
                 // The TIA runs 3 times as fast as the cpu
                 self.cpu_rdy.store(false);
 
-                RuntimeHandle::current().insert_event(
+                RuntimeApi::current().insert_event(
+                    self.framebuffer_path.parent().unwrap(),
                     WAKEUP_CPU_VIA_RDY,
                     self.timestamp + until,
-                    self.framebuffer_path.parent().unwrap(),
                     EventRequeueMode::Once,
                     EventType::sync_point(),
                 );

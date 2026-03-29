@@ -1,7 +1,7 @@
 use std::io::{Read, Write};
 
 use fluxemu_runtime::{
-    component::{Component, ComponentConfig, ComponentVersion},
+    component::{Component, ComponentVersion, config::ComponentConfig},
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     platform::Platform,
     scheduler::{Period, SynchronizationContext},
@@ -66,7 +66,7 @@ impl<P: Platform> ComponentConfig<P> for Chip8TimerConfig {
         self,
         component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
-        component_builder.scheduler_participation(SchedulerParticipation::OnAccess);
+        component_builder.scheduler_participation(Some(SchedulerParticipation::OnAccess));
 
         Ok(Chip8Timer { timer: 0 })
     }

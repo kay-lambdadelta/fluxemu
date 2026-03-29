@@ -12,14 +12,18 @@ use arrayvec::ArrayVec;
 use fluxemu_definition_mos6502::{Mos6502, NmiFlag, RdyFlag};
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
-    RuntimeHandle,
-    component::{Component, ComponentConfig, EventType, LateContext, LateInitializedData},
+    RuntimeApi,
+    component::{
+        Component,
+        config::{ComponentConfig, LateContext, LateInitializedData},
+    },
+    event::{EventRequeueMode, EventType},
     graphics::software::Texture,
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::{Address, AddressSpaceCache, AddressSpaceId, MemoryError},
     path::{ComponentPath, ResourcePath},
     platform::Platform,
-    scheduler::{EventRequeueMode, Period, SynchronizationContext},
+    scheduler::{Period, SynchronizationContext},
 };
 use nalgebra::{Point2, Vector2};
 use serde::{Deserialize, Serialize};
@@ -116,7 +120,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
         component: &mut Self::Component,
         data: &LateContext<P>,
     ) -> LateInitializedData<P> {
-        let runtime = RuntimeHandle::current();
+        let runtime = RuntimeApi::current();
 
         component.ppu_address_space_cache = Some(
             runtime
@@ -153,7 +157,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
             .unwrap();
 
         let (component_builder, framebuffer_path) = component_builder
-            .scheduler_participation(SchedulerParticipation::OnAccess)
+            .scheduler_participation(Some(SchedulerParticipation::OnAccess))
             .framebuffer("framebuffer");
 
         let total_screen_time =
@@ -209,9 +213,9 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
             )
             .insert_event(
                 // x: 1, y: 241
+                &my_path,
                 VBLANK_START,
                 vblank_start_from_initial_position,
-                &my_path,
                 EventRequeueMode::Repeating {
                     frequency: framerate,
                 },
@@ -219,9 +223,9 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
             )
             .insert_event(
                 // x: 1, y: 261
+                &my_path,
                 VBLANK_END,
                 vblank_end_from_initial_position,
-                &my_path,
                 EventRequeueMode::Repeating {
                     frequency: framerate,
                 },
@@ -337,7 +341,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                 CpuAccessibleRegister::PpuScroll => todo!(),
                 CpuAccessibleRegister::PpuAddr => todo!(),
                 CpuAccessibleRegister::PpuData => {
-                    let runtime = RuntimeHandle::current();
+                    let runtime = RuntimeApi::current();
                     let ppu_address_space = runtime.address_space(self.ppu_address_space).unwrap();
 
                     if avoid_side_effects {
@@ -459,7 +463,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         self.state.cycle_counter
                     );
 
-                    let runtime = RuntimeHandle::current();
+                    let runtime = RuntimeApi::current();
                     let ppu_address_space = runtime.address_space(self.ppu_address_space).unwrap();
 
                     // Redirect into the ppu address space
@@ -476,7 +480,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         )) & 0b0111_1111_1111_1111;
                 }
                 CpuAccessibleRegister::OamDma => {
-                    let runtime = RuntimeHandle::current();
+                    let runtime = RuntimeApi::current();
                     let cpu_address_space = runtime.address_space(self.cpu_address_space).unwrap();
 
                     let page = u16::from(*buffer) << 8;
@@ -491,9 +495,9 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
 
                     // Make sure we wake up eventually
                     runtime.insert_event(
+                        self.framebuffer_path.parent().unwrap(),
                         WAKEUP_CPU_VIA_RDY,
                         next_processor_rdy_high,
-                        self.framebuffer_path.parent().unwrap(),
                         EventRequeueMode::Once,
                         EventType::sync_point(),
                     );
@@ -527,7 +531,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     }
                 }
                 VBLANK_END => {
-                    let runtime = RuntimeHandle::current();
+                    let runtime = RuntimeApi::current();
 
                     self.state.entered_vblank.store(false, Ordering::Release);
                     self.processor_nmi.store(true);
@@ -553,7 +557,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
     }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
-        let runtime = RuntimeHandle::current();
+        let runtime = RuntimeApi::current();
         let ppu_address_space = runtime.address_space(self.ppu_address_space).unwrap();
 
         for now in context.allocate(self.period, None) {

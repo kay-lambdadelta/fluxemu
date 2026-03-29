@@ -9,7 +9,10 @@ use bytes::Bytes;
 use fluxemu_program::RomId;
 use fluxemu_range::{ContiguousRange, RangeIntersection};
 use fluxemu_runtime::{
-    component::{Component, ComponentConfig, ComponentVersion, LateContext, LateInitializedData},
+    component::{
+        Component, ComponentVersion,
+        config::{ComponentConfig, LateContext, LateInitializedData},
+    },
     machine::builder::{ComponentBuilder, RomRequirement},
     memory::{Address, AddressSpaceId, MemoryError},
     platform::Platform,

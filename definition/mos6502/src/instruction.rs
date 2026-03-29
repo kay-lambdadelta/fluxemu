@@ -1,6 +1,5 @@
 use std::fmt::Display;
 
-use fluxemu_runtime::processor::InstructionSet;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -173,11 +172,6 @@ impl Display for Opcode {
 pub struct Mos6502InstructionSet {
     pub opcode: Opcode,
     pub addressing_mode: Option<AddressingMode>,
-}
-
-impl InstructionSet for Mos6502InstructionSet {
-    type Opcode = Opcode;
-    type AddressingMode = AddressingMode;
 }
 
 impl Mos6502 {

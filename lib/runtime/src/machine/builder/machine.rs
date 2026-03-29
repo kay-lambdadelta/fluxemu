@@ -11,15 +11,14 @@ use bytes::Bytes;
 use fluxemu_program::{MachineId, ProgramManager, ProgramSpecification, RomId};
 
 use crate::{
-    component::ComponentConfig,
+    component::{ComponentRegistry, config::ComponentConfig},
+    graphics::GraphicsRequirements,
     machine::{
         Machine,
         builder::{
             ComponentBuilder, ComponentData, MachineBuilderCommand, RomRequirement,
             SchedulerParticipation, SealedMachineBuilder,
         },
-        graphics::GraphicsRequirements,
-        registry::ComponentRegistry,
     },
     memory::{
         Address, AddressSpace, AddressSpaceId, MapTarget, MemoryRemappingCommand, Permissions,
@@ -154,7 +153,6 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
                 registry.insert_component(
                     path,
                     component_data.scheduler_participation,
-                    component_data.preemption_signal.clone(),
                     component_data.save_version,
                     component_data.snapshot_version,
                     component,
@@ -377,13 +375,12 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
         let mut audio_outputs = HashSet::default();
         let mut framebuffers = HashMap::default();
         let mut component_late_initializers = HashMap::default();
-        let mut preemption_signals = Vec::default();
         let mut address_spaces = HashMap::default();
         let mut remapping_commands: HashMap<_, Vec<_>> = HashMap::default();
         let mut registry = ComponentRegistry::default();
         let mut graphics_requirements = GraphicsRequirements::default();
 
-        // The machine builder local command queue does not recieve any more items from now
+        // The machine builder local command queue does not receive any more items from now
         //
         // All components push to their local queues which get added to the FRONT of the global queue
         //
@@ -402,13 +399,8 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
                     component_late_initializers.insert(path.clone(), data.late_initializer);
                     audio_outputs.extend(data.audio_outputs);
 
-                    if data.scheduler_participation == SchedulerParticipation::OnAccess
-                        || data.scheduler_participation == SchedulerParticipation::SchedulerDriven
+                    if data.scheduler_participation == Some(SchedulerParticipation::SchedulerDriven)
                     {
-                        preemption_signals.push(data.preemption_signal);
-                    }
-
-                    if data.scheduler_participation == SchedulerParticipation::SchedulerDriven {
                         scheduler.register_driven_component(path, component_handle.clone());
                     }
 
@@ -474,7 +466,6 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
             snapshot_manager: self.snapshot_manager,
             program_specification: self.program_specification,
             audio_outputs,
-            preemption_signals,
         };
 
         Ok(SealedMachineBuilder {

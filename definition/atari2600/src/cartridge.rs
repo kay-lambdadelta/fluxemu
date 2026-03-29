@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use fluxemu_program::RomId;
 use fluxemu_runtime::{
-    component::{Component, ComponentConfig},
+    component::{Component, config::ComponentConfig},
     machine::builder::{ComponentBuilder, RomRequirement},
     memory::{Address, AddressSpaceId, MemoryError},
     platform::Platform,

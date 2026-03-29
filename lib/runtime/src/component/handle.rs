@@ -5,19 +5,17 @@ use std::{
 };
 
 use crate::{
-    RuntimeHandle,
     component::Component,
+    handle::RuntimeApi,
     machine::builder::SchedulerParticipation,
     path::ComponentPath,
-    scheduler::{Period, PreemptionSignal, SynchronizationContext},
+    scheduler::{Period, SynchronizationContext},
 };
 
 #[derive(Debug)]
-pub(crate) struct SynchronizationData {
+struct SynchronizationData {
     /// Timestamp this component is actually updated to
     updated_timestamp: Period,
-    /// Interrupt receiver
-    preemption_signal: Arc<PreemptionSignal>,
 }
 
 // HACK: Add a generic so we can coerce this unsized
@@ -36,22 +34,13 @@ pub struct ComponentHandle {
 
 impl ComponentHandle {
     pub(crate) fn new(
-        scheduler_participation: SchedulerParticipation,
-        preemption_signal: Arc<PreemptionSignal>,
+        scheduler_participation: Option<SchedulerParticipation>,
         path: ComponentPath,
         component: impl Component,
     ) -> Self {
-        let synchronization_data = if matches!(
-            scheduler_participation,
-            SchedulerParticipation::OnAccess | SchedulerParticipation::SchedulerDriven
-        ) {
-            Some(SynchronizationData {
-                updated_timestamp: Period::default(),
-                preemption_signal,
-            })
-        } else {
-            None
-        };
+        let synchronization_data = scheduler_participation.map(|_| SynchronizationData {
+            updated_timestamp: Period::default(),
+        });
 
         Self {
             inner: Arc::new(RwLock::new(HandleInner {
@@ -79,7 +68,7 @@ impl ComponentHandle {
                 .updated_timestamp
                 < time
         {
-            let runtime = RuntimeHandle::current();
+            let runtime = RuntimeApi::current();
 
             // Loop until the component is fully updated, processing events when relevant
             loop {
@@ -95,11 +84,10 @@ impl ComponentHandle {
                 }
 
                 let context = SynchronizationContext {
-                    event_manager: runtime.sync_point_manager(),
+                    scheduler: &runtime.machine().scheduler,
                     updated_timestamp: &mut synchronization_data.updated_timestamp,
                     target_timestamp: time,
                     last_attempted_allocation: &mut last_attempted_allocation,
-                    interrupt: &synchronization_data.preemption_signal,
                 };
 
                 guard_inner.component.synchronize(context);
@@ -121,8 +109,8 @@ impl ComponentHandle {
                     // Drop the lock so that events that touch this component do not deadlock
                     drop(guard);
 
-                    // consume our sync points
-                    runtime.sync_point_manager().consume(timestamp);
+                    // consume events
+                    runtime.machine().scheduler.event_manager.consume(timestamp);
 
                     // Reacquire lock
                     guard = self.inner.write().unwrap();

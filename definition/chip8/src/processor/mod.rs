@@ -6,10 +6,10 @@ use std::{
 
 use arrayvec::ArrayVec;
 use fluxemu_runtime::{
-    RuntimeHandle,
+    RuntimeApi,
     component::{
-        Component, ComponentConfig, ComponentVersion, LateContext, LateInitializedData,
-        TypedComponentHandle,
+        Component, ComponentVersion, TypedComponentHandle,
+        config::{ComponentConfig, LateContext, LateInitializedData},
     },
     input::LogicalInputDevice,
     machine::builder::{ComponentBuilder, SchedulerParticipation},
@@ -138,7 +138,7 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
     }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
-        let runtime = RuntimeHandle::current();
+        let runtime = RuntimeApi::current();
 
         let address_space = runtime
             .address_space(self.config.cpu_address_space)
@@ -263,7 +263,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
         let state = ProcessorState::default();
 
         let (component_builder, keypad) = component_builder
-            .scheduler_participation(SchedulerParticipation::SchedulerDriven)
+            .scheduler_participation(Some(SchedulerParticipation::SchedulerDriven))
             .input("keypad", PRESENT_INPUTS, DEFAULT_MAPPINGS);
 
         Ok(Chip8Processor {

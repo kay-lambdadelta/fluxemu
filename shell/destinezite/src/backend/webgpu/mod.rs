@@ -6,10 +6,10 @@ use egui_wgpu::{Renderer, RendererOptions, ScreenDescriptor};
 use fluxemu_frontend::GraphicsRuntime;
 use fluxemu_runtime::{
     graphics::{
-        GraphicsApi,
+        GraphicsApi, GraphicsRequirements,
         webgpu::{InitializationData, Requirements, Webgpu},
     },
-    machine::{Machine, graphics::GraphicsRequirements},
+    machine::Machine,
 };
 use nalgebra::Vector2;
 use pollster::FutureExt;
@@ -160,12 +160,18 @@ impl GraphicsRuntime for WebgpuGraphicsRuntime {
                 render_pass.set_pipeline(&self.pipeline);
 
                 // We lock the guards until the operation is done to stop race conditions
+                let runtime_guard = machine.enter_runtime();
+
                 let mut used_framebuffer_guards = Vec::default();
-                let framebuffers = machine.framebuffers();
+                let framebuffers = runtime_guard.framebuffers();
 
                 for (display_path, framebuffer) in framebuffers.iter() {
                     // Ensure we are at least on this frame for this component
-                    machine.interact_dyn(display_path.parent().unwrap(), |_| {});
+                    runtime_guard.registry().interact_dyn(
+                        display_path.parent().unwrap(),
+                        runtime_guard.now(),
+                        |_| {},
+                    );
 
                     let framebuffer_guard = framebuffer.lock().unwrap();
                     let framebuffer_texture: &<Self::GraphicsApi as GraphicsApi>::Framebuffer =

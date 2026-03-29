@@ -8,8 +8,7 @@ use rangemap::RangeInclusiveMap;
 use thiserror::Error;
 
 use crate::{
-    component::ComponentHandle,
-    machine::registry::ComponentRegistry,
+    component::{ComponentHandle, ComponentRegistry},
     path::{ComponentPath, ResourcePath},
 };
 

@@ -2,7 +2,7 @@ use std::io::{Read, Write};
 
 use fluxemu_audio::SquareWave;
 use fluxemu_runtime::{
-    component::{Component, ComponentConfig, ComponentVersion, SampleSource},
+    component::{Component, ComponentVersion, SampleSource, config::ComponentConfig},
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     platform::Platform,
     scheduler::{Frequency, Period, SynchronizationContext},
@@ -101,7 +101,7 @@ impl<P: Platform> ComponentConfig<P> for Chip8AudioConfig {
         component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         component_builder
-            .scheduler_participation(SchedulerParticipation::OnAccess)
+            .scheduler_participation(Some(SchedulerParticipation::OnAccess))
             .audio_channel("mono");
 
         Ok(Chip8Audio {

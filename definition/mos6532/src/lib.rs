@@ -7,8 +7,8 @@ use std::{
 use fluxemu_definition_memory::{InitialContents, MemoryConfig};
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
-    RuntimeHandle,
-    component::{Component, ComponentConfig},
+    RuntimeApi,
+    component::{Component, config::ComponentConfig},
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::{
         Address, AddressSpaceId, MapTarget, MemoryError, MemoryErrorType, MemoryRemappingCommand,
@@ -129,7 +129,7 @@ impl Component for Mos6532Riot {
                     self.swacnt = *buffer_section != 0;
 
                     if let Some(swacnt) = &self.config.swcha {
-                        let runtime = RuntimeHandle::current();
+                        let runtime = RuntimeApi::current();
                         let address = self.swcha_address();
 
                         let permissions = if self.swbcnt {
@@ -161,7 +161,7 @@ impl Component for Mos6532Riot {
                     self.swbcnt = *buffer_section != 0;
 
                     if let Some(swbcnt) = &self.config.swchb {
-                        let runtime = RuntimeHandle::current();
+                        let runtime = RuntimeApi::current();
                         let address = self.swchb_address();
 
                         let permissions = if self.swbcnt {
@@ -284,7 +284,7 @@ impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
             .memory_map_component_write(self.assigned_address_space, tim64t..=tim64t)
             .memory_map_component_write(self.assigned_address_space, t1024t..=t1024t)
             .memory_map_component_read(self.assigned_address_space, instat..=instat)
-            .scheduler_participation(SchedulerParticipation::OnAccess);
+            .scheduler_participation(Some(SchedulerParticipation::OnAccess));
 
         component_builder.component(
             "ram",

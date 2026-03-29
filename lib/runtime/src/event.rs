@@ -1,4 +1,5 @@
 use std::{
+    any::Any,
     borrow::Cow,
     cmp::Reverse,
     collections::BinaryHeap,
@@ -9,20 +10,57 @@ use std::{
     },
 };
 
+use fluxemu_input::{InputId, InputState};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    component::{ComponentHandle, EventType},
+    component::ComponentHandle,
     scheduler::{Frequency, Period},
 };
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum EventRequeueMode {
+    Once,
+    Repeating { frequency: Frequency },
+}
+
+#[derive(Debug)]
+pub enum EventType {
+    // Synchronization point, intended to force a component to be updated at a time
+    SyncPoint,
+    // Input event, for listening inputs
+    Input { id: InputId, state: InputState },
+    // Custom event, for sending custom data to components
+    Custom { data: Box<dyn EventImpl> },
+}
+
+impl EventType {
+    pub fn sync_point() -> Self {
+        Self::SyncPoint
+    }
+
+    pub fn input(id: InputId, state: InputState) -> Self {
+        Self::Input { id, state }
+    }
+
+    pub fn custom(data: impl EventImpl) -> Self {
+        Self::Custom {
+            data: Box::new(data),
+        }
+    }
+}
+
+pub trait EventImpl: Any + Send + Debug {}
+impl<T: Any + Send + Debug> EventImpl for T {}
+
 #[derive(Debug, Default)]
-pub struct EventManager {
+pub(crate) struct EventManager {
     heap: Mutex<BinaryHeap<QueuedEvent>>,
 }
 
 impl EventManager {
-    pub(crate) fn queue(
+    #[inline]
+    pub fn queue(
         &self,
         name: Cow<'static, str>,
         time: Period,
@@ -97,6 +135,28 @@ impl EventManager {
 }
 
 #[derive(Debug)]
+pub(crate) struct PreemptionSignal(AtomicBool);
+
+impl PreemptionSignal {
+    pub(super) fn new() -> Self {
+        Self(AtomicBool::new(false))
+    }
+
+    pub(crate) fn event_occurred(&self) {
+        self.0.store(true, Ordering::Release);
+    }
+
+    #[inline]
+    pub(crate) fn needs_preemption(&self) -> bool {
+        if !self.0.load(Ordering::Acquire) {
+            return false;
+        }
+
+        self.0.swap(false, Ordering::AcqRel)
+    }
+}
+
+#[derive(Debug)]
 struct QueuedEvent {
     component: ComponentHandle,
     ty: EventType,
@@ -122,29 +182,5 @@ impl PartialOrd for QueuedEvent {
 impl Ord for QueuedEvent {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.time.cmp(&other.time)
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum EventRequeueMode {
-    Once,
-    Repeating { frequency: Frequency },
-}
-
-#[derive(Debug, Default)]
-pub(crate) struct PreemptionSignal(AtomicBool);
-
-impl PreemptionSignal {
-    pub(crate) fn event_occured(&self) {
-        self.0.store(true, Ordering::Release);
-    }
-
-    #[inline]
-    pub(crate) fn needs_preemption(&self) -> bool {
-        if !self.0.load(Ordering::Acquire) {
-            return false;
-        }
-
-        self.0.swap(false, Ordering::AcqRel)
     }
 }

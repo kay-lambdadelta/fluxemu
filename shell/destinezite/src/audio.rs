@@ -70,35 +70,41 @@ impl AudioRuntime for CpalAudioRuntime {
                         let machine = machine.load();
 
                         if let Some(machine) = machine.as_ref() {
+                            let runtime_guard = machine.enter_runtime();
                             let buffer: &mut [SVector<f32, _>] = bytemuck::cast_slice_mut(buffer);
                             buffer.fill(SVector::from_element(f32::equilibrium()));
 
                             let _representing_time =
                                 Period::from_num(buffer.len() as f32 / sample_rate);
 
-                            for audio_stream in machine.audio_outputs() {
-                                machine
-                                    .interact_dyn_mut(audio_stream.parent().unwrap(), |component| {
-                                        let audio_source =
-                                            component.get_audio_channel(audio_stream.name());
+                            for audio_stream in runtime_guard.audio_outputs() {
+                                runtime_guard
+                                    .registry()
+                                    .interact_dyn_mut(
+                                        audio_stream.parent().unwrap(),
+                                        runtime_guard.now(),
+                                        |component| {
+                                            let audio_source =
+                                                component.get_audio_channel(audio_stream.name());
 
-                                        let audio_generator = audio_source
-                                            .source
-                                            .drain()
-                                            .pad()
-                                            .resample::<f32>(
-                                                audio_source.sample_rate,
-                                                sample_rate,
-                                                Linear,
-                                            )
-                                            .remix::<2>();
+                                            let audio_generator = audio_source
+                                                .source
+                                                .drain()
+                                                .pad()
+                                                .resample::<f32>(
+                                                    audio_source.sample_rate,
+                                                    sample_rate,
+                                                    Linear,
+                                                )
+                                                .remix::<2>();
 
-                                        for (destination, source) in
-                                            buffer.iter_mut().zip(audio_generator)
-                                        {
-                                            *destination = source;
-                                        }
-                                    })
+                                            for (destination, source) in
+                                                buffer.iter_mut().zip(audio_generator)
+                                            {
+                                                *destination = source;
+                                            }
+                                        },
+                                    )
                                     .unwrap()
                             }
                         }

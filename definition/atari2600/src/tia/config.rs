@@ -2,7 +2,7 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use fluxemu_definition_mos6502::Mos6502;
 use fluxemu_runtime::{
-    component::{ComponentConfig, LateContext, LateInitializedData},
+    component::config::{ComponentConfig, LateContext, LateInitializedData},
     graphics::software::Texture,
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::AddressSpaceId,
@@ -55,7 +55,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>> ComponentConf
         component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         let (mut component_builder, framebuffer_path) = component_builder
-            .scheduler_participation(SchedulerParticipation::OnAccess)
+            .scheduler_participation(Some(SchedulerParticipation::OnAccess))
             .framebuffer("framebuffer");
 
         for register in ReadRegisters::iter() {

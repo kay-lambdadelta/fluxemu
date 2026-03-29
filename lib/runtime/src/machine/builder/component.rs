@@ -8,28 +8,28 @@ use fluxemu_input::InputId;
 use fluxemu_program::{ProgramManager, RomId};
 
 use crate::{
-    component::{Component, ComponentConfig, ComponentVersion, EventType, TypedComponentHandle},
+    component::{
+        Component, ComponentRegistry, ComponentVersion, TypedComponentHandle,
+        config::ComponentConfig,
+    },
+    event::{EventRequeueMode, EventType},
+    graphics::GraphicsRequirements,
     input::{LogicalInputDevice, LogicalInputDeviceMetadata},
-    machine::{
-        builder::{
-            ComponentLateInitializer, MachineBuilder, MachineBuilderCommand, RomRequirement,
-            SchedulerParticipation,
-        },
-        graphics::GraphicsRequirements,
-        registry::ComponentRegistry,
+    machine::builder::{
+        ComponentLateInitializer, MachineBuilder, MachineBuilderCommand, RomRequirement,
+        SchedulerParticipation,
     },
     memory::{Address, AddressSpaceId, MapTarget, MemoryRemappingCommand, Permissions},
     path::{ComponentPath, ResourcePath},
     platform::Platform,
-    scheduler::{EventRequeueMode, Period, PreemptionSignal},
+    scheduler::Period,
 };
 
 /// Overall data extracted from components needed for machine initialization
 pub(super) struct ComponentData<'a, P: Platform> {
     pub audio_outputs: HashSet<ResourcePath>,
     pub late_initializer: ComponentLateInitializer<P>,
-    pub scheduler_participation: SchedulerParticipation,
-    pub preemption_signal: Arc<PreemptionSignal>,
+    pub scheduler_participation: Option<SchedulerParticipation>,
     pub save_version: Option<ComponentVersion>,
     pub snapshot_version: Option<ComponentVersion>,
     pub local_commands: Vec<MachineBuilderCommand<'a, P>>,
@@ -45,8 +45,7 @@ impl<P: Platform> ComponentData<'_, P> {
 
                 B::late_initialize(component, data)
             }),
-            scheduler_participation: SchedulerParticipation::None,
-            preemption_signal: Arc::default(),
+            scheduler_participation: None,
             save_version: None,
             snapshot_version: None,
             local_commands: Vec::default(),
@@ -91,7 +90,10 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
         self.component_data.snapshot_version = Some(version);
     }
 
-    pub fn scheduler_participation(self, scheduler_participation: SchedulerParticipation) -> Self {
+    pub fn scheduler_participation(
+        self,
+        scheduler_participation: Option<SchedulerParticipation>,
+    ) -> Self {
         self.component_data.scheduler_participation = scheduler_participation;
 
         self
@@ -351,9 +353,9 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
 
     pub fn insert_event(
         self,
+        target_path: &ComponentPath,
         name: impl Into<Cow<'static, str>>,
         time: Period,
-        target_path: &ComponentPath,
         requeue_mode: EventRequeueMode,
         ty: EventType,
     ) -> Self {

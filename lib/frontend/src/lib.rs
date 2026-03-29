@@ -285,9 +285,12 @@ impl<P: FrontendPlatform> Frontend<P> {
                                 ..
                             }) = &mut self.machine_context
                             {
+                                // Enter runtime
+                                let runtime_guard = machine.enter_runtime();
+
                                 // Unset ALL inputs
                                 for (logical_input_device_path, logical_input_device) in
-                                    machine.input_devices()
+                                    runtime_guard.input_devices()
                                 {
                                     let unset_inputs = logical_input_device
                                         .metadata()
@@ -296,7 +299,8 @@ impl<P: FrontendPlatform> Frontend<P> {
                                         .copied()
                                         .map(|input_id| (input_id, InputState::RELEASED));
 
-                                    machine.insert_inputs(logical_input_device_path, unset_inputs);
+                                    runtime_guard
+                                        .insert_inputs(logical_input_device_path, unset_inputs);
                                 }
 
                                 // Pause machine if one exists
@@ -330,7 +334,10 @@ impl<P: FrontendPlatform> Frontend<P> {
                 ..
             }) = &self.machine_context
         {
-            let Some(program_specification) = machine.program_specification() else {
+            // Enter runtime
+            let runtime_guard = machine.enter_runtime();
+
+            let Some(program_specification) = runtime_guard.program_specification() else {
                 return;
             };
 
@@ -338,7 +345,7 @@ impl<P: FrontendPlatform> Frontend<P> {
                 return;
             };
 
-            let Some(logical_device) = machine.input_devices().get(input_path) else {
+            let Some(logical_device) = runtime_guard.input_devices().get(input_path) else {
                 return;
             };
 
@@ -387,7 +394,7 @@ impl<P: FrontendPlatform> Frontend<P> {
             logical_device.set_state(transformed_input_id, state);
 
             // Insert that input into the machine
-            machine.insert_inputs(input_path, [(transformed_input_id, state)]);
+            runtime_guard.insert_inputs(input_path, [(transformed_input_id, state)]);
         }
     }
 
@@ -432,6 +439,7 @@ impl<P: FrontendPlatform> Frontend<P> {
                 callback(&self.egui_context, &sealed_machine_builder);
 
             let machine = sealed_machine_builder.build(graphics_initialization_data);
+            let runtime_guard = machine.enter_runtime();
 
             let (offload_communication_sender, offload_communication_receiver) = mpsc::channel();
 
@@ -451,7 +459,7 @@ impl<P: FrontendPlatform> Frontend<P> {
 
             // FIXME: Actually reference the environment and add a input mapping ui
             let default_physical_input_to_virtual_mapping =
-                if let Some(input_device) = machine.input_devices().keys().next() {
+                if let Some(input_device) = runtime_guard.input_devices().keys().next() {
                     HashMap::from([(
                         PhysicalInputDeviceId::PLATFORM_RESERVED,
                         input_device.clone(),
@@ -459,6 +467,9 @@ impl<P: FrontendPlatform> Frontend<P> {
                 } else {
                     HashMap::default()
                 };
+
+            // Exit runtime
+            drop(runtime_guard);
 
             self.machine_context = Some(MachineContext {
                 offload_communication: offload_communication_sender,

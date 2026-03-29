@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use fluxemu_input::{GamepadInputId, InputId, KeyboardInputId};
 use fluxemu_runtime::{
-    component::{Component, ComponentConfig},
+    component::{Component, config::ComponentConfig},
     input::LogicalInputDevice,
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId, MemoryError},

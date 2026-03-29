@@ -5,7 +5,7 @@ use fluxemu_range::{ContiguousRange, RangeIntersection};
 use itertools::Itertools;
 
 use crate::{
-    machine::registry::ComponentRegistry,
+    component::ComponentRegistry,
     memory::{Address, MappingEntry, MemoryMappingTable, PAGE_SIZE, Page, PageEntry, PageTarget},
     path::{ComponentPath, ResourcePath},
 };

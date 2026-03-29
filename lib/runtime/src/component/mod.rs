@@ -1,43 +1,41 @@
 use std::{
     any::Any,
-    borrow::Cow,
-    collections::HashMap,
-    error::Error,
     fmt::Debug,
     io::{Read, Write},
     ops::RangeInclusive,
 };
 
-use fluxemu_input::{InputId, InputState};
 use fluxemu_range::ContiguousRange;
 pub use handle::*;
 use nalgebra::SVector;
 use ringbuffer::AllocRingBuffer;
 
 use crate::{
-    graphics::GraphicsApi,
-    machine::builder::ComponentBuilder,
+    event::EventType,
     memory::{Address, AddressSpaceId, MemoryError, MemoryErrorType},
-    platform::Platform,
     scheduler::{Period, SynchronizationContext},
 };
 
+pub mod config;
 mod handle;
+mod registry;
+
+pub use registry::ComponentRegistry;
 
 #[allow(unused)]
 /// Basic supertrait for all components
 pub trait Component: Send + Sync + Debug + Any {
-    /// Write the save
+    /// Write a save representative of the current state of the save relevant aspects of the component
     fn store_save(&self, writer: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
     }
 
-    /// Store the snapshot
+    /// Write a snapshot representative of the current state of the component
     fn store_snapshot(&self, writer: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
     }
 
-    /// Read the snapshot
+    /// Read a snapshot and restore the state given within it
     fn load_snapshot(
         &mut self,
         version: ComponentVersion,
@@ -46,7 +44,9 @@ pub trait Component: Send + Sync + Debug + Any {
         Ok(())
     }
 
-    /// Reads memory at the specified address in the specified address space to fill the buffer
+    /// Read memory at the specified address in the specified address space to fill the buffer
+    ///
+    /// Nothing should never explicitly call this, instead going through [crate::memory::AddressSpace]
     fn memory_read(
         &self,
         address: Address,
@@ -58,6 +58,8 @@ pub trait Component: Send + Sync + Debug + Any {
     }
 
     /// Writes memory at the specified address in the specified address space
+    ///
+    /// Nothing should never explicitly call this, instead going through [crate::memory::AddressSpace]
     fn memory_write(
         &mut self,
         address: Address,
@@ -72,52 +74,16 @@ pub trait Component: Send + Sync + Debug + Any {
         unreachable!()
     }
 
-    /// Synchronize until the time tracker indicates that no more time can be consumed
+    /// Synchronize in a loop until the iterator ends
     fn synchronize(&mut self, context: SynchronizationContext) {}
-    /// Given a delta between this components time and real time, is the component as much as it can be
+
+    /// Tell the scheduler that work needs to be done to close this delta
     fn needs_work(&self, delta: Period) -> bool {
         false
     }
 
+    /// Handle an event targeted towards this component
     fn handle_event(&mut self, name: &str, event: EventType) {}
-}
-
-#[allow(unused)]
-/// Factory config to construct a component
-pub trait ComponentConfig<P: Platform>: Debug + Sized + Sync + Send {
-    /// The component that this config will create
-    type Component: Component;
-
-    /// Make a new component from the config
-    fn build_component(
-        self,
-        component_builder: ComponentBuilder<P, Self::Component>,
-    ) -> Result<Self::Component, Box<dyn Error>>;
-
-    /// Do setup for subsystems that cannot be initalized during [`Self::build_component`]
-    fn late_initialize(
-        component: &mut Self::Component,
-        data: &LateContext<P>,
-    ) -> LateInitializedData<P> {
-        Default::default()
-    }
-}
-
-/// Data that the runtime will provide at the end of the initialization sequence
-pub struct LateContext<P: Platform> {
-    pub graphics_initialization_data: <P::GraphicsApi as GraphicsApi>::InitializationData,
-}
-
-pub struct LateInitializedData<P: Platform> {
-    pub framebuffers: HashMap<Cow<'static, str>, <P::GraphicsApi as GraphicsApi>::Framebuffer>,
-}
-
-impl<P: Platform> Default for LateInitializedData<P> {
-    fn default() -> Self {
-        Self {
-            framebuffers: HashMap::default(),
-        }
-    }
 }
 
 /// Version that components use
@@ -138,32 +104,3 @@ fn denied_range(address: Address, len: usize) -> MemoryError {
         .collect(),
     )
 }
-
-#[derive(Debug)]
-pub enum EventType {
-    // Synchronization point, intended to force a component to be updated at a time
-    SyncPoint,
-    // Input event, for listening inputs
-    Input { id: InputId, state: InputState },
-    // Custom event, for sending custom data to components
-    Custom { data: Box<dyn EventImpl> },
-}
-
-impl EventType {
-    pub fn sync_point() -> Self {
-        Self::SyncPoint
-    }
-
-    pub fn input(id: InputId, state: InputState) -> Self {
-        Self::Input { id, state }
-    }
-
-    pub fn custom(data: impl EventImpl) -> Self {
-        Self::Custom {
-            data: Box::new(data),
-        }
-    }
-}
-
-pub trait EventImpl: Any + Send + Debug {}
-impl<T: Any + Send + Debug> EventImpl for T {}

@@ -2,7 +2,6 @@ use std::{
     any::{Any, TypeId},
     collections::HashMap,
     fmt::Debug,
-    sync::Arc,
 };
 
 use rustc_hash::FxBuildHasher;
@@ -11,9 +10,10 @@ use crate::{
     component::{Component, ComponentHandle, ComponentVersion, TypedComponentHandle},
     machine::builder::SchedulerParticipation,
     path::ComponentPath,
-    scheduler::{Period, PreemptionSignal},
+    scheduler::Period,
 };
 
+#[allow(unused)]
 struct ComponentInfo {
     component: ComponentHandle,
     type_id: TypeId,
@@ -29,11 +29,7 @@ impl Debug for ComponentInfo {
 
 #[derive(Debug, Default)]
 /// The store for components
-pub struct ComponentRegistry
-// This absolutely has to be thread-safe
-where
-    Self: Send + Sync,
-{
+pub struct ComponentRegistry {
     components: HashMap<ComponentPath, ComponentInfo, FxBuildHasher>,
 }
 
@@ -41,8 +37,7 @@ impl ComponentRegistry {
     pub(crate) fn insert_component<C: Component>(
         &mut self,
         path: ComponentPath,
-        scheduler_participation: SchedulerParticipation,
-        preemption_signal: Arc<PreemptionSignal>,
+        scheduler_participation: Option<SchedulerParticipation>,
         save_version: Option<ComponentVersion>,
         snapshot_version: Option<ComponentVersion>,
         component: C,
@@ -50,12 +45,7 @@ impl ComponentRegistry {
         self.components.insert(
             path.clone(),
             ComponentInfo {
-                component: ComponentHandle::new(
-                    scheduler_participation,
-                    preemption_signal,
-                    path,
-                    component,
-                ),
+                component: ComponentHandle::new(scheduler_participation, path, component),
                 type_id: TypeId::of::<C>(),
                 save_version,
                 snapshot_version,

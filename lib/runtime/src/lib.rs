@@ -2,29 +2,18 @@
 //!
 //! Main runtime crate for the FluxEMU framework
 
-#![allow(async_fn_in_trait)]
-
-/// Basic types relating to the fundemental unit of this emulator
 pub mod component;
-/// Component facing runtime api
-mod context;
-/// Graphics definitions
+pub mod event;
 pub mod graphics;
-/// Input definitions
+mod handle;
 pub mod input;
-/// Machine builder and definition
 pub mod machine;
-/// Memory access utilities
 pub mod memory;
-/// Path
 pub mod path;
-/// Saves and snapshots
 pub mod persistence;
-/// Platform description utilities
 pub mod platform;
-/// Emulated processor utilities
-pub mod processor;
-/// Emulator scheduler
 pub mod scheduler;
 
-pub use context::*;
+pub use handle::*;
+pub use path::{ComponentPath, ResourcePath};
+pub use platform::Platform;

@@ -10,8 +10,11 @@ use std::{
 
 use arrayvec::ArrayVec;
 use fluxemu_runtime::{
-    RuntimeHandle,
-    component::{Component, ComponentConfig, ComponentVersion, LateContext, LateInitializedData},
+    RuntimeApi,
+    component::{
+        Component, ComponentVersion,
+        config::{ComponentConfig, LateContext, LateInitializedData},
+    },
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::{Address, AddressSpaceCache, AddressSpaceId},
     platform::Platform,
@@ -177,7 +180,7 @@ impl Component for Mos6502 {
     }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
-        let runtime = RuntimeHandle::current();
+        let runtime = RuntimeApi::current();
 
         let address_space = runtime
             .address_space(self.config.assigned_address_space)
@@ -301,7 +304,7 @@ impl<P: Platform> ComponentConfig<P> for Mos6502Config {
         component: &mut Self::Component,
         _data: &LateContext<P>,
     ) -> LateInitializedData<P> {
-        let runtime = RuntimeHandle::current();
+        let runtime = RuntimeApi::current();
 
         component.address_space_cache = Some(
             runtime
@@ -317,7 +320,7 @@ impl<P: Platform> ComponentConfig<P> for Mos6502Config {
         self,
         component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
-        component_builder.scheduler_participation(SchedulerParticipation::SchedulerDriven);
+        component_builder.scheduler_participation(Some(SchedulerParticipation::SchedulerDriven));
 
         let mut component = Mos6502 {
             a: 0,

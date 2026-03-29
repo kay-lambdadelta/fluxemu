@@ -133,7 +133,7 @@ impl INes {
                 let _chr_nvram_shift_count: u8 = reader.read(4)?;
                 let _chr_ram_shift_count: u8 = reader.read(4)?;
 
-                reader.skip(6);
+                reader.skip(6)?;
 
                 let timing_mode = match reader.read::<u8>(2)? {
                     0b00 => TimingMode::Ntsc,
@@ -146,11 +146,11 @@ impl INes {
                 let _vs_system_type: u8 = reader.read(4)?;
                 let _vs_ppu_type: u8 = reader.read(4)?;
 
-                reader.skip(6);
+                reader.skip(6)?;
 
                 let misc_rom_count: u8 = reader.read(2)?;
 
-                reader.skip(2);
+                reader.skip(2)?;
 
                 let default_expansion_device = DefaultExpansionDevice::new(reader.read(6)?);
 

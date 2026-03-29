@@ -52,7 +52,11 @@ pub fn machine_thread(
         }
 
         let start = Instant::now();
-        machine.run_duration(execution_timeslice.try_into().unwrap());
+
+        machine
+            .enter_runtime()
+            .run_duration(execution_timeslice.try_into().unwrap());
+
         let execution_time: Duration = start.elapsed().try_into().unwrap();
 
         // Add to buffer and compute smoothed value

@@ -1,14 +1,17 @@
-use std::{collections::HashMap, fmt::Debug, sync::Mutex};
+use std::{
+    collections::HashMap,
+    fmt::Debug,
+    sync::{Arc, Mutex},
+};
 
-pub use event::EventRequeueMode;
-pub(crate) use event::{EventManager, PreemptionSignal};
 use fixed::{FixedU128, types::extra::U64};
 use rustc_hash::FxBuildHasher;
 
-use crate::{component::ComponentHandle, path::ComponentPath};
-
-pub(crate) mod event;
-mod worker;
+use crate::{
+    component::ComponentHandle,
+    event::{EventManager, PreemptionSignal},
+    path::ComponentPath,
+};
 
 #[derive(Debug)]
 pub struct DrivenComponent {
@@ -22,9 +25,10 @@ pub struct DrivenComponent {
 #[derive(Debug)]
 pub(crate) struct Scheduler {
     pub event_manager: EventManager,
+    pub current_driven_time: Mutex<Period>,
     driven: HashMap<ComponentPath, DrivenComponent, FxBuildHasher>,
-    pub(crate) current_driven_time: Mutex<Period>,
     start_time: Period,
+    preemption_signal: Arc<PreemptionSignal>,
 }
 
 impl Scheduler {
@@ -34,6 +38,7 @@ impl Scheduler {
             driven: HashMap::default(),
             current_driven_time: Mutex::default(),
             start_time: Period::default(),
+            preemption_signal: Arc::new(PreemptionSignal::new()),
         }
     }
 
@@ -59,6 +64,10 @@ impl Scheduler {
             driven.component.interact_mut(current_driven_time, |_| {});
         }
     }
+
+    pub(crate) fn preemption_signal(&self) -> &Arc<PreemptionSignal> {
+        &self.preemption_signal
+    }
 }
 
 pub type Period = FixedU128<U64>;
@@ -66,11 +75,10 @@ pub type Frequency = FixedU128<U64>;
 
 #[derive(Debug)]
 pub struct SynchronizationContext<'a> {
-    pub(crate) event_manager: &'a EventManager,
+    pub(crate) scheduler: &'a Scheduler,
     pub(crate) updated_timestamp: &'a mut Period,
     pub(crate) target_timestamp: Period,
     pub(crate) last_attempted_allocation: &'a mut Option<Period>,
-    pub(crate) interrupt: &'a PreemptionSignal,
 }
 
 impl<'a> SynchronizationContext<'a> {
@@ -84,7 +92,7 @@ impl<'a> SynchronizationContext<'a> {
 
         let mut stop_time = self.target_timestamp;
 
-        if let Some(next_event) = self.event_manager.next_event() {
+        if let Some(next_event) = self.scheduler.event_manager.next_event() {
             stop_time = stop_time.min(next_event);
         }
 
@@ -115,11 +123,13 @@ impl Iterator for QuantaIterator<'_, '_> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
+        let preemption_signal = self.context.scheduler.preemption_signal();
+
         // New event(s) spotted we have not evaluated
-        while self.context.interrupt.needs_preemption() {
+        while preemption_signal.needs_preemption() {
             let mut stop_time = self.context.target_timestamp;
 
-            if let Some(next_event) = self.context.event_manager.next_event() {
+            if let Some(next_event) = self.context.scheduler.event_manager.next_event() {
                 stop_time = stop_time.min(next_event);
             }
 

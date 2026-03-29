@@ -8,8 +8,9 @@ pub(crate) use backend::SupportedGraphicsApiTia;
 use color::TiaColor;
 use fluxemu_definition_mos6502::RdyFlag;
 use fluxemu_runtime::{
-    RuntimeHandle,
-    component::{Component, EventType},
+    RuntimeApi,
+    component::Component,
+    event::EventType,
     graphics::software::Texture,
     memory::{Address, AddressSpaceId, MemoryError},
     path::ResourcePath,
@@ -182,7 +183,7 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
             self.timestamp = now;
 
             if let Some(cycles) = self.cycles_waiting_for_vsync {
-                let runtime = RuntimeHandle::current();
+                let runtime = RuntimeApi::current();
 
                 self.cycles_waiting_for_vsync = Some(cycles.saturating_sub(1));
 

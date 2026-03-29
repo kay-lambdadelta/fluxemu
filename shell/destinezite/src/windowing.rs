@@ -7,7 +7,7 @@ use fluxemu_frontend::{
 };
 use fluxemu_input::{InputId, InputState, KeyboardInputId, physical::PhysicalInputDeviceId};
 use fluxemu_program::{ProgramManager, RomId};
-use fluxemu_runtime::machine::graphics::GraphicsRequirements;
+use fluxemu_runtime::graphics::GraphicsRequirements;
 use gilrs::{Gilrs, GilrsBuilder};
 use ron::ser::PrettyConfig;
 use strum::IntoEnumIterator;
