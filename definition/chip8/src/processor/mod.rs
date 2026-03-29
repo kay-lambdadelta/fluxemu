@@ -8,7 +8,7 @@ use arrayvec::ArrayVec;
 use fluxemu_runtime::{
     RuntimeApi,
     component::{
-        Component, ComponentVersion, TypedComponentHandle,
+        Component, ComponentVersion,
         config::{ComponentConfig, LateContext, LateInitializedData},
     },
     input::LogicalInputDevice,
@@ -24,13 +24,11 @@ use serde::{Deserialize, Serialize};
 
 use super::Chip8Mode;
 use crate::{
-    audio::Chip8Audio,
     display::{Chip8Display, SupportedGraphicsApiChip8Display},
     processor::{
         decoder::decode_instruction,
         input::{DEFAULT_MAPPINGS, PRESENT_INPUTS},
     },
-    timer::Chip8Timer,
 };
 
 pub mod decoder;
@@ -94,9 +92,6 @@ pub struct Chip8Processor<G: SupportedGraphicsApiChip8Display> {
     keypad: Arc<LogicalInputDevice>,
     // What chip8 mode we are currently in
     mode: Arc<Mutex<Chip8Mode>>,
-    display: TypedComponentHandle<Chip8Display<G>>,
-    audio: TypedComponentHandle<Chip8Audio>,
-    timer: TypedComponentHandle<Chip8Timer>,
     config: Chip8ProcessorConfig<G>,
     timestamp: Period,
 }
@@ -208,9 +203,16 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
                         }
                     }
                     ExecutionState::AwaitingVsync => {
-                        let vsync_occured = self
-                            .display
-                            .interact(self.timestamp, |component| component.vsync_occurred());
+                        let runtime = RuntimeApi::current();
+
+                        let vsync_occured = runtime
+                            .registry()
+                            .interact::<Chip8Display<G>, _>(
+                                &self.config.display,
+                                self.timestamp,
+                                |component| component.vsync_occurred(),
+                            )
+                            .unwrap();
 
                         if vsync_occured {
                             self.state.execution_state = ExecutionState::Normal;
@@ -262,7 +264,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
         let mode = Arc::new(Mutex::new(self.force_mode.unwrap_or(Chip8Mode::Chip8)));
         let state = ProcessorState::default();
 
-        let (component_builder, keypad) = component_builder
+        let (_component_builder, keypad) = component_builder
             .scheduler_participation(Some(SchedulerParticipation::SchedulerDriven))
             .input("keypad", PRESENT_INPUTS, DEFAULT_MAPPINGS);
 
@@ -270,15 +272,6 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
             state,
             keypad,
             mode,
-            display: component_builder
-                .typed_component_handle(&self.display)
-                .unwrap(),
-            audio: component_builder
-                .typed_component_handle(&self.audio)
-                .unwrap(),
-            timer: component_builder
-                .typed_component_handle(&self.timer)
-                .unwrap(),
             config: self,
             timestamp: Period::default(),
         })

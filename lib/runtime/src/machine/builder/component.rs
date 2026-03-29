@@ -8,10 +8,7 @@ use fluxemu_input::InputId;
 use fluxemu_program::{ProgramManager, RomId};
 
 use crate::{
-    component::{
-        Component, ComponentRegistry, ComponentVersion, TypedComponentHandle,
-        config::ComponentConfig,
-    },
+    component::{Component, ComponentVersion, config::ComponentConfig},
     event::{EventRequeueMode, EventType},
     graphics::GraphicsRequirements,
     input::{LogicalInputDevice, LogicalInputDeviceMetadata},
@@ -56,7 +53,6 @@ impl<P: Platform> ComponentData<'_, P> {
 pub struct ComponentBuilder<'a, 'b, P: Platform, C: Component> {
     pub(super) machine_builder: &'a mut MachineBuilder<'b, P>,
     pub(super) component_data: &'a mut ComponentData<'b, P>,
-    pub(super) registry: &'a ComponentRegistry,
     pub(super) path: &'a ComponentPath,
     pub(super) _phantom: PhantomData<C>,
 }
@@ -105,8 +101,8 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
         name: impl Into<Cow<'static, str>>,
         config: B,
     ) -> (Self, ComponentPath) {
-        let mut component_path = self.path.clone();
-        component_path.push(&name.into()).unwrap();
+        let component_path = self.path.clone();
+        let component_path = component_path.join(&name.into()).unwrap();
 
         let command = MachineBuilder::insert_component_with_path(component_path.clone(), config);
 
@@ -381,30 +377,5 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
             .push(MachineBuilderCommand::AddGraphicsRequirements { requirements });
 
         self
-    }
-
-    #[inline]
-    pub fn interact<C2: Component, T>(
-        &self,
-        path: &ComponentPath,
-        callback: impl FnOnce(&C2) -> T,
-    ) -> Option<T> {
-        self.registry.interact(path, Period::ZERO, callback)
-    }
-
-    #[inline]
-    pub fn interact_mut<C2: Component, T>(
-        &self,
-        path: &ComponentPath,
-        callback: impl FnOnce(&mut C2) -> T,
-    ) -> Option<T> {
-        self.registry.interact_mut(path, Period::ZERO, callback)
-    }
-
-    pub fn typed_component_handle<C2: Component>(
-        &self,
-        path: &ComponentPath,
-    ) -> Option<TypedComponentHandle<C2>> {
-        self.registry.typed_handle(path)
     }
 }

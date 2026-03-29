@@ -3,10 +3,10 @@ use std::{
     fmt::Debug,
     io::{Read, Write},
     ops::RangeInclusive,
+    sync::atomic::{AtomicU32, Ordering},
 };
 
 use fluxemu_range::ContiguousRange;
-pub use handle::*;
 use nalgebra::SVector;
 use ringbuffer::AllocRingBuffer;
 
@@ -17,10 +17,11 @@ use crate::{
 };
 
 pub mod config;
-mod handle;
+pub(crate) mod handle;
 mod registry;
 
 pub use registry::ComponentRegistry;
+pub(crate) use registry::ComponentRegistryData;
 
 #[allow(unused)]
 /// Basic supertrait for all components
@@ -103,4 +104,20 @@ fn denied_range(address: Address, len: usize) -> MemoryError {
         ))
         .collect(),
     )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ComponentId(pub(crate) u32);
+
+impl ComponentId {
+    pub(crate) fn new() -> Self {
+        static ID_COUNTER: AtomicU32 = AtomicU32::new(0);
+        let id = ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+
+        if id == u32::MAX {
+            unreachable!("Too many components");
+        }
+
+        ComponentId(id)
+    }
 }

@@ -60,7 +60,7 @@ impl Permissions {
 impl MemoryMappingTable {
     pub(super) fn commit(
         &mut self,
-        registry: &ComponentRegistry,
+        registry: ComponentRegistry<'_>,
         resources: &scc::HashMap<ResourcePath, Bytes>,
     ) {
         for (page_index, page) in self.computed_table.iter_mut().enumerate() {
@@ -74,13 +74,11 @@ impl MemoryMappingTable {
                 .map(|(range, component)| (range.clone(), component))
                 .flat_map(|(source_range, entry)| match entry {
                     MappingEntry::Component(path) => {
-                        let component = registry.handle(path).unwrap();
-
                         vec![PageEntry {
                             range: source_range,
                             target: PageTarget::Component {
                                 mirror_start: None,
-                                component,
+                                component: registry.path_to_id(path).unwrap(),
                             },
                         }]
                     }
@@ -114,17 +112,13 @@ impl MemoryMappingTable {
                                     ..=(source_range.end() - shrink_right);
 
                                 match dest_entry {
-                                    MappingEntry::Component(component_path) => {
-                                        let component = registry.handle(component_path).unwrap();
-
-                                        PageEntry {
-                                            range: calculated_source_range,
-                                            target: PageTarget::Component {
-                                                mirror_start: Some(*destination_range.start()),
-                                                component,
-                                            },
-                                        }
-                                    }
+                                    MappingEntry::Component(path) => PageEntry {
+                                        range: calculated_source_range,
+                                        target: PageTarget::Component {
+                                            mirror_start: Some(*destination_range.start()),
+                                            component: registry.path_to_id(path).unwrap(),
+                                        },
+                                    },
                                     MappingEntry::Mirror { .. } => {
                                         panic!("Recursive mirrors are not allowed");
                                     }

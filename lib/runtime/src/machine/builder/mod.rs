@@ -2,8 +2,9 @@ use std::{borrow::Cow, collections::HashMap, ops::DerefMut, sync::Arc};
 
 use crate::{
     component::{
-        Component, ComponentRegistry,
+        Component,
         config::{LateContext, LateInitializedData},
+        handle::ComponentHandle,
     },
     event::{EventRequeueMode, EventType},
     graphics::{GraphicsApi, GraphicsRequirements},
@@ -42,10 +43,7 @@ pub enum RomRequirement {
 
 #[allow(type_alias_bounds)]
 type ComponentConstructor<'a, P: Platform> = Box<
-    dyn for<'b> FnOnce(
-            &'b mut MachineBuilder<'a, P>,
-            &'b mut ComponentRegistry,
-        ) -> ComponentData<'a, P>
+    dyn for<'b> FnOnce(&'b mut MachineBuilder<'a, P>) -> (ComponentHandle, ComponentData<'a, P>)
         + Sync
         + Send
         + 'a,

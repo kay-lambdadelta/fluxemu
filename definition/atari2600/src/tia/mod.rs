@@ -8,7 +8,7 @@ pub(crate) use backend::SupportedGraphicsApiTia;
 use color::TiaColor;
 use fluxemu_definition_mos6502::RdyFlag;
 use fluxemu_runtime::{
-    RuntimeApi,
+    ComponentPath, RuntimeApi,
     component::Component,
     event::EventType,
     graphics::software::Texture,
@@ -121,7 +121,8 @@ pub(crate) struct Tia<R: Region, G: SupportedGraphicsApiTia> {
     high_playfield_ball_priority: bool,
     background_color: TiaColor,
     backend: Option<G::Backend<R>>,
-    cpu_rdy: Arc<RdyFlag>,
+    cpu_path: ComponentPath,
+    cpu_rdy: Option<Arc<RdyFlag>>,
     staging_buffer: Texture<Srgba<u8>>,
     timestamp: Period,
     framebuffer_path: ResourcePath,
@@ -170,7 +171,7 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
     fn handle_event(&mut self, name: &str, event: EventType) {
         match event {
             EventType::SyncPoint if name == WAKEUP_CPU_VIA_RDY => {
-                self.cpu_rdy.store(true);
+                self.cpu_rdy.as_ref().unwrap().store(true);
             }
             _ => {
                 unreachable!()

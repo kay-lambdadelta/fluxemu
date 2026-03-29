@@ -46,7 +46,7 @@ impl State {
     #[inline]
     pub(crate) fn drive_sprite_pipeline<R: Region>(
         &mut self,
-        ppu_address_space: &AddressSpace,
+        ppu_address_space: AddressSpace<'_>,
         ppu_address_space_cache: &mut AddressSpaceCache,
         timestamp: Period,
     ) {
@@ -137,7 +137,7 @@ impl State {
     #[inline]
     pub(crate) fn drive_background_pipeline<R: Region>(
         &mut self,
-        ppu_address_space: &AddressSpace,
+        ppu_address_space: AddressSpace<'_>,
         ppu_address_space_cache: &mut AddressSpaceCache,
         timestamp: Period,
     ) {
@@ -263,7 +263,7 @@ impl State {
     #[inline]
     pub fn calculate_background_color<R: Region>(
         &self,
-        ppu_address_space: &AddressSpace,
+        ppu_address_space: AddressSpace<'_>,
         ppu_address_space_cache: &mut AddressSpaceCache,
         timestamp: Period,
         attribute: u8,
@@ -286,7 +286,7 @@ impl State {
     #[inline]
     pub fn calculate_sprite_color<R: Region>(
         &self,
-        ppu_address_space: &AddressSpace,
+        ppu_address_space: AddressSpace<'_>,
         ppu_address_space_cache: &mut AddressSpaceCache,
         timestamp: Period,
         sprite: OamSprite,

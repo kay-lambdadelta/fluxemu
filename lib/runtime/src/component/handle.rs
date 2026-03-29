@@ -1,11 +1,5 @@
-use std::{
-    any::{Any, TypeId},
-    marker::PhantomData,
-    sync::{Arc, RwLock, RwLockWriteGuard},
-};
-
 use crate::{
-    component::Component,
+    component::{Component, ComponentVersion},
     handle::RuntimeApi,
     machine::builder::SchedulerParticipation,
     path::ComponentPath,
@@ -18,79 +12,68 @@ struct SynchronizationData {
     updated_timestamp: Period,
 }
 
-// HACK: Add a generic so we can coerce this unsized
+// NOTE: We add a generic here so this can be coerced unsized
 #[derive(Debug)]
-pub(crate) struct HandleInner<T: ?Sized> {
+struct ComponentData<T: ?Sized> {
     synchronization_data: Option<SynchronizationData>,
+    save_version: Option<ComponentVersion>,
+    snapshot_version: Option<ComponentVersion>,
+    path: ComponentPath,
     component: T,
 }
 
-/// A handle and storage for a component, and the tasks associated with it
-#[derive(Debug, Clone)]
-pub struct ComponentHandle {
-    inner: Arc<RwLock<HandleInner<dyn Component>>>,
-    path: ComponentPath,
-}
+// Store everything behind the box pointer so its easier to move around
+#[derive(Debug)]
+pub(crate) struct ComponentHandle(Box<ComponentData<dyn Component>>);
 
 impl ComponentHandle {
     pub(crate) fn new(
-        scheduler_participation: Option<SchedulerParticipation>,
         path: ComponentPath,
+        scheduler_participation: Option<SchedulerParticipation>,
+        save_version: Option<ComponentVersion>,
+        snapshot_version: Option<ComponentVersion>,
         component: impl Component,
     ) -> Self {
         let synchronization_data = scheduler_participation.map(|_| SynchronizationData {
             updated_timestamp: Period::default(),
         });
 
-        Self {
-            inner: Arc::new(RwLock::new(HandleInner {
-                component,
-                synchronization_data,
-            })),
+        Self(Box::new(ComponentData {
+            synchronization_data,
+            save_version,
+            snapshot_version,
             path,
-        }
+            component,
+        }))
     }
 
     #[inline]
-    fn fetch_and_synchronize(
-        &self,
-        time: Period,
-    ) -> RwLockWriteGuard<'_, HandleInner<dyn Component>> {
-        let mut guard = self.inner.write().unwrap();
+    fn synchronize(&mut self, runtime: &RuntimeApi, time: Period) {
         let mut delta;
         let mut last_attempted_allocation = None;
 
-        if guard.synchronization_data.is_some()
-            && guard
-                .synchronization_data
-                .as_ref()
-                .unwrap()
-                .updated_timestamp
-                < time
-        {
-            let runtime = RuntimeApi::current();
-
-            // Loop until the component is fully updated, processing events when relevant
-            loop {
-                let guard_inner = &mut *guard;
-                let synchronization_data = guard_inner.synchronization_data.as_mut().unwrap();
-
+        // Loop until the component is fully updated, processing events when relevant
+        loop {
+            if let Some(SynchronizationData { updated_timestamp }) =
+                &mut self.0.synchronization_data
+                && *updated_timestamp < time
+            {
                 // Update delta in case something happened when we dropped and reacquired the lock
-                delta = time - synchronization_data.updated_timestamp;
+                delta = time - *updated_timestamp;
 
                 // Check if the component is done or there is no allocated time
-                if delta == Period::ZERO || !guard_inner.component.needs_work(delta) {
+                if delta == Period::ZERO || !self.0.component.needs_work(delta) {
                     break;
                 }
 
                 let context = SynchronizationContext {
                     scheduler: &runtime.machine().scheduler,
-                    updated_timestamp: &mut synchronization_data.updated_timestamp,
+                    updated_timestamp,
                     target_timestamp: time,
                     last_attempted_allocation: &mut last_attempted_allocation,
                 };
 
-                guard_inner.component.synchronize(context);
+                self.0.component.synchronize(context);
 
                 // Prevent bad synchronization logic from spinning forever
                 let last_attempted_allocation = last_attempted_allocation.take().expect(
@@ -98,121 +81,53 @@ impl ComponentHandle {
                 );
 
                 // Update delta
-                delta = time - synchronization_data.updated_timestamp;
+                delta = time - *updated_timestamp;
 
                 // If the component yielded and there is still work, check events and try to run it again
-                if guard_inner.component.needs_work(delta) {
+                if self.0.component.needs_work(delta) {
                     // Try to consume any events that blocked this time allocation
-                    let timestamp =
-                        synchronization_data.updated_timestamp + last_attempted_allocation;
-
-                    // Drop the lock so that events that touch this component do not deadlock
-                    drop(guard);
+                    let timestamp = *updated_timestamp + last_attempted_allocation;
 
                     // consume events
-                    runtime.machine().scheduler.event_manager.consume(timestamp);
-
-                    // Reacquire lock
-                    guard = self.inner.write().unwrap();
-                } else {
-                    break;
+                    runtime
+                        .machine()
+                        .scheduler
+                        .event_manager
+                        .consume(self, runtime, timestamp);
                 }
+            } else {
+                break;
             }
         }
-
-        guard
     }
 
     /// Interact immutably with a component
     #[inline]
-    pub fn interact<T>(&self, time: Period, callback: impl FnOnce(&dyn Component) -> T) -> T {
-        let mut guard = self.inner.read().unwrap();
+    pub fn interact<T>(
+        &mut self,
+        runtime: &RuntimeApi,
+        time: Period,
+        callback: impl FnOnce(&dyn Component) -> T,
+    ) -> T {
+        self.synchronize(runtime, time);
 
-        if let Some(SynchronizationData {
-            updated_timestamp, ..
-        }) = &guard.synchronization_data
-            && *updated_timestamp < time
-        {
-            let delta = time - updated_timestamp;
-
-            // Check if our current timestamp needs updating
-            if guard.component.needs_work(delta) {
-                drop(guard);
-                // Synchronize and replace guard
-                guard = RwLockWriteGuard::downgrade(self.fetch_and_synchronize(time));
-            }
-        }
-
-        callback(&guard.component)
+        callback(&self.0.component)
     }
 
     /// Interact mutably with a component
     #[inline]
     pub fn interact_mut<T>(
-        &self,
+        &mut self,
+        runtime: &RuntimeApi,
         time: Period,
         callback: impl FnOnce(&mut dyn Component) -> T,
     ) -> T {
-        let mut guard = self.fetch_and_synchronize(time);
-        callback(&mut guard.component)
+        self.synchronize(runtime, time);
+
+        callback(&mut self.0.component)
     }
 
     pub fn path(&self) -> &ComponentPath {
-        &self.path
-    }
-}
-
-/// Helper type that acts like a [`ComponentHandle`] but does downcasting
-/// for you
-#[derive(Debug)]
-pub struct TypedComponentHandle<C: Component> {
-    component: ComponentHandle,
-    _phantom: PhantomData<C>,
-}
-
-impl<C: Component> Clone for TypedComponentHandle<C> {
-    fn clone(&self) -> Self {
-        Self {
-            component: self.component.clone(),
-            _phantom: PhantomData,
-        }
-    }
-}
-
-impl<C: Component> TypedComponentHandle<C> {
-    /// # SAFETY
-    ///
-    /// The component must match the type of the generic, this struct does not
-    /// do type checking in release mode
-    pub(crate) unsafe fn new(component: ComponentHandle) -> Self {
-        Self {
-            component,
-            _phantom: PhantomData,
-        }
-    }
-
-    /// Interact immutably with a component
-    ///
-    /// Note that this may or may not do an exclusively lock on the component.
-    #[inline]
-    pub fn interact<T>(&self, time: Period, callback: impl FnOnce(&C) -> T) -> T {
-        self.component.interact(time, |component| {
-            debug_assert_eq!(TypeId::of::<C>(), (component as &dyn Any).type_id());
-            let component = unsafe { &*std::ptr::from_ref::<dyn Component>(component).cast::<C>() };
-
-            callback(component)
-        })
-    }
-
-    /// Interact mutably with a component
-    #[inline]
-    pub fn interact_mut<T>(&self, time: Period, callback: impl FnOnce(&mut C) -> T) -> T {
-        self.component.interact_mut(time, |component| {
-            debug_assert_eq!(TypeId::of::<C>(), (component as &dyn Any).type_id());
-            let component =
-                unsafe { &mut *std::ptr::from_mut::<dyn Component>(component).cast::<C>() };
-
-            callback(component)
-        })
+        &self.0.path
     }
 }

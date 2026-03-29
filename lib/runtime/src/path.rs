@@ -2,6 +2,7 @@ use std::{
     borrow::Cow,
     fmt::{Display, Write},
     str::FromStr,
+    sync::Arc,
 };
 
 use itertools::Itertools;
@@ -30,12 +31,10 @@ pub enum Error {
 ///
 /// Item names cannot be empty or contain whitespace or `/`
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ComponentPath(Cow<'static, str>);
+pub struct ComponentPath(Arc<str>);
 
 impl ComponentPath {
-    pub fn new(component: impl Into<Cow<'static, str>>) -> Result<Self, Error> {
-        let component = component.into();
-
+    pub fn new(component: String) -> Result<Self, Error> {
         let segments: Vec<&str> = component.split('/').collect();
 
         if segments.is_empty() {
@@ -44,15 +43,15 @@ impl ComponentPath {
 
         validate_segments(segments.into_iter())?;
 
-        Ok(ComponentPath(component))
+        Ok(ComponentPath(Arc::from(component)))
     }
 
-    pub fn push(&mut self, segment: &str) -> Result<(), Error> {
+    pub fn join(&self, segment: &str) -> Result<ComponentPath, Error> {
         validate_segments([segment])?;
 
-        self.0 = Cow::Owned(format!("{}/{}", self.0, segment));
+        let path = format!("{}/{}", self.0, segment);
 
-        Ok(())
+        Ok(ComponentPath(Arc::from(path)))
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &str> {
@@ -68,7 +67,7 @@ impl ComponentPath {
 
         let path = self.iter().take(segment_count - 1).join("/");
 
-        Some(ComponentPath(Cow::Owned(path)))
+        Some(ComponentPath(Arc::from(path)))
     }
 
     pub fn name(&self) -> &str {
@@ -113,7 +112,7 @@ impl FromStr for ComponentPath {
 
         validate_segments(segments[1..].iter().copied())?;
 
-        Ok(ComponentPath(Cow::Owned(segments[1..].join("/"))))
+        Ok(ComponentPath(Arc::from(segments[1..].join("/"))))
     }
 }
 
@@ -229,7 +228,7 @@ impl FromStr for ResourcePath {
         let component = if segments.len() == 2 {
             None
         } else {
-            Some(ComponentPath(Cow::Owned(
+            Some(ComponentPath(Arc::from(
                 segments[1..segments.len() - 1].join("/"),
             )))
         };

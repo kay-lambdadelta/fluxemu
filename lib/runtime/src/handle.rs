@@ -19,7 +19,7 @@ use crate::{
     graphics::GraphicsApi,
     input::LogicalInputDevice,
     machine::{Machine, RUNTIME_CONTEXT},
-    memory::{AddressSpace, AddressSpaceId, MemoryRemappingCommand},
+    memory::{AddressSpace, AddressSpaceId},
     scheduler::Period,
 };
 
@@ -63,8 +63,11 @@ impl RuntimeApi {
         &self.machine
     }
 
-    pub fn address_space(&self, address_space_id: AddressSpaceId) -> Option<&AddressSpace> {
-        self.machine.address_spaces.get(&address_space_id)
+    pub fn address_space(&self, address_space_id: AddressSpaceId) -> Option<AddressSpace<'_>> {
+        self.machine
+            .address_spaces
+            .get(&address_space_id)
+            .map(|address_space_data| AddressSpace::new(self, address_space_data))
     }
 
     pub fn insert_event(
@@ -75,12 +78,10 @@ impl RuntimeApi {
         requeue_mode: EventRequeueMode,
         data: EventType,
     ) {
-        let component = self.machine.registry.handle(target_path).unwrap();
-
         self.machine.scheduler.event_manager.queue(
             name.into(),
             time,
-            component,
+            target_path.clone(),
             requeue_mode,
             data,
         );
@@ -88,20 +89,8 @@ impl RuntimeApi {
         self.machine.scheduler.preemption_signal().event_occurred();
     }
 
-    pub fn remap_address_space(
-        &self,
-        address_space_id: AddressSpaceId,
-        commands: impl IntoIterator<Item = MemoryRemappingCommand>,
-    ) {
-        let address_space = &self
-            .address_space(address_space_id)
-            .expect("Unknown address space");
-
-        address_space.remap(commands, &self.machine.registry);
-    }
-
-    pub fn registry(&self) -> &ComponentRegistry {
-        &self.machine.registry
+    pub fn registry(&self) -> ComponentRegistry<'_> {
+        ComponentRegistry::new(self, &self.machine.registry)
     }
 
     pub fn commit_framebuffer<G: GraphicsApi>(
@@ -135,7 +124,7 @@ impl RuntimeApi {
     }
 
     pub fn run(&self, allocated_time: Period) {
-        self.machine.scheduler.run(allocated_time)
+        self.machine.scheduler.run(self.registry(), allocated_time)
     }
 
     pub fn now(&self) -> Period {
@@ -167,12 +156,11 @@ impl RuntimeApi {
 
         for (input_id, state) in inputs {
             logical_input_device.set_state(input_id, state);
-            let component = self.registry().handle(path.parent().unwrap()).unwrap();
 
             self.machine.scheduler.event_manager.queue(
                 Cow::Owned(path.name().to_string()),
                 self.now(),
-                component,
+                path.parent().unwrap().clone(),
                 EventRequeueMode::Once,
                 EventType::input(input_id, state),
             );

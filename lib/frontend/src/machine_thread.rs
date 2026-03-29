@@ -100,14 +100,11 @@ pub fn machine_thread(
 
             error += actual_sleep_time;
 
-            // Measure overshoot
-            if actual_sleep_time > requested {
-                let overshoot = actual_sleep_time - requested;
-                average_sleep_overshoot =
-                    average_sleep_overshoot + (overshoot - average_sleep_overshoot) * ALPHA;
+            let overshoot = actual_sleep_time - requested;
+            average_sleep_overshoot =
+                average_sleep_overshoot + (overshoot - average_sleep_overshoot) * ALPHA;
 
-                sleep_threshold = average_sleep_overshoot * 2;
-            }
+            sleep_threshold = average_sleep_overshoot.max(Duration::ZERO) * 2;
         }
 
         let growth_step: Duration = execution_timeslice / 16;

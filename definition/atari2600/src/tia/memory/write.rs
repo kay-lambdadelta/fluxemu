@@ -55,11 +55,11 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
                 self.input_control[5] = bit;
             }
             WriteRegisters::Wsync => {
+                // The TIA runs 3 times as fast as the cpu
                 let until =
                     Period::from_num(SCANLINE_LENGTH - self.electron_beam.x) / (R::frequency() / 3);
 
-                // The TIA runs 3 times as fast as the cpu
-                self.cpu_rdy.store(false);
+                self.cpu_rdy.as_ref().unwrap().store(false);
 
                 RuntimeApi::current().insert_event(
                     self.framebuffer_path.parent().unwrap(),

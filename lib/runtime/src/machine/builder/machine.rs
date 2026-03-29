@@ -11,7 +11,7 @@ use bytes::Bytes;
 use fluxemu_program::{MachineId, ProgramManager, ProgramSpecification, RomId};
 
 use crate::{
-    component::{ComponentRegistry, config::ComponentConfig},
+    component::{ComponentRegistryData, config::ComponentConfig, handle::ComponentHandle},
     graphics::GraphicsRequirements,
     machine::{
         Machine,
@@ -21,7 +21,7 @@ use crate::{
         },
     },
     memory::{
-        Address, AddressSpace, AddressSpaceId, MapTarget, MemoryRemappingCommand, Permissions,
+        Address, AddressSpaceData, AddressSpaceId, MapTarget, MemoryRemappingCommand, Permissions,
     },
     path::{ComponentPath, ResourcePath},
     persistence::{SaveManager, SnapshotManager},
@@ -135,14 +135,13 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
     ) -> MachineBuilderCommand<'a, P> {
         MachineBuilderCommand::CreateComponent {
             path: path.clone(),
-            constructor: Box::new(|machine_builder, registry| {
+            constructor: Box::new(|machine_builder| {
                 let mut component_data = ComponentData::new::<B>();
 
                 let component_builder = ComponentBuilder::<P, B::Component> {
                     machine_builder,
                     component_data: &mut component_data,
                     path: &path,
-                    registry,
                     _phantom: PhantomData,
                 };
 
@@ -150,7 +149,7 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
                     .build_component(component_builder)
                     .expect("Failed to build component");
 
-                registry.insert_component(
+                let component_handle = ComponentHandle::new(
                     path,
                     component_data.scheduler_participation,
                     component_data.save_version,
@@ -158,7 +157,7 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
                     component,
                 );
 
-                component_data
+                (component_handle, component_data)
             }),
         }
     }
@@ -167,10 +166,10 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
     #[inline]
     pub fn component<B: ComponentConfig<P> + 'a>(
         mut self,
-        name: impl Into<Cow<'static, str>>,
+        name: &str,
         config: B,
     ) -> (Self, ComponentPath) {
-        let path = ComponentPath::new(name).unwrap();
+        let path = ComponentPath::new(name.into()).unwrap();
         let command = Self::insert_component_with_path(path.clone(), config);
 
         self.command_queue.push(command);
@@ -182,7 +181,7 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
     #[inline]
     pub fn default_component<B: ComponentConfig<P> + Default + 'a>(
         self,
-        name: impl Into<Cow<'static, str>>,
+        name: &str,
     ) -> (Self, ComponentPath) {
         let config = B::default();
         self.component(name, config)
@@ -377,8 +376,8 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
         let mut component_late_initializers = HashMap::default();
         let mut address_spaces = HashMap::default();
         let mut remapping_commands: HashMap<_, Vec<_>> = HashMap::default();
-        let mut registry = ComponentRegistry::default();
         let mut graphics_requirements = GraphicsRequirements::default();
+        let mut components = HashMap::new();
 
         // The machine builder local command queue does not receive any more items from now
         //
@@ -393,20 +392,23 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
         while let Some(command) = global_command_queue.pop() {
             match command {
                 MachineBuilderCommand::CreateComponent { path, constructor } => {
-                    let mut data = constructor(&mut self, &mut registry);
-                    let component_handle = registry.handle(&path).unwrap();
+                    let (component_handle, mut component_data) = constructor(&mut self);
 
-                    component_late_initializers.insert(path.clone(), data.late_initializer);
-                    audio_outputs.extend(data.audio_outputs);
+                    component_late_initializers
+                        .insert(path.clone(), component_data.late_initializer);
+                    audio_outputs.extend(component_data.audio_outputs);
 
-                    if data.scheduler_participation == Some(SchedulerParticipation::SchedulerDriven)
+                    if component_data.scheduler_participation
+                        == Some(SchedulerParticipation::SchedulerDriven)
                     {
-                        scheduler.register_driven_component(path, component_handle.clone());
+                        scheduler.register_driven_component(path.clone());
                     }
 
                     // Append local commands to the start of the global queue
-                    data.local_commands.reverse();
-                    global_command_queue.extend(data.local_commands);
+                    component_data.local_commands.reverse();
+                    global_command_queue.extend(component_data.local_commands);
+
+                    components.insert(path, component_handle);
                 }
                 MachineBuilderCommand::MemoryMap {
                     address_space,
@@ -420,7 +422,7 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
                         .push(command);
                 }
                 MachineBuilderCommand::CreateAddressSpace { id, width } => {
-                    let address_space = AddressSpace::new(id, width);
+                    let address_space = AddressSpaceData::new(id, width);
 
                     address_spaces.insert(id, address_space);
                 }
@@ -441,22 +443,20 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
                     time,
                     path,
                 } => {
-                    let component = registry.handle(&path).unwrap();
-
                     scheduler
                         .event_manager
-                        .queue(name, time, component, requeue_mode, ty);
+                        .queue(name, time, path, requeue_mode, ty);
                 }
             }
         }
 
-        for (id, remapping_commands) in remapping_commands {
-            let address_space = address_spaces.get(&id).unwrap();
-
-            address_space.remap(remapping_commands, &registry);
+        // Initialize registry
+        let mut registry = ComponentRegistryData::default();
+        for (component_path, component_handle) in components.drain() {
+            registry.insert_component(component_path, component_handle);
         }
 
-        let machine = Machine {
+        let machine = Arc::new(Machine {
             scheduler,
             address_spaces,
             input_devices,
@@ -466,10 +466,19 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
             snapshot_manager: self.snapshot_manager,
             program_specification: self.program_specification,
             audio_outputs,
-        };
+        });
+
+        // Initialize address spaces
+        let runtime_guard = machine.enter_runtime();
+        for (id, remapping_commands) in remapping_commands {
+            let address_space = runtime_guard.address_space(id).unwrap();
+
+            address_space.remap(remapping_commands);
+        }
+        drop(runtime_guard);
 
         Ok(SealedMachineBuilder {
-            machine: Arc::new(machine),
+            machine,
             component_late_initializers,
             graphics_requirements,
         })

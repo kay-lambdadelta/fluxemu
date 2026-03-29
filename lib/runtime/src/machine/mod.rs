@@ -18,10 +18,10 @@ use rustc_hash::FxBuildHasher;
 
 use crate::{
     RuntimeApi,
-    component::ComponentRegistry,
+    component::{ComponentRegistryData, handle::ComponentHandle},
     input::LogicalInputDevice,
     machine::builder::MachineBuilder,
-    memory::{AddressSpace, AddressSpaceId},
+    memory::{AddressSpaceData, AddressSpaceId},
     path::ResourcePath,
     persistence::{SaveManager, SnapshotManager},
     platform::{Platform, TestPlatform},
@@ -38,11 +38,11 @@ where
 {
     pub(crate) scheduler: Scheduler,
     /// Memory translation table
-    pub(crate) address_spaces: HashMap<AddressSpaceId, AddressSpace, FxBuildHasher>,
+    pub(crate) address_spaces: HashMap<AddressSpaceId, AddressSpaceData, FxBuildHasher>,
     /// All virtual gamepads inserted by components
     pub(crate) input_devices: HashMap<ResourcePath, Arc<LogicalInputDevice>, FxBuildHasher>,
     /// Component Registry
-    pub(crate) registry: ComponentRegistry,
+    pub(crate) registry: ComponentRegistryData,
     /// All framebuffers this machine has
     pub(crate) framebuffers: HashMap<ResourcePath, Mutex<Box<dyn Any + Send + Sync>>>,
     /// All audio outputs this machine has
@@ -102,6 +102,7 @@ impl Machine {
 
             *runtime_context_guard = Some(RuntimeCurrentThreadContext {
                 current_machine: me,
+                local_component_store: Vec::default(),
             });
         });
 
@@ -134,7 +135,9 @@ impl<'a> Drop for RuntimeGuard<'a> {
         RUNTIME_CONTEXT.with(|runtime_context| {
             let mut runtime_context_guard = runtime_context.borrow_mut();
 
-            if runtime_context_guard.take().is_none() {
+            if let Some(mut context) = runtime_context_guard.take() {
+                self.registry().unmitigate_components(&mut context);
+            } else {
                 unreachable!("Runtime exited without entering");
             }
         });
@@ -142,9 +145,10 @@ impl<'a> Drop for RuntimeGuard<'a> {
 }
 
 thread_local! {
-     pub(crate) static RUNTIME_CONTEXT: RefCell<Option<RuntimeCurrentThreadContext>> = RefCell::default();
+     pub(crate) static RUNTIME_CONTEXT: RefCell<Option<RuntimeCurrentThreadContext>> = const { RefCell::new(None) };
 }
 
 pub(crate) struct RuntimeCurrentThreadContext {
     pub current_machine: Arc<Machine>,
+    pub local_component_store: Vec<Option<ComponentHandle>>,
 }

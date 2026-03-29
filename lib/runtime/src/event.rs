@@ -14,7 +14,8 @@ use fluxemu_input::{InputId, InputState};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    component::ComponentHandle,
+    ComponentPath, RuntimeApi,
+    component::handle::ComponentHandle,
     scheduler::{Frequency, Period},
 };
 
@@ -64,13 +65,13 @@ impl EventManager {
         &self,
         name: Cow<'static, str>,
         time: Period,
-        component: ComponentHandle,
+        path: ComponentPath,
         requeue_mode: EventRequeueMode,
         ty: EventType,
     ) {
         self.heap.lock().unwrap().push(QueuedEvent {
             name,
-            component,
+            path,
             ty,
             requeue_mode,
             time: Reverse(time),
@@ -78,7 +79,12 @@ impl EventManager {
     }
 
     #[inline]
-    pub fn consume(&self, upto: Period) {
+    pub fn consume(
+        &self,
+        active_component: &mut ComponentHandle,
+        runtime: &RuntimeApi,
+        upto: Period,
+    ) {
         let mut heap_guard = self.heap.lock().unwrap();
 
         while let Some(sync_point) = heap_guard.peek() {
@@ -104,19 +110,30 @@ impl EventManager {
                     let time = event.time.0 + frequency.recip();
 
                     heap_guard.push(QueuedEvent {
-                        component: event.component.clone(),
                         ty,
+                        path: event.path.clone(),
                         requeue_mode: event.requeue_mode,
                         time: Reverse(time),
                         name: event.name.clone(),
                     });
                 }
             }
+
             drop(heap_guard);
 
-            event.component.interact_mut(event.time.0, |component| {
-                component.handle_event(&event.name, event.ty);
-            });
+            if active_component.path() == &event.path {
+                active_component.interact_mut(runtime, event.time.0, |component| {
+                    component.handle_event(&event.name, event.ty);
+                })
+            } else {
+                let runtime = RuntimeApi::current();
+
+                runtime
+                    .registry()
+                    .interact_dyn_mut(&event.path, event.time.0, |component| {
+                        component.handle_event(&event.name, event.ty);
+                    });
+            }
 
             heap_guard = self.heap.lock().unwrap();
         }
@@ -158,7 +175,7 @@ impl PreemptionSignal {
 
 #[derive(Debug)]
 struct QueuedEvent {
-    component: ComponentHandle,
+    path: ComponentPath,
     ty: EventType,
     requeue_mode: EventRequeueMode,
     time: Reverse<Period>,

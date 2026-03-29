@@ -8,7 +8,8 @@ use rangemap::RangeInclusiveMap;
 use thiserror::Error;
 
 use crate::{
-    component::{ComponentHandle, ComponentRegistry},
+    RuntimeApi,
+    component::{ComponentId, ComponentRegistry},
     path::{ComponentPath, ResourcePath},
 };
 
@@ -21,8 +22,120 @@ pub type Address = usize;
 const PAGE_SIZE: Address = 0x1000;
 
 /// The main structure representing the devices memory address spaces
+#[derive(Debug, Clone, Copy)]
+pub struct AddressSpace<'a> {
+    runtime: &'a RuntimeApi,
+    data: &'a AddressSpaceData,
+}
+
+impl<'a> AddressSpace<'a> {
+    pub(crate) fn new(runtime: &'a RuntimeApi, data: &'a AddressSpaceData) -> Self {
+        Self { runtime, data }
+    }
+
+    pub fn remap(&self, commands: impl IntoIterator<Item = MemoryRemappingCommand>) {
+        self.data.remap(self.runtime.registry(), commands);
+    }
+}
+
+impl<'a> AddressSpace<'a> {
+    pub fn create_cache(&self) -> AddressSpaceCache {
+        AddressSpaceCache {
+            members: Cache::new(self.data.members.clone()),
+        }
+    }
+
+    pub fn id(&self) -> AddressSpaceId {
+        self.data.id
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MappingEntry {
+    Component(ComponentPath),
+    Mirror {
+        source_base: Address,
+        destination_base: Address,
+    },
+    Memory(ResourcePath),
+}
+
+#[derive(Debug, Clone)]
+pub enum PageTarget {
+    Component {
+        mirror_start: Option<Address>,
+        component: ComponentId,
+    },
+    Memory(Bytes),
+}
+
+#[derive(Debug, Clone)]
+pub struct PageEntry {
+    /// Full, uncropped relevant range
+    pub range: RangeInclusive<Address>,
+    pub target: PageTarget,
+}
+
+#[derive(Debug, Clone)]
+pub enum Page {
+    Single(PageEntry),
+    Multi(Box<[PageEntry]>),
+}
+
+#[derive(Debug, Clone)]
+pub struct MemoryMappingTable {
+    master: RangeInclusiveMap<Address, MappingEntry>,
+    computed_table: Vec<Option<Page>>,
+}
+
+impl MemoryMappingTable {
+    pub fn new(address_space_width: u8) -> Self {
+        let addr_space_size = 2usize.pow(u32::from(address_space_width));
+        let total_pages = addr_space_size.div_ceil(PAGE_SIZE);
+
+        Self {
+            master: RangeInclusiveMap::new(),
+            computed_table: vec![Default::default(); total_pages],
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
+/// Identifier for a address space
+pub struct AddressSpaceId(pub(crate) u16);
+
+#[derive(Debug, Clone)]
+pub struct Members {
+    pub read: MemoryMappingTable,
+    pub write: MemoryMappingTable,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+/// Why a read operation failed
+pub enum MemoryErrorType {
+    /// Access was denied
+    Denied,
+    /// Nothing is mapped there
+    OutOfBus,
+    /// It would be impossible to view this memory without a state change
+    Impossible,
+}
+
+#[derive(Error)]
+#[error("Memory operation failed: {0:#x?}")]
+/// Wrapper around the error type in order to specify ranges
+pub struct MemoryError(pub RangeInclusiveMap<Address, MemoryErrorType>);
+
+impl Debug for MemoryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("MemoryError")
+            .field(&format_args!("{:x?}", self.0))
+            .finish()
+    }
+}
+
 #[derive(Debug)]
-pub struct AddressSpace {
+pub(crate) struct AddressSpaceData {
     width_mask: Address,
     address_space_width: u8,
     id: AddressSpaceId,
@@ -30,7 +143,7 @@ pub struct AddressSpace {
     resources: scc::HashMap<ResourcePath, Bytes>,
 }
 
-impl AddressSpace {
+impl AddressSpaceData {
     pub(crate) fn new(id: AddressSpaceId, width: u8) -> Self {
         assert!(
             width as usize <= usize::BITS as usize,
@@ -51,16 +164,10 @@ impl AddressSpace {
         }
     }
 
-    pub fn create_cache(&self) -> AddressSpaceCache {
-        AddressSpaceCache {
-            members: Cache::new(self.members.clone()),
-        }
-    }
-
-    pub(crate) fn remap(
+    pub fn remap(
         &self,
+        registry: ComponentRegistry<'_>,
         commands: impl IntoIterator<Item = MemoryRemappingCommand>,
-        registry: &ComponentRegistry,
     ) {
         let max = 2usize.pow(u32::from(self.address_space_width)) - 1;
         let valid_range = 0..=max;
@@ -169,94 +276,6 @@ impl AddressSpace {
 
             members
         });
-    }
-
-    pub fn id(&self) -> AddressSpaceId {
-        self.id
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MappingEntry {
-    Component(ComponentPath),
-    Mirror {
-        source_base: Address,
-        destination_base: Address,
-    },
-    Memory(ResourcePath),
-}
-
-#[derive(Debug, Clone)]
-pub enum PageTarget {
-    Component {
-        mirror_start: Option<Address>,
-        component: ComponentHandle,
-    },
-    Memory(Bytes),
-}
-
-#[derive(Debug, Clone)]
-pub struct PageEntry {
-    /// Full, uncropped relevant range
-    pub range: RangeInclusive<Address>,
-    pub target: PageTarget,
-}
-
-#[derive(Debug, Clone)]
-pub enum Page {
-    Single(PageEntry),
-    Multi(Box<[PageEntry]>),
-}
-
-#[derive(Debug, Clone)]
-pub struct MemoryMappingTable {
-    master: RangeInclusiveMap<Address, MappingEntry>,
-    computed_table: Vec<Option<Page>>,
-}
-
-impl MemoryMappingTable {
-    pub fn new(address_space_width: u8) -> Self {
-        let addr_space_size = 2usize.pow(u32::from(address_space_width));
-        let total_pages = addr_space_size.div_ceil(PAGE_SIZE);
-
-        Self {
-            master: RangeInclusiveMap::new(),
-            computed_table: vec![Default::default(); total_pages],
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
-/// Identifier for a address space
-pub struct AddressSpaceId(pub(crate) u16);
-
-#[derive(Debug, Clone)]
-pub struct Members {
-    pub read: MemoryMappingTable,
-    pub write: MemoryMappingTable,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-/// Why a read operation failed
-pub enum MemoryErrorType {
-    /// Access was denied
-    Denied,
-    /// Nothing is mapped there
-    OutOfBus,
-    /// It would be impossible to view this memory without a state change
-    Impossible,
-}
-
-#[derive(Error)]
-#[error("Memory operation failed: {0:#x?}")]
-/// Wrapper around the error type in order to specify ranges
-pub struct MemoryError(pub RangeInclusiveMap<Address, MemoryErrorType>);
-
-impl Debug for MemoryError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("MemoryError")
-            .field(&format_args!("{:x?}", self.0))
-            .finish()
     }
 }
 

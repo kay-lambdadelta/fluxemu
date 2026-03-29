@@ -102,10 +102,11 @@ pub struct Ppu<R: Region, G: SupportedGraphicsApiPpu> {
     backend: Option<G::Backend<R>>,
     cpu_address_space: AddressSpaceId,
     ppu_address_space: AddressSpaceId,
-    processor_rdy: Arc<RdyFlag>,
-    processor_nmi: Arc<NmiFlag>,
+    processor_rdy: Option<Arc<RdyFlag>>,
+    processor_nmi: Option<Arc<NmiFlag>>,
     ppu_address_space_cache: Option<AddressSpaceCache>,
     framebuffer_path: ResourcePath,
+    processor_path: ComponentPath,
     staging_buffer: Texture<PpuColorIndex>,
     timestamp: Period,
     period: Period,
@@ -121,6 +122,19 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
         data: &LateContext<P>,
     ) -> LateInitializedData<P> {
         let runtime = RuntimeApi::current();
+
+        let processor_nmi = runtime
+            .registry()
+            .interact::<Mos6502, _>(&component.processor_path, Period::ZERO, Mos6502::nmi)
+            .unwrap();
+
+        let processor_rdy = runtime
+            .registry()
+            .interact::<Mos6502, _>(&component.processor_path, Period::ZERO, Mos6502::rdy)
+            .unwrap();
+
+        component.processor_nmi = Some(processor_nmi);
+        component.processor_rdy = Some(processor_rdy);
 
         component.ppu_address_space_cache = Some(
             runtime
@@ -147,14 +161,6 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
         component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         let frequency = R::master_clock() / 4;
-
-        let processor_nmi = component_builder
-            .interact::<Mos6502, _>(&self.processor, Mos6502::nmi)
-            .unwrap();
-
-        let processor_rdy = component_builder
-            .interact::<Mos6502, _>(&self.processor, Mos6502::rdy)
-            .unwrap();
 
         let (component_builder, framebuffer_path) = component_builder
             .scheduler_participation(Some(SchedulerParticipation::OnAccess))
@@ -281,8 +287,9 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
             backend: None,
             staging_buffer,
             cpu_address_space: self.cpu_address_space,
-            processor_rdy,
-            processor_nmi,
+            processor_nmi: None,
+            processor_rdy: None,
+            processor_path: self.processor.clone(),
             ppu_address_space: self.ppu_address_space,
             ppu_address_space_cache: None,
             framebuffer_path,
@@ -485,7 +492,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
 
                     let page = u16::from(*buffer) << 8;
 
-                    self.processor_rdy.store(false);
+                    self.processor_rdy.as_ref().unwrap().store(false);
 
                     // TODO: Extract to constant or extract from cpu directly within the config builder
                     let processor_frequency = R::master_clock() / 12;
@@ -527,14 +534,14 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     self.state.entered_vblank.store(true, Ordering::Release);
 
                     if self.state.vblank_nmi_enabled {
-                        self.processor_nmi.store(false);
+                        self.processor_nmi.as_ref().unwrap().store(false);
                     }
                 }
                 VBLANK_END => {
                     let runtime = RuntimeApi::current();
 
                     self.state.entered_vblank.store(false, Ordering::Release);
-                    self.processor_nmi.store(true);
+                    self.processor_nmi.as_ref().unwrap().store(true);
 
                     runtime.commit_framebuffer::<G>(&self.framebuffer_path, |framebuffer| {
                         self.backend
@@ -544,7 +551,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     });
                 }
                 WAKEUP_CPU_VIA_RDY => {
-                    self.processor_rdy.store(true);
+                    self.processor_rdy.as_ref().unwrap().store(true);
                 }
                 _ => {
                     unreachable!("{}", name)

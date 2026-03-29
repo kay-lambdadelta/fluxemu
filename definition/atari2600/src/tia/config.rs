@@ -2,6 +2,7 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use fluxemu_definition_mos6502::Mos6502;
 use fluxemu_runtime::{
+    RuntimeApi,
     component::config::{ComponentConfig, LateContext, LateInitializedData},
     graphics::software::Texture,
     machine::builder::{ComponentBuilder, SchedulerParticipation},
@@ -37,6 +38,15 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>> ComponentConf
         component: &mut Self::Component,
         data: &LateContext<P>,
     ) -> LateInitializedData<P> {
+        let runtime = RuntimeApi::current();
+
+        let cpu_rdy = runtime
+            .registry()
+            .interact::<Mos6502, _>(&component.cpu_path, Period::ZERO, |cpu| cpu.rdy())
+            .unwrap();
+
+        component.cpu_rdy = Some(cpu_rdy);
+
         let backend = <P::GraphicsApi as SupportedGraphicsApiTia>::Backend::new(
             data.graphics_initialization_data.clone(),
         );
@@ -78,13 +88,10 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>> ComponentConf
             BLACK.into(),
         );
 
-        let cpu_rdy = component_builder
-            .interact::<Mos6502, _>(&self.cpu, |cpu| cpu.rdy())
-            .unwrap();
-
         Ok(Tia {
             backend: None,
-            cpu_rdy,
+            cpu_rdy: None,
+            cpu_path: self.cpu,
             collision_matrix: HashMap::default(),
             vblank_active: false,
             cycles_waiting_for_vsync: None,

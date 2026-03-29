@@ -12,13 +12,13 @@ use crate::{
     scheduler::Period,
 };
 
-impl AddressSpace {
+impl<'a> AddressSpace<'a> {
     /// Force code into the generic read_*_value functions
     #[inline]
     pub(super) fn read_internal<B: NumBytes + ?Sized>(
         &self,
         mut address: Address,
-        current_timestamp: Period,
+        time: Period,
         members: &Members,
         avoid_side_effects: bool,
         buffer: &mut B,
@@ -26,12 +26,12 @@ impl AddressSpace {
         let mut remaining_buffer = buffer.as_mut();
 
         while !remaining_buffer.is_empty() {
-            let address_masked = address & self.width_mask;
+            let address_masked = address & self.data.width_mask;
             let end_address = address_masked + remaining_buffer.len() - 1;
 
-            let chunk_len = if end_address > self.width_mask {
+            let chunk_len = if end_address > self.data.width_mask {
                 // Wraparound
-                self.width_mask - address_masked + 1
+                self.data.width_mask - address_masked + 1
             } else {
                 remaining_buffer.len()
             };
@@ -61,18 +61,22 @@ impl AddressSpace {
                             ..=(component_access_range.end() - access_range.start());
                         let adjusted_buffer = &mut remaining_buffer[buffer_range];
 
-                        component.interact(
-                            current_timestamp,
-                            #[inline]
-                            |component| {
-                                component.memory_read(
-                                    operation_base + offset,
-                                    self.id,
-                                    avoid_side_effects,
-                                    adjusted_buffer,
-                                )
-                            },
-                        )?;
+                        self.runtime
+                            .registry()
+                            .interact_dyn_mut(
+                                *component,
+                                time,
+                                #[inline]
+                                |component| {
+                                    component.memory_read(
+                                        operation_base + offset,
+                                        self.data.id,
+                                        avoid_side_effects,
+                                        adjusted_buffer,
+                                    )
+                                },
+                            )
+                            .unwrap()?;
                     }
                     PageTarget::Memory(bytes) => {
                         let memory_access_range = entry_assigned_range.intersection(&access_range);
@@ -101,7 +105,7 @@ impl AddressSpace {
 
             // Move forward in the buffer
             remaining_buffer = &mut remaining_buffer[chunk_len..];
-            address = (address_masked + chunk_len) & self.width_mask;
+            address = (address_masked + chunk_len) & self.data.width_mask;
         }
 
         Ok(())
@@ -168,7 +172,7 @@ impl AddressSpace {
             let members = cache.members.load();
             self.read_internal(address, current_timestamp, members, false, buffer)
         } else {
-            let members = self.members.load();
+            let members = self.data.members.load();
             self.read_internal(address, current_timestamp, &members, false, buffer)
         }
     }
@@ -185,7 +189,7 @@ impl AddressSpace {
             let members = cache.members.load();
             self.read_internal(address, current_timestamp, members, true, buffer)
         } else {
-            let members = self.members.load();
+            let members = self.data.members.load();
             self.read_internal(address, current_timestamp, &members, true, buffer)
         }
     }
@@ -205,7 +209,7 @@ impl AddressSpace {
             let members = cache.members.load();
             self.read_le_value_internal(address, current_timestamp, members, false)
         } else {
-            let members = self.members.load();
+            let members = self.data.members.load();
             self.read_le_value_internal(address, current_timestamp, &members, false)
         }
     }
@@ -225,7 +229,7 @@ impl AddressSpace {
             let members = cache.members.load();
             self.read_le_value_internal(address, current_timestamp, members, true)
         } else {
-            let members = self.members.load();
+            let members = self.data.members.load();
             self.read_le_value_internal(address, current_timestamp, &members, true)
         }
     }
@@ -245,7 +249,7 @@ impl AddressSpace {
             let members = cache.members.load();
             self.read_be_value_internal(address, current_timestamp, members, false)
         } else {
-            let members = self.members.load();
+            let members = self.data.members.load();
             self.read_be_value_internal(address, current_timestamp, &members, false)
         }
     }
@@ -265,7 +269,7 @@ impl AddressSpace {
             let members = cache.members.load();
             self.read_be_value_internal(address, current_timestamp, members, true)
         } else {
-            let members = self.members.load();
+            let members = self.data.members.load();
             self.read_be_value_internal(address, current_timestamp, &members, true)
         }
     }

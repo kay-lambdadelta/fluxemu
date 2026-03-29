@@ -12,24 +12,24 @@ use crate::{
     scheduler::Period,
 };
 
-impl AddressSpace {
+impl<'a> AddressSpace<'a> {
     #[inline]
     pub(super) fn write_internal<B: NumBytes + ?Sized>(
         &self,
         mut address: Address,
-        current_timestamp: Period,
+        time: Period,
         members: &Members,
         buffer: &B,
     ) -> Result<(), MemoryError> {
         let mut remaining_buffer = buffer.as_ref();
 
         while !remaining_buffer.is_empty() {
-            let address_masked = address & self.width_mask;
+            let address_masked = address & self.data.width_mask;
             let end_address = address_masked + remaining_buffer.len() - 1;
 
-            let chunk_len = if end_address > self.width_mask {
+            let chunk_len = if end_address > self.data.width_mask {
                 // Wraparound
-                self.width_mask - address_masked + 1
+                self.data.width_mask - address_masked + 1
             } else {
                 remaining_buffer.len()
             };
@@ -59,17 +59,21 @@ impl AddressSpace {
                             ..=(component_access_range.end() - access_range.start());
                         let adjusted_buffer = &remaining_buffer[buffer_range];
 
-                        component.interact_mut(
-                            current_timestamp,
-                            #[inline]
-                            |component| {
-                                component.memory_write(
-                                    operation_base + offset,
-                                    self.id,
-                                    adjusted_buffer,
-                                )
-                            },
-                        )?;
+                        self.runtime
+                            .registry()
+                            .interact_dyn_mut(
+                                *component,
+                                time,
+                                #[inline]
+                                |component| {
+                                    component.memory_write(
+                                        operation_base + offset,
+                                        self.data.id,
+                                        adjusted_buffer,
+                                    )
+                                },
+                            )
+                            .unwrap()?;
                     }
                     PageTarget::Memory(_) => {
                         unreachable!()
@@ -85,7 +89,7 @@ impl AddressSpace {
 
             // Move forward in the buffer
             remaining_buffer = &remaining_buffer[chunk_len..];
-            address = (address_masked + chunk_len) & self.width_mask;
+            address = (address_masked + chunk_len) & self.data.width_mask;
         }
 
         Ok(())
@@ -140,7 +144,7 @@ impl AddressSpace {
             let members = cache.members.load();
             self.write_internal(address, current_timestamp, members, buffer)
         } else {
-            let members = self.members.load();
+            let members = self.data.members.load();
             self.write_internal(address, current_timestamp, &members, buffer)
         }
     }
@@ -158,7 +162,7 @@ impl AddressSpace {
             let members = cache.members.load();
             self.write_le_value_internal(address, current_timestamp, members, value)
         } else {
-            let members = self.members.load();
+            let members = self.data.members.load();
             self.write_le_value_internal(address, current_timestamp, &members, value)
         }
     }
@@ -176,7 +180,7 @@ impl AddressSpace {
             let members = cache.members.load();
             self.write_be_value_internal(address, current_timestamp, members, value)
         } else {
-            let members = self.members.load();
+            let members = self.data.members.load();
             self.write_be_value_internal(address, current_timestamp, &members, value)
         }
     }

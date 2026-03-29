@@ -90,7 +90,10 @@ impl Component for Mapctl {
             permissions: Permissions::all(),
         });
 
-        runtime.remap_address_space(self.config.cpu_address_space, remapping_commands);
+        runtime
+            .address_space(self.config.cpu_address_space)
+            .unwrap()
+            .remap(remapping_commands);
 
         Ok(())
     }

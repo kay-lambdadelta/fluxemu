@@ -1,32 +1,21 @@
 use std::{
-    collections::HashMap,
     fmt::Debug,
     sync::{Arc, Mutex},
 };
 
 use fixed::{FixedU128, types::extra::U64};
-use rustc_hash::FxBuildHasher;
 
 use crate::{
-    component::ComponentHandle,
+    component::ComponentRegistry,
     event::{EventManager, PreemptionSignal},
     path::ComponentPath,
 };
 
 #[derive(Debug)]
-pub struct DrivenComponent {
-    component: ComponentHandle,
-}
-
-/// The main scheduler that the runtime uses to drive tasks
-///
-/// It is a frequency based cooperative scheduler with some optional out of
-/// order execution stuff
-#[derive(Debug)]
 pub(crate) struct Scheduler {
     pub event_manager: EventManager,
     pub current_driven_time: Mutex<Period>,
-    driven: HashMap<ComponentPath, DrivenComponent, FxBuildHasher>,
+    driven: Vec<ComponentPath>,
     start_time: Period,
     preemption_signal: Arc<PreemptionSignal>,
 }
@@ -35,7 +24,7 @@ impl Scheduler {
     pub fn new() -> Self {
         Scheduler {
             event_manager: EventManager::default(),
-            driven: HashMap::default(),
+            driven: Vec::default(),
             current_driven_time: Mutex::default(),
             start_time: Period::default(),
             preemption_signal: Arc::new(PreemptionSignal::new()),
@@ -50,18 +39,18 @@ impl Scheduler {
         self.start_time
     }
 
-    pub fn register_driven_component(&mut self, path: ComponentPath, component: ComponentHandle) {
-        self.driven.insert(path, DrivenComponent { component });
+    pub fn register_driven_component(&mut self, path: ComponentPath) {
+        self.driven.push(path);
     }
 
-    pub fn run(&self, allocated_time: Period) {
+    pub fn run(&self, component_registry: ComponentRegistry<'_>, allocated_time: Period) {
         let mut current_driven_time_guard = self.current_driven_time.lock().unwrap();
 
         *current_driven_time_guard += allocated_time;
         let current_driven_time = *current_driven_time_guard;
 
-        for driven in self.driven.values() {
-            driven.component.interact_mut(current_driven_time, |_| {});
+        for path in &self.driven {
+            component_registry.interact_dyn_mut(path, current_driven_time, |_| {});
         }
     }
 

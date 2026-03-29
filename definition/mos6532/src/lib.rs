@@ -144,14 +144,14 @@ impl Component for Mos6532Riot {
                             }
                         };
 
-                        runtime.remap_address_space(
-                            self.config.assigned_address_space,
-                            [MemoryRemappingCommand::Map {
+                        runtime
+                            .address_space(self.config.assigned_address_space)
+                            .unwrap()
+                            .remap([MemoryRemappingCommand::Map {
                                 range: address..=address,
                                 target: MapTarget::Component(swacnt.clone()),
                                 permissions,
-                            }],
-                        );
+                            }]);
                     }
                 }
                 Register::Swchb => {
@@ -176,14 +176,14 @@ impl Component for Mos6532Riot {
                             }
                         };
 
-                        runtime.remap_address_space(
-                            self.config.assigned_address_space,
-                            [MemoryRemappingCommand::Map {
+                        runtime
+                            .address_space(self.config.assigned_address_space)
+                            .unwrap()
+                            .remap([MemoryRemappingCommand::Map {
                                 range: address..=address,
                                 target: MapTarget::Component(swbcnt.clone()),
                                 permissions,
-                            }],
-                        );
+                            }]);
                     }
                 }
                 Register::Intim => {
