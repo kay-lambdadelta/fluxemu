@@ -17,14 +17,15 @@ use wgpu::{
     BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingResource, BindingType, BlendState, Buffer, BufferBindingType,
     BufferDescriptor, BufferUsages, ColorTargetState, ColorWrites, CommandEncoderDescriptor,
-    CompositeAlphaMode, CurrentSurfaceTexture, Device, DeviceDescriptor, ExperimentalFeatures,
-    FilterMode, FragmentState, Instance, InstanceDescriptor, LoadOp, MemoryHints, MultisampleState,
-    Operations, PipelineCompilationOptions, PipelineLayoutDescriptor, PollType, PresentMode,
-    PrimitiveState, Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
-    RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor,
-    ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, Surface, SurfaceConfiguration,
-    TextureSampleType, TextureUsages, TextureViewDescriptor, TextureViewDimension, Trace,
-    VertexState, util::initialize_adapter_from_env_or_default,
+    CompositeAlphaMode, CurrentSurfaceTexture, Device, DeviceDescriptor, DownlevelFlags,
+    ExperimentalFeatures, FilterMode, FragmentState, Instance, InstanceDescriptor, LoadOp,
+    MemoryHints, MultisampleState, Operations, PipelineCompilationOptions,
+    PipelineLayoutDescriptor, PollType, PresentMode, PrimitiveState, Queue,
+    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
+    Sampler, SamplerBindingType, SamplerDescriptor, ShaderModuleDescriptor, ShaderSource,
+    ShaderStages, StoreOp, Surface, SurfaceConfiguration, TextureFormat, TextureSampleType,
+    TextureUsages, TextureViewDescriptor, TextureViewDimension, Trace, VertexState,
+    util::initialize_adapter_from_env_or_default,
 };
 use winit::window::Window;
 
@@ -41,6 +42,7 @@ pub struct WebgpuGraphicsRuntime {
     uniform_buffer: Buffer,
     machine_draw_sampler: Sampler,
     surface_configuration: SurfaceConfiguration,
+    egui_surface_format_view: Option<TextureFormat>,
 }
 
 impl GraphicsRuntime for WebgpuGraphicsRuntime {
@@ -52,9 +54,12 @@ impl GraphicsRuntime for WebgpuGraphicsRuntime {
         match self.surface.get_current_texture() {
             CurrentSurfaceTexture::Success(surface_texture) => {
                 let surface_texture_size = surface_texture.texture.size();
-                let surface_texture_view = surface_texture
-                    .texture
-                    .create_view(&TextureViewDescriptor::default());
+
+                let surface_texture_view =
+                    surface_texture.texture.create_view(&TextureViewDescriptor {
+                        format: self.egui_surface_format_view,
+                        ..Default::default()
+                    });
 
                 for (new_texture_id, image_delta) in full_output.textures_delta.set {
                     self.renderer.update_texture(
@@ -133,11 +138,9 @@ impl GraphicsRuntime for WebgpuGraphicsRuntime {
             CurrentSurfaceTexture::Success(surface_texture) => {
                 let surface_texture_size = surface_texture.texture.size();
 
-                let surface_texture_view =
-                    surface_texture.texture.create_view(&TextureViewDescriptor {
-                        format: Some(surface_texture.texture.format().add_srgb_suffix()),
-                        ..Default::default()
-                    });
+                let surface_texture_view = surface_texture
+                    .texture
+                    .create_view(&TextureViewDescriptor::default());
 
                 let mut encoder = self
                     .device
@@ -287,6 +290,8 @@ impl WinitCompatibleGraphicsRuntime for WebgpuGraphicsRuntime {
             .block_on()
             .expect("Creating adapter");
 
+        let downlevel_capabilities = adapter.get_downlevel_capabilities();
+
         let capabilities = surface.get_capabilities(&adapter);
 
         let preferred_features = requirements.required.clone() | requirements.preferred.clone();
@@ -324,9 +329,18 @@ impl WinitCompatibleGraphicsRuntime for WebgpuGraphicsRuntime {
             .iter()
             .copied()
             // Egui prefers non srgb textures
-            .find(|format| !format.is_srgb())
+            .find(|format| format.is_srgb())
             .or_else(|| capabilities.formats.first().copied())
             .unwrap();
+
+        let egui_surface_format_view = if downlevel_capabilities
+            .flags
+            .contains(DownlevelFlags::SURFACE_VIEW_FORMATS)
+        {
+            Some(surface_format.remove_srgb_suffix())
+        } else {
+            None
+        };
 
         tracing::info!("Using surface texture format {:?}", surface_format);
 
@@ -337,7 +351,7 @@ impl WinitCompatibleGraphicsRuntime for WebgpuGraphicsRuntime {
             height: window_size.height,
             present_mode: PresentMode::AutoVsync,
             alpha_mode: CompositeAlphaMode::Opaque,
-            view_formats: vec![],
+            view_formats: egui_surface_format_view.into_iter().collect(),
             desired_maximum_frame_latency: 2,
         };
 
@@ -427,7 +441,7 @@ impl WinitCompatibleGraphicsRuntime for WebgpuGraphicsRuntime {
 
         let renderer = Renderer::new(
             &device,
-            surface_format,
+            egui_surface_format_view.unwrap_or(surface_format),
             RendererOptions {
                 msaa_samples: 0,
                 depth_stencil_format: None,
@@ -447,6 +461,7 @@ impl WinitCompatibleGraphicsRuntime for WebgpuGraphicsRuntime {
             pipeline,
             machine_draw_sampler,
             surface_configuration,
+            egui_surface_format_view,
         }
     }
 }
