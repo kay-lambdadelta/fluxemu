@@ -64,5 +64,5 @@ wgpu = "29.0"
 [profile.bench]
 debug = true
 
-[profile.dev]
-opt-level = 1
+[profile.release]
+debug = true

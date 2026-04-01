@@ -17,7 +17,7 @@ rustc-hash = { workspace = true }
 scc = { workspace = true }
 serde = { workspace = true }
 serde_with = { workspace = true }
-sha1 = "0.10"
+sha1 = "0.11"
 strum = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
