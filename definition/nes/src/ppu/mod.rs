@@ -260,7 +260,6 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
                     blue: false,
                 },
                 cycle_counter: INITIAL_CYCLE_COUNTER_POSITION,
-                awaiting_memory_access: true,
                 background_pipeline_state: BackgroundPipelineState::FetchingNametable,
                 sprite_pipeline_state: SpritePipelineState::FetchingNametableGarbage0,
                 oam: OamState {
@@ -272,6 +271,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
                     show_sprites_leftmost_pixels: true,
                     sprite_8x8_pattern_table_index: 0x0000,
                     rendering_enabled: false,
+                    awaiting_memory_access: true,
                 },
                 background: BackgroundState {
                     pattern_table_index: 0x0000,
@@ -280,6 +280,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
                     attribute_shift: 0,
                     fine_x_scroll: 0,
                     rendering_enabled: false,
+                    awaiting_memory_access: true,
                 },
                 vram_address_pointer: 0,
                 shadow_vram_address_pointer: 0,
@@ -631,8 +632,8 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         .iter()
                         .rev()
                         .find_map(|sprite| {
-                            let in_sprite_position = u16::from(sprite.oam.position.x)
-                                .checked_sub(scanline_position_x)?;
+                            let in_sprite_position = scanline_position_x
+                                .checked_sub(u16::from(sprite.oam.position.x))?;
 
                             if in_sprite_position < 8 {
                                 let in_sprite_position = if !sprite.oam.flip.x {
@@ -641,8 +642,11 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                                     7 - in_sprite_position
                                 };
 
-                                let low = (sprite.pattern_table_low >> in_sprite_position) & 1;
-                                let high = (sprite.pattern_table_high >> in_sprite_position) & 1;
+                                let low =
+                                    (sprite.pattern_table_low >> (7 - in_sprite_position)) & 1;
+                                let high =
+                                    (sprite.pattern_table_high >> (7 - in_sprite_position)) & 1;
+
                                 let color_index = (high << 1) | low;
 
                                 if color_index != 0 {

@@ -31,7 +31,6 @@ pub struct State {
     pub vram_read_buffer: AtomicU8,
     pub color_emphasis: ColorEmphasis,
     pub cycle_counter: Point2<u16>,
-    pub awaiting_memory_access: bool,
     pub background_pipeline_state: BackgroundPipelineState,
     pub sprite_pipeline_state: SpritePipelineState,
     pub oam: OamState,
@@ -50,7 +49,7 @@ impl State {
         ppu_address_space_cache: &mut AddressSpaceCache,
         timestamp: Period,
     ) {
-        if !self.awaiting_memory_access {
+        if !self.oam.awaiting_memory_access {
             let currently_relevant_sprite_index = (self.cycle_counter.x - 257) / 8;
             let currently_relevant_sprite = self
                 .oam
@@ -131,7 +130,7 @@ impl State {
             }
         }
 
-        self.awaiting_memory_access = !self.awaiting_memory_access;
+        self.oam.awaiting_memory_access = !self.oam.awaiting_memory_access;
     }
 
     #[inline]
@@ -142,7 +141,7 @@ impl State {
         timestamp: Period,
     ) {
         // Steps wait a cycle inbetween for memory access realism
-        if !self.awaiting_memory_access {
+        if !self.background.awaiting_memory_access {
             let mut vram_address_pointer_contents =
                 VramAddressPointerContents::from(self.vram_address_pointer);
 
@@ -255,7 +254,7 @@ impl State {
             }
         }
 
-        self.awaiting_memory_access = !self.awaiting_memory_access;
+        self.background.awaiting_memory_access = !self.background.awaiting_memory_access;
     }
 
     // This function uses manual bit math because absolute speed is critical here
