@@ -2,6 +2,7 @@ use std::{collections::HashMap, fmt::Debug, io::Cursor, ops::RangeInclusive};
 
 use bitstream_io::{BigEndian, BitRead2, BitReader};
 use expansion_device::DefaultExpansionDevice;
+use fluxemu_range::ContiguousRange;
 use thiserror::Error;
 
 pub mod expansion_device;
@@ -187,11 +188,17 @@ impl INes {
         }
 
         let prg_bank_size = prg_bank_count as usize * PRG_BANK_SIZE;
-        roms.insert(RomType::Prg, cursor..=(cursor + prg_bank_size - 1));
+        roms.insert(
+            RomType::Prg,
+            RangeInclusive::from_start_and_length(cursor, prg_bank_size),
+        );
         cursor += prg_bank_size;
 
         let chr_bank_size = chr_bank_count as usize * CHR_BANK_SIZE;
-        roms.insert(RomType::Chr, cursor..=(cursor + chr_bank_size - 1));
+        roms.insert(
+            RomType::Chr,
+            RangeInclusive::from_start_and_length(cursor, chr_bank_size),
+        );
 
         Ok(Self {
             mapper,
