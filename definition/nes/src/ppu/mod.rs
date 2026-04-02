@@ -281,6 +281,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
                     fine_x_scroll: 0,
                     rendering_enabled: false,
                     awaiting_memory_access: true,
+                    tile_pixel: 0,
                 },
                 vram_address_pointer: 0,
                 shadow_vram_address_pointer: 0,
@@ -669,24 +670,22 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         ));
                     }
 
-                    // Extract out and combine pattern bits
-                    let high = (self.state.background.pattern_high_shift
-                        >> (15 - self.state.background.fine_x_scroll))
-                        & 1;
+                    let bit_position =
+                        15 - self.state.background.fine_x_scroll - self.state.background.tile_pixel;
 
-                    let low = (self.state.background.pattern_low_shift
-                        >> (15 - self.state.background.fine_x_scroll))
-                        & 1;
+                    let high = (self.state.background.pattern_high_shift >> bit_position) & 1;
+                    let low = (self.state.background.pattern_low_shift >> bit_position) & 1;
+
+                    let attribute = (self.state.background.attribute_shift
+                        >> (30 - self.state.background.tile_pixel * 2))
+                        & 0b11;
+
+                    self.state.background.tile_pixel += 1;
+                    if self.state.background.tile_pixel == 8 {
+                        self.state.background.tile_pixel = 0;
+                    }
 
                     let color_index = (high << 1) | low;
-
-                    // Extract out attribute bits
-                    let attribute = (self.state.background.attribute_shift >> 30) & 0b11;
-
-                    // Shift pipeline forward
-                    self.state.background.attribute_shift <<= 2;
-                    self.state.background.pattern_low_shift <<= 1;
-                    self.state.background.pattern_high_shift <<= 1;
 
                     let background_color_index = self.state.calculate_background_color::<R>(
                         ppu_address_space,

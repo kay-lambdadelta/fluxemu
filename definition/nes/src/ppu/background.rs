@@ -11,6 +11,7 @@ pub struct BackgroundState {
     pub attribute_shift: u32,
     /// Usually called x, 3 bits
     pub fine_x_scroll: u8,
+    pub tile_pixel: u8,
     pub awaiting_memory_access: bool,
 }
 

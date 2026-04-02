@@ -227,15 +227,15 @@ impl State {
                         .read_le_value(address as usize, timestamp, Some(ppu_address_space_cache))
                         .unwrap();
 
-                    self.background.pattern_low_shift =
-                        (self.background.pattern_low_shift & 0xff00) | u16::from(pattern_table_low);
-                    self.background.pattern_high_shift = (self.background.pattern_high_shift
-                        & 0xff00)
-                        | u16::from(pattern_table_high);
-                    self.background.attribute_shift = (self.background.attribute_shift
-                        & 0xffff_0000)
-                        // Spread the bits
-                        | (u32::from(attribute) * 0x5555);
+                    self.background.pattern_low_shift <<= 8;
+                    self.background.pattern_high_shift <<= 8;
+                    self.background.attribute_shift <<= 16;
+
+                    self.background.pattern_low_shift |= u16::from(pattern_table_low);
+                    self.background.pattern_high_shift |= u16::from(pattern_table_high);
+                    self.background.attribute_shift |= u32::from(attribute) * 0x5555;
+
+                    self.background.tile_pixel = 0;
 
                     if self.background.rendering_enabled {
                         if vram_address_pointer_contents.coarse.x == 31 {
