@@ -5,29 +5,23 @@ use fluxemu_range::RangeIntersection;
 use crate::memory::{Address, MemoryMappingTable, PAGE_SIZE, Page, PageTarget};
 
 pub struct OverlappingMappingsIter<'a> {
-    table: &'a MemoryMappingTable,
-    cursor_page: &'a Option<Page>,
+    pages: &'a [Option<Page>],
     access_range: RangeInclusive<Address>,
-    page_index: usize,
-    end_page: usize,
     entry_index: usize,
 }
 
 impl MemoryMappingTable {
     #[inline]
-    pub fn overlapping<'a>(
-        &'a self,
+    pub fn overlapping(
+        &self,
         access_range: RangeInclusive<Address>,
-    ) -> OverlappingMappingsIter<'a> {
+    ) -> OverlappingMappingsIter<'_> {
         let start_page = access_range.start() / PAGE_SIZE;
         let end_page = access_range.end() / PAGE_SIZE;
 
         OverlappingMappingsIter {
-            cursor_page: &self.computed_table[start_page],
-            table: self,
+            pages: &self.computed_table[start_page..=end_page],
             access_range,
-            page_index: start_page,
-            end_page,
             entry_index: 0,
         }
     }
@@ -43,12 +37,16 @@ impl<'a> Iterator for OverlappingMappingsIter<'a> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        while self.page_index <= self.end_page {
-            match self.cursor_page {
-                Some(Page::Single(entry)) => {
-                    if self.entry_index == 0 && self.access_range.intersects(&entry.range) {
-                        self.entry_index = 1;
+        loop {
+            let (current, rest) = self.pages.split_first()?;
 
+            match current {
+                Some(Page::Single(entry)) => {
+                    self.pages = rest;
+                    // Not used for single entry pages
+                    self.entry_index = 0;
+
+                    if self.access_range.intersects(&entry.range) {
                         return Some(Item {
                             entry_assigned_range: &entry.range,
                             target: &entry.target,
@@ -68,18 +66,15 @@ impl<'a> Iterator for OverlappingMappingsIter<'a> {
                             });
                         }
                     }
+
+                    self.pages = rest;
+                    self.entry_index = 0;
                 }
-                None => {}
-            }
-
-            self.page_index += 1;
-            self.entry_index = 0;
-
-            if self.page_index <= self.end_page {
-                self.cursor_page = &self.table.computed_table[self.page_index];
+                None => {
+                    self.pages = rest;
+                    self.entry_index = 0;
+                }
             }
         }
-
-        None
     }
 }
