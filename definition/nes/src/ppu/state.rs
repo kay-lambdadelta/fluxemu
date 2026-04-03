@@ -274,12 +274,13 @@ impl State {
         let palette_index = color_bits | (attribute << 2);
 
         ppu_address_space
-            .read_le_value(
+            .read_le_value::<u8>(
                 BACKGROUND_PALETTE_BASE_ADDRESS + palette_index as usize,
                 timestamp,
                 Some(ppu_address_space_cache),
             )
             .unwrap()
+            & 0b0011_1111
     }
 
     #[inline]
@@ -294,7 +295,7 @@ impl State {
         let color_bits = color & 0b11;
 
         ppu_address_space
-            .read_le_value(
+            .read_le_value::<u8>(
                 SPRITE_PALETTE_BASE_ADDRESS
                     + (usize::from(sprite.palette_index) * 4)
                     + usize::from(color_bits),
@@ -302,6 +303,7 @@ impl State {
                 Some(ppu_address_space_cache),
             )
             .unwrap()
+            & 0b0011_1111
     }
 }
 
