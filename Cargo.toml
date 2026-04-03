@@ -40,7 +40,7 @@ palette = { version = "0.7", features = ["bytemuck", "named", "serializing"] }
 pollster = "0.4"
 rand = "0.10"
 rangemap = { version = "1.7", features = ["serde1"] }
-redb = { version = "3.1", features = ["logging"] }
+redb = { version = "4.0", features = ["logging"] }
 regex = "1.12"
 ringbuffer = "0.16"
 rmp-serde = "1.3"
