@@ -25,6 +25,34 @@ impl MemoryMappingTable {
             entry_index: 0,
         }
     }
+
+    #[inline]
+    pub fn get(&self, address: Address) -> Option<Item<'_>> {
+        let page = address / PAGE_SIZE;
+
+        match self.computed_table[page].as_ref()? {
+            Page::Single(entry) => {
+                if entry.range.contains(&address) {
+                    return Some(Item {
+                        entry_assigned_range: &entry.range,
+                        target: &entry.target,
+                    });
+                }
+            }
+            Page::Multi(entries) => {
+                for entry in entries {
+                    if entry.range.contains(&address) {
+                        return Some(Item {
+                            entry_assigned_range: &entry.range,
+                            target: &entry.target,
+                        });
+                    }
+                }
+            }
+        }
+
+        None
+    }
 }
 
 pub struct Item<'a> {

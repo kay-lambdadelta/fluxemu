@@ -126,8 +126,6 @@ impl EventManager {
                     component.handle_event(&event.name, event.ty);
                 })
             } else {
-                let runtime = RuntimeApi::current();
-
                 runtime
                     .registry()
                     .interact_dyn_mut(&event.path, event.time.0, |component| {

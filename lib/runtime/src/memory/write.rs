@@ -6,8 +6,7 @@ use num::traits::{ToBytes, ops::bytes::NumBytes};
 use super::AddressSpace;
 use crate::{
     memory::{
-        Address, AddressSpaceCache, Members, MemoryError, MemoryErrorType, PageTarget,
-        overlapping::Item,
+        Address, AddressSpaceCache, Members, MemoryError, MemoryErrorType, PageTarget, search::Item,
     },
     scheduler::Period,
 };
@@ -21,7 +20,54 @@ impl<'a> AddressSpace<'a> {
         members: &Members,
         buffer: &B,
     ) -> Result<(), MemoryError> {
-        let mut remaining_buffer = buffer.as_ref();
+        let buffer = buffer.as_ref();
+
+        // Take a special path for single byte reads
+        if buffer.len() == 1 {
+            let address_masked = address & self.data.width_mask;
+
+            let Item {
+                entry_assigned_range,
+                target,
+            } = members.write.get(address_masked).ok_or_else(|| {
+                let access_range = RangeInclusive::from_start_and_length(address_masked, 1);
+
+                MemoryError(std::iter::once((access_range, MemoryErrorType::Denied)).collect())
+            })?;
+
+            match target {
+                PageTarget::Component {
+                    mirror_start,
+                    component,
+                } => {
+                    let operation_base = mirror_start.unwrap_or(*entry_assigned_range.start());
+                    let offset = address_masked - entry_assigned_range.start();
+
+                    self.runtime
+                        .registry()
+                        .interact_dyn_mut(
+                            *component,
+                            time,
+                            #[inline]
+                            |component| {
+                                component.memory_write(
+                                    operation_base + offset,
+                                    self.data.id,
+                                    buffer,
+                                )
+                            },
+                        )
+                        .unwrap()?;
+                }
+                PageTarget::Memory(_) => {
+                    unreachable!()
+                }
+            }
+
+            return Ok(());
+        }
+
+        let mut remaining_buffer = buffer;
 
         while !remaining_buffer.is_empty() {
             let address_masked = address & self.data.width_mask;

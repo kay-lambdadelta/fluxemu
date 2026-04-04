@@ -49,15 +49,19 @@ impl ComponentHandle {
 
     #[inline]
     fn synchronize(&mut self, runtime: &RuntimeApi, time: Period) {
+        if self.0.synchronization_data.is_none() {
+            return;
+        }
+
         let mut delta;
         let mut last_attempted_allocation = None;
 
         // Loop until the component is fully updated, processing events when relevant
         loop {
-            if let Some(SynchronizationData { updated_timestamp }) =
-                &mut self.0.synchronization_data
-                && *updated_timestamp < time
-            {
+            let SynchronizationData { updated_timestamp } =
+                self.0.synchronization_data.as_mut().unwrap();
+
+            if *updated_timestamp < time {
                 // Update delta in case something happened when we dropped and reacquired the lock
                 delta = time - *updated_timestamp;
 

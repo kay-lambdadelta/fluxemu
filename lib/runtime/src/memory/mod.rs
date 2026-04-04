@@ -14,8 +14,8 @@ use crate::{
 };
 
 mod commit;
-mod overlapping;
 mod read;
+mod search;
 mod write;
 
 pub type Address = usize;
