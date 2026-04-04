@@ -1,6 +1,6 @@
 use fluxemu_runtime::graphics::{
     GraphicsApi,
-    software::{Software, Texture, TextureImpl, TextureImplMut},
+    software::{CopyMode, Software, Texture, TextureImpl, TextureImplMut},
 };
 use palette::{Srgba, named::BLACK};
 
@@ -26,13 +26,11 @@ impl Chip8DisplayBackend for SoftwareState {
         staging_buffer: &Texture<Srgba<u8>>,
         framebuffer: &mut <Self::GraphicsApi as GraphicsApi>::Framebuffer,
     ) {
-        framebuffer.resize(
-            staging_buffer.width(),
-            staging_buffer.height(),
-            BLACK.into(),
-        );
-
-        framebuffer.copy_from(staging_buffer, .., ..);
+        if framebuffer.size() != staging_buffer.size() {
+            *framebuffer = staging_buffer.clone();
+        } else {
+            framebuffer.copy_from(staging_buffer, CopyMode::Nearest);
+        }
     }
 }
 

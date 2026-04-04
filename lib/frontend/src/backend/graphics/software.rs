@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
 use egui::{FullOutput, TextureId};
-use fluxemu_runtime::graphics::software::{Texture, TextureImpl, TextureImplMut, TextureViewMut};
+use fluxemu_runtime::graphics::software::{
+    CopyMode, Texture, TextureImpl, TextureImplMut, TextureViewMut,
+};
 use nalgebra::{Point2, Scalar, Vector2, Vector3, Vector4};
 use palette::{
     Srgba, WithAlpha,
@@ -110,15 +112,14 @@ impl EguiRenderer {
 
             let texture_update_offset = Vector2::from(image_delta.pos.unwrap_or([0, 0]));
 
-            destination_texture.copy_from(
-                &source_texture_view,
-                texture_update_offset.x
-                    ..(texture_update_offset.x + source_texture_view.width())
-                        .min(destination_texture.width()),
-                texture_update_offset.y
-                    ..(texture_update_offset.y + source_texture_view.height())
-                        .min(destination_texture.height()),
-            );
+            destination_texture
+                .view_mut(
+                    texture_update_offset.x
+                        ..(texture_update_offset.x + source_texture_view.width()),
+                    texture_update_offset.y
+                        ..(texture_update_offset.y + source_texture_view.height()),
+                )
+                .copy_from(&source_texture_view, CopyMode::Nearest);
         }
 
         let render_buffer_dimensions: Vector2<f32> = target_texture.size().cast();

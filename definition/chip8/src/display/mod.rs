@@ -12,7 +12,7 @@ use fluxemu_runtime::{
     },
     graphics::{
         GraphicsApi,
-        software::{Texture, TextureImplMut},
+        software::{CopyMode, Texture, TextureImpl, TextureImplMut},
     },
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     path::ResourcePath,
@@ -61,9 +61,16 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Display<G> {
             self.clear_display();
         }
 
-        self.staging_buffer
-            .resize(HIRES.x as usize, HIRES.y as usize, BLACK.into());
+        let mut new_staging_buffer = Texture::new(HIRES.x as usize, HIRES.y as usize, BLACK.into());
 
+        new_staging_buffer
+            .view_mut(
+                0..self.staging_buffer.width(),
+                0..self.staging_buffer.height(),
+            )
+            .copy_from(&self.staging_buffer, CopyMode::Nearest);
+
+        self.staging_buffer = new_staging_buffer;
         self.hires = is_hires;
     }
 
@@ -167,11 +174,10 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Display<G> {
     ) -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(version, 0);
         let snapshot: Snapshot = rmp_serde::decode::from_read(reader)?;
-
         self.set_hires(snapshot.hires);
 
         self.staging_buffer
-            .copy_from(&snapshot.screen_buffer, .., ..);
+            .copy_from(&snapshot.screen_buffer, CopyMode::Nearest);
 
         self.vsync_occurred = snapshot.vsync_occurred;
 

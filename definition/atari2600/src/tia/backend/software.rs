@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use fluxemu_runtime::graphics::{
     GraphicsApi,
-    software::{Software, Texture, TextureImplMut},
+    software::{CopyMode, Software, Texture, TextureImplMut},
 };
 use palette::{Srgba, named::BLACK};
 
@@ -39,7 +39,7 @@ impl<R: Region> TiaDisplayBackend<R> for SoftwareState {
         staging_buffer: &Texture<Srgba<u8>>,
         framebuffer: &mut <Self::GraphicsApi as GraphicsApi>::Framebuffer,
     ) {
-        framebuffer.copy_from(staging_buffer, .., ..);
+        framebuffer.copy_from(staging_buffer, CopyMode::Nearest);
     }
 }
 

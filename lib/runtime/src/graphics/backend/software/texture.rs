@@ -3,6 +3,11 @@ use std::ops::{Bound, Index, IndexMut, RangeBounds};
 use nalgebra::{Point2, Vector2};
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum CopyMode {
+    Nearest,
+}
+
 pub trait TextureImpl<T: Sized>: Index<Point2<usize>, Output = T> + Sized {
     fn width(&self) -> usize;
     fn height(&self) -> usize;
@@ -24,7 +29,7 @@ pub trait TextureImpl<T: Sized>: Index<Point2<usize>, Output = T> + Sized {
     }
 
     fn as_view(&'_ self) -> TextureView<'_, T>;
-    fn slice(&self, x: impl RangeBounds<usize>, y: impl RangeBounds<usize>) -> TextureView<'_, T>;
+    fn view(&self, x: impl RangeBounds<usize>, y: impl RangeBounds<usize>) -> TextureView<'_, T>;
 
     fn iter_pixels(&self, mut callback: impl FnMut(Point2<usize>, &T)) {
         for y in 0..self.height() {
@@ -65,34 +70,45 @@ pub trait TextureImplMut<T: Sized>: TextureImpl<T> + IndexMut<Point2<usize>> {
         }
     }
 
-    fn slice_mut(
+    fn view_mut(
         &mut self,
         x: impl RangeBounds<usize>,
         y: impl RangeBounds<usize>,
     ) -> TextureViewMut<'_, T>;
 
     #[inline]
-    fn copy_from<T2: Into<T> + Clone>(
-        &mut self,
-        other: &impl TextureImpl<T2>,
-        x: impl RangeBounds<usize>,
-        y: impl RangeBounds<usize>,
-    ) {
-        let (x0, x1) = resolve_range(x, self.width());
-        let (y0, y1) = resolve_range(y, self.height());
+    fn copy_from<T2: Into<T> + Clone>(&mut self, other: &impl TextureImpl<T2>, mode: CopyMode) {
+        if self.size() == other.size() {
+            for y in 0..self.height() {
+                for x in 0..self.width() {
+                    let index = Point2::new(x, y);
 
-        let start = Point2::new(x0, y0);
-        let end = Point2::new(x1, y1);
-        let dimensions = end - start;
+                    self[index] = other[index].clone().into();
+                }
+            }
 
-        assert_eq!(other.width(), dimensions.x);
-        assert_eq!(other.height(), dimensions.y);
+            return;
+        }
 
-        for y in 0..dimensions.y {
-            for x in 0..dimensions.x {
+        for y in 0..self.height() {
+            for x in 0..self.width() {
                 let index = Point2::new(x, y);
 
-                self[start + index.coords] = other[index].clone().into();
+                let source_pixel = match mode {
+                    CopyMode::Nearest => {
+                        let source_coordinates = index
+                            .coords
+                            .component_mul(&other.size())
+                            .component_div(&self.size());
+
+                        let clamped_source_coords = source_coordinates
+                            .zip_map(&other.size(), |a: usize, b| a.min(b.saturating_sub(1)));
+
+                        other[clamped_source_coords.into()].clone()
+                    }
+                };
+
+                self[index] = source_pixel.into();
             }
         }
     }
@@ -203,52 +219,6 @@ impl<T: Sized + 'static> Texture<T> {
     pub fn as_mut_slice(&mut self) -> &mut [T] {
         &mut self.data
     }
-
-    #[inline]
-    pub fn resize(&mut self, width: usize, height: usize, data: T)
-    where
-        T: Clone,
-    {
-        if width == self.width() && height == self.height() {
-            return;
-        }
-
-        let mut new_texture = Texture::new(width, height, data);
-
-        let copy_width = self.width().min(width);
-        let copy_height = self.height().min(height);
-
-        if copy_width > 0 && copy_height > 0 {
-            new_texture.copy_from(self, 0..copy_width, 0..copy_height);
-        }
-
-        *self = new_texture;
-    }
-
-    #[inline]
-    pub fn rescale_nearest(&mut self, new_width: usize, new_height: usize)
-    where
-        T: Clone,
-    {
-        if new_width == self.width() && new_height == self.height() {
-            return;
-        }
-
-        let mut data = Vec::with_capacity(new_width * new_height);
-
-        for y in 0..new_height {
-            for x in 0..new_width {
-                let src: Point2<_> = Vector2::new(x, y)
-                    .component_mul(&self.size)
-                    .component_div(&Vector2::new(new_width, new_height))
-                    .into();
-
-                data.push(self[src].clone());
-            }
-        }
-
-        *self = Texture::from_vec(new_width, new_height, data);
-    }
 }
 
 impl<T: Sized + 'static> TextureImpl<T> for Texture<T> {
@@ -273,7 +243,7 @@ impl<T: Sized + 'static> TextureImpl<T> for Texture<T> {
     }
 
     #[inline]
-    fn slice(&self, x: impl RangeBounds<usize>, y: impl RangeBounds<usize>) -> TextureView<'_, T> {
+    fn view(&self, x: impl RangeBounds<usize>, y: impl RangeBounds<usize>) -> TextureView<'_, T> {
         let (x0, x1) = resolve_range(x, self.width());
         let (y0, y1) = resolve_range(y, self.height());
 
@@ -331,7 +301,7 @@ impl<T: Sized + 'static> TextureImplMut<T> for Texture<T> {
     }
 
     #[inline]
-    fn slice_mut(
+    fn view_mut(
         &mut self,
         x: impl RangeBounds<usize>,
         y: impl RangeBounds<usize>,
@@ -412,7 +382,7 @@ impl<'a, T: Sized> TextureImpl<T> for TextureView<'a, T> {
     }
 
     #[inline]
-    fn slice(&self, x: impl RangeBounds<usize>, y: impl RangeBounds<usize>) -> TextureView<'_, T> {
+    fn view(&self, x: impl RangeBounds<usize>, y: impl RangeBounds<usize>) -> TextureView<'_, T> {
         let (x0, x1) = resolve_range(x, self.width());
         let (y0, y1) = resolve_range(y, self.height());
 
@@ -506,7 +476,7 @@ impl<'a, T: Sized> TextureImpl<T> for TextureViewMut<'a, T> {
     }
 
     #[inline]
-    fn slice(&self, x: impl RangeBounds<usize>, y: impl RangeBounds<usize>) -> TextureView<'_, T> {
+    fn view(&self, x: impl RangeBounds<usize>, y: impl RangeBounds<usize>) -> TextureView<'_, T> {
         let (x0, x1) = resolve_range(x, self.width());
         let (y0, y1) = resolve_range(y, self.height());
 
@@ -534,7 +504,7 @@ impl<'a, T: Sized> TextureImplMut<T> for TextureViewMut<'a, T> {
     }
 
     #[inline]
-    fn slice_mut(
+    fn view_mut(
         &mut self,
         x: impl RangeBounds<usize>,
         y: impl RangeBounds<usize>,
