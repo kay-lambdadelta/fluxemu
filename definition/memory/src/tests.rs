@@ -22,12 +22,12 @@ fn read() {
     let machine = machine.seal().unwrap().build(());
     let runtime_guard = machine.enter_runtime();
 
-    let address_space = runtime_guard.address_space(address_space).unwrap();
+    let mut address_space = runtime_guard.address_space(address_space).unwrap();
 
     let mut buffer = [0; 8];
 
     address_space
-        .read(0, Period::default(), None, &mut buffer)
+        .read(0, Period::default(), &mut buffer)
         .unwrap();
     assert_eq!(buffer, [0xff; 8]);
 }
@@ -51,13 +51,11 @@ fn write() {
     let machine = machine.seal().unwrap().build(());
     let runtime_guard = machine.enter_runtime();
 
-    let address_space = runtime_guard.address_space(address_space).unwrap();
+    let mut address_space = runtime_guard.address_space(address_space).unwrap();
 
     let buffer = [0; 8];
 
-    address_space
-        .write(0, Period::default(), None, &buffer)
-        .unwrap();
+    address_space.write(0, Period::default(), &buffer).unwrap();
 }
 
 #[test]
@@ -79,16 +77,14 @@ fn read_write() {
     let machine = machine.seal().unwrap().build(());
     let runtime_guard = machine.enter_runtime();
 
-    let address_space = runtime_guard.address_space(address_space).unwrap();
+    let mut address_space = runtime_guard.address_space(address_space).unwrap();
 
     let mut buffer = [0xff; 8];
 
-    address_space
-        .write(0, Period::default(), None, &buffer)
-        .unwrap();
+    address_space.write(0, Period::default(), &buffer).unwrap();
     buffer.fill(0);
     address_space
-        .read(0, Period::default(), None, &mut buffer)
+        .read(0, Period::default(), &mut buffer)
         .unwrap();
     assert_eq!(buffer, [0xff; 8]);
 }
@@ -115,12 +111,12 @@ fn wraparound() {
     let machine = machine.seal().unwrap().build(());
     let runtime_guard = machine.enter_runtime();
 
-    let address_space = runtime_guard.address_space(address_space).unwrap();
+    let mut address_space = runtime_guard.address_space(address_space).unwrap();
 
     let mut buffer = [0; 2];
 
     address_space
-        .read(0xff, Period::default(), None, &mut buffer)
+        .read(0xff, Period::default(), &mut buffer)
         .unwrap();
     assert_eq!(buffer, [0x00, 0xff]);
 }
@@ -149,12 +145,12 @@ fn mirror() {
     let machine = machine.seal().unwrap().build(());
     let runtime_guard = machine.enter_runtime();
 
-    let address_space = runtime_guard.address_space(address_space).unwrap();
+    let mut address_space = runtime_guard.address_space(address_space).unwrap();
 
     let mut buffer = [0; 3];
 
     address_space
-        .read(0, Period::default(), None, &mut buffer)
+        .read(0, Period::default(), &mut buffer)
         .unwrap();
     assert_eq!(buffer, [0xfe, 0xff, 0xfe], "{:#x?}", machine);
 }

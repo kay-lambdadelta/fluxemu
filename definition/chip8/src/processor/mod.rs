@@ -134,7 +134,7 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
     fn synchronize(&mut self, mut context: SynchronizationContext) {
         let runtime = RuntimeApi::current();
 
-        let address_space = runtime
+        let mut address_space = runtime
             .address_space(self.config.cpu_address_space)
             .unwrap();
 
@@ -150,7 +150,6 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
                             .read(
                                 self.state.registers.program as usize,
                                 self.timestamp,
-                                None,
                                 &mut instruction,
                             )
                             .unwrap();
@@ -160,7 +159,7 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
 
                         self.state.registers.program = self.state.registers.program.wrapping_add(2);
 
-                        self.interpret_instruction(&runtime, address_space, instruction);
+                        self.interpret_instruction(&runtime, &mut address_space, instruction);
                     }
                     ExecutionState::AwaitingKeyPress { register } => {
                         let mut pressed = Vec::new();

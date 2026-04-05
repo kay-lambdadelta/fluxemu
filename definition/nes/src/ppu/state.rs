@@ -1,9 +1,6 @@
 use std::sync::atomic::{AtomicBool, AtomicU8};
 
-use fluxemu_runtime::{
-    memory::{AddressSpace, AddressSpaceCache},
-    scheduler::Period,
-};
+use fluxemu_runtime::{memory::AddressSpace, scheduler::Period};
 use nalgebra::{Point2, Vector2};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -45,8 +42,7 @@ impl State {
     #[inline]
     pub(crate) fn drive_sprite_pipeline<R: Region>(
         &mut self,
-        ppu_address_space: AddressSpace<'_>,
-        ppu_address_space_cache: &mut AddressSpaceCache,
+        ppu_address_space: &mut AddressSpace<'_>,
         timestamp: Period,
     ) {
         if !self.oam.awaiting_memory_access {
@@ -77,11 +73,7 @@ impl State {
                             + row;
 
                         let pattern_table_low = ppu_address_space
-                            .read_le_value(
-                                address as usize,
-                                timestamp,
-                                Some(ppu_address_space_cache),
-                            )
+                            .read_le_value(address as usize, timestamp)
                             .unwrap();
 
                         self.sprite_pipeline_state =
@@ -109,11 +101,7 @@ impl State {
                             + 8;
 
                         let pattern_table_high = ppu_address_space
-                            .read_le_value(
-                                address as usize,
-                                timestamp,
-                                Some(ppu_address_space_cache),
-                            )
+                            .read_le_value(address as usize, timestamp)
                             .unwrap();
 
                         self.oam
@@ -137,8 +125,7 @@ impl State {
     #[inline]
     pub(crate) fn drive_background_pipeline<R: Region>(
         &mut self,
-        ppu_address_space: AddressSpace<'_>,
-        ppu_address_space_cache: &mut AddressSpaceCache,
+        ppu_address_space: &mut AddressSpace<'_>,
         timestamp: Period,
     ) {
         // Steps wait a cycle inbetween for memory access realism
@@ -157,9 +144,7 @@ impl State {
                         + (usize::from(vram_address_pointer_contents.coarse.y) * 32)
                         + usize::from(vram_address_pointer_contents.coarse.x);
 
-                    let nametable = ppu_address_space
-                        .read_le_value(address, timestamp, Some(ppu_address_space_cache))
-                        .unwrap();
+                    let nametable = ppu_address_space.read_le_value(address, timestamp).unwrap();
 
                     self.background_pipeline_state =
                         BackgroundPipelineState::FetchingAttribute { nametable };
@@ -175,9 +160,8 @@ impl State {
                         + (coarse.y / 4) * 8
                         + (coarse.x / 4);
 
-                    let attribute: u8 = ppu_address_space
-                        .read_le_value(address, timestamp, Some(ppu_address_space_cache))
-                        .unwrap();
+                    let attribute: u8 =
+                        ppu_address_space.read_le_value(address, timestamp).unwrap();
 
                     let attribute_quadrant = Point2::new(coarse.x % 4, coarse.y % 4) / 2;
                     let shift = (attribute_quadrant.y * 2 + attribute_quadrant.x) * 2;
@@ -201,7 +185,7 @@ impl State {
                         + u16::from(vram_address_pointer_contents.fine_y);
 
                     let pattern_table_low = ppu_address_space
-                        .read_le_value(address as usize, timestamp, Some(ppu_address_space_cache))
+                        .read_le_value(address as usize, timestamp)
                         .unwrap();
 
                     self.background_pipeline_state =
@@ -225,7 +209,7 @@ impl State {
                         + 8;
 
                     let pattern_table_high: u8 = ppu_address_space
-                        .read_le_value(address as usize, timestamp, Some(ppu_address_space_cache))
+                        .read_le_value(address as usize, timestamp)
                         .unwrap();
 
                     self.background.pattern_low_shift <<= 8;
@@ -263,8 +247,7 @@ impl State {
     #[inline]
     pub fn calculate_background_color<R: Region>(
         &self,
-        ppu_address_space: AddressSpace<'_>,
-        ppu_address_space_cache: &mut AddressSpaceCache,
+        ppu_address_space: &mut AddressSpace<'_>,
         timestamp: Period,
         attribute: u8,
         color: u8,
@@ -278,7 +261,6 @@ impl State {
             .read_le_value::<u8>(
                 BACKGROUND_PALETTE_BASE_ADDRESS + palette_index as usize,
                 timestamp,
-                Some(ppu_address_space_cache),
             )
             .unwrap()
             & 0b0011_1111
@@ -287,8 +269,7 @@ impl State {
     #[inline]
     pub fn calculate_sprite_color<R: Region>(
         &self,
-        ppu_address_space: AddressSpace<'_>,
-        ppu_address_space_cache: &mut AddressSpaceCache,
+        ppu_address_space: &mut AddressSpace<'_>,
         timestamp: Period,
         sprite: OamSprite,
         color: u8,
@@ -301,7 +282,6 @@ impl State {
                     + (usize::from(sprite.palette_index) * 4)
                     + usize::from(color_bits),
                 timestamp,
-                Some(ppu_address_space_cache),
             )
             .unwrap()
             & 0b0011_1111

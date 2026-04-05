@@ -22,7 +22,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
     pub(super) fn interpret_instruction(
         &mut self,
         runtime: &RuntimeApi,
-        address_space: AddressSpace<'_>,
+        address_space: &mut AddressSpace<'_>,
         instruction: Chip8InstructionSet,
     ) {
         let mut mode_guard = self.mode.lock().unwrap();
@@ -245,7 +245,6 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                             .read(
                                 self.state.registers.index as usize + cursor,
                                 self.timestamp,
-                                None,
                                 buffer_section,
                             )
                             .unwrap();
@@ -271,7 +270,6 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                             .read(
                                 self.state.registers.index as usize + cursor,
                                 self.timestamp,
-                                None,
                                 buffer_section,
                             )
                             .unwrap();
@@ -371,7 +369,6 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                     .write_le_value(
                         self.state.registers.index as usize,
                         self.timestamp,
-                        None,
                         hundreds,
                     )
                     .unwrap();
@@ -379,7 +376,6 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                     .write_le_value(
                         self.state.registers.index as usize + 1,
                         self.timestamp,
-                        None,
                         tens,
                     )
                     .unwrap();
@@ -387,7 +383,6 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                     .write_le_value(
                         self.state.registers.index as usize + 2,
                         self.timestamp,
-                        None,
                         ones,
                     )
                     .unwrap();
@@ -398,7 +393,6 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                         .write(
                             self.state.registers.index as usize + i as usize,
                             self.timestamp,
-                            None,
                             &self.state.registers.work_registers[i as usize..=i as usize],
                         )
                         .unwrap();
@@ -419,7 +413,6 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                         .read(
                             self.state.registers.index as usize + i as usize,
                             self.timestamp,
-                            None,
                             &mut self.state.registers.work_registers[i as usize..=i as usize],
                         )
                         .unwrap();

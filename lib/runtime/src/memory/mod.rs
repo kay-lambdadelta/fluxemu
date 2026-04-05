@@ -22,15 +22,20 @@ pub type Address = usize;
 const PAGE_SIZE: Address = 0x1000;
 
 /// The main structure representing the devices memory address spaces
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct AddressSpace<'a> {
     runtime: &'a RuntimeApi,
     data: &'a AddressSpaceData,
+    members_cache: Cache<Arc<ArcSwap<Members>>, Arc<Members>>,
 }
 
 impl<'a> AddressSpace<'a> {
     pub(crate) fn new(runtime: &'a RuntimeApi, data: &'a AddressSpaceData) -> Self {
-        Self { runtime, data }
+        Self {
+            runtime,
+            data,
+            members_cache: Cache::new(data.members.clone()),
+        }
     }
 
     pub fn remap(&self, commands: impl IntoIterator<Item = MemoryRemappingCommand>) {
@@ -39,12 +44,6 @@ impl<'a> AddressSpace<'a> {
 }
 
 impl<'a> AddressSpace<'a> {
-    pub fn create_cache(&self) -> AddressSpaceCache {
-        AddressSpaceCache {
-            members: Cache::new(self.data.members.clone()),
-        }
-    }
-
     pub fn id(&self) -> AddressSpaceId {
         self.data.id
     }
@@ -277,9 +276,4 @@ impl AddressSpaceData {
             members
         });
     }
-}
-
-#[derive(Debug)]
-pub struct AddressSpaceCache {
-    members: Cache<Arc<ArcSwap<Members>>, Arc<Members>>,
 }

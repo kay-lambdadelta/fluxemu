@@ -9,12 +9,9 @@ use std::{
 
 use fluxemu_runtime::{
     RuntimeApi,
-    component::{
-        Component, ComponentVersion,
-        config::{ComponentConfig, LateContext, LateInitializedData},
-    },
+    component::{Component, ComponentVersion, config::ComponentConfig},
     machine::builder::{ComponentBuilder, SchedulerParticipation},
-    memory::{Address, AddressSpaceCache, AddressSpaceId},
+    memory::{Address, AddressSpaceId},
     platform::Platform,
     scheduler::{Frequency, Period, SynchronizationContext},
 };
@@ -155,7 +152,6 @@ pub struct Mos6502 {
     irq: Arc<IrqFlag>,
     nmi: Arc<NmiFlag>,
     config: Mos6502Config,
-    address_space_cache: Option<AddressSpaceCache>,
     timestamp: Period,
     period: Period,
 }
@@ -181,7 +177,7 @@ impl Component for Mos6502 {
     fn synchronize(&mut self, mut context: SynchronizationContext) {
         let runtime = RuntimeApi::current();
 
-        let address_space = runtime
+        let mut address_space = runtime
             .address_space(self.config.assigned_address_space)
             .unwrap();
 
@@ -248,11 +244,7 @@ impl Component for Mos6502 {
             let is_read_cycle = match current_cycle.bus_mode {
                 BusMode::Read => {
                     self.bus.data = address_space
-                        .read_le_value(
-                            self.bus.address as Address,
-                            self.timestamp,
-                            self.address_space_cache.as_mut(),
-                        )
+                        .read_le_value(self.bus.address as Address, self.timestamp)
                         .unwrap_or_default();
 
                     true
@@ -276,14 +268,11 @@ impl Component for Mos6502 {
                             .write_le_value(
                                 self.bus.address as Address,
                                 self.timestamp,
-                                self.address_space_cache.as_mut(),
                                 self.bus.data,
                             )
                             .unwrap_or_default();
                     }
                 }
-
-                tracing::trace!("Current cycle {:x?}, State {:x?}", current_cycle, self);
 
                 // Check for interrupts
 
@@ -304,22 +293,6 @@ impl Component for Mos6502 {
 
 impl<P: Platform> ComponentConfig<P> for Mos6502Config {
     type Component = Mos6502;
-
-    fn late_initialize(
-        component: &mut Self::Component,
-        _data: &LateContext<P>,
-    ) -> LateInitializedData<P> {
-        let runtime = RuntimeApi::current();
-
-        component.address_space_cache = Some(
-            runtime
-                .address_space(component.config.assigned_address_space)
-                .unwrap()
-                .create_cache(),
-        );
-
-        LateInitializedData::default()
-    }
 
     fn build_component(
         self,
@@ -346,7 +319,6 @@ impl<P: Platform> ComponentConfig<P> for Mos6502Config {
             rdy: Arc::default(),
             irq: Arc::default(),
             nmi: Arc::default(),
-            address_space_cache: None,
             period: self.frequency.recip(),
             config: self,
             timestamp: Period::default(),

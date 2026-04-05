@@ -5,21 +5,19 @@ use num::traits::{ToBytes, ops::bytes::NumBytes};
 
 use super::AddressSpace;
 use crate::{
-    memory::{
-        Address, AddressSpaceCache, Members, MemoryError, MemoryErrorType, PageTarget, search::Item,
-    },
+    memory::{Address, MemoryError, MemoryErrorType, PageTarget, search::Item},
     scheduler::Period,
 };
 
 impl<'a> AddressSpace<'a> {
     #[inline]
     pub(super) fn write_internal<B: NumBytes + ?Sized>(
-        &self,
+        &mut self,
         mut address: Address,
         time: Period,
-        members: &Members,
         buffer: &B,
     ) -> Result<(), MemoryError> {
+        let members = self.members_cache.load();
         let buffer = buffer.as_ref();
 
         // Take a special path for single byte reads
@@ -141,93 +139,38 @@ impl<'a> AddressSpace<'a> {
         Ok(())
     }
 
-    /// Given a location, read a little endian value
-    #[inline]
-    pub(super) fn write_le_value_internal<T: ToBytes>(
-        &self,
-        address: Address,
-        current_timestamp: Period,
-        members: &Members,
-        value: T,
-    ) -> Result<(), MemoryError> {
-        self.write_internal(
-            address,
-            current_timestamp,
-            members,
-            value.to_le_bytes().as_ref(),
-        )
-    }
-
-    /// Given a location, read a big endian value
-    #[inline]
-    pub(super) fn write_be_value_internal<T: ToBytes>(
-        &self,
-        address: Address,
-        current_timestamp: Period,
-        members: &Members,
-        value: T,
-    ) -> Result<(), MemoryError> {
-        self.write_internal(
-            address,
-            current_timestamp,
-            members,
-            value.to_be_bytes().as_ref(),
-        )
-    }
-
     /// Step through the memory translation table to fill a buffer
     ///
     /// Contents of the buffer upon failure are usually component specific
     #[inline]
     pub fn write(
-        &self,
+        &mut self,
         address: Address,
         current_timestamp: Period,
-        cache: Option<&mut AddressSpaceCache>,
         buffer: &[u8],
     ) -> Result<(), MemoryError> {
-        if let Some(cache) = cache {
-            let members = cache.members.load();
-            self.write_internal(address, current_timestamp, members, buffer)
-        } else {
-            let members = self.data.members.load();
-            self.write_internal(address, current_timestamp, &members, buffer)
-        }
+        self.write_internal(address, current_timestamp, buffer)
     }
 
     /// Given a location, read a little endian value
     #[inline]
     pub fn write_le_value<T: ToBytes>(
-        &self,
+        &mut self,
         address: Address,
         current_timestamp: Period,
-        cache: Option<&mut AddressSpaceCache>,
         value: T,
     ) -> Result<(), MemoryError> {
-        if let Some(cache) = cache {
-            let members = cache.members.load();
-            self.write_le_value_internal(address, current_timestamp, members, value)
-        } else {
-            let members = self.data.members.load();
-            self.write_le_value_internal(address, current_timestamp, &members, value)
-        }
+        self.write_internal(address, current_timestamp, &value.to_le_bytes())
     }
 
     /// Given a location, read a big endian value
     #[inline]
     pub fn write_be_value<T: ToBytes>(
-        &self,
+        &mut self,
         address: Address,
         current_timestamp: Period,
-        cache: Option<&mut AddressSpaceCache>,
         value: T,
     ) -> Result<(), MemoryError> {
-        if let Some(cache) = cache {
-            let members = cache.members.load();
-            self.write_be_value_internal(address, current_timestamp, members, value)
-        } else {
-            let members = self.data.members.load();
-            self.write_be_value_internal(address, current_timestamp, &members, value)
-        }
+        self.write_internal(address, current_timestamp, &value.to_be_bytes())
     }
 }

@@ -19,7 +19,7 @@ use fluxemu_runtime::{
     event::{EventRequeueMode, EventType},
     graphics::software::Texture,
     machine::builder::{ComponentBuilder, SchedulerParticipation},
-    memory::{Address, AddressSpaceCache, AddressSpaceId, MemoryError},
+    memory::{Address, AddressSpaceId, MemoryError},
     path::{ComponentPath, ResourcePath},
     platform::Platform,
     scheduler::{Period, SynchronizationContext},
@@ -103,7 +103,6 @@ pub struct Ppu<R: Region, G: SupportedGraphicsApiPpu> {
     ppu_address_space: AddressSpaceId,
     processor_rdy: Option<Arc<RdyFlag>>,
     processor_nmi: Option<Arc<NmiFlag>>,
-    ppu_address_space_cache: Option<AddressSpaceCache>,
     framebuffer_path: ResourcePath,
     processor_path: ComponentPath,
     staging_buffer: Texture<PpuColorIndex>,
@@ -134,13 +133,6 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
 
         component.processor_nmi = Some(processor_nmi);
         component.processor_rdy = Some(processor_rdy);
-
-        component.ppu_address_space_cache = Some(
-            runtime
-                .address_space(component.ppu_address_space)
-                .unwrap()
-                .create_cache(),
-        );
 
         let backend = <P::GraphicsApi as SupportedGraphicsApiPpu>::Backend::new(
             data.graphics_initialization_data.clone(),
@@ -292,7 +284,6 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
             processor_rdy: None,
             processor_path: self.processor.clone(),
             ppu_address_space: self.ppu_address_space,
-            ppu_address_space_cache: None,
             framebuffer_path,
             timestamp: Period::default(),
             period: frequency.recip(),
@@ -350,19 +341,18 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                 CpuAccessibleRegister::PpuAddr => todo!(),
                 CpuAccessibleRegister::PpuData => {
                     let runtime = RuntimeApi::current();
-                    let ppu_address_space = runtime.address_space(self.ppu_address_space).unwrap();
+                    let mut ppu_address_space =
+                        runtime.address_space(self.ppu_address_space).unwrap();
 
                     if avoid_side_effects {
                         *buffer = ppu_address_space.read_le_value_pure(
                             self.state.vram_address_pointer as usize,
                             self.timestamp,
-                            None,
                         )?;
                     } else {
                         let new_value = ppu_address_space.read_le_value::<u8>(
                             self.state.vram_address_pointer as usize,
                             self.timestamp,
-                            None,
                         )?;
 
                         *buffer = self
@@ -472,13 +462,13 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     );
 
                     let runtime = RuntimeApi::current();
-                    let ppu_address_space = runtime.address_space(self.ppu_address_space).unwrap();
+                    let mut ppu_address_space =
+                        runtime.address_space(self.ppu_address_space).unwrap();
 
                     // Redirect into the ppu address space
                     ppu_address_space.write_le_value(
                         self.state.vram_address_pointer as usize,
                         self.timestamp,
-                        self.ppu_address_space_cache.as_mut(),
                         *buffer,
                     )?;
 
@@ -489,7 +479,8 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                 }
                 CpuAccessibleRegister::OamDma => {
                     let runtime = RuntimeApi::current();
-                    let cpu_address_space = runtime.address_space(self.cpu_address_space).unwrap();
+                    let mut cpu_address_space =
+                        runtime.address_space(self.cpu_address_space).unwrap();
 
                     let page = u16::from(*buffer) << 8;
 
@@ -515,7 +506,6 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     let _ = cpu_address_space.read(
                         page as usize,
                         self.timestamp,
-                        None,
                         &mut self.state.oam.data,
                     );
                 }
@@ -566,7 +556,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
         let runtime = RuntimeApi::current();
-        let ppu_address_space = runtime.address_space(self.ppu_address_space).unwrap();
+        let mut ppu_address_space = runtime.address_space(self.ppu_address_space).unwrap();
 
         for now in context.allocate(self.period, None) {
             self.timestamp = now;
@@ -600,11 +590,8 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                 if let 305..=320 = self.state.cycle_counter.x
                     && self.state.background.rendering_enabled
                 {
-                    self.state.drive_background_pipeline::<R>(
-                        ppu_address_space,
-                        self.ppu_address_space_cache.as_mut().unwrap(),
-                        self.timestamp,
-                    );
+                    self.state
+                        .drive_background_pipeline::<R>(&mut ppu_address_space, self.timestamp);
                 }
             }
 
@@ -617,11 +604,8 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                 if let 1..=256 = self.state.cycle_counter.x {
                     let scanline_position_x = self.state.cycle_counter.x - 1;
 
-                    self.state.drive_background_pipeline::<R>(
-                        ppu_address_space,
-                        self.ppu_address_space_cache.as_mut().unwrap(),
-                        self.timestamp,
-                    );
+                    self.state
+                        .drive_background_pipeline::<R>(&mut ppu_address_space, self.timestamp);
 
                     let mut sprite_color_index = None;
 
@@ -661,8 +645,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
 
                     if let Some((sprite, color_index)) = potential_sprite {
                         sprite_color_index = Some(self.state.calculate_sprite_color::<R>(
-                            ppu_address_space,
-                            self.ppu_address_space_cache.as_mut().unwrap(),
+                            &mut ppu_address_space,
                             self.timestamp,
                             sprite.oam,
                             color_index,
@@ -687,8 +670,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     let color_index = (high << 1) | low;
 
                     let background_color_index = self.state.calculate_background_color::<R>(
-                        ppu_address_space,
-                        self.ppu_address_space_cache.as_mut().unwrap(),
+                        &mut ppu_address_space,
                         self.timestamp,
                         attribute as u8,
                         color_index as u8,
@@ -791,19 +773,13 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                 }
 
                 if let 257..=320 = self.state.cycle_counter.x {
-                    self.state.drive_sprite_pipeline::<R>(
-                        ppu_address_space,
-                        self.ppu_address_space_cache.as_mut().unwrap(),
-                        self.timestamp,
-                    );
+                    self.state
+                        .drive_sprite_pipeline::<R>(&mut ppu_address_space, self.timestamp);
                 }
 
                 if let 321..=336 = self.state.cycle_counter.x {
-                    self.state.drive_background_pipeline::<R>(
-                        ppu_address_space,
-                        self.ppu_address_space_cache.as_mut().unwrap(),
-                        self.timestamp,
-                    );
+                    self.state
+                        .drive_background_pipeline::<R>(&mut ppu_address_space, self.timestamp);
                 }
             }
 
