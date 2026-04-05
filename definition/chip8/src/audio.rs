@@ -63,7 +63,7 @@ impl Component for Chip8Audio {
         let timer_period = Period::from_num(60).recip();
         let samples_per_tick = INTERNAL_SAMPLE_RATE / self.processor_frequency.to_num::<f32>();
 
-        for _ in context.allocate(self.processor_frequency.recip(), None) {
+        for _ in context.allocate(self.processor_frequency.recip()) {
             self.audio_accumulator += samples_per_tick;
 
             while self.audio_accumulator >= 1.0 {

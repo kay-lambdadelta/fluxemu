@@ -558,7 +558,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
         let runtime = RuntimeApi::current();
         let mut ppu_address_space = runtime.address_space(self.ppu_address_space).unwrap();
 
-        for now in context.allocate(self.period, None) {
+        for now in context.allocate(self.period) {
             self.timestamp = now;
 
             if self.state.cycle_counter.y == 261 {

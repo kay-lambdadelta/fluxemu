@@ -199,7 +199,7 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Display<G> {
     fn synchronize(&mut self, mut context: SynchronizationContext) {
         let mut commit_staging_buffer = false;
 
-        for _ in context.allocate(Period::ONE / 60, None) {
+        for _ in context.allocate(Period::ONE / 60) {
             self.vsync_occurred = true;
 
             commit_staging_buffer = true;

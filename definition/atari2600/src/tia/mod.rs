@@ -180,7 +180,7 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
     }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
-        for now in context.allocate(R::frequency().recip(), None) {
+        for now in context.allocate(R::frequency().recip()) {
             self.timestamp = now;
 
             if let Some(cycles) = self.cycles_waiting_for_vsync {

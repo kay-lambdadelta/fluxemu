@@ -72,11 +72,7 @@ pub struct SynchronizationContext<'a> {
 
 impl<'a> SynchronizationContext<'a> {
     #[inline]
-    pub fn allocate<'b>(
-        &'b mut self,
-        period: Period,
-        execution_limit: Option<u64>,
-    ) -> QuantaIterator<'b, 'a> {
+    pub fn allocate<'b>(&'b mut self, period: Period) -> QuantaIterator<'b, 'a> {
         *self.last_attempted_allocation = Some(period);
 
         let mut stop_time = self.target_timestamp;
@@ -85,13 +81,9 @@ impl<'a> SynchronizationContext<'a> {
             stop_time = stop_time.min(next_event);
         }
 
-        let mut budget = (stop_time.saturating_sub(*self.updated_timestamp) / period)
+        let budget = (stop_time.saturating_sub(*self.updated_timestamp) / period)
             .floor()
             .to_num::<u64>();
-
-        if let Some(execution_limit) = execution_limit {
-            budget = budget.min(execution_limit);
-        }
 
         QuantaIterator {
             period,

@@ -138,7 +138,7 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
             .address_space(self.config.cpu_address_space)
             .unwrap();
 
-        for now in context.allocate(self.config.frequency.recip(), None) {
+        for now in context.allocate(self.config.frequency.recip()) {
             self.timestamp = now;
 
             'main: {
