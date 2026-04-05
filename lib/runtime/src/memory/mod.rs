@@ -59,13 +59,29 @@ pub enum MappingEntry {
     Memory(ResourcePath),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum PageTarget {
     Component {
-        mirror_start: Option<Address>,
+        destination_start: Address,
         component: ComponentId,
     },
     Memory(Bytes),
+}
+
+impl Debug for PageTarget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PageTarget::Component {
+                destination_start,
+                component,
+            } => f
+                .debug_struct("Component")
+                .field("destination_start", destination_start)
+                .field("component", component)
+                .finish(),
+            PageTarget::Memory(_) => f.debug_tuple("Memory").finish(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -120,15 +136,18 @@ pub enum MemoryErrorType {
     Impossible,
 }
 
+/// Wrapper around the error type in order to specify ranges
 #[derive(Error)]
 #[error("Memory operation failed: {0:#x?}")]
-/// Wrapper around the error type in order to specify ranges
-pub struct MemoryError(pub RangeInclusiveMap<Address, MemoryErrorType>);
+pub struct MemoryError(pub Box<[(RangeInclusive<Address>, MemoryErrorType)]>);
 
 impl Debug for MemoryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("MemoryError")
-            .field(&format_args!("{:x?}", self.0))
+            .field(&format_args!(
+                "{:x?}",
+                RangeInclusiveMap::from_iter(self.0.clone())
+            ))
             .finish()
     }
 }

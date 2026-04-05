@@ -75,11 +75,11 @@ impl MemoryMappingTable {
                 .flat_map(|(source_range, entry)| match entry {
                     MappingEntry::Component(path) => {
                         vec![PageEntry {
-                            range: source_range,
                             target: PageTarget::Component {
-                                mirror_start: None,
+                                destination_start: *source_range.start(),
                                 component: registry.path_to_id(path).unwrap(),
                             },
+                            range: source_range,
                         }]
                     }
                     MappingEntry::Mirror {
@@ -90,23 +90,25 @@ impl MemoryMappingTable {
                             .start()
                             .checked_sub(*source_base)
                             .expect("mirror source_range.start must be >= source_base");
-
                         let source_length = source_range.len();
 
                         let destination_start = destination_base + offset;
+
                         let assigned_destination_range =
                             RangeInclusive::from_start_and_length(destination_start, source_length);
 
-                        self.master
+                        let mut entries: Vec<PageEntry> = self
+                            .master
                             .overlapping(assigned_destination_range.clone())
                             .map(|(destination_range, dest_entry)| {
-                                let dest_overlap =
+                                let destination_overlap =
                                     assigned_destination_range.intersection(destination_range);
 
-                                let shrink_left =
-                                    dest_overlap.start() - assigned_destination_range.start();
+                                let shrink_left = destination_overlap.start()
+                                    - assigned_destination_range.start();
+
                                 let shrink_right =
-                                    assigned_destination_range.end() - dest_overlap.end();
+                                    assigned_destination_range.end() - destination_overlap.end();
 
                                 let calculated_source_range = (source_range.start() + shrink_left)
                                     ..=(source_range.end() - shrink_right);
@@ -115,7 +117,7 @@ impl MemoryMappingTable {
                                     MappingEntry::Component(path) => PageEntry {
                                         range: calculated_source_range,
                                         target: PageTarget::Component {
-                                            mirror_start: Some(*destination_range.start()),
+                                            destination_start: *destination_overlap.start(),
                                             component: registry.path_to_id(path).unwrap(),
                                         },
                                     },
@@ -124,13 +126,6 @@ impl MemoryMappingTable {
                                     }
                                     MappingEntry::Memory(resource_path) => {
                                         let memory = resources.get_sync(resource_path).unwrap();
-                                        let destination_overlap = assigned_destination_range
-                                            .intersection(destination_range);
-
-                                        assert_eq!(
-                                            destination_overlap.len(),
-                                            calculated_source_range.len()
-                                        );
 
                                         let buffer_subrange = (destination_overlap.start()
                                             - destination_range.start())
@@ -138,7 +133,6 @@ impl MemoryMappingTable {
                                                 - destination_range.start());
 
                                         let memory = memory.slice(buffer_subrange);
-
                                         PageEntry {
                                             range: calculated_source_range,
                                             target: PageTarget::Memory(memory),
@@ -146,7 +140,11 @@ impl MemoryMappingTable {
                                     }
                                 }
                             })
-                            .collect()
+                            .collect();
+
+                        entries.dedup_by(merge_and_dedup_mirror_entries);
+
+                        entries
                     }
                     MappingEntry::Memory(resource_path) => {
                         let memory = resources.get_sync(resource_path).unwrap();
@@ -168,5 +166,33 @@ impl MemoryMappingTable {
                 _ => Some(Page::Multi(page_entries.into())),
             };
         }
+    }
+}
+
+#[inline]
+fn merge_and_dedup_mirror_entries(right: &mut PageEntry, left: &mut PageEntry) -> bool {
+    if !left.range.is_adjacent(&right.range) {
+        return false;
+    }
+
+    match (&mut left.target, &right.target) {
+        (
+            PageTarget::Component {
+                destination_start: destination_start_left,
+                component: component_left,
+            },
+            PageTarget::Component {
+                destination_start: destination_start_right,
+                component: component_right,
+            },
+        ) if component_left == component_right
+            && *destination_start_right
+                == *destination_start_left + (right.range.start() - left.range.start()) =>
+        {
+            left.range = *left.range.start()..=*right.range.end();
+
+            true
+        }
+        _ => false,
     }
 }

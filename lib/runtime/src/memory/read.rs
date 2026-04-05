@@ -10,7 +10,6 @@ use crate::{
 };
 
 impl<'a> AddressSpace<'a> {
-    /// Force code into the generic read_*_value functions
     #[inline]
     pub(super) fn read_internal<B: NumBytes + ?Sized>(
         &mut self,
@@ -40,10 +39,9 @@ impl<'a> AddressSpace<'a> {
 
             match target {
                 PageTarget::Component {
-                    mirror_start,
+                    destination_start,
                     component,
                 } => {
-                    let operation_base = mirror_start.unwrap_or(*entry_assigned_range.start());
                     let offset = address_masked - entry_assigned_range.start();
 
                     self.runtime
@@ -54,7 +52,7 @@ impl<'a> AddressSpace<'a> {
                             #[inline]
                             |component| {
                                 component.memory_read(
-                                    operation_base + offset,
+                                    destination_start + offset,
                                     self.data.id,
                                     avoid_side_effects,
                                     buffer,
@@ -98,15 +96,12 @@ impl<'a> AddressSpace<'a> {
 
                 match target {
                     PageTarget::Component {
-                        mirror_start,
+                        destination_start,
                         component,
                     } => {
                         let component_access_range =
                             entry_assigned_range.intersection(&access_range);
                         let offset = component_access_range.start() - entry_assigned_range.start();
-
-                        let operation_base = mirror_start.unwrap_or(*entry_assigned_range.start());
-
                         let buffer_range = (component_access_range.start() - access_range.start())
                             ..=(component_access_range.end() - access_range.start());
                         let adjusted_buffer = &mut remaining_buffer[buffer_range];
@@ -119,7 +114,7 @@ impl<'a> AddressSpace<'a> {
                                 #[inline]
                                 |component| {
                                     component.memory_read(
-                                        operation_base + offset,
+                                        destination_start + offset,
                                         self.data.id,
                                         avoid_side_effects,
                                         adjusted_buffer,
