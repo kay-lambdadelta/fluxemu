@@ -31,11 +31,14 @@ impl<'a> AddressSpace<'a> {
             let Item {
                 entry_assigned_range,
                 target,
-            } = members.read.get(address_masked).ok_or_else(|| {
-                let access_range = RangeInclusive::from_start_and_length(address_masked, 1);
+            } = members.read.get(address_masked).ok_or_else(
+                #[cold]
+                || {
+                    let access_range = RangeInclusive::from_start_and_length(address_masked, 1);
 
-                MemoryError(std::iter::once((access_range, MemoryErrorType::Denied)).collect())
-            })?;
+                    MemoryError(std::iter::once((access_range, MemoryErrorType::Denied)).collect())
+                },
+            )?;
 
             match target {
                 PageTarget::Component {

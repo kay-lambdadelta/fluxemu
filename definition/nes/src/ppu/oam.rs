@@ -1,4 +1,3 @@
-use arrayvec::ArrayVec;
 use nalgebra::{Point2, Vector2};
 use serde::{Deserialize, Serialize};
 use serde_with::{Bytes, serde_as};
@@ -68,9 +67,9 @@ pub struct OamState {
     #[serde_as(as = "Bytes")]
     pub data: [u8; 256],
     /// Secondary data buffer that is filled with sprite evaluation
-    pub secondary_data: ArrayVec<OamSprite, 8>,
+    pub secondary_data: heapless::Vec<OamSprite, 8>,
     /// Internal feature of this emulator filled with sprites post fetching
-    pub currently_rendering_sprites: ArrayVec<CurrentlyRenderingSprite, 8>,
+    pub currently_rendering_sprites: heapless::Vec<CurrentlyRenderingSprite, 8>,
     pub oam_addr: u8,
     pub sprite_evaluation_state: SpriteEvaluationState,
     pub show_sprites_leftmost_pixels: bool,

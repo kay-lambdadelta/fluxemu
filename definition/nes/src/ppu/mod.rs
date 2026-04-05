@@ -8,7 +8,6 @@ use std::{
     },
 };
 
-use arrayvec::ArrayVec;
 use fluxemu_definition_mos6502::{Mos6502, NmiFlag, RdyFlag};
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
@@ -266,8 +265,8 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
                     data: rand::random(),
                     oam_addr: 0x00,
                     sprite_evaluation_state: SpriteEvaluationState::InspectingY,
-                    secondary_data: ArrayVec::new(),
-                    currently_rendering_sprites: ArrayVec::new(),
+                    secondary_data: heapless::Vec::new(),
+                    currently_rendering_sprites: heapless::Vec::new(),
                     show_sprites_leftmost_pixels: true,
                     sprite_8x8_pattern_table_index: 0x0000,
                     rendering_enabled: false,
@@ -738,7 +737,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
 
                                     let sprite = OamSprite::from_bytes(bytes);
 
-                                    if self.state.oam.secondary_data.try_push(sprite).is_err() {
+                                    if self.state.oam.secondary_data.push(sprite).is_err() {
                                         // TODO: Handle sprite overflow flag
                                     }
                                 }

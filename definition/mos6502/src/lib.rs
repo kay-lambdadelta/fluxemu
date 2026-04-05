@@ -1,5 +1,4 @@
 use std::{
-    collections::VecDeque,
     fmt::Debug,
     io::{Read, Write},
     sync::{
@@ -8,7 +7,6 @@ use std::{
     },
 };
 
-use arrayvec::ArrayVec;
 use fluxemu_runtime::{
     RuntimeApi,
     component::{
@@ -148,9 +146,10 @@ pub struct Mos6502 {
     flags: FlagRegister,
     stack: u8,
     instruction_pointer: u16,
-    instruction_queue: VecDeque<Cycle>,
+    cycle_queue: heapless::Deque<Cycle, 8>,
     bus: Bus,
-    effective_address: ArrayVec<u8, 2>,
+    effective_address: heapless::Vec<u8, 2>,
+    consume_effective_address: bool,
     operand: u8,
     rdy: Arc<RdyFlag>,
     irq: Arc<IrqFlag>,
@@ -189,23 +188,25 @@ impl Component for Mos6502 {
         for now in context.allocate(self.period, None) {
             self.timestamp = now;
 
-            let current_cycle = if let Some(cycle) = self.instruction_queue.pop_front() {
-                cycle
-            } else {
-                Cycle::new(
-                    BusMode::Read,
-                    Some(Phi1::SetAddressBus {
-                        source: SetAddressBusSource::InstructionPointer,
-                    }),
-                    [
-                        Phi2::IncrementInstructionPointer,
-                        Phi2::Move {
-                            source: MoveSource::Data,
-                            destination: MoveDestination::Opcode,
-                        },
-                    ],
-                )
-            };
+            if self.cycle_queue.is_empty() {
+                self.cycle_queue
+                    .push_back(Cycle::new(
+                        BusMode::Read,
+                        Some(Phi1::SetAddressBus {
+                            source: SetAddressBusSource::InstructionPointer,
+                        }),
+                        [
+                            Phi2::IncrementInstructionPointer,
+                            Phi2::Move {
+                                source: MoveSource::Data,
+                                destination: MoveDestination::Opcode,
+                            },
+                        ],
+                    ))
+                    .unwrap();
+            }
+
+            let current_cycle = self.cycle_queue.front_mut().unwrap();
 
             match current_cycle.phi1 {
                 Some(Phi1::SetAddressBus {
@@ -229,7 +230,7 @@ impl Component for Mos6502 {
                         _ => unreachable!(),
                     }
 
-                    self.effective_address.clear();
+                    self.consume_effective_address = true;
                 }
                 Some(Phi1::SetAddressBus {
                     source: SetAddressBusSource::Constant(value),
@@ -260,6 +261,12 @@ impl Component for Mos6502 {
             };
 
             if self.rdy.load() || !is_read_cycle {
+                if std::mem::take(&mut self.consume_effective_address) {
+                    self.effective_address.clear();
+                }
+
+                let current_cycle = self.cycle_queue.pop_front().unwrap();
+
                 self.handle_phi2(&current_cycle);
 
                 match current_cycle.bus_mode {
@@ -281,13 +288,11 @@ impl Component for Mos6502 {
                 // Check for interrupts
 
                 if self.config.kind.supports_interrupts()
-                    && self.instruction_queue.is_empty()
+                    && self.cycle_queue.is_empty()
                     && self.nmi.interrupt_required()
                 {
                     self.handle_nmi();
                 }
-            } else {
-                self.instruction_queue.push_front(current_cycle);
             }
         }
     }
@@ -330,13 +335,14 @@ impl<P: Platform> ComponentConfig<P> for Mos6502Config {
             stack: 0xff,
             // Will be set later
             instruction_pointer: 0x0000,
-            instruction_queue: VecDeque::default(),
+            cycle_queue: heapless::Deque::default(),
             operand: 0,
             bus: Bus {
                 address: 0x0000,
                 data: 0x00,
             },
-            effective_address: ArrayVec::default(),
+            effective_address: heapless::Vec::default(),
+            consume_effective_address: false,
             rdy: Arc::default(),
             irq: Arc::default(),
             nmi: Arc::default(),
@@ -418,8 +424,8 @@ impl Mos6502 {
     }
 
     fn reset(&mut self) {
-        self.instruction_queue.clear();
-        self.instruction_queue.extend([
+        self.cycle_queue.clear();
+        self.cycle_queue.extend([
             // Two dummy cycles
             Cycle::new(BusMode::Read, None, []),
             Cycle::new(BusMode::Read, None, []),
@@ -479,7 +485,7 @@ impl Mos6502 {
     }
 
     fn handle_nmi(&mut self) {
-        self.instruction_queue.extend([
+        self.cycle_queue.extend([
             Cycle::new(
                 BusMode::Read,
                 Some(Phi1::SetAddressBus {

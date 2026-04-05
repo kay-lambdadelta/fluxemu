@@ -5,7 +5,6 @@ edition = "2024"
 license = "GPL-3.0-or-later"
 
 [dependencies]
-arrayvec = { workspace = true }
 bitstream-io = "4.9"
 bytemuck = { workspace = true }
 bytes = { workspace = true }
@@ -16,6 +15,7 @@ fluxemu-input = { workspace = true }
 fluxemu-program = { workspace = true }
 fluxemu-range = { workspace = true }
 fluxemu-runtime = { workspace = true }
+heapless = { workspace = true }
 nalgebra = { workspace = true }
 palette = { workspace = true }
 rand = { workspace = true }

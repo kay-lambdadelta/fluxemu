@@ -1,4 +1,3 @@
-use arrayvec::ArrayVec;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -153,7 +152,7 @@ pub enum Phi2 {
 pub struct Cycle {
     pub bus_mode: BusMode,
     pub phi1: Option<Phi1>,
-    pub phi2: ArrayVec<Phi2, 3>,
+    pub phi2: heapless::Vec<Phi2, 3>,
 }
 
 impl Cycle {

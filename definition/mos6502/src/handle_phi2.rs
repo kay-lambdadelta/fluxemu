@@ -72,7 +72,7 @@ impl Mos6502 {
                         MoveDestination::Operand => self.operand = value,
                         MoveDestination::Stack => self.stack = value,
                         MoveDestination::EffectiveAddress => {
-                            self.effective_address.push(value);
+                            self.effective_address.push(value).unwrap();
                         }
                         MoveDestination::Opcode => {
                             self.decode();
@@ -107,7 +107,7 @@ impl Mos6502 {
                         _ => unreachable!(),
                     }
 
-                    self.effective_address.clear();
+                    self.consume_effective_address = true;
                 }
                 Phi2::Increment { operand, subtract } => {
                     let operand = match operand {
@@ -348,14 +348,16 @@ impl Mos6502 {
         }
 
         if carry != 0 && insert_carry_cycle {
-            self.instruction_queue.push_front(Cycle::new(
-                BusMode::Read,
-                None,
-                [Phi2::AddCarryToPointerLikeRegister {
-                    register: destination,
-                    carry,
-                }],
-            ));
+            self.cycle_queue
+                .push_front(Cycle::new(
+                    BusMode::Read,
+                    None,
+                    [Phi2::AddCarryToPointerLikeRegister {
+                        register: destination,
+                        carry,
+                    }],
+                ))
+                .unwrap();
         }
     }
 

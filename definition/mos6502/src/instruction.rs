@@ -179,7 +179,7 @@ impl Mos6502 {
         if let Some(addressing_mode) = instruction.addressing_mode {
             match addressing_mode {
                 AddressingMode::Mos6502(Mos6502AddressingMode::Absolute) => {
-                    self.instruction_queue.extend([
+                    self.cycle_queue.extend([
                         Cycle::new(
                             BusMode::Read,
                             Some(Phi1::SetAddressBus {
@@ -211,7 +211,7 @@ impl Mos6502 {
                 AddressingMode::Mos6502(
                     Mos6502AddressingMode::Immediate | Mos6502AddressingMode::Relative,
                 ) => {
-                    self.instruction_queue.extend([Cycle::new(
+                    self.cycle_queue.extend([Cycle::new(
                         BusMode::Read,
                         Some(Phi1::SetAddressBus {
                             source: SetAddressBusSource::InstructionPointer,
@@ -226,7 +226,7 @@ impl Mos6502 {
                     self.register_indexed_absolute(GeneralPurposeRegister::Y);
                 }
                 AddressingMode::Mos6502(Mos6502AddressingMode::AbsoluteIndirect) => {
-                    self.instruction_queue.extend([
+                    self.cycle_queue.extend([
                         Cycle::new(
                             BusMode::Read,
                             Some(Phi1::SetAddressBus {
@@ -286,7 +286,7 @@ impl Mos6502 {
                     ]);
                 }
                 AddressingMode::Mos6502(Mos6502AddressingMode::XIndexedZeroPageIndirect) => {
-                    self.instruction_queue.extend([
+                    self.cycle_queue.extend([
                         Cycle::new(
                             BusMode::Read,
                             Some(Phi1::SetAddressBus {
@@ -341,7 +341,7 @@ impl Mos6502 {
                     ]);
                 }
                 AddressingMode::Mos6502(Mos6502AddressingMode::ZeroPageIndirectYIndexed) => {
-                    self.instruction_queue.extend([
+                    self.cycle_queue.extend([
                         Cycle::new(
                             BusMode::Read,
                             Some(Phi1::SetAddressBus {
@@ -400,7 +400,7 @@ impl Mos6502 {
                     self.register_indexed_zero_page(GeneralPurposeRegister::Y);
                 }
                 AddressingMode::Mos6502(Mos6502AddressingMode::ZeroPage) => {
-                    self.instruction_queue.extend([Cycle::new(
+                    self.cycle_queue.extend([Cycle::new(
                         BusMode::Read,
                         Some(Phi1::SetAddressBus {
                             source: SetAddressBusSource::InstructionPointer,
@@ -415,14 +415,14 @@ impl Mos6502 {
                     )]);
                 }
                 AddressingMode::Mos6502(Mos6502AddressingMode::Accumulator) => {
-                    self.instruction_queue.extend([Cycle::dummy()]);
+                    self.cycle_queue.extend([Cycle::dummy()]);
                 }
                 AddressingMode::Wdc65C02(Wdc65C02AddressingMode::ZeroPageIndirect) => {
                     todo!()
                 }
             }
         } else {
-            self.instruction_queue.extend([Cycle::dummy()]);
+            self.cycle_queue.extend([Cycle::dummy()]);
         }
 
         match instruction.opcode {
@@ -633,17 +633,18 @@ impl Mos6502 {
             Opcode::Mos6502(Mos6502Opcode::Jam) => todo!(),
             Opcode::Mos6502(Mos6502Opcode::Jmp) => {
                 // Note that this is correct for all actual existing addressing modes for JMP
-                self.instruction_queue
+                self.cycle_queue
                     .iter_mut()
                     .last()
                     .unwrap()
                     .phi2
-                    .push(Phi2::LoadInstructionPointerFromEffectiveAddress);
+                    .push(Phi2::LoadInstructionPointerFromEffectiveAddress)
+                    .unwrap();
             }
             Opcode::Mos6502(Mos6502Opcode::Jsr) => {
-                self.instruction_queue.clear();
+                self.cycle_queue.clear();
 
-                self.instruction_queue.extend([
+                self.cycle_queue.extend([
                     Cycle::new(
                         BusMode::Read,
                         Some(Phi1::SetAddressBus {
@@ -836,9 +837,9 @@ impl Mos6502 {
             }
             Opcode::Mos6502(Mos6502Opcode::Rra) => todo!(),
             Opcode::Mos6502(Mos6502Opcode::Rti) => {
-                self.instruction_queue.clear();
+                self.cycle_queue.clear();
 
-                self.instruction_queue.extend([
+                self.cycle_queue.extend([
                     Cycle::new(
                         BusMode::Read,
                         None,
@@ -888,9 +889,9 @@ impl Mos6502 {
                 ]);
             }
             Opcode::Mos6502(Mos6502Opcode::Rts) => {
-                self.instruction_queue.clear();
+                self.cycle_queue.clear();
 
-                self.instruction_queue.extend([
+                self.cycle_queue.extend([
                     Cycle::new(
                         BusMode::Read,
                         None,
@@ -1120,7 +1121,7 @@ impl Mos6502 {
                         }],
                     );
 
-                    self.instruction_queue.extend([Cycle::new(
+                    self.cycle_queue.extend([Cycle::new(
                         BusMode::Read,
                         None,
                         [Phi2::AddToPointerLikeRegister {
@@ -1182,7 +1183,7 @@ impl Mos6502 {
             "The A register cannot be used for indexing"
         );
 
-        self.instruction_queue.extend([
+        self.cycle_queue.extend([
             Cycle::new(
                 BusMode::Read,
                 Some(Phi1::SetAddressBus {
@@ -1219,7 +1220,7 @@ impl Mos6502 {
             "The A register cannot be used for indexing"
         );
 
-        self.instruction_queue.extend([
+        self.cycle_queue.extend([
             Cycle::new(
                 BusMode::Read,
                 Some(Phi1::SetAddressBus {
@@ -1257,9 +1258,9 @@ impl Mos6502 {
 
     #[inline]
     fn pull_stack_item(&mut self, item: MoveDestination) {
-        self.instruction_queue.clear();
+        self.cycle_queue.clear();
 
-        self.instruction_queue.extend([
+        self.cycle_queue.extend([
             Cycle::new(BusMode::Read, None, []),
             Cycle::new(
                 BusMode::Read,
@@ -1281,19 +1282,21 @@ impl Mos6502 {
 
     #[inline]
     fn push_stack_item(&mut self, item: MoveSource) {
-        self.instruction_queue.push_back(Cycle::new(
-            BusMode::Write,
-            Some(Phi1::SetAddressBus {
-                source: SetAddressBusSource::Stack,
-            }),
-            [
-                Phi2::Move {
-                    source: item,
-                    destination: MoveDestination::Data,
-                },
-                Phi2::IncrementStack { subtract: true },
-            ],
-        ));
+        self.cycle_queue
+            .push_back(Cycle::new(
+                BusMode::Write,
+                Some(Phi1::SetAddressBus {
+                    source: SetAddressBusSource::Stack,
+                }),
+                [
+                    Phi2::Move {
+                        source: item,
+                        destination: MoveDestination::Data,
+                    },
+                    Phi2::IncrementStack { subtract: true },
+                ],
+            ))
+            .unwrap();
     }
 
     #[inline]
@@ -1313,7 +1316,7 @@ impl Mos6502 {
                 | Mos6502AddressingMode::Relative,
             )) => {
                 // These instructions have a final semi-dummy cycle that can be leeched off
-                self.instruction_queue
+                self.cycle_queue
                     .iter_mut()
                     .last()
                     .unwrap()
@@ -1321,20 +1324,22 @@ impl Mos6502 {
                     .extend(steps);
             }
             _ => {
-                self.instruction_queue.push_back(Cycle::new(
-                    BusMode::Read,
-                    Some(Phi1::SetAddressBus {
-                        source: SetAddressBusSource::EffectiveAddress,
-                    }),
-                    steps,
-                ));
+                self.cycle_queue
+                    .push_back(Cycle::new(
+                        BusMode::Read,
+                        Some(Phi1::SetAddressBus {
+                            source: SetAddressBusSource::EffectiveAddress,
+                        }),
+                        steps,
+                    ))
+                    .unwrap();
             }
         }
     }
 
     #[inline]
     fn insert_rmw_effective_address_dependent(&mut self, steps: impl IntoIterator<Item = Phi2>) {
-        self.instruction_queue.extend([
+        self.cycle_queue.extend([
             Cycle::new(
                 BusMode::Read,
                 Some(Phi1::SetAddressBus {
@@ -1383,13 +1388,15 @@ impl Mos6502 {
                 unreachable!()
             }
             _ => {
-                self.instruction_queue.push_back(Cycle::new(
-                    BusMode::Write,
-                    Some(Phi1::SetAddressBus {
-                        source: SetAddressBusSource::EffectiveAddress,
-                    }),
-                    steps,
-                ));
+                self.cycle_queue
+                    .push_back(Cycle::new(
+                        BusMode::Write,
+                        Some(Phi1::SetAddressBus {
+                            source: SetAddressBusSource::EffectiveAddress,
+                        }),
+                        steps,
+                    ))
+                    .unwrap();
             }
         }
     }

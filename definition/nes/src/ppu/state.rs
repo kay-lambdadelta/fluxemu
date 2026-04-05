@@ -122,7 +122,8 @@ impl State {
                                 oam: *currently_relevant_sprite,
                                 pattern_table_high,
                                 pattern_table_low,
-                            });
+                            })
+                            .unwrap();
                     }
 
                     self.sprite_pipeline_state = SpritePipelineState::FetchingNametableGarbage0;

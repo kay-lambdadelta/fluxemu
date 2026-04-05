@@ -88,18 +88,14 @@ impl<'a> ComponentRegistry<'a> {
 
     #[inline]
     fn mitigate_component(&self, id: ComponentId) -> ComponentHandle {
-        // HACK: For some reason try_with gives better codegen than with here
-        let component_handle = RUNTIME_CONTEXT
-            .try_with(
-                #[inline]
-                |runtime_context| {
-                    let mut runtime_context_guard = runtime_context.borrow_mut();
-                    let runtime_context = runtime_context_guard.as_mut().unwrap();
+        let component_handle = RUNTIME_CONTEXT.with_borrow_mut(
+            #[inline]
+            |runtime_context| {
+                let runtime_context = runtime_context.as_mut().unwrap();
 
-                    get_or_initialize_default(id, &mut runtime_context.local_component_store).take()
-                },
-            )
-            .unwrap();
+                get_or_initialize_default(id, &mut runtime_context.local_component_store).take()
+            },
+        );
 
         if let Some(component_handle) = component_handle {
             return component_handle;

@@ -4,7 +4,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use arrayvec::ArrayVec;
 use fluxemu_runtime::{
     RuntimeApi,
     component::{
@@ -71,14 +70,14 @@ impl Default for Chip8ProcessorRegisters {
 #[derive(Debug)]
 pub struct ProcessorState {
     registers: Chip8ProcessorRegisters,
-    stack: ArrayVec<u16, 16>,
+    stack: heapless::Vec<u16, 16>,
     execution_state: ExecutionState,
 }
 
 impl Default for ProcessorState {
     fn default() -> Self {
         Self {
-            stack: ArrayVec::default(),
+            stack: heapless::Vec::default(),
             registers: Chip8ProcessorRegisters::default(),
             execution_state: ExecutionState::Normal,
         }
@@ -99,7 +98,7 @@ pub struct Chip8Processor<G: SupportedGraphicsApiChip8Display> {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Chip8ProcessorSnapshot {
     registers: Chip8ProcessorRegisters,
-    stack: ArrayVec<u16, 16>,
+    stack: heapless::Vec<u16, 16>,
     execution_state: ExecutionState,
 }
 

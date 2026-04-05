@@ -1,4 +1,3 @@
-use arrayvec::ArrayVec;
 use fluxemu_runtime::{RuntimeApi, memory::AddressSpace};
 use nalgebra::Point2;
 use rand::RngExt;
@@ -268,7 +267,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                         .unwrap();
                 } else {
                     let mut buffer =
-                        ArrayVec::<_, 16>::from_iter(std::iter::repeat_n(0, height as usize));
+                        heapless::Vec::<_, 16>::from_iter(std::iter::repeat_n(0, height as usize));
 
                     for buffer_section in buffer.chunks_mut(2) {
                         address_space

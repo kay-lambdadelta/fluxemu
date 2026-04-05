@@ -4,7 +4,6 @@ members = ["definition/*", "lib/*", "shell/*"]
 
 [workspace.dependencies]
 arc-swap = "1.9"
-arrayvec = { version = "0.7", features = ["serde"] }
 bytemuck = { version = "1.25", features = ["derive"] }
 bytes = "1.11"
 cfg-if = "1.0"
@@ -29,6 +28,7 @@ fluxemu-locale = { path = "lib/locale" }
 fluxemu-program = { path = "lib/program" }
 fluxemu-range = { path = "lib/range" }
 fluxemu-runtime = { path = "lib/runtime" }
+heapless = { version = "0.9", features = ["serde"] }
 indexmap = { version = "2.13", features = ["serde"] }
 itertools = "0.14"
 nalgebra = { version = "0.34", features = [
