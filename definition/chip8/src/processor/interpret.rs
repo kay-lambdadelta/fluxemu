@@ -21,6 +21,7 @@ use crate::{
 impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
     pub(super) fn interpret_instruction(
         &mut self,
+        runtime: &RuntimeApi,
         address_space: AddressSpace<'_>,
         instruction: Chip8InstructionSet,
     ) {
@@ -28,8 +29,6 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
 
         match instruction {
             Chip8InstructionSet::Chip8(InstructionSetChip8::Clr) => {
-                let runtime = RuntimeApi::current();
-
                 runtime
                     .registry()
                     .interact_mut::<Chip8Display<G>, _>(
@@ -54,7 +53,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Call { address }) => {
                 let program = self.state.registers.program;
-                self.state.stack.push(program);
+                self.state.stack.push(program).unwrap();
                 self.state.registers.program = address;
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Ske {
@@ -229,8 +228,6 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                 coordinates,
                 height,
             }) => {
-                let runtime = RuntimeApi::current();
-
                 let position = Point2::new(
                     self.state.registers.work_registers[coordinates.x as usize],
                     self.state.registers.work_registers[coordinates.y as usize],
@@ -314,8 +311,6 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                 }
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Moved { register }) => {
-                let runtime = RuntimeApi::current();
-
                 self.state.registers.work_registers[register as usize] = runtime
                     .registry()
                     .interact::<Chip8Timer, _>(&self.config.timer, self.timestamp, |component| {
@@ -327,8 +322,6 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                 self.state.execution_state = ExecutionState::AwaitingKeyPress { register };
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Loadd { register }) => {
-                let runtime = RuntimeApi::current();
-
                 let register_value = self.state.registers.work_registers[register as usize];
 
                 runtime
@@ -343,14 +336,12 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                     .unwrap();
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Loads { register }) => {
-                let runtime = RuntimeApi::current();
-
                 let register_value = self.state.registers.work_registers[register as usize];
 
                 runtime
                     .registry()
                     .interact_mut::<Chip8Audio, _>(
-                        &self.config.timer,
+                        &self.config.audio,
                         self.timestamp,
                         |component| {
                             component.set(register_value);
@@ -448,8 +439,6 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
 
                 match subinstruction {
                     InstructionSetSuperChip8::Lores => {
-                        let runtime = RuntimeApi::current();
-
                         runtime
                             .registry()
                             .interact_mut::<Chip8Display<G>, _>(
@@ -462,8 +451,6 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                             .unwrap();
                     }
                     InstructionSetSuperChip8::Hires => {
-                        let runtime = RuntimeApi::current();
-
                         runtime
                             .registry()
                             .interact_mut::<Chip8Display<G>, _>(

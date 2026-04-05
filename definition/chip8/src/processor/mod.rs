@@ -160,7 +160,7 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
 
                         self.state.registers.program = self.state.registers.program.wrapping_add(2);
 
-                        self.interpret_instruction(address_space, instruction);
+                        self.interpret_instruction(&runtime, address_space, instruction);
                     }
                     ExecutionState::AwaitingKeyPress { register } => {
                         let mut pressed = Vec::new();
