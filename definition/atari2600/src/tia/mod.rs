@@ -1,16 +1,13 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
-    sync::Arc,
 };
 
 pub(crate) use backend::SupportedGraphicsApiTia;
 use color::TiaColor;
-use fluxemu_definition_mos6502::RdyFlag;
 use fluxemu_runtime::{
     ComponentPath, RuntimeApi,
     component::Component,
-    event::EventType,
     graphics::software::Texture,
     memory::{Address, AddressSpaceId, MemoryError},
     path::ResourcePath,
@@ -35,7 +32,6 @@ pub mod region;
 const HBLANK_LENGTH: u16 = 68;
 const VISIBLE_SCANLINE_LENGTH: u16 = 160;
 const SCANLINE_LENGTH: u16 = HBLANK_LENGTH + VISIBLE_SCANLINE_LENGTH;
-const WAKEUP_CPU_VIA_RDY: &str = "wakeup_cpu_via_rdy";
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Serialize, Deserialize)]
 enum ObjectId {
@@ -122,13 +118,14 @@ pub(crate) struct Tia<R: Region, G: SupportedGraphicsApiTia> {
     background_color: TiaColor,
     backend: Option<G::Backend<R>>,
     cpu_path: ComponentPath,
-    cpu_rdy: Option<Arc<RdyFlag>>,
     staging_buffer: Texture<Srgba<u8>>,
     timestamp: Period,
     framebuffer_path: ResourcePath,
 }
 
 impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
+    type Event = ();
+
     fn memory_read(
         &self,
         address: Address,
@@ -165,17 +162,6 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
             Ok(())
         } else {
             unreachable!("{:x}", address);
-        }
-    }
-
-    fn handle_event(&mut self, name: &str, event: EventType) {
-        match event {
-            EventType::SyncPoint if name == WAKEUP_CPU_VIA_RDY => {
-                self.cpu_rdy.as_ref().unwrap().store(true);
-            }
-            _ => {
-                unreachable!()
-            }
         }
     }
 

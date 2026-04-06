@@ -9,7 +9,7 @@ use fluxemu_program::{ProgramManager, RomId};
 
 use crate::{
     component::{Component, ComponentVersion, config::ComponentConfig},
-    event::{EventRequeueMode, EventType},
+    event::EventMode,
     graphics::GraphicsRequirements,
     input::{LogicalInputDevice, LogicalInputDeviceMetadata},
     machine::builder::{
@@ -347,19 +347,17 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
         self
     }
 
-    pub fn insert_event(
+    pub fn schedule_event<C2: Component>(
         self,
         target_path: &ComponentPath,
-        name: impl Into<Cow<'static, str>>,
         time: Period,
-        requeue_mode: EventRequeueMode,
-        ty: EventType,
+        requeue_mode: EventMode,
+        data: C2::Event,
     ) -> Self {
         self.component_data
             .local_commands
             .push(MachineBuilderCommand::InsertEvent {
-                name: name.into(),
-                ty,
+                data: Box::new(data),
                 requeue_mode,
                 time,
                 path: target_path.clone(),

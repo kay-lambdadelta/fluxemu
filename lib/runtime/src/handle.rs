@@ -1,6 +1,5 @@
 use std::{
     any::Any,
-    borrow::Cow,
     cell::RefCell,
     collections::{HashMap, HashSet},
     rc::Rc,
@@ -15,8 +14,8 @@ use rustc_hash::FxBuildHasher;
 
 use crate::{
     ComponentPath, ResourcePath,
-    component::{ComponentRegistry, LocalComponentStore},
-    event::{EventRequeueMode, EventType},
+    component::{Component, ComponentRegistry, LocalComponentStore},
+    event::EventMode,
     graphics::GraphicsApi,
     input::LogicalInputDevice,
     machine::{Machine, RUNTIME_CONTEXT},
@@ -70,20 +69,18 @@ impl RuntimeApi {
             .map(|address_space_data| AddressSpace::new(self, address_space_data))
     }
 
-    pub fn insert_event(
+    pub fn schedule_event<C: Component>(
         &self,
         target_path: &ComponentPath,
-        name: impl Into<Cow<'static, str>>,
+        requeue_mode: EventMode,
         time: Period,
-        requeue_mode: EventRequeueMode,
-        data: EventType,
+        data: C::Event,
     ) {
-        self.machine.scheduler.event_manager.queue(
-            name.into(),
+        self.machine.scheduler.event_manager.schedule(
             time,
             target_path.clone(),
             requeue_mode,
-            data,
+            Box::new(data),
         );
 
         self.machine.scheduler.preemption_signal().event_occurred();
@@ -154,16 +151,14 @@ impl RuntimeApi {
     ) {
         let logical_input_device = self.machine.input_devices.get(path).unwrap();
 
-        for (input_id, state) in inputs {
-            logical_input_device.set_state(input_id, state);
+        self.registry()
+            .interact_dyn_mut(path.parent().unwrap(), self.now(), |component| {
+                for (input_id, state) in inputs {
+                    logical_input_device.set_state(input_id, state);
 
-            self.machine.scheduler.event_manager.queue(
-                Cow::Owned(path.name().to_string()),
-                self.now(),
-                path.parent().unwrap().clone(),
-                EventRequeueMode::Once,
-                EventType::input(input_id, state),
-            );
-        }
+                    component.handle_input(path.name(), input_id, state);
+                }
+            })
+            .unwrap();
     }
 }

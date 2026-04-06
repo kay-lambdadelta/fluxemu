@@ -25,6 +25,8 @@ pub struct Mapctl {
 }
 
 impl Component for Mapctl {
+    type Event = ();
+
     fn memory_read(
         &self,
         _address: Address,

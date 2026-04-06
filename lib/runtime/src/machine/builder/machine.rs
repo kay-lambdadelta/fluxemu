@@ -437,15 +437,14 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
                     graphics_requirements = graphics_requirements.clone() | requirements;
                 }
                 MachineBuilderCommand::InsertEvent {
-                    name,
-                    ty,
                     requeue_mode,
                     time,
                     path,
+                    data,
                 } => {
                     scheduler
                         .event_manager
-                        .queue(name, time, path, requeue_mode, ty);
+                        .schedule(time, path, requeue_mode, data);
                 }
             }
         }

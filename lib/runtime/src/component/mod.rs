@@ -6,12 +6,13 @@ use std::{
     sync::atomic::{AtomicU32, Ordering},
 };
 
+use fluxemu_input::{InputId, InputState};
 use fluxemu_range::ContiguousRange;
 use nalgebra::SVector;
 use ringbuffer::AllocRingBuffer;
 
 use crate::{
-    event::EventType,
+    event::Event,
     memory::{Address, AddressSpaceId, MemoryError, MemoryErrorType},
     scheduler::{Period, SynchronizationContext},
 };
@@ -26,6 +27,11 @@ pub use registry::*;
 #[allow(unused)]
 /// Basic supertrait for all components
 pub trait Component: Send + Sync + Debug + Any {
+    /// Event type component accepts
+    type Event: Event
+    where
+        Self: Sized;
+
     /// Write a save representative of the current state of the save relevant aspects of the component
     fn store_save(&self, writer: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
@@ -84,7 +90,10 @@ pub trait Component: Send + Sync + Debug + Any {
     }
 
     /// Handle an event targeted towards this component
-    fn handle_event(&mut self, name: &str, event: EventType) {}
+    fn handle_event(&mut self, event: Box<dyn Event>) {}
+
+    /// Handle some input targeted at destination
+    fn handle_input(&mut self, destination: &str, id: InputId, state: InputState) {}
 }
 
 /// Version that components use

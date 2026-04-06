@@ -65,6 +65,8 @@ impl Mos6532Riot {
 }
 
 impl Component for Mos6532Riot {
+    type Event = ();
+
     fn memory_read(
         &self,
         address: Address,

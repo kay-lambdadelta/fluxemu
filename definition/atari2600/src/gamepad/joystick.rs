@@ -16,6 +16,8 @@ pub struct Atari2600Joystick {
 }
 
 impl Component for Atari2600Joystick {
+    type Event = ();
+
     fn memory_read(
         &self,
         _address: Address,

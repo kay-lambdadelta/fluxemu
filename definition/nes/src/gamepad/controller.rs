@@ -35,6 +35,8 @@ pub struct NesController {
 }
 
 impl Component for NesController {
+    type Event = ();
+
     fn load_snapshot(
         &mut self,
         _version: fluxemu_runtime::component::ComponentVersion,

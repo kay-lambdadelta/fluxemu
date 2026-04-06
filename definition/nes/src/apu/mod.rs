@@ -27,6 +27,8 @@ pub struct Apu {
 }
 
 impl Component for Apu {
+    type Event = ();
+
     fn store_snapshot(
         &self,
         _writer: &mut dyn std::io::Write,

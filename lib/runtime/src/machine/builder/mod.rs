@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, ops::DerefMut, sync::Arc};
+use std::{collections::HashMap, ops::DerefMut, sync::Arc};
 
 use crate::{
     component::{
@@ -6,7 +6,7 @@ use crate::{
         config::{LateContext, LateInitializedData},
         handle::ComponentHandle,
     },
-    event::{EventRequeueMode, EventType},
+    event::{Event, EventMode},
     graphics::{GraphicsApi, GraphicsRequirements},
     input::LogicalInputDevice,
     machine::Machine,
@@ -60,10 +60,9 @@ enum MachineBuilderCommand<'a, P: Platform> {
     },
     InsertEvent {
         path: ComponentPath,
-        name: Cow<'static, str>,
-        ty: EventType,
-        requeue_mode: EventRequeueMode,
+        requeue_mode: EventMode,
         time: Period,
+        data: Box<dyn Event>,
     },
     MemoryMap {
         address_space: AddressSpaceId,

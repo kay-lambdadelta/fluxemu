@@ -10,6 +10,8 @@ use crate::cartridge::CartConfig;
 pub struct Mmc1;
 
 impl Component for Mmc1 {
+    type Event = ();
+
     fn load_snapshot(
         &mut self,
         _version: fluxemu_runtime::component::ComponentVersion,

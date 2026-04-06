@@ -55,6 +55,8 @@ pub struct Suzy {}
 
 #[allow(clippy::if_same_then_else)]
 impl Component for Suzy {
+    type Event = ();
+
     fn memory_read(
         &self,
         address: Address,

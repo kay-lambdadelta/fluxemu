@@ -31,6 +31,8 @@ impl Chip8Audio {
 }
 
 impl Component for Chip8Audio {
+    type Event = ();
+
     fn load_snapshot(
         &mut self,
         version: ComponentVersion,

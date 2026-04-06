@@ -2,13 +2,10 @@ use std::{
     collections::HashMap,
     marker::PhantomData,
     ops::RangeInclusive,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicU8, Ordering},
-    },
+    sync::atomic::{AtomicBool, AtomicU8, Ordering},
 };
 
-use fluxemu_definition_mos6502::{Mos6502, NmiFlag, RdyFlag};
+use fluxemu_definition_mos6502::{Flag, Mos6502, Mos6502Event};
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
     RuntimeApi,
@@ -16,7 +13,7 @@ use fluxemu_runtime::{
         Component,
         config::{ComponentConfig, LateContext, LateInitializedData},
     },
-    event::{EventRequeueMode, EventType},
+    event::{Event, EventMode, downcast_event},
     graphics::software::Texture,
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::{Address, AddressSpaceId, MemoryError},
@@ -43,10 +40,6 @@ mod color;
 mod oam;
 pub mod region;
 mod state;
-
-const VBLANK_START: &str = "vblank_start";
-const VBLANK_END: &str = "vblank_end";
-const WAKEUP_CPU_VIA_RDY: &str = "wakeup_cpu_via_rdy";
 
 #[derive(Clone, Copy, Debug, FromRepr)]
 #[repr(u16)]
@@ -101,8 +94,6 @@ pub struct Ppu<R: Region, G: SupportedGraphicsApiPpu> {
     backend: Option<G::Backend<R>>,
     cpu_address_space: AddressSpaceId,
     ppu_address_space: AddressSpaceId,
-    processor_rdy: Option<Arc<RdyFlag>>,
-    processor_nmi: Option<Arc<NmiFlag>>,
     framebuffer_path: ResourcePath,
     processor_path: ComponentPath,
     staging_buffer: Texture<PpuColorIndex>,
@@ -119,21 +110,6 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
         component: &mut Self::Component,
         data: &LateContext<P>,
     ) -> LateInitializedData<P> {
-        let runtime = RuntimeApi::current();
-
-        let processor_nmi = runtime
-            .registry()
-            .interact::<Mos6502, _>(&component.processor_path, Period::ZERO, Mos6502::nmi)
-            .unwrap();
-
-        let processor_rdy = runtime
-            .registry()
-            .interact::<Mos6502, _>(&component.processor_path, Period::ZERO, Mos6502::rdy)
-            .unwrap();
-
-        component.processor_nmi = Some(processor_nmi);
-        component.processor_rdy = Some(processor_rdy);
-
         let backend = <P::GraphicsApi as SupportedGraphicsApiPpu>::Backend::new(
             data.graphics_initialization_data.clone(),
         );
@@ -208,25 +184,23 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
                 self.cpu_address_space,
                 CpuAccessibleRegister::OamDma as usize..=CpuAccessibleRegister::OamDma as usize,
             )
-            .insert_event(
+            .schedule_event::<Self::Component>(
                 // x: 1, y: 241
                 &my_path,
-                VBLANK_START,
                 vblank_start_from_initial_position,
-                EventRequeueMode::Repeating {
+                EventMode::Repeating {
                     frequency: framerate,
                 },
-                EventType::sync_point(),
+                PpuEvent::VblankStart,
             )
-            .insert_event(
+            .schedule_event::<Self::Component>(
                 // x: 1, y: 261
                 &my_path,
-                VBLANK_END,
                 vblank_end_from_initial_position,
-                EventRequeueMode::Repeating {
+                EventMode::Repeating {
                     frequency: framerate,
                 },
-                EventType::sync_point(),
+                PpuEvent::VblankEnd,
             );
 
         let staging_buffer = Texture::new(
@@ -280,8 +254,6 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
             backend: None,
             staging_buffer,
             cpu_address_space: self.cpu_address_space,
-            processor_nmi: None,
-            processor_rdy: None,
             processor_path: self.processor.clone(),
             ppu_address_space: self.ppu_address_space,
             framebuffer_path,
@@ -292,6 +264,8 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
 }
 
 impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
+    type Event = PpuEvent;
+
     fn load_snapshot(
         &mut self,
         _version: fluxemu_runtime::component::ComponentVersion,
@@ -484,7 +458,15 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
 
                     let page = u16::from(*buffer) << 8;
 
-                    self.processor_rdy.as_ref().unwrap().store(false);
+                    runtime.schedule_event::<Mos6502>(
+                        &self.processor_path,
+                        EventMode::Once,
+                        self.timestamp,
+                        Mos6502Event::FlagChange {
+                            flag: Flag::Rdy,
+                            value: false,
+                        },
+                    );
 
                     // TODO: Extract to constant or extract from cpu directly within the config builder
                     let processor_frequency = R::master_clock() / 12;
@@ -492,13 +474,15 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     let next_processor_rdy_high =
                         self.timestamp + (processor_frequency.recip() * 514);
 
-                    // Make sure we wake up eventually
-                    runtime.insert_event(
-                        self.framebuffer_path.parent().unwrap(),
-                        WAKEUP_CPU_VIA_RDY,
+                    // Make sure the cpu wakes up
+                    runtime.schedule_event::<Mos6502>(
+                        &self.processor_path,
+                        EventMode::Once,
                         next_processor_rdy_high,
-                        EventRequeueMode::Once,
-                        EventType::sync_point(),
+                        Mos6502Event::FlagChange {
+                            flag: Flag::Rdy,
+                            value: true,
+                        },
                     );
 
                     // Read off OAM data immediately, this is done for performance and should not
@@ -518,38 +502,45 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
         Ok(())
     }
 
-    fn handle_event(&mut self, name: &str, event: EventType) {
+    fn handle_event(&mut self, event: Box<dyn Event>) {
+        let runtime = RuntimeApi::current();
+        let event = downcast_event::<Self>(event);
+
         match event {
-            EventType::SyncPoint => match name {
-                VBLANK_START => {
-                    self.state.entered_vblank.store(true, Ordering::Release);
+            PpuEvent::VblankStart => {
+                self.state.entered_vblank.store(true, Ordering::Release);
 
-                    if self.state.vblank_nmi_enabled {
-                        self.processor_nmi.as_ref().unwrap().store(false);
-                    }
+                if self.state.vblank_nmi_enabled {
+                    runtime.schedule_event::<Mos6502>(
+                        &self.processor_path,
+                        EventMode::Once,
+                        self.timestamp,
+                        Mos6502Event::FlagChange {
+                            flag: Flag::Nmi,
+                            value: false,
+                        },
+                    );
                 }
-                VBLANK_END => {
-                    let runtime = RuntimeApi::current();
+            }
+            PpuEvent::VblankEnd => {
+                self.state.entered_vblank.store(false, Ordering::Release);
 
-                    self.state.entered_vblank.store(false, Ordering::Release);
-                    self.processor_nmi.as_ref().unwrap().store(true);
+                runtime.schedule_event::<Mos6502>(
+                    &self.processor_path,
+                    EventMode::Once,
+                    self.timestamp,
+                    Mos6502Event::FlagChange {
+                        flag: Flag::Nmi,
+                        value: true,
+                    },
+                );
 
-                    runtime.commit_framebuffer::<G>(&self.framebuffer_path, |framebuffer| {
-                        self.backend
-                            .as_mut()
-                            .unwrap()
-                            .commit_staging_buffer(&self.staging_buffer, framebuffer);
-                    });
-                }
-                WAKEUP_CPU_VIA_RDY => {
-                    self.processor_rdy.as_ref().unwrap().store(true);
-                }
-                _ => {
-                    unreachable!("{}", name)
-                }
-            },
-            _ => {
-                unreachable!()
+                runtime.commit_framebuffer::<G>(&self.framebuffer_path, |framebuffer| {
+                    self.backend
+                        .as_mut()
+                        .unwrap()
+                        .commit_staging_buffer(&self.staging_buffer, framebuffer);
+                });
             }
         }
     }
@@ -799,4 +790,10 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
     fn needs_work(&self, delta: Period) -> bool {
         delta >= self.period
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum PpuEvent {
+    VblankStart,
+    VblankEnd,
 }

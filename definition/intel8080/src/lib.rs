@@ -24,6 +24,8 @@ pub struct Intel8080 {
 }
 
 impl Component for Intel8080 {
+    type Event = ();
+
     fn store_snapshot(
         &self,
         _writer: &mut dyn std::io::Write,

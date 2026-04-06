@@ -1653,6 +1653,7 @@ version = "0.1.0"
 dependencies = [
  "arc-swap",
  "bytes",
+ "dyn-clone",
  "fixed",
  "fluxemu-input",
  "fluxemu-program",

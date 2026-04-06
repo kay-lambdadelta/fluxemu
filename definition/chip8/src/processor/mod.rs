@@ -103,6 +103,8 @@ pub struct Chip8ProcessorSnapshot {
 }
 
 impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
+    type Event = ();
+
     fn load_snapshot(
         &mut self,
         version: ComponentVersion,

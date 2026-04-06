@@ -1,6 +1,13 @@
+use dyn_clone::DynClone;
+use serde::{Deserialize, Serialize};
+
+use crate::{
+    ComponentPath, RuntimeApi,
+    component::{Component, handle::ComponentHandle},
+    scheduler::{Frequency, Period},
+};
 use std::{
     any::Any,
-    borrow::Cow,
     cmp::Reverse,
     collections::BinaryHeap,
     fmt::Debug,
@@ -10,49 +17,8 @@ use std::{
     },
 };
 
-use fluxemu_input::{InputId, InputState};
-use serde::{Deserialize, Serialize};
-
-use crate::{
-    ComponentPath, RuntimeApi,
-    component::handle::ComponentHandle,
-    scheduler::{Frequency, Period},
-};
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum EventRequeueMode {
-    Once,
-    Repeating { frequency: Frequency },
-}
-
-#[derive(Debug)]
-pub enum EventType {
-    // Synchronization point, intended to force a component to be updated at a time
-    SyncPoint,
-    // Input event, for listening inputs
-    Input { id: InputId, state: InputState },
-    // Custom event, for sending custom data to components
-    Custom { data: Box<dyn EventImpl> },
-}
-
-impl EventType {
-    pub fn sync_point() -> Self {
-        Self::SyncPoint
-    }
-
-    pub fn input(id: InputId, state: InputState) -> Self {
-        Self::Input { id, state }
-    }
-
-    pub fn custom(data: impl EventImpl) -> Self {
-        Self::Custom {
-            data: Box::new(data),
-        }
-    }
-}
-
-pub trait EventImpl: Any + Send + Debug {}
-impl<T: Any + Send + Debug> EventImpl for T {}
+pub trait Event: Any + DynClone + Send + Debug + 'static {}
+impl<T: Any + DynClone + Send + Debug + 'static> Event for T {}
 
 #[derive(Debug, Default)]
 pub(crate) struct EventManager {
@@ -61,19 +27,17 @@ pub(crate) struct EventManager {
 
 impl EventManager {
     #[inline]
-    pub fn queue(
+    pub fn schedule(
         &self,
-        name: Cow<'static, str>,
         time: Period,
         path: ComponentPath,
-        requeue_mode: EventRequeueMode,
-        ty: EventType,
+        mode: EventMode,
+        data: Box<dyn Event>,
     ) {
         self.heap.lock().unwrap().push(QueuedEvent {
-            name,
             path,
-            ty,
-            requeue_mode,
+            data,
+            mode,
             time: Reverse(time),
         });
     }
@@ -87,34 +51,22 @@ impl EventManager {
     ) {
         let mut heap_guard = self.heap.lock().unwrap();
 
-        while let Some(sync_point) = heap_guard.peek() {
-            if upto < sync_point.time.0 {
+        while let Some(event) = heap_guard.peek() {
+            if upto < event.time.0 {
                 break;
             }
             let event = heap_guard.pop().unwrap();
 
-            match event.requeue_mode {
-                EventRequeueMode::Once => {}
-                EventRequeueMode::Repeating { frequency } => {
-                    let ty = match &event.ty {
-                        EventType::SyncPoint => EventType::SyncPoint,
-                        EventType::Input { id, state } => EventType::Input {
-                            id: *id,
-                            state: *state,
-                        },
-                        EventType::Custom { .. } => {
-                            unreachable!("Cannot repeat custom events");
-                        }
-                    };
-
+            match event.mode {
+                EventMode::Once => {}
+                EventMode::Repeating { frequency } => {
                     let time = event.time.0 + frequency.recip();
 
                     heap_guard.push(QueuedEvent {
-                        ty,
                         path: event.path.clone(),
-                        requeue_mode: event.requeue_mode,
+                        mode: event.mode,
                         time: Reverse(time),
-                        name: event.name.clone(),
+                        data: dyn_clone::clone_box(event.data.as_ref()),
                     });
                 }
             }
@@ -123,13 +75,13 @@ impl EventManager {
 
             if active_component.path() == &event.path {
                 active_component.interact_mut(runtime, event.time.0, |component| {
-                    component.handle_event(&event.name, event.ty);
+                    component.handle_event(event.data);
                 })
             } else {
                 runtime
                     .registry()
                     .interact_dyn_mut(&event.path, event.time.0, |component| {
-                        component.handle_event(&event.name, event.ty);
+                        component.handle_event(event.data);
                     });
             }
 
@@ -171,13 +123,25 @@ impl PreemptionSignal {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum EventMode {
+    Once,
+    Repeating { frequency: Frequency },
+}
+
+#[inline]
+pub fn downcast_event<C: Component>(event: Box<dyn Event>) -> C::Event {
+    *(event as Box<dyn Any>)
+        .downcast()
+        .expect("invalid type sent as event")
+}
+
 #[derive(Debug)]
 struct QueuedEvent {
     path: ComponentPath,
-    ty: EventType,
-    requeue_mode: EventRequeueMode,
     time: Reverse<Period>,
-    name: Cow<'static, str>,
+    mode: EventMode,
+    data: Box<dyn Event>,
 }
 
 impl PartialEq for QueuedEvent {

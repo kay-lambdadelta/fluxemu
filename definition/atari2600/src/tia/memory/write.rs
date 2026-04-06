@@ -1,14 +1,11 @@
-use fluxemu_runtime::{
-    RuntimeApi,
-    event::{EventRequeueMode, EventType},
-    scheduler::Period,
-};
+use fluxemu_definition_mos6502::{Flag, Mos6502, Mos6502Event};
+use fluxemu_runtime::{RuntimeApi, event::EventMode, scheduler::Period};
 use nalgebra::Point2;
 
 use super::WriteRegisters;
 use crate::tia::{
     DelayChangeGraphicPlayer, DelayEnableChangeBall, InputControl, SCANLINE_LENGTH,
-    SupportedGraphicsApiTia, Tia, WAKEUP_CPU_VIA_RDY, color::TiaColor, region::Region,
+    SupportedGraphicsApiTia, Tia, color::TiaColor, region::Region,
 };
 
 const PLAYER_RESP_OFFSET: u16 = 3;
@@ -55,18 +52,29 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
                 self.input_control[5] = bit;
             }
             WriteRegisters::Wsync => {
+                let runtime = RuntimeApi::current();
+
                 // The TIA runs 3 times as fast as the cpu
                 let until =
                     Period::from_num(SCANLINE_LENGTH - self.electron_beam.x) / (R::frequency() / 3);
 
-                self.cpu_rdy.as_ref().unwrap().store(false);
-
-                RuntimeApi::current().insert_event(
-                    self.framebuffer_path.parent().unwrap(),
-                    WAKEUP_CPU_VIA_RDY,
+                runtime.schedule_event::<Mos6502>(
+                    &self.cpu_path,
+                    EventMode::Once,
+                    self.timestamp,
+                    Mos6502Event::FlagChange {
+                        flag: Flag::Rdy,
+                        value: false,
+                    },
+                );
+                runtime.schedule_event::<Mos6502>(
+                    &self.cpu_path,
+                    EventMode::Once,
                     self.timestamp + until,
-                    EventRequeueMode::Once,
-                    EventType::sync_point(),
+                    Mos6502Event::FlagChange {
+                        flag: Flag::Rdy,
+                        value: true,
+                    },
                 );
             }
             WriteRegisters::Rsync => {

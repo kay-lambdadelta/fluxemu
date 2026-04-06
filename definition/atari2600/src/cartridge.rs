@@ -31,6 +31,8 @@ pub struct Atari2600CartridgeConfig {
 }
 
 impl Component for Atari2600Cartridge {
+    type Event = ();
+
     fn memory_read(
         &self,
         address: Address,

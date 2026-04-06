@@ -167,6 +167,8 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Display<G> {
 }
 
 impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Display<G> {
+    type Event = ();
+
     fn load_snapshot(
         &mut self,
         version: ComponentVersion,

@@ -49,7 +49,7 @@ pub struct Memory {
 }
 
 impl Component for Memory {
-    // The save/snapshot format is just raw bytes so i doubt it will ever change
+    type Event = ();
 
     fn load_snapshot(
         &mut self,

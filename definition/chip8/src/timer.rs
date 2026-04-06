@@ -24,6 +24,8 @@ impl Chip8Timer {
 }
 
 impl Component for Chip8Timer {
+    type Event = ();
+
     fn load_snapshot(
         &mut self,
         version: ComponentVersion,

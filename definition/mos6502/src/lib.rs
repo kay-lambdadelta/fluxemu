@@ -1,15 +1,12 @@
 use std::{
     fmt::Debug,
     io::{Read, Write},
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
 };
 
 use fluxemu_runtime::{
     RuntimeApi,
     component::{Component, ComponentVersion, config::ComponentConfig},
+    event::{Event, downcast_event},
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::{Address, AddressSpaceId},
     platform::Platform,
@@ -30,8 +27,6 @@ pub const NMI_VECTOR: u16 = 0xfffa;
 pub const PAGE_SIZE: usize = 256;
 pub const STACK_BASE_ADDRESS: u16 = 0x0100;
 pub const INTERRUPT_VECTOR: u16 = 0xfffe;
-
-pub const RESET_SEQUENCE_LENGTH: u32 = 6;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Bus {
@@ -116,25 +111,6 @@ pub struct Mos6502Config {
     pub broken_ror: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct RdyFlag(AtomicBool);
-
-impl Default for RdyFlag {
-    fn default() -> Self {
-        Self(AtomicBool::new(true))
-    }
-}
-
-impl RdyFlag {
-    pub fn load(&self) -> bool {
-        self.0.load(Ordering::Acquire)
-    }
-
-    pub fn store(&self, value: bool) {
-        self.0.store(value, Ordering::Release);
-    }
-}
-
 #[derive(Debug)]
 pub struct Mos6502 {
     a: u8,
@@ -148,15 +124,17 @@ pub struct Mos6502 {
     effective_address: heapless::Vec<u8, 2>,
     consume_effective_address: bool,
     operand: u8,
-    rdy: Arc<RdyFlag>,
-    irq: Arc<IrqFlag>,
-    nmi: Arc<NmiFlag>,
+    rdy: bool,
+    nmi: NmiFlag,
+    irq: IrqFlag,
     config: Mos6502Config,
     timestamp: Period,
     period: Period,
 }
 
 impl Component for Mos6502 {
+    type Event = Mos6502Event;
+
     fn store_snapshot(&self, _writer: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>> {
         todo!()
     }
@@ -252,7 +230,7 @@ impl Component for Mos6502 {
                 BusMode::Write => false,
             };
 
-            if self.rdy.load() || !is_read_cycle {
+            if self.rdy || !is_read_cycle {
                 if std::mem::take(&mut self.consume_effective_address) {
                     self.effective_address.clear();
                 }
@@ -289,6 +267,18 @@ impl Component for Mos6502 {
     fn needs_work(&self, delta: Period) -> bool {
         delta >= self.period
     }
+
+    fn handle_event(&mut self, event: Box<dyn Event>) {
+        let event = downcast_event::<Self>(event);
+
+        match event {
+            Mos6502Event::FlagChange { flag, value } => match flag {
+                Flag::Nmi => self.nmi.store(value),
+                Flag::Irq => self.irq.store(value),
+                Flag::Rdy => self.rdy = value,
+            },
+        }
+    }
 }
 
 impl<P: Platform> ComponentConfig<P> for Mos6502Config {
@@ -314,11 +304,11 @@ impl<P: Platform> ComponentConfig<P> for Mos6502Config {
                 address: 0x0000,
                 data: 0x00,
             },
+            rdy: true,
+            irq: IrqFlag::default(),
+            nmi: NmiFlag::default(),
             effective_address: heapless::Vec::default(),
             consume_effective_address: false,
-            rdy: Arc::default(),
-            irq: Arc::default(),
-            nmi: Arc::default(),
             period: self.frequency.recip(),
             config: self,
             timestamp: Period::default(),
@@ -332,65 +322,53 @@ impl<P: Platform> ComponentConfig<P> for Mos6502Config {
 }
 
 #[derive(Debug)]
-pub struct IrqFlag(AtomicBool);
+struct IrqFlag(bool);
 
 impl Default for IrqFlag {
     fn default() -> Self {
-        Self(AtomicBool::new(true))
+        Self(true)
     }
 }
 
 impl IrqFlag {
-    pub fn store(&self, irq: bool) {
-        self.0.store(irq, Ordering::Release);
+    pub fn store(&mut self, irq: bool) {
+        self.0 = irq;
     }
 
-    pub fn interrupt_required(&self) -> bool {
-        !self.0.load(Ordering::Acquire)
+    pub fn interrupt_required(&mut self) -> bool {
+        !self.0
     }
 }
 
 /// NMI is falling edge
 #[derive(Debug)]
-pub struct NmiFlag {
-    current_state: AtomicBool,
-    falling_edge_occured: AtomicBool,
+struct NmiFlag {
+    current_state: bool,
+    falling_edge_occured: bool,
 }
 
 impl Default for NmiFlag {
     fn default() -> Self {
         Self {
-            current_state: AtomicBool::new(true),
-            falling_edge_occured: AtomicBool::new(false),
+            current_state: true,
+            falling_edge_occured: false,
         }
     }
 }
 
 impl NmiFlag {
-    pub fn store(&self, nmi: bool) {
-        if self.current_state.swap(nmi, Ordering::AcqRel) && !nmi {
-            self.falling_edge_occured.store(true, Ordering::Release);
+    pub fn store(&mut self, nmi: bool) {
+        if std::mem::replace(&mut self.current_state, nmi) && !nmi {
+            self.falling_edge_occured = true;
         }
     }
 
-    pub fn interrupt_required(&self) -> bool {
-        self.falling_edge_occured.swap(false, Ordering::AcqRel)
+    pub fn interrupt_required(&mut self) -> bool {
+        std::mem::take(&mut self.falling_edge_occured)
     }
 }
 
 impl Mos6502 {
-    pub fn rdy(&self) -> Arc<RdyFlag> {
-        self.rdy.clone()
-    }
-
-    pub fn irq(&self) -> Arc<IrqFlag> {
-        self.irq.clone()
-    }
-
-    pub fn nmi(&self) -> Arc<NmiFlag> {
-        self.nmi.clone()
-    }
-
     pub fn address_space(&self) -> AddressSpaceId {
         self.config.assigned_address_space
     }
@@ -529,4 +507,16 @@ impl Mos6502 {
             ),
         ]);
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum Flag {
+    Nmi,
+    Irq,
+    Rdy,
+}
+
+#[derive(Debug, Clone)]
+pub enum Mos6502Event {
+    FlagChange { flag: Flag, value: bool },
 }
