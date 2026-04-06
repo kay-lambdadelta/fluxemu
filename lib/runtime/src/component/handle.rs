@@ -113,7 +113,9 @@ impl ComponentHandle {
         time: Period,
         callback: impl FnOnce(&dyn Component) -> T,
     ) -> T {
-        self.synchronize(runtime, time);
+        if self.0.synchronization_data.is_some() {
+            self.synchronize(runtime, time);
+        }
 
         callback(&self.0.component)
     }
@@ -126,7 +128,9 @@ impl ComponentHandle {
         time: Period,
         callback: impl FnOnce(&mut dyn Component) -> T,
     ) -> T {
-        self.synchronize(runtime, time);
+        if self.0.synchronization_data.is_some() {
+            self.synchronize(runtime, time);
+        }
 
         callback(&mut self.0.component)
     }

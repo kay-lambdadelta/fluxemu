@@ -5,7 +5,6 @@ use rustc_hash::FxBuildHasher;
 use crate::{
     RuntimeApi,
     component::{Component, ComponentId, handle::ComponentHandle},
-    machine::{RUNTIME_CONTEXT, RuntimeCurrentThreadContext},
     path::ComponentPath,
     scheduler::Period,
 };
@@ -60,42 +59,32 @@ impl<'a> ComponentRegistry<'a> {
     }
 
     /// Release all components currently available for releasing
-    pub(crate) fn unmitigate_components(&self, context: &mut RuntimeCurrentThreadContext) {
-        for (index, handle) in context.local_component_store.drain(..).enumerate() {
-            if let Some(handle) = handle {
-                // Get ID
-                let id = ComponentId(index as u32);
+    pub(crate) fn unmitigate_components(&self, local_component_store: &mut LocalComponentStore) {
+        for (id, handle) in local_component_store.drain() {
+            // Fetch info
+            let mut component_info = self.data.components.get_sync(&id).unwrap();
 
-                // Fetch info
-                let mut component_info = self.data.components.get_sync(&id).unwrap();
+            // Put the component back
+            component_info.component = Some(handle);
 
-                // Put the component back
-                component_info.component = Some(handle);
+            // Get the threads that are waiting
+            let threads_awaiting = std::mem::take(&mut component_info.threads_awaiting);
 
-                // Get the threads that are waiting
-                let threads_awaiting = std::mem::take(&mut component_info.threads_awaiting);
+            // Unlock
+            drop(component_info);
 
-                // Unlock
-                drop(component_info);
-
-                // Wake those threads up
-                for thread in threads_awaiting {
-                    thread.unpark();
-                }
+            // Wake those threads up
+            for thread in threads_awaiting {
+                thread.unpark();
             }
         }
     }
 
     #[inline]
     fn mitigate_component(&self, id: ComponentId) -> ComponentHandle {
-        let component_handle = RUNTIME_CONTEXT.with_borrow_mut(
-            #[inline]
-            |runtime_context| {
-                let runtime_context = runtime_context.as_mut().unwrap();
-
-                get_or_initialize_default(id, &mut runtime_context.local_component_store).take()
-            },
-        );
+        let mut local_component_store_guard = self.runtime.local_component_store().borrow_mut();
+        let component_handle = local_component_store_guard.get_slot(id).take();
+        drop(local_component_store_guard);
 
         if let Some(component_handle) = component_handle {
             return component_handle;
@@ -116,12 +105,12 @@ impl<'a> ComponentRegistry<'a> {
                 component_info_guard.threads_awaiting.push(thread.clone());
                 drop(component_info_guard);
 
-                // Release all components we can while blocked
-                RUNTIME_CONTEXT.with_borrow_mut(|runtime_context| {
-                    let runtime_context = runtime_context.as_mut().unwrap();
+                let mut local_component_store_guard =
+                    self.runtime.local_component_store().borrow_mut();
 
-                    self.unmitigate_components(runtime_context);
-                });
+                // Give components back so others can access them
+                self.unmitigate_components(&mut local_component_store_guard);
+                drop(local_component_store_guard);
 
                 // Await for that component to potentially become available
                 std::thread::park();
@@ -176,17 +165,9 @@ impl<'a> ComponentRegistry<'a> {
         let mut component_handle = self.mitigate_component(id);
         let item = component_handle.interact(self.runtime, time, callback);
 
-        RUNTIME_CONTEXT.with_borrow_mut(
-            #[inline]
-            |runtime_context| {
-                let runtime_context = runtime_context.as_mut().unwrap();
-
-                let entry =
-                    get_or_initialize_default(id, &mut runtime_context.local_component_store);
-
-                *entry = Some(component_handle);
-            },
-        );
+        let mut local_component_store_guard = self.runtime.local_component_store().borrow_mut();
+        let entry = local_component_store_guard.get_slot(id);
+        *entry = Some(component_handle);
 
         Some(item)
     }
@@ -206,17 +187,9 @@ impl<'a> ComponentRegistry<'a> {
         let mut component_handle = self.mitigate_component(id);
         let item = component_handle.interact_mut(self.runtime, time, callback);
 
-        RUNTIME_CONTEXT.with_borrow_mut(
-            #[inline]
-            |runtime_context| {
-                let runtime_context = runtime_context.as_mut().unwrap();
-
-                let entry =
-                    get_or_initialize_default(id, &mut runtime_context.local_component_store);
-
-                *entry = Some(component_handle);
-            },
-        );
+        let mut local_component_store_guard = self.runtime.local_component_store().borrow_mut();
+        let entry = local_component_store_guard.get_slot(id);
+        *entry = Some(component_handle);
 
         Some(item)
     }
@@ -243,16 +216,25 @@ impl<'a> From<ComponentId> for ComponentIdentifier<'a> {
     }
 }
 
-#[inline]
-fn get_or_initialize_default(
-    id: ComponentId,
-    store: &mut Vec<Option<ComponentHandle>>,
-) -> &mut Option<ComponentHandle> {
-    let id = id.0 as usize;
+#[derive(Debug, Default)]
+pub(crate) struct LocalComponentStore(Vec<Option<ComponentHandle>>);
 
-    if id >= store.len() {
-        store.resize_with(id + 1, || None);
+impl LocalComponentStore {
+    #[inline]
+    pub fn get_slot(&mut self, id: ComponentId) -> &mut Option<ComponentHandle> {
+        let id = id.0 as usize;
+
+        if id >= self.0.len() {
+            self.0.resize_with(id + 1, || None);
+        }
+
+        &mut self.0[id]
     }
 
-    &mut store[id]
+    pub fn drain(&mut self) -> impl Iterator<Item = (ComponentId, ComponentHandle)> {
+        self.0
+            .drain(..)
+            .enumerate()
+            .filter_map(|(id, component_handle)| Some((ComponentId(id as u32), component_handle?)))
+    }
 }

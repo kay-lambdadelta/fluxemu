@@ -1,8 +1,9 @@
 use std::{
     any::Any,
     borrow::Cow,
+    cell::RefCell,
     collections::{HashMap, HashSet},
-    marker::PhantomData,
+    rc::Rc,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -14,7 +15,7 @@ use rustc_hash::FxBuildHasher;
 
 use crate::{
     ComponentPath, ResourcePath,
-    component::ComponentRegistry,
+    component::{ComponentRegistry, LocalComponentStore},
     event::{EventRequeueMode, EventType},
     graphics::GraphicsApi,
     input::LogicalInputDevice,
@@ -23,17 +24,17 @@ use crate::{
     scheduler::Period,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RuntimeApi {
     machine: Arc<Machine>,
-    _phantom: PhantomData<*const ()>,
+    local_component_store: Rc<RefCell<LocalComponentStore>>,
 }
 
 impl RuntimeApi {
     pub(crate) fn new(machine: Arc<Machine>) -> Self {
         RuntimeApi {
             machine,
-            _phantom: PhantomData,
+            local_component_store: Rc::new(RefCell::new(LocalComponentStore::default())),
         }
     }
 
@@ -46,21 +47,20 @@ impl RuntimeApi {
     /// Frontend code should interact with the runtime exclusively through [`RuntimeGuard`], obtained via [`Machine::enter_runtime`].
     #[inline]
     pub fn current() -> Self {
-        RUNTIME_CONTEXT.with(|runtime_context| {
-            let runtime_context_guard = runtime_context.borrow();
-
-            let machine = runtime_context_guard
+        RUNTIME_CONTEXT.with_borrow(|runtime_context| {
+            runtime_context
                 .as_ref()
                 .expect("Not inside runtime")
-                .current_machine
-                .clone();
-
-            RuntimeApi::new(machine)
+                .clone()
         })
     }
 
     pub(crate) fn machine(&self) -> &Machine {
         &self.machine
+    }
+
+    pub(crate) fn local_component_store(&self) -> &RefCell<LocalComponentStore> {
+        &self.local_component_store
     }
 
     pub fn address_space(&self, address_space_id: AddressSpaceId) -> Option<AddressSpace<'_>> {

@@ -20,8 +20,8 @@ pub mod config;
 pub(crate) mod handle;
 mod registry;
 
-pub use registry::ComponentRegistry;
 pub(crate) use registry::ComponentRegistryData;
+pub use registry::*;
 
 #[allow(unused)]
 /// Basic supertrait for all components

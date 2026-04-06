@@ -18,7 +18,7 @@ use rustc_hash::FxBuildHasher;
 
 use crate::{
     RuntimeApi,
-    component::{ComponentRegistryData, handle::ComponentHandle},
+    component::ComponentRegistryData,
     input::LogicalInputDevice,
     machine::builder::MachineBuilder,
     memory::{AddressSpaceData, AddressSpaceId},
@@ -91,8 +91,6 @@ impl Machine {
     /// Enter the runtime for this machine on this thread
     #[must_use]
     pub fn enter_runtime(self: &Arc<Self>) -> RuntimeGuard<'_> {
-        let me = self.clone();
-
         RUNTIME_CONTEXT.with(|runtime_context| {
             let mut runtime_context_guard = runtime_context.borrow_mut();
 
@@ -100,14 +98,11 @@ impl Machine {
                 panic!("Runtime already entered");
             }
 
-            *runtime_context_guard = Some(RuntimeCurrentThreadContext {
-                current_machine: me,
-                local_component_store: Vec::default(),
-            });
+            *runtime_context_guard = Some(RuntimeApi::new(self.clone()));
         });
 
         RuntimeGuard {
-            api: RuntimeApi::new(self.clone()),
+            api: RuntimeApi::current(),
             _phantom: PhantomData,
         }
     }
@@ -133,10 +128,13 @@ impl<'a> Deref for RuntimeGuard<'a> {
 impl<'a> Drop for RuntimeGuard<'a> {
     fn drop(&mut self) {
         RUNTIME_CONTEXT.with(|runtime_context| {
-            let mut runtime_context_guard = runtime_context.borrow_mut();
+            let runtime_context = runtime_context.borrow_mut().take();
 
-            if let Some(mut context) = runtime_context_guard.take() {
-                self.registry().unmitigate_components(&mut context);
+            // Clear the local context
+            if let Some(context) = runtime_context {
+                // Release all components
+                self.registry()
+                    .unmitigate_components(&mut context.local_component_store().borrow_mut());
             } else {
                 unreachable!("Runtime exited without entering");
             }
@@ -145,10 +143,5 @@ impl<'a> Drop for RuntimeGuard<'a> {
 }
 
 thread_local! {
-     pub(crate) static RUNTIME_CONTEXT: RefCell<Option<RuntimeCurrentThreadContext>> = const { RefCell::new(None) };
-}
-
-pub(crate) struct RuntimeCurrentThreadContext {
-    pub current_machine: Arc<Machine>,
-    pub local_component_store: Vec<Option<ComponentHandle>>,
+    pub(crate) static RUNTIME_CONTEXT: RefCell<Option<RuntimeApi>> = const { RefCell::new(None) };
 }
