@@ -44,14 +44,16 @@ impl Scheduler {
     }
 
     pub fn run(&self, component_registry: ComponentRegistry<'_>, allocated_time: Period) {
-        let mut current_driven_time_guard = self.current_driven_time.lock().unwrap();
-
-        *current_driven_time_guard += allocated_time;
-        let current_driven_time = *current_driven_time_guard;
+        let current_driven_time_guard = self.current_driven_time.lock().unwrap();
+        let next_time = *current_driven_time_guard + allocated_time;
+        drop(current_driven_time_guard);
 
         for path in &self.driven {
-            component_registry.interact_dyn_mut(path, current_driven_time, |_| {});
+            component_registry.interact_dyn_mut(path, next_time, |_| {});
         }
+
+        let mut current_driven_time_guard = self.current_driven_time.lock().unwrap();
+        *current_driven_time_guard = next_time;
     }
 
     pub(crate) fn preemption_signal(&self) -> &Arc<PreemptionSignal> {
