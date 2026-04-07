@@ -24,10 +24,16 @@ mod registry;
 pub(crate) use registry::ComponentRegistryData;
 pub use registry::*;
 
-#[allow(unused)]
 /// Basic supertrait for all components
+///
+/// NONE of these methods should be directly called by other components, they are for runtime use only.
+/// They often have invariants only the runtime knows how to properly enforce
+#[allow(unused)]
 pub trait Component: Send + Sync + Debug + Any {
     /// Event type component accepts
+    ///
+    /// Use `()` if you don't care about events.
+    /// You may still recieve dummy events being used as a synchronization barrier however
     type Event: Event
     where
         Self: Sized;
@@ -51,9 +57,12 @@ pub trait Component: Send + Sync + Debug + Any {
         Ok(())
     }
 
-    /// Read memory at the specified address in the specified address space to fill the buffer
+    /// Read memory at the specified address given the address space id
     ///
-    /// Nothing should never explicitly call this, instead going through [crate::memory::AddressSpace]
+    /// The avoid side effects flag should be respected, state changes should not occur as a result of the read
+    /// if it is true
+    ///
+    /// The default implementation of this simply denies
     fn memory_read(
         &self,
         address: Address,
@@ -64,9 +73,9 @@ pub trait Component: Send + Sync + Debug + Any {
         Err(denied_range(address, buffer.len()))
     }
 
-    /// Writes memory at the specified address in the specified address space
+    /// Write memory to the specified address given the address space id
     ///
-    /// Nothing should never explicitly call this, instead going through [crate::memory::AddressSpace]
+    /// The default implementation of this simply denies
     fn memory_write(
         &mut self,
         address: Address,
@@ -81,7 +90,7 @@ pub trait Component: Send + Sync + Debug + Any {
         unreachable!()
     }
 
-    /// Synchronize in a loop until the iterator ends
+    /// Synchronize using the utilties given by [`SynchronizationContext`]
     fn synchronize(&mut self, context: SynchronizationContext) {}
 
     /// Tell the scheduler that work needs to be done to close this delta

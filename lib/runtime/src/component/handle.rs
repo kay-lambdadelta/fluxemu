@@ -16,7 +16,9 @@ struct SynchronizationData {
 #[derive(Debug)]
 struct ComponentData<T: ?Sized> {
     synchronization_data: Option<SynchronizationData>,
+    #[allow(unused)]
     save_version: Option<ComponentVersion>,
+    #[allow(unused)]
     snapshot_version: Option<ComponentVersion>,
     path: ComponentPath,
     component: T,
@@ -47,6 +49,7 @@ impl ComponentHandle {
         }))
     }
 
+    /// Synchronize until the component is at the given timestamp
     #[inline]
     fn synchronize(&mut self, runtime: &RuntimeApi, time: Period) {
         if self.0.synchronization_data.is_none() {

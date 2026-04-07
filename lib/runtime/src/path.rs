@@ -21,13 +21,13 @@ pub enum Error {
     InvalidPathType(String),
 }
 
+/// FluxEMU canonical component path format
+///
 /// Valid formats include
 ///
 /// `":component/component_1"`
 ///
 /// `":component/component_1/component_2"`
-///
-/// `":resource/component_1/component_2/resource_1"`
 ///
 /// Item names cannot be empty or contain whitespace or `/`
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

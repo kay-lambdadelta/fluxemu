@@ -55,9 +55,8 @@ impl Permissions {
     }
 }
 
-// This function flattens and splits the memory map for faster lookups
-
 impl MemoryMappingTable {
+    /// This function flattens and splits the memory map for faster lookups
     pub(super) fn commit(
         &mut self,
         registry: ComponentRegistry<'_>,

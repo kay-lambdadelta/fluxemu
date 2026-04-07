@@ -38,6 +38,15 @@ impl<'a> AddressSpace<'a> {
         }
     }
 
+    /// Change the memory mapping based upon the command list given
+    ///
+    /// Note that:
+    ///
+    /// - Mapping changes are ADDITIVE, they apply on top of existing mappings
+    /// - Within a given command set this is an atomic operation, however it does not block accesses to address space methods while it
+    ///   is completing
+    /// - If two remappings from different threads are done at the same time, its unspecified which one "wins"
+    /// - As of the current implementation, remapping is rather expensive. Use sparingly or improve the committing code
     pub fn remap(&self, commands: impl IntoIterator<Item = MemoryRemappingCommand>) {
         self.data.remap(self.runtime.registry(), commands);
     }
@@ -115,8 +124,8 @@ impl MemoryMappingTable {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
 /// Identifier for a address space
+#[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct AddressSpaceId(pub(crate) u16);
 
 #[derive(Debug, Clone)]

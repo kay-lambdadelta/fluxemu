@@ -17,8 +17,6 @@ pub trait ComponentConfig<P: Platform>: Debug + Sized + Sync + Send {
     ) -> Result<Self::Component, Box<dyn Error>>;
 
     /// Do setup for subsystems that cannot be initialized during [`Self::build_component`]
-    ///
-    /// Return any framebuffers that were created during initialization
     fn late_initialize(
         component: &mut Self::Component,
         data: &LateContext<P>,

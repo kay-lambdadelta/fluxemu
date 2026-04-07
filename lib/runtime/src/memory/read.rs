@@ -156,9 +156,7 @@ impl<'a> AddressSpace<'a> {
         Ok(())
     }
 
-    /// Step through the memory translation table to fill a buffer
-    ///
-    /// Contents of the buffer upon failure are usually component specific
+    /// Read a buffer from an address
     #[inline]
     pub fn read(
         &mut self,
@@ -169,6 +167,8 @@ impl<'a> AddressSpace<'a> {
         self.read_internal(address, current_timestamp, false, buffer)
     }
 
+    /// Read a buffer from an address, informing the component that this should not induce state change as a direct result of a read.
+    /// Synchronization will still occur.
     #[inline]
     pub fn read_pure(
         &mut self,
@@ -179,7 +179,7 @@ impl<'a> AddressSpace<'a> {
         self.read_internal(address, current_timestamp, true, buffer)
     }
 
-    /// Given a location, read a little endian value
+    /// Read a little endian value from an address
     #[inline]
     pub fn read_le_value<T: FromBytes>(
         &mut self,
@@ -194,7 +194,8 @@ impl<'a> AddressSpace<'a> {
         Ok(T::from_le_bytes(&buffer))
     }
 
-    /// Given a location, read a little endian value
+    /// Read a little endian value from an address, informing the component that this should not induce state change as a direct result of a read.
+    /// Synchronization will still occur.    
     #[inline]
     pub fn read_le_value_pure<T: FromBytes>(
         &mut self,
@@ -209,7 +210,7 @@ impl<'a> AddressSpace<'a> {
         Ok(T::from_le_bytes(&buffer))
     }
 
-    /// Given a location, read a big endian value
+    /// Read a big endian value from an address
     #[inline]
     pub fn read_be_value<T: FromBytes>(
         &mut self,
@@ -224,7 +225,8 @@ impl<'a> AddressSpace<'a> {
         Ok(T::from_be_bytes(&buffer))
     }
 
-    /// Given a location, read a big endian value
+    /// Read a big endian value from an address, informing the component that this should not induce state change as a direct result of a read.
+    /// Synchronization will still occur.
     #[inline]
     pub fn read_be_value_pure<T: FromBytes>(
         &mut self,

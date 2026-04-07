@@ -17,6 +17,9 @@ use std::{
     },
 };
 
+/// Supertrait aggregate type for events
+///
+/// It is implement for every type that implements the supertraits
 pub trait Event: Any + DynClone + Send + Debug + 'static {}
 impl<T: Any + DynClone + Send + Debug + 'static> Event for T {}
 
@@ -53,6 +56,7 @@ impl EventManager {
 
         while let Some(event) = heap_guard.peek() {
             if upto < event.time.0 {
+                // The next event doesn't overlap with the specified period
                 break;
             }
             let event = heap_guard.pop().unwrap();
@@ -71,8 +75,10 @@ impl EventManager {
                 }
             }
 
+            // Drop to prevent deadlocks due to reentrancy
             drop(heap_guard);
 
+            // Shortcut to the actively synchronizing component if relevant
             if active_component.path() == &event.path {
                 active_component.interact_mut(runtime, event.time.0, |component| {
                     component.handle_event(event.data);
@@ -85,10 +91,12 @@ impl EventManager {
                     });
             }
 
+            // Relock for the loop
             heap_guard = self.heap.lock().unwrap();
         }
     }
 
+    /// Get the timestamp when the next event should occur
     #[inline]
     pub fn next_event(&self) -> Option<Period> {
         let queue_guard = self.heap.lock().unwrap();
@@ -129,6 +137,7 @@ pub enum EventMode {
     Repeating { frequency: Frequency },
 }
 
+/// Downcast the event down to the type that it should be
 #[inline]
 pub fn downcast_event<C: Component>(event: Box<dyn Event>) -> C::Event {
     *(event as Box<dyn Any>)

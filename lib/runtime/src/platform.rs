@@ -8,8 +8,8 @@ pub trait Platform: Clone + Debug + 'static {
     type GraphicsApi: GraphicsApi;
 }
 
-#[derive(Clone, Debug)]
 /// Test platform
+#[derive(Clone, Debug)]
 pub struct TestPlatform;
 
 impl Platform for TestPlatform {

@@ -135,9 +135,7 @@ impl<'a> AddressSpace<'a> {
         Ok(())
     }
 
-    /// Step through the memory translation table to fill a buffer
-    ///
-    /// Contents of the buffer upon failure are usually component specific
+    /// Write a buffer to an address
     #[inline]
     pub fn write(
         &mut self,
@@ -148,7 +146,9 @@ impl<'a> AddressSpace<'a> {
         self.write_internal(address, current_timestamp, buffer)
     }
 
-    /// Given a location, read a little endian value
+    /// Write a little endian value to an address
+    ///
+    /// This is generally faster than [Self::write], especially for single byte operations
     #[inline]
     pub fn write_le_value<T: ToBytes>(
         &mut self,
@@ -159,7 +159,9 @@ impl<'a> AddressSpace<'a> {
         self.write_internal(address, current_timestamp, &value.to_le_bytes())
     }
 
-    /// Given a location, read a big endian value
+    /// Write a big endian value to an address
+    ///
+    /// This is generally faster than [Self::write], especially for single byte operations    
     #[inline]
     pub fn write_be_value<T: ToBytes>(
         &mut self,

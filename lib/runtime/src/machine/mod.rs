@@ -113,8 +113,7 @@ impl Machine {
 /// When this is dropped, the runtime is exited
 pub struct RuntimeGuard<'a> {
     api: RuntimeApi,
-    /// Remove [Send] and [Sync]
-    _phantom: PhantomData<(&'a (), *const ())>,
+    _phantom: PhantomData<&'a ()>,
 }
 
 impl<'a> Deref for RuntimeGuard<'a> {

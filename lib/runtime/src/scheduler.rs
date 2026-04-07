@@ -1,7 +1,4 @@
-use std::{
-    fmt::Debug,
-    sync::{Arc, Mutex},
-};
+use std::{fmt::Debug, sync::Mutex};
 
 use fixed::{FixedU128, types::extra::U64};
 
@@ -14,10 +11,10 @@ use crate::{
 #[derive(Debug)]
 pub(crate) struct Scheduler {
     pub event_manager: EventManager,
-    pub current_driven_time: Mutex<Period>,
+    current_driven_time: Mutex<Period>,
     driven: Vec<ComponentPath>,
     start_time: Period,
-    preemption_signal: Arc<PreemptionSignal>,
+    preemption_signal: PreemptionSignal,
 }
 
 impl Scheduler {
@@ -27,10 +24,11 @@ impl Scheduler {
             driven: Vec::default(),
             current_driven_time: Mutex::default(),
             start_time: Period::default(),
-            preemption_signal: Arc::new(PreemptionSignal::new()),
+            preemption_signal: PreemptionSignal::new(),
         }
     }
 
+    /// Retrieves the latest timestamp that the machine has been driven to
     pub fn now(&self) -> Period {
         *self.current_driven_time.lock().unwrap()
     }
@@ -39,31 +37,39 @@ impl Scheduler {
         self.start_time
     }
 
+    /// Register a new component that is directly driven by the scheduler
+    ///
+    /// Ment for machine builder purposes
     pub fn register_driven_component(&mut self, path: ComponentPath) {
         self.driven.push(path);
     }
 
     pub fn run(&self, component_registry: ComponentRegistry<'_>, allocated_time: Period) {
-        let current_driven_time_guard = self.current_driven_time.lock().unwrap();
-        let next_time = *current_driven_time_guard + allocated_time;
-        drop(current_driven_time_guard);
+        // Grab current time
+        let next_time = self.now() + allocated_time;
 
+        // Advance the time forward for all driven components
         for path in &self.driven {
             component_registry.interact_dyn_mut(path, next_time, |_| {});
         }
 
+        // Set the new time, marking that the machine has officially advanced to this time
         let mut current_driven_time_guard = self.current_driven_time.lock().unwrap();
         *current_driven_time_guard = next_time;
     }
 
-    pub(crate) fn preemption_signal(&self) -> &Arc<PreemptionSignal> {
+    /// The preemption signal causes at least one [QuantaIterator] to stop active work and service events
+    pub fn preemption_signal(&self) -> &PreemptionSignal {
         &self.preemption_signal
     }
 }
 
+/// Type representing a period, or a inverse frequency, as a Q64.64
 pub type Period = FixedU128<U64>;
+/// Type representing a frequency, or a inverse period, as a Q64.64
 pub type Frequency = FixedU128<U64>;
 
+/// Context to begin the synchronization process
 #[derive(Debug)]
 pub struct SynchronizationContext<'a> {
     pub(crate) scheduler: &'a Scheduler,
@@ -73,6 +79,8 @@ pub struct SynchronizationContext<'a> {
 }
 
 impl<'a> SynchronizationContext<'a> {
+    /// Create an iterator that continously allocates an amount of time represented by period until either the target timestamp is reached
+    /// or the runtime preempts the task
     #[inline]
     pub fn allocate<'b>(&'b mut self, period: Period) -> QuantaIterator<'b, 'a> {
         *self.last_attempted_allocation = Some(period);
@@ -95,6 +103,7 @@ impl<'a> SynchronizationContext<'a> {
     }
 }
 
+/// Helper iterator to continously allocate a period until the time budget is exhausted
 pub struct QuantaIterator<'b, 'a> {
     period: Period,
     budget: u64,
@@ -104,6 +113,8 @@ pub struct QuantaIterator<'b, 'a> {
 impl Iterator for QuantaIterator<'_, '_> {
     type Item = Period;
 
+    // NOTE: We don't directly do Q64.64 math inside this hotloop because it is very slow
+
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         let preemption_signal = self.context.scheduler.preemption_signal();
@@ -112,10 +123,12 @@ impl Iterator for QuantaIterator<'_, '_> {
         while preemption_signal.needs_preemption() {
             let mut stop_time = self.context.target_timestamp;
 
+            // If a event exists, allow it to cut our budget short
             if let Some(next_event) = self.context.scheduler.event_manager.next_event() {
                 stop_time = stop_time.min(next_event);
             }
 
+            // Recalculate budget
             let new_budget = (stop_time.saturating_sub(*self.context.updated_timestamp)
                 / self.period)
                 .floor()
@@ -129,8 +142,10 @@ impl Iterator for QuantaIterator<'_, '_> {
         }
         self.budget -= 1;
 
+        // Advance the updated timestamp and return the new `now`
         let next_timestamp = *self.context.updated_timestamp + self.period;
         *self.context.updated_timestamp = next_timestamp;
+
         Some(next_timestamp)
     }
 }

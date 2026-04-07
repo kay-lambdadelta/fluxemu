@@ -199,6 +199,7 @@ impl<'a> ComponentRegistry<'a> {
     }
 }
 
+#[doc(hidden)]
 pub enum ComponentIdentifier<'a> {
     Id(ComponentId),
     Path(&'a ComponentPath),

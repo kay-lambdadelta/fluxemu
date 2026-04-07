@@ -133,7 +133,6 @@ impl<P: Platform> SealedMachineBuilder<P> {
     }
 }
 
-/// Helper trait representing a fully constructed machine
 pub trait MachineFactory<P: Platform>: Send + Sync + 'static {
     /// Construct a new machine given the parameters
     fn construct<'a>(&self, machine_builder: MachineBuilder<'a, P>) -> MachineBuilder<'a, P>;
