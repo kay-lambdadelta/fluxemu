@@ -90,16 +90,22 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
                 background_color_bits as u8,
             );
 
-            let color_index = if self.state.oam.rendering_enabled {
+            let color_index = if self.state.oam.rendering_enabled
+                && (self.state.oam.show_sprites_leftmost_pixels || scanline_position_x >= 8)
+            {
                 sprite_color_index
             } else {
                 None
             }
-            .or(if self.state.background.rendering_enabled {
-                Some(background_color_index)
-            } else {
-                None
-            })
+            .or(
+                if self.state.background.rendering_enabled
+                    && (self.state.show_background_leftmost_pixels || scanline_position_x >= 8)
+                {
+                    Some(background_color_index)
+                } else {
+                    None
+                },
+            )
             .unwrap_or(PPU_BLACK_INDEX);
 
             if let Some((sprite, _)) = potential_sprite
@@ -108,6 +114,8 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
                 && scanline_position_x != 255
                 && self.state.oam.rendering_enabled
                 && self.state.background.rendering_enabled
+                && (self.state.show_background_leftmost_pixels || scanline_position_x >= 8)
+                && (self.state.oam.show_sprites_leftmost_pixels || scanline_position_x >= 8)
             {
                 self.state.oam.sprite_zero_hit = true;
             }
