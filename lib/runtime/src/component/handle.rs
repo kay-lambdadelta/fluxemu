@@ -9,7 +9,7 @@ use crate::{
 #[derive(Debug)]
 struct SynchronizationData {
     /// Timestamp this component is actually updated to
-    updated_timestamp: Period,
+    current_timestamp: Period,
 }
 
 // NOTE: We add a generic here so this can be coerced unsized
@@ -37,7 +37,7 @@ impl ComponentHandle {
         component: impl Component,
     ) -> Self {
         let synchronization_data = scheduler_participation.map(|_| SynchronizationData {
-            updated_timestamp: Period::default(),
+            current_timestamp: Period::default(),
         });
 
         Self(Box::new(ComponentData {
@@ -51,7 +51,7 @@ impl ComponentHandle {
 
     /// Synchronize until the component is at the given timestamp
     #[inline]
-    fn synchronize(&mut self, runtime: &RuntimeApi, time: Period) {
+    fn synchronize(&mut self, runtime: &RuntimeApi, target_timestamp: Period) {
         if self.0.synchronization_data.is_none() {
             return;
         }
@@ -61,12 +61,12 @@ impl ComponentHandle {
 
         // Loop until the component is fully updated, processing events when relevant
         loop {
-            let SynchronizationData { updated_timestamp } =
+            let SynchronizationData { current_timestamp } =
                 self.0.synchronization_data.as_mut().unwrap();
 
-            if *updated_timestamp < time {
+            if *current_timestamp < target_timestamp {
                 // Update delta in case something happened when we dropped and reacquired the lock
-                delta = time - *updated_timestamp;
+                delta = target_timestamp - *current_timestamp;
 
                 // Check if the component is done or there is no allocated time
                 if delta == Period::ZERO || !self.0.component.needs_work(delta) {
@@ -75,8 +75,8 @@ impl ComponentHandle {
 
                 let context = SynchronizationContext {
                     scheduler: &runtime.machine().scheduler,
-                    updated_timestamp,
-                    target_timestamp: time,
+                    current_timestamp,
+                    target_timestamp,
                     last_attempted_allocation: &mut last_attempted_allocation,
                 };
 
@@ -88,12 +88,12 @@ impl ComponentHandle {
                 );
 
                 // Update delta
-                delta = time - *updated_timestamp;
+                delta = target_timestamp - *current_timestamp;
 
                 // If the component yielded and there is still work, check events and try to run it again
                 if self.0.component.needs_work(delta) {
                     // Try to consume any events that blocked this time allocation
-                    let timestamp = *updated_timestamp + last_attempted_allocation;
+                    let timestamp = *current_timestamp + last_attempted_allocation;
 
                     // consume events
                     runtime

@@ -73,7 +73,7 @@ pub type Frequency = FixedU128<U64>;
 #[derive(Debug)]
 pub struct SynchronizationContext<'a> {
     pub(crate) scheduler: &'a Scheduler,
-    pub(crate) updated_timestamp: &'a mut Period,
+    pub(crate) current_timestamp: &'a mut Period,
     pub(crate) target_timestamp: Period,
     pub(crate) last_attempted_allocation: &'a mut Option<Period>,
 }
@@ -91,13 +91,15 @@ impl<'a> SynchronizationContext<'a> {
             stop_time = stop_time.min(next_event);
         }
 
-        let budget = (stop_time.saturating_sub(*self.updated_timestamp) / period)
+        let budget = (stop_time.saturating_sub(*self.current_timestamp) / period)
             .floor()
             .to_num::<u64>();
 
         QuantaIterator {
             period,
             budget,
+            timestamp_at_allocation: *self.current_timestamp,
+            steps_taken: 0,
             context: self,
         }
     }
@@ -107,13 +109,13 @@ impl<'a> SynchronizationContext<'a> {
 pub struct QuantaIterator<'b, 'a> {
     period: Period,
     budget: u64,
+    timestamp_at_allocation: Period,
+    steps_taken: u64,
     context: &'b mut SynchronizationContext<'a>,
 }
 
 impl Iterator for QuantaIterator<'_, '_> {
     type Item = Period;
-
-    // NOTE: We don't directly do Q64.64 math inside this hotloop because it is very slow
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -129,7 +131,7 @@ impl Iterator for QuantaIterator<'_, '_> {
             }
 
             // Recalculate budget
-            let new_budget = (stop_time.saturating_sub(*self.context.updated_timestamp)
+            let new_budget = (stop_time.saturating_sub(*self.context.current_timestamp)
                 / self.period)
                 .floor()
                 .to_num::<u64>();
@@ -141,11 +143,14 @@ impl Iterator for QuantaIterator<'_, '_> {
             return None;
         }
         self.budget -= 1;
+        self.steps_taken += 1;
 
-        // Advance the updated timestamp and return the new `now`
-        let next_timestamp = *self.context.updated_timestamp + self.period;
-        *self.context.updated_timestamp = next_timestamp;
+        // Multiply by steps taken to reduce accumulated error
+        let next_timestamp =
+            self.timestamp_at_allocation + self.period * FixedU128::from(self.steps_taken);
+        *self.context.current_timestamp = next_timestamp;
 
+        // Return new now
         Some(next_timestamp)
     }
 }
