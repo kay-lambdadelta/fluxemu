@@ -14,7 +14,9 @@ use fluxemu_runtime::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::cycle::{BusMode, Cycle, MoveDestination, MoveSource, Phi1, Phi2, SetAddressBusSource};
+use crate::cycle::{
+    BusMode, Cycle, Flag, MoveDestination, MoveSource, Phi1, Phi2, SetAddressBusSource,
+};
 
 mod cycle;
 mod decoder;
@@ -126,7 +128,7 @@ pub struct Mos6502 {
     operand: u8,
     rdy: bool,
     nmi: NmiFlag,
-    irq: IrqFlag,
+    irq: bool,
     config: Mos6502Config,
     timestamp: Period,
     period: Period,
@@ -254,11 +256,12 @@ impl Component for Mos6502 {
 
                 // Check for interrupts
 
-                if self.config.kind.supports_interrupts()
-                    && self.cycle_queue.is_empty()
-                    && self.nmi.interrupt_required()
-                {
-                    self.handle_nmi();
+                if self.config.kind.supports_interrupts() && self.cycle_queue.is_empty() {
+                    if self.nmi.interrupt_required() {
+                        self.handle_nmi();
+                    } else if std::mem::take(&mut self.irq) {
+                        self.handle_irq();
+                    }
                 }
             }
         }
@@ -272,10 +275,10 @@ impl Component for Mos6502 {
         let event = downcast_event::<Self>(event);
 
         match event {
-            Mos6502Event::FlagChange { flag, value } => match flag {
-                Flag::Nmi => self.nmi.store(value),
-                Flag::Irq => self.irq.store(value),
-                Flag::Rdy => self.rdy = value,
+            Mos6502Event::FlagChange { pin: flag, value } => match flag {
+                Pin::Nmi => self.nmi.store(value),
+                Pin::Irq => self.irq = value,
+                Pin::Rdy => self.rdy = value,
             },
         }
     }
@@ -305,7 +308,7 @@ impl<P: Platform> ComponentConfig<P> for Mos6502Config {
                 data: 0x00,
             },
             rdy: true,
-            irq: IrqFlag::default(),
+            irq: false,
             nmi: NmiFlag::default(),
             effective_address: heapless::Vec::default(),
             consume_effective_address: false,
@@ -318,25 +321,6 @@ impl<P: Platform> ComponentConfig<P> for Mos6502Config {
         component.reset();
 
         Ok(component)
-    }
-}
-
-#[derive(Debug)]
-struct IrqFlag(bool);
-
-impl Default for IrqFlag {
-    fn default() -> Self {
-        Self(true)
-    }
-}
-
-impl IrqFlag {
-    pub fn store(&mut self, irq: bool) {
-        self.0 = irq;
-    }
-
-    pub fn interrupt_required(&mut self) -> bool {
-        !self.0
     }
 }
 
@@ -507,10 +491,95 @@ impl Mos6502 {
             ),
         ]);
     }
+
+    fn handle_irq(&mut self) {
+        self.cycle_queue.extend([
+            Cycle::new(
+                BusMode::Read,
+                Some(Phi1::SetAddressBus {
+                    source: SetAddressBusSource::InstructionPointer,
+                }),
+                [],
+            ),
+            Cycle::new(
+                BusMode::Read,
+                Some(Phi1::SetAddressBus {
+                    source: SetAddressBusSource::InstructionPointer,
+                }),
+                [],
+            ),
+            Cycle::new(
+                BusMode::Write,
+                Some(Phi1::SetAddressBus {
+                    source: SetAddressBusSource::Stack,
+                }),
+                [
+                    Phi2::Move {
+                        source: MoveSource::InstructionPointer { offset: 1 },
+                        destination: MoveDestination::Data,
+                    },
+                    Phi2::IncrementStack { subtract: true },
+                ],
+            ),
+            Cycle::new(
+                BusMode::Write,
+                Some(Phi1::SetAddressBus {
+                    source: SetAddressBusSource::Stack,
+                }),
+                [
+                    Phi2::Move {
+                        source: MoveSource::InstructionPointer { offset: 0 },
+                        destination: MoveDestination::Data,
+                    },
+                    Phi2::IncrementStack { subtract: true },
+                ],
+            ),
+            Cycle::new(
+                BusMode::Write,
+                Some(Phi1::SetAddressBus {
+                    source: SetAddressBusSource::Stack,
+                }),
+                [
+                    Phi2::Move {
+                        source: MoveSource::Flags { break_: false },
+                        destination: MoveDestination::Data,
+                    },
+                    Phi2::IncrementStack { subtract: true },
+                ],
+            ),
+            Cycle::new(
+                BusMode::Read,
+                Some(Phi1::SetAddressBus {
+                    source: SetAddressBusSource::Constant(IRQ_VECTOR),
+                }),
+                [Phi2::Move {
+                    source: MoveSource::Data,
+                    destination: MoveDestination::EffectiveAddress,
+                }],
+            ),
+            Cycle::new(
+                BusMode::Read,
+                Some(Phi1::SetAddressBus {
+                    source: SetAddressBusSource::Constant(IRQ_VECTOR + 1),
+                }),
+                [
+                    Phi2::Move {
+                        source: MoveSource::Data,
+                        destination: MoveDestination::EffectiveAddress,
+                    },
+                    Phi2::LoadInstructionPointerFromEffectiveAddress,
+                    Phi2::SetFlag {
+                        flag: Flag::InterruptDisable,
+                        value: true,
+                    },
+                ],
+            ),
+        ]);
+    }
 }
 
 #[derive(Debug, Clone)]
-pub enum Flag {
+pub enum Pin {
     Nmi,
     Irq,
     Rdy,
@@ -518,5 +587,5 @@ pub enum Flag {
 
 #[derive(Debug, Clone)]
 pub enum Mos6502Event {
-    FlagChange { flag: Flag, value: bool },
+    FlagChange { pin: Pin, value: bool },
 }

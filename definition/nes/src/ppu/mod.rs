@@ -5,7 +5,7 @@ use std::{
     sync::atomic::{AtomicBool, AtomicU8, Ordering},
 };
 
-use fluxemu_definition_mos6502::{Flag, Mos6502, Mos6502Event};
+use fluxemu_definition_mos6502::{Mos6502, Mos6502Event, Pin};
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
     RuntimeApi,
@@ -486,7 +486,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         EventMode::Once,
                         self.timestamp,
                         Mos6502Event::FlagChange {
-                            flag: Flag::Rdy,
+                            pin: Pin::Rdy,
                             value: false,
                         },
                     );
@@ -503,7 +503,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         EventMode::Once,
                         next_processor_rdy_high,
                         Mos6502Event::FlagChange {
-                            flag: Flag::Rdy,
+                            pin: Pin::Rdy,
                             value: true,
                         },
                     );
@@ -539,7 +539,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         EventMode::Once,
                         self.timestamp,
                         Mos6502Event::FlagChange {
-                            flag: Flag::Nmi,
+                            pin: Pin::Nmi,
                             value: false,
                         },
                     );
@@ -553,7 +553,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     EventMode::Once,
                     self.timestamp,
                     Mos6502Event::FlagChange {
-                        flag: Flag::Nmi,
+                        pin: Pin::Nmi,
                         value: true,
                     },
                 );

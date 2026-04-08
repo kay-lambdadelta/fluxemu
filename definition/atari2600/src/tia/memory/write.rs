@@ -1,4 +1,4 @@
-use fluxemu_definition_mos6502::{Flag, Mos6502, Mos6502Event};
+use fluxemu_definition_mos6502::{Mos6502, Mos6502Event, Pin};
 use fluxemu_runtime::{RuntimeApi, event::EventMode, scheduler::Period};
 use nalgebra::Point2;
 
@@ -63,7 +63,7 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
                     EventMode::Once,
                     self.timestamp,
                     Mos6502Event::FlagChange {
-                        flag: Flag::Rdy,
+                        pin: Pin::Rdy,
                         value: false,
                     },
                 );
@@ -72,7 +72,7 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
                     EventMode::Once,
                     self.timestamp + until,
                     Mos6502Event::FlagChange {
-                        flag: Flag::Rdy,
+                        pin: Pin::Rdy,
                         value: true,
                     },
                 );
