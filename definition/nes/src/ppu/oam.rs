@@ -51,6 +51,7 @@ pub struct CurrentlyRenderingSprite {
     pub oam: OamSprite,
     pub pattern_table_low: u8,
     pub pattern_table_high: u8,
+    pub index: u8,
 }
 
 #[serde_as]
@@ -76,4 +77,6 @@ pub struct OamState {
     pub sprite_8x8_pattern_table_index: u8,
     pub rendering_enabled: bool,
     pub awaiting_memory_access: bool,
+    pub sprite_zero_hit: bool,
+    pub sprite_8x16_mode: bool,
 }

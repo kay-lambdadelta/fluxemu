@@ -21,7 +21,7 @@ use fluxemu_runtime::{
     platform::Platform,
     scheduler::{Period, SynchronizationContext},
 };
-use nalgebra::{Point2, Vector2};
+use nalgebra::Point2;
 use serde::{Deserialize, Serialize};
 use strum::FromRepr;
 
@@ -29,7 +29,7 @@ use crate::ppu::{
     backend::{PpuDisplayBackend, SupportedGraphicsApiPpu},
     background::{BackgroundPipelineState, BackgroundState, SpritePipelineState},
     color::{PPU_BLACK_INDEX, PpuColorIndex},
-    oam::{OamSprite, OamState, SpriteEvaluationState},
+    oam::{OamState, SpriteEvaluationState},
     region::Region,
     state::{State, VramAddressPointerContents},
 };
@@ -40,6 +40,7 @@ mod color;
 mod oam;
 pub mod region;
 mod state;
+mod visible_scanlines;
 
 #[derive(Clone, Copy, Debug, FromRepr)]
 #[repr(u16)]
@@ -211,12 +212,11 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
 
         Ok(Ppu {
             state: State {
-                sprite_size: Vector2::new(8, 8),
                 vblank_nmi_enabled: false,
                 greyscale: false,
                 entered_vblank: AtomicBool::new(false),
                 show_background_leftmost_pixels: false,
-                vram_address_pointer_write_phase: false,
+                vram_address_pointer_write_phase: AtomicBool::new(false),
                 vram_address_pointer_increment_amount: 1,
                 vram_read_buffer: AtomicU8::new(0),
                 color_emphasis: ColorEmphasis {
@@ -237,6 +237,8 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
                     sprite_8x8_pattern_table_index: 0x0000,
                     rendering_enabled: false,
                     awaiting_memory_access: true,
+                    sprite_zero_hit: false,
+                    sprite_8x16_mode: false,
                 },
                 background: BackgroundState {
                     pattern_table_index: 0x0000,
@@ -297,13 +299,21 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
             match register {
                 CpuAccessibleRegister::PpuMask => todo!(),
                 CpuAccessibleRegister::PpuStatus => {
-                    let bit = if avoid_side_effects {
+                    if !avoid_side_effects {
+                        self.state
+                            .vram_address_pointer_write_phase
+                            .store(false, Ordering::Release);
+                    }
+
+                    let vblank = if avoid_side_effects {
                         self.state.entered_vblank.load(Ordering::Acquire)
                     } else {
                         self.state.entered_vblank.swap(false, Ordering::AcqRel)
                     };
 
-                    *buffer = (*buffer & 0b0111_1111) | (bit as u8) << 7;
+                    *buffer = (*buffer & 0b0011_1111)
+                        | ((vblank as u8) << 7)
+                        | ((self.state.oam.sprite_zero_hit as u8) << 6);
                 }
                 CpuAccessibleRegister::OamAddr => {
                     *buffer = self.state.oam.oam_addr;
@@ -395,7 +405,13 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                 CpuAccessibleRegister::PpuScroll => {
                     let mut shadow_vram_address_pointer =
                         VramAddressPointerContents::from(self.state.shadow_vram_address_pointer);
-                    if self.state.vram_address_pointer_write_phase {
+
+                    let vram_address_pointer_write_phase = self
+                        .state
+                        .vram_address_pointer_write_phase
+                        .load(Ordering::Acquire);
+
+                    if vram_address_pointer_write_phase {
                         // fine scroll y
                         shadow_vram_address_pointer.fine_y = *buffer & 0b0000_0111;
                         // coarse scroll y
@@ -406,25 +422,32 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         // coarse scroll x
                         shadow_vram_address_pointer.coarse.x = (*buffer & 0b1111_1000) >> 3;
                     }
-                    self.state.vram_address_pointer_write_phase =
-                        !self.state.vram_address_pointer_write_phase;
+
+                    self.state
+                        .vram_address_pointer_write_phase
+                        .store(!vram_address_pointer_write_phase, Ordering::Release);
 
                     self.state.shadow_vram_address_pointer = shadow_vram_address_pointer.into();
                 }
                 CpuAccessibleRegister::PpuAddr => {
                     let mut unpacked_address = self.state.shadow_vram_address_pointer.to_be_bytes();
-                    unpacked_address[usize::from(self.state.vram_address_pointer_write_phase)] =
-                        *buffer;
+                    let vram_address_pointer_write_phase = self
+                        .state
+                        .vram_address_pointer_write_phase
+                        .load(Ordering::Acquire);
+
+                    unpacked_address[usize::from(vram_address_pointer_write_phase)] = *buffer;
                     self.state.shadow_vram_address_pointer =
                         u16::from_be_bytes(unpacked_address) & 0b0111_1111_1111_1111;
 
-                    self.state.vram_address_pointer_write_phase =
-                        !self.state.vram_address_pointer_write_phase;
-
                     // Write the completed address
-                    if !self.state.vram_address_pointer_write_phase {
+                    if vram_address_pointer_write_phase {
                         self.state.vram_address_pointer = self.state.shadow_vram_address_pointer;
                     }
+
+                    self.state
+                        .vram_address_pointer_write_phase
+                        .store(!vram_address_pointer_write_phase, Ordering::Release);
                 }
                 CpuAccessibleRegister::PpuData => {
                     tracing::trace!(
@@ -553,6 +576,10 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
             self.timestamp = now;
 
             if self.state.cycle_counter.y == 261 {
+                if self.state.cycle_counter.x == 1 {
+                    self.state.oam.sprite_zero_hit = false;
+                }
+
                 if self.state.cycle_counter.x == 257 && self.state.background.rendering_enabled {
                     let t =
                         VramAddressPointerContents::from(self.state.shadow_vram_address_pointer);
@@ -587,191 +614,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
             }
 
             if (0..R::VISIBLE_SCANLINES).contains(&self.state.cycle_counter.y) {
-                if self.state.cycle_counter.x == 1 {
-                    // Technically the NES does it over 64 cycles
-                    self.state.oam.secondary_data.clear();
-                }
-
-                if let 1..=256 = self.state.cycle_counter.x {
-                    let scanline_position_x = self.state.cycle_counter.x - 1;
-
-                    self.state
-                        .drive_background_pipeline::<R>(&mut ppu_address_space, self.timestamp);
-
-                    let mut sprite_color_index = None;
-
-                    let potential_sprite = self
-                        .state
-                        .oam
-                        .currently_rendering_sprites
-                        .iter()
-                        .rev()
-                        .find_map(|sprite| {
-                            let in_sprite_position = scanline_position_x
-                                .checked_sub(u16::from(sprite.oam.position.x))?;
-
-                            if in_sprite_position < 8 {
-                                let in_sprite_position = if !sprite.oam.flip.x {
-                                    in_sprite_position
-                                } else {
-                                    7 - in_sprite_position
-                                };
-
-                                let low =
-                                    (sprite.pattern_table_low >> (7 - in_sprite_position)) & 1;
-                                let high =
-                                    (sprite.pattern_table_high >> (7 - in_sprite_position)) & 1;
-
-                                let color_index = (high << 1) | low;
-
-                                if color_index != 0 {
-                                    Some((sprite, color_index))
-                                } else {
-                                    None
-                                }
-                            } else {
-                                None
-                            }
-                        });
-
-                    if let Some((sprite, color_index)) = potential_sprite {
-                        sprite_color_index = Some(self.state.calculate_sprite_color::<R>(
-                            &mut ppu_address_space,
-                            self.timestamp,
-                            sprite.oam,
-                            color_index,
-                        ));
-                    }
-
-                    let bit_position =
-                        15 - self.state.background.fine_x_scroll - self.state.background.tile_pixel;
-
-                    let high = (self.state.background.pattern_high_shift >> bit_position) & 1;
-                    let low = (self.state.background.pattern_low_shift >> bit_position) & 1;
-
-                    let attribute = (self.state.background.attribute_shift
-                        >> (30 - self.state.background.tile_pixel * 2))
-                        & 0b11;
-
-                    self.state.background.tile_pixel += 1;
-                    if self.state.background.tile_pixel == 8 {
-                        self.state.background.tile_pixel = 0;
-                    }
-
-                    let color_index = (high << 1) | low;
-
-                    let background_color_index = self.state.calculate_background_color::<R>(
-                        &mut ppu_address_space,
-                        self.timestamp,
-                        attribute as u8,
-                        color_index as u8,
-                    );
-
-                    let color_index = if self.state.oam.rendering_enabled {
-                        sprite_color_index
-                    } else {
-                        None
-                    }
-                    .or(if self.state.background.rendering_enabled {
-                        Some(background_color_index)
-                    } else {
-                        None
-                    })
-                    .unwrap_or(PPU_BLACK_INDEX);
-
-                    let point = Point2::new(scanline_position_x, self.state.cycle_counter.y);
-
-                    self.staging_buffer[point.cast()] = color_index;
-                }
-
-                if let 65..=256 = self.state.cycle_counter.x {
-                    let sprite_index = (self.state.cycle_counter.x - 65) / 2;
-                    let oam_data_index = sprite_index * 4;
-
-                    if sprite_index < 64 {
-                        match self.state.oam.sprite_evaluation_state {
-                            SpriteEvaluationState::InspectingY => {
-                                let sprite_y = self.state.oam.data[oam_data_index as usize];
-
-                                self.state.oam.sprite_evaluation_state =
-                                    SpriteEvaluationState::Evaluating { sprite_y };
-                            }
-                            SpriteEvaluationState::Evaluating { sprite_y } => {
-                                if (u16::from(sprite_y)..u16::from(sprite_y) + 8)
-                                    .contains(&(self.state.cycle_counter.y))
-                                {
-                                    let mut bytes = [0; 4];
-                                    bytes.copy_from_slice(
-                                        &self.state.oam.data[RangeInclusive::from_start_and_length(
-                                            oam_data_index as usize,
-                                            4,
-                                        )],
-                                    );
-
-                                    let sprite = OamSprite::from_bytes(bytes);
-
-                                    if self.state.oam.secondary_data.push(sprite).is_err() {
-                                        // TODO: Handle sprite overflow flag
-                                    }
-                                }
-
-                                self.state.oam.sprite_evaluation_state =
-                                    SpriteEvaluationState::InspectingY;
-                            }
-                        }
-                    }
-                }
-
-                if self.state.cycle_counter.x == 256 && self.state.background.rendering_enabled {
-                    let mut vram_address_pointer_contents =
-                        VramAddressPointerContents::from(self.state.vram_address_pointer);
-
-                    if vram_address_pointer_contents.fine_y == 7 {
-                        vram_address_pointer_contents.fine_y = 0;
-
-                        if vram_address_pointer_contents.coarse.y == 29 {
-                            vram_address_pointer_contents.coarse.y = 0;
-
-                            vram_address_pointer_contents.nametable.y =
-                                !vram_address_pointer_contents.nametable.y;
-                        } else if vram_address_pointer_contents.coarse.y == 31 {
-                            vram_address_pointer_contents.coarse.y = 0;
-                        } else {
-                            vram_address_pointer_contents.coarse.y += 1;
-                        }
-                    } else {
-                        vram_address_pointer_contents.fine_y += 1;
-                    }
-
-                    self.state.vram_address_pointer = u16::from(vram_address_pointer_contents);
-                }
-
-                if self.state.cycle_counter.x == 257 {
-                    self.state.oam.currently_rendering_sprites.clear();
-
-                    if self.state.background.rendering_enabled {
-                        let t = VramAddressPointerContents::from(
-                            self.state.shadow_vram_address_pointer,
-                        );
-                        let mut v =
-                            VramAddressPointerContents::from(self.state.vram_address_pointer);
-
-                        v.nametable.x = t.nametable.x;
-                        v.coarse.x = t.coarse.x;
-
-                        self.state.vram_address_pointer = u16::from(v);
-                    }
-                }
-
-                if let 257..=320 = self.state.cycle_counter.x {
-                    self.state
-                        .drive_sprite_pipeline::<R>(&mut ppu_address_space, self.timestamp);
-                }
-
-                if let 321..=336 = self.state.cycle_counter.x {
-                    self.state
-                        .drive_background_pipeline::<R>(&mut ppu_address_space, self.timestamp);
-                }
+                self.handle_visible_scanlines(&mut ppu_address_space);
             }
 
             self.state.cycle_counter.x += 1;

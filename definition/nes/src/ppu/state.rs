@@ -17,13 +17,12 @@ use crate::ppu::{
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct State {
-    pub sprite_size: Vector2<u16>,
     pub vblank_nmi_enabled: bool,
     pub greyscale: bool,
     pub entered_vblank: AtomicBool,
     pub show_background_leftmost_pixels: bool,
     /// NES documents tend to call this w
-    pub vram_address_pointer_write_phase: bool,
+    pub vram_address_pointer_write_phase: AtomicBool,
     pub vram_address_pointer_increment_amount: u8,
     pub vram_read_buffer: AtomicU8,
     pub color_emphasis: ColorEmphasis,
@@ -110,6 +109,7 @@ impl State {
                                 oam: *currently_relevant_sprite,
                                 pattern_table_high,
                                 pattern_table_low,
+                                index: currently_relevant_sprite_index as u8,
                             })
                             .unwrap();
                     }
