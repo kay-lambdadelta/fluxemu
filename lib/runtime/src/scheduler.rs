@@ -123,20 +123,7 @@ impl Iterator for QuantaIterator<'_, '_> {
 
         // New event(s) spotted we have not evaluated
         while preemption_signal.needs_preemption() {
-            let mut stop_time = self.context.target_timestamp;
-
-            // If a event exists, allow it to cut our budget short
-            if let Some(next_event) = self.context.scheduler.event_manager.next_event() {
-                stop_time = stop_time.min(next_event);
-            }
-
-            // Recalculate budget
-            let new_budget = (stop_time.saturating_sub(*self.context.current_timestamp)
-                / self.period)
-                .floor()
-                .to_num::<u64>();
-
-            self.budget = self.budget.min(new_budget);
+            self.rebudget();
         }
 
         if self.budget == 0 {
@@ -152,5 +139,23 @@ impl Iterator for QuantaIterator<'_, '_> {
 
         // Return new now
         Some(next_timestamp)
+    }
+}
+
+impl<'b, 'a> QuantaIterator<'b, 'a> {
+    fn rebudget(&mut self) {
+        let mut stop_time = self.context.target_timestamp;
+
+        // If a event exists, allow it to cut our budget short
+        if let Some(next_event) = self.context.scheduler.event_manager.next_event() {
+            stop_time = stop_time.min(next_event);
+        }
+
+        // Recalculate budget
+        let new_budget = (stop_time.saturating_sub(*self.context.current_timestamp) / self.period)
+            .floor()
+            .to_num::<u64>();
+
+        self.budget = self.budget.min(new_budget);
     }
 }
