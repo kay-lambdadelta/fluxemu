@@ -4,7 +4,7 @@ use fluxemu_range::RangeIntersection;
 
 use crate::memory::{Address, MemoryMappingTable, PAGE_SIZE, Page, PageTarget};
 
-pub struct OverlappingMappingsIter<'a> {
+pub(super) struct OverlappingMappingsIter<'a> {
     pages: &'a [Option<Page>],
     access_range: RangeInclusive<Address>,
     entry_index: usize,

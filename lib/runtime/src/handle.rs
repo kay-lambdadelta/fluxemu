@@ -23,7 +23,7 @@ use crate::{
     scheduler::Period,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct RuntimeApi {
     machine: Arc<Machine>,
     local_component_store: Rc<RefCell<LocalComponentStore>>,
@@ -51,10 +51,12 @@ impl RuntimeApi {
     #[inline]
     pub fn current() -> Self {
         RUNTIME_CONTEXT.with_borrow(|runtime_context| {
-            runtime_context
-                .as_ref()
-                .expect("Not inside runtime")
-                .clone()
+            let runtime_api = runtime_context.as_ref().expect("Not inside runtime");
+
+            Self {
+                machine: runtime_api.machine.clone(),
+                local_component_store: runtime_api.local_component_store.clone(),
+            }
         })
     }
 

@@ -59,7 +59,7 @@ impl<'a> AddressSpace<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MappingEntry {
+enum MappingEntry {
     Component(ComponentPath),
     Mirror {
         source_base: Address,
@@ -69,7 +69,7 @@ pub enum MappingEntry {
 }
 
 #[derive(Clone)]
-pub enum PageTarget {
+enum PageTarget {
     Component {
         destination_start: Address,
         component: ComponentId,
@@ -94,20 +94,20 @@ impl Debug for PageTarget {
 }
 
 #[derive(Debug, Clone)]
-pub struct PageEntry {
+struct PageEntry {
     /// Full, uncropped relevant range
     pub range: RangeInclusive<Address>,
     pub target: PageTarget,
 }
 
 #[derive(Debug, Clone)]
-pub enum Page {
+enum Page {
     Single(PageEntry),
     Multi(Box<[PageEntry]>),
 }
 
 #[derive(Debug, Clone)]
-pub struct MemoryMappingTable {
+struct MemoryMappingTable {
     master: RangeInclusiveMap<Address, MappingEntry>,
     computed_table: Vec<Option<Page>>,
 }
@@ -129,7 +129,7 @@ impl MemoryMappingTable {
 pub struct AddressSpaceId(pub(crate) u16);
 
 #[derive(Debug, Clone)]
-pub struct Members {
+struct Members {
     pub read: MemoryMappingTable,
     pub write: MemoryMappingTable,
 }
