@@ -451,14 +451,6 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         .store(!vram_address_pointer_write_phase, Ordering::Release);
                 }
                 CpuAccessibleRegister::PpuData => {
-                    tracing::trace!(
-                        "CPU is sending data to 0x{:04x} in the PPU address space: {:02x}, the \
-                         cycle counter is at {}",
-                        self.state.vram_address_pointer,
-                        buffer,
-                        self.state.cycle_counter
-                    );
-
                     let runtime = RuntimeApi::current();
                     let mut ppu_address_space =
                         runtime.address_space(self.ppu_address_space).unwrap();
@@ -606,7 +598,9 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
             self.state.oam.sprite_zero_hit = false;
         }
 
-        if self.state.cycle_counter.x == 257 && self.state.background.rendering_enabled {
+        if self.state.cycle_counter.x == 257
+            && (self.state.background.rendering_enabled || self.state.oam.rendering_enabled)
+        {
             let t = VramAddressPointerContents::from(self.state.shadow_vram_address_pointer);
             let mut v = VramAddressPointerContents::from(self.state.vram_address_pointer);
 
@@ -617,7 +611,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
         }
 
         if let 280..=304 = self.state.cycle_counter.x
-            && self.state.background.rendering_enabled
+            && (self.state.background.rendering_enabled || self.state.oam.rendering_enabled)
         {
             let t = VramAddressPointerContents::from(self.state.shadow_vram_address_pointer);
             let mut v = VramAddressPointerContents::from(self.state.vram_address_pointer);

@@ -25,12 +25,12 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
 
             let mut sprite_color_index = None;
 
-            let potential_sprite = self.fetch_potential_sprite(scanline_position_x);
-            let sprite_behind_background = potential_sprite
+            let color_relevant_sprite = self.fetch_potential_sprite(scanline_position_x);
+            let sprite_behind_background = color_relevant_sprite
                 .map(|(sprite, _)| sprite.oam.behind_background)
                 .unwrap_or(false);
 
-            if let Some((sprite, color_index)) = potential_sprite {
+            if let Some((sprite, color_index)) = color_relevant_sprite {
                 sprite_color_index = Some(self.state.calculate_sprite_color::<R>(
                     ppu_address_space,
                     self.timestamp,
@@ -92,15 +92,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
             self.staging_buffer
                 [Point2::new(scanline_position_x, self.state.cycle_counter.y).cast()] = color_index;
 
-            if is_background_opaque
-                && is_sprite_opaque
-                && scanline_position_x != 255
-                && let Some((sprite, _)) = potential_sprite
-                && sprite.is_sprite_zero
-            {
-                self.state.oam.sprite_zero_hit = true;
-            }
-
+            self.sprite_zero_check(scanline_position_x, is_background_opaque);
             self.state
                 .drive_background_pipeline::<R>(ppu_address_space, self.timestamp);
         }
@@ -147,7 +139,9 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
             }
         }
 
-        if self.state.cycle_counter.x == 256 && self.state.background.rendering_enabled {
+        if self.state.cycle_counter.x == 256
+            && (self.state.background.rendering_enabled || self.state.oam.rendering_enabled)
+        {
             let mut vram_address_pointer_contents =
                 VramAddressPointerContents::from(self.state.vram_address_pointer);
 
@@ -174,7 +168,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
         if self.state.cycle_counter.x == 257 {
             self.state.oam.currently_rendering_sprites.clear();
 
-            if self.state.background.rendering_enabled {
+            if self.state.background.rendering_enabled || self.state.oam.rendering_enabled {
                 let t = VramAddressPointerContents::from(self.state.shadow_vram_address_pointer);
                 let mut v = VramAddressPointerContents::from(self.state.vram_address_pointer);
 
@@ -196,6 +190,26 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
         }
     }
 
+    #[inline]
+    fn sprite_zero_check(&mut self, scanline_position_x: u16, is_background_opaque: bool) {
+        let sprite_zero_hit = self
+            .state
+            .oam
+            .currently_rendering_sprites
+            .first()
+            .filter(|sprite| sprite.is_sprite_zero)
+            .and_then(|sprite| {
+                let color_index = calculate_sprite_color_index(scanline_position_x, sprite)?;
+
+                if color_index != 0 { Some(()) } else { None }
+            })
+            .is_some();
+
+        if is_background_opaque && sprite_zero_hit && scanline_position_x != 255 {
+            self.state.oam.sprite_zero_hit = true;
+        }
+    }
+
     fn fetch_potential_sprite(
         &mut self,
         scanline_position_x: u16,
@@ -207,29 +221,38 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
             .rev()
             .copied()
             .find_map(|sprite| {
-                let in_sprite_position =
-                    scanline_position_x.checked_sub(u16::from(sprite.oam.position.x))?;
+                let color_index = calculate_sprite_color_index(scanline_position_x, &sprite)?;
 
-                if in_sprite_position < 8 {
-                    let in_sprite_position = if !sprite.oam.flip.x {
-                        in_sprite_position
-                    } else {
-                        7 - in_sprite_position
-                    };
-
-                    let low = (sprite.pattern_table_low >> (7 - in_sprite_position)) & 1;
-                    let high = (sprite.pattern_table_high >> (7 - in_sprite_position)) & 1;
-
-                    let color_index = (high << 1) | low;
-
-                    if color_index != 0 {
-                        Some((sprite, color_index))
-                    } else {
-                        None
-                    }
+                if color_index != 0 {
+                    Some((sprite, color_index))
                 } else {
                     None
                 }
             })
     }
+}
+
+#[inline]
+fn calculate_sprite_color_index(
+    scanline_position_x: u16,
+    sprite: &CurrentlyRenderingSprite,
+) -> Option<u8> {
+    let in_sprite_position = scanline_position_x.checked_sub(u16::from(sprite.oam.position.x))?;
+
+    if in_sprite_position >= 8 {
+        return None;
+    }
+
+    let in_sprite_position = if !sprite.oam.flip.x {
+        in_sprite_position
+    } else {
+        7 - in_sprite_position
+    };
+
+    let low = (sprite.pattern_table_low >> (7 - in_sprite_position)) & 1;
+    let high = (sprite.pattern_table_high >> (7 - in_sprite_position)) & 1;
+
+    let color_index = (high << 1) | low;
+
+    Some(color_index)
 }
