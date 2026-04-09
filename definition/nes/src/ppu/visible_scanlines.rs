@@ -17,6 +17,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
         if self.state.cycle_counter.x == 1 {
             // Technically the NES does it over 64 cycles
             self.state.oam.secondary_data.clear();
+            self.state.oam.sprite_zero_in_secondary = false;
         }
 
         if let 1..=256 = self.state.cycle_counter.x {
@@ -89,11 +90,11 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
             self.staging_buffer
                 [Point2::new(scanline_position_x, self.state.cycle_counter.y).cast()] = color_index;
 
-            if let Some((sprite, _)) = potential_sprite
-                && sprite.index == 0
-                && is_background_opaque
+            if is_background_opaque
                 && is_sprite_opaque
                 && scanline_position_x != 255
+                && let Some((sprite, _)) = potential_sprite
+                && sprite.is_sprite_zero
             {
                 self.state.oam.sprite_zero_hit = true;
             }
@@ -127,6 +128,11 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
                             );
 
                             let sprite = OamSprite::from_bytes(bytes);
+                            let index = (oam_data_index / 4) as u8;
+
+                            if index == 0 {
+                                self.state.oam.sprite_zero_in_secondary = true;
+                            }
 
                             if self.state.oam.secondary_data.push(sprite).is_err() {
                                 // TODO: Handle sprite overflow flag

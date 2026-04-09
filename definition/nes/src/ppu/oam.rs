@@ -51,7 +51,7 @@ pub struct CurrentlyRenderingSprite {
     pub oam: OamSprite,
     pub pattern_table_low: u8,
     pub pattern_table_high: u8,
-    pub index: u8,
+    pub is_sprite_zero: bool,
 }
 
 #[serde_as]
@@ -69,6 +69,7 @@ pub struct OamState {
     pub data: [u8; 256],
     /// Secondary data buffer that is filled with sprite evaluation
     pub secondary_data: heapless::Vec<OamSprite, 8>,
+    pub sprite_zero_in_secondary: bool,
     /// Internal feature of this emulator filled with sprites post fetching
     pub currently_rendering_sprites: heapless::Vec<CurrentlyRenderingSprite, 8>,
     pub oam_addr: u8,

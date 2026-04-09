@@ -108,7 +108,8 @@ impl State {
                                 oam: *currently_relevant_sprite,
                                 pattern_table_high,
                                 pattern_table_low,
-                                index: currently_relevant_sprite_index as u8,
+                                is_sprite_zero: currently_relevant_sprite_index == 0
+                                    && self.oam.sprite_zero_in_secondary,
                             })
                             .unwrap();
                     }

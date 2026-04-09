@@ -231,6 +231,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
                     oam_addr: 0x00,
                     sprite_evaluation_state: SpriteEvaluationState::InspectingY,
                     secondary_data: heapless::Vec::new(),
+                    sprite_zero_in_secondary: false,
                     currently_rendering_sprites: heapless::Vec::new(),
                     show_leftmost_pixels: true,
                     sprite_8x8_pattern_table_index: 0x0000,
