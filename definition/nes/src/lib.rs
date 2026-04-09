@@ -88,7 +88,11 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> MachineFactory<P>
             .0
             .memory_map_mirror(cpu_address_space, 0x0800..=0x0fff, 0x0000..=0x07ff)
             .memory_map_mirror(cpu_address_space, 0x1000..=0x17ff, 0x0000..=0x07ff)
-            .memory_map_mirror(cpu_address_space, 0x1800..=0x1fff, 0x0000..=0x07ff);
+            .memory_map_mirror(cpu_address_space, 0x1800..=0x1fff, 0x0000..=0x07ff)
+            .memory_map_mirror(ppu_address_space, 0x3f10..=0x3f10, 0x3f00..=0x3f00)
+            .memory_map_mirror(ppu_address_space, 0x3f14..=0x3f14, 0x3f04..=0x3f04)
+            .memory_map_mirror(ppu_address_space, 0x3f18..=0x3f18, 0x3f08..=0x3f08)
+            .memory_map_mirror(ppu_address_space, 0x3f1c..=0x3f1c, 0x3f0c..=0x3f0c);
 
         for address in (0x2000..=0x3fff).step_by(8).skip(1) {
             machine = machine.memory_map_mirror(
