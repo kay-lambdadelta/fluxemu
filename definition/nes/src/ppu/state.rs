@@ -20,7 +20,6 @@ pub struct State {
     pub vblank_nmi_enabled: bool,
     pub greyscale: bool,
     pub entered_vblank: AtomicBool,
-    pub show_background_leftmost_pixels: bool,
     /// NES documents tend to call this w
     pub vram_address_pointer_write_phase: AtomicBool,
     pub vram_address_pointer_increment_amount: u8,

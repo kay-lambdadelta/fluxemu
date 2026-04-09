@@ -16,7 +16,7 @@ use fluxemu_runtime::{
     event::{Event, EventMode, downcast_event},
     graphics::software::Texture,
     machine::builder::{ComponentBuilder, SchedulerParticipation},
-    memory::{Address, AddressSpaceId, MemoryError},
+    memory::{Address, AddressSpace, AddressSpaceId, MemoryError},
     path::{ComponentPath, ResourcePath},
     platform::Platform,
     scheduler::{Period, SynchronizationContext},
@@ -215,7 +215,6 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
                 vblank_nmi_enabled: false,
                 greyscale: false,
                 entered_vblank: AtomicBool::new(false),
-                show_background_leftmost_pixels: false,
                 vram_address_pointer_write_phase: AtomicBool::new(false),
                 vram_address_pointer_increment_amount: 1,
                 vram_read_buffer: AtomicU8::new(0),
@@ -233,7 +232,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
                     sprite_evaluation_state: SpriteEvaluationState::InspectingY,
                     secondary_data: heapless::Vec::new(),
                     currently_rendering_sprites: heapless::Vec::new(),
-                    show_sprites_leftmost_pixels: true,
+                    show_leftmost_pixels: true,
                     sprite_8x8_pattern_table_index: 0x0000,
                     rendering_enabled: false,
                     awaiting_memory_access: true,
@@ -249,6 +248,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
                     rendering_enabled: false,
                     awaiting_memory_access: true,
                     tile_pixel: 0,
+                    show_leftmost_pixels: true,
                 },
                 vram_address_pointer: 0,
                 shadow_vram_address_pointer: 0,
@@ -387,8 +387,8 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                 }
                 CpuAccessibleRegister::PpuMask => {
                     self.state.greyscale = *buffer & 0b0000_0001 != 0;
-                    self.state.show_background_leftmost_pixels = *buffer & 0b0000_0010 != 0;
-                    self.state.oam.show_sprites_leftmost_pixels = *buffer & 0b0000_0100 != 0;
+                    self.state.background.show_leftmost_pixels = *buffer & 0b0000_0010 != 0;
+                    self.state.oam.show_leftmost_pixels = *buffer & 0b0000_0100 != 0;
                     self.state.background.rendering_enabled = *buffer & 0b0000_1000 != 0;
                     self.state.oam.rendering_enabled = *buffer & 0b0001_0000 != 0;
                     self.state.color_emphasis.red = *buffer & 0b0010_0000 != 0;
@@ -575,46 +575,10 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
         for now in context.allocate(self.period) {
             self.timestamp = now;
 
-            if self.state.cycle_counter.y == 261 {
-                if self.state.cycle_counter.x == 1 {
-                    self.state.oam.sprite_zero_hit = false;
-                }
-
-                if self.state.cycle_counter.x == 257 && self.state.background.rendering_enabled {
-                    let t =
-                        VramAddressPointerContents::from(self.state.shadow_vram_address_pointer);
-                    let mut v = VramAddressPointerContents::from(self.state.vram_address_pointer);
-
-                    v.nametable.x = t.nametable.x;
-                    v.coarse.x = t.coarse.x;
-
-                    self.state.vram_address_pointer = u16::from(v);
-                }
-
-                if let 280..=304 = self.state.cycle_counter.x
-                    && self.state.background.rendering_enabled
-                {
-                    let t =
-                        VramAddressPointerContents::from(self.state.shadow_vram_address_pointer);
-                    let mut v = VramAddressPointerContents::from(self.state.vram_address_pointer);
-
-                    v.nametable.y = t.nametable.y;
-                    v.coarse.y = t.coarse.y;
-                    v.fine_y = t.fine_y;
-
-                    self.state.vram_address_pointer = u16::from(v);
-                }
-
-                if let 305..=320 = self.state.cycle_counter.x
-                    && self.state.background.rendering_enabled
-                {
-                    self.state
-                        .drive_background_pipeline::<R>(&mut ppu_address_space, self.timestamp);
-                }
-            }
-
             if (0..R::VISIBLE_SCANLINES).contains(&self.state.cycle_counter.y) {
                 self.handle_visible_scanlines(&mut ppu_address_space);
+            } else if self.state.cycle_counter.y == 261 {
+                self.handle_prerender(&mut ppu_address_space);
             }
 
             self.state.cycle_counter.x += 1;
@@ -632,6 +596,44 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
 
     fn needs_work(&self, delta: Period) -> bool {
         delta >= self.period
+    }
+}
+
+impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
+    fn handle_prerender(&mut self, ppu_address_space: &mut AddressSpace<'_>) {
+        if self.state.cycle_counter.x == 1 {
+            self.state.oam.sprite_zero_hit = false;
+        }
+
+        if self.state.cycle_counter.x == 257 && self.state.background.rendering_enabled {
+            let t = VramAddressPointerContents::from(self.state.shadow_vram_address_pointer);
+            let mut v = VramAddressPointerContents::from(self.state.vram_address_pointer);
+
+            v.nametable.x = t.nametable.x;
+            v.coarse.x = t.coarse.x;
+
+            self.state.vram_address_pointer = u16::from(v);
+        }
+
+        if let 280..=304 = self.state.cycle_counter.x
+            && self.state.background.rendering_enabled
+        {
+            let t = VramAddressPointerContents::from(self.state.shadow_vram_address_pointer);
+            let mut v = VramAddressPointerContents::from(self.state.vram_address_pointer);
+
+            v.nametable.y = t.nametable.y;
+            v.coarse.y = t.coarse.y;
+            v.fine_y = t.fine_y;
+
+            self.state.vram_address_pointer = u16::from(v);
+        }
+
+        if let 305..=320 = self.state.cycle_counter.x
+            && self.state.background.rendering_enabled
+        {
+            self.state
+                .drive_background_pipeline::<R>(ppu_address_space, self.timestamp);
+        }
     }
 }
 

@@ -73,7 +73,7 @@ pub struct OamState {
     pub currently_rendering_sprites: heapless::Vec<CurrentlyRenderingSprite, 8>,
     pub oam_addr: u8,
     pub sprite_evaluation_state: SpriteEvaluationState,
-    pub show_sprites_leftmost_pixels: bool,
+    pub show_leftmost_pixels: bool,
     pub sprite_8x8_pattern_table_index: u8,
     pub rendering_enabled: bool,
     pub awaiting_memory_access: bool,

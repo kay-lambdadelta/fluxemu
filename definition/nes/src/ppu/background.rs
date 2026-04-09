@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 pub struct BackgroundState {
     pub pattern_table_index: u8,
     pub rendering_enabled: bool,
-
     // Shift registers
     pub pattern_low_shift: u16,
     pub pattern_high_shift: u16,
@@ -13,6 +12,7 @@ pub struct BackgroundState {
     pub fine_x_scroll: u8,
     pub tile_pixel: u8,
     pub awaiting_memory_access: bool,
+    pub show_leftmost_pixels: bool,
 }
 
 #[allow(clippy::enum_variant_names)]

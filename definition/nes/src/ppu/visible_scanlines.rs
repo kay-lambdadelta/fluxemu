@@ -7,8 +7,7 @@ use nalgebra::Point2;
 use crate::ppu::{
     Ppu,
     backend::SupportedGraphicsApiPpu,
-    color::PPU_BLACK_INDEX,
-    oam::{OamSprite, SpriteEvaluationState},
+    oam::{CurrentlyRenderingSprite, OamSprite, SpriteEvaluationState},
     region::Region,
     state::VramAddressPointerContents,
 };
@@ -25,37 +24,10 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
 
             let mut sprite_color_index = None;
 
-            let potential_sprite = self
-                .state
-                .oam
-                .currently_rendering_sprites
-                .iter()
-                .rev()
-                .find_map(|sprite| {
-                    let in_sprite_position =
-                        scanline_position_x.checked_sub(u16::from(sprite.oam.position.x))?;
-
-                    if in_sprite_position < 8 {
-                        let in_sprite_position = if !sprite.oam.flip.x {
-                            in_sprite_position
-                        } else {
-                            7 - in_sprite_position
-                        };
-
-                        let low = (sprite.pattern_table_low >> (7 - in_sprite_position)) & 1;
-                        let high = (sprite.pattern_table_high >> (7 - in_sprite_position)) & 1;
-
-                        let color_index = (high << 1) | low;
-
-                        if color_index != 0 {
-                            Some((sprite, color_index))
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                });
+            let potential_sprite = self.fetch_potential_sprite(scanline_position_x);
+            let sprite_behind_background = potential_sprite
+                .map(|(sprite, _)| sprite.oam.behind_background)
+                .unwrap_or(false);
 
             if let Some((sprite, color_index)) = potential_sprite {
                 sprite_color_index = Some(self.state.calculate_sprite_color::<R>(
@@ -82,47 +54,49 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
             }
 
             let background_color_bits = (high << 1) | low;
+            let is_background_visible = self.state.background.rendering_enabled
+                && (self.state.background.show_leftmost_pixels || scanline_position_x >= 8);
+            let is_background_opaque = is_background_visible && background_color_bits != 0;
 
-            let background_color_index = self.state.calculate_background_color::<R>(
-                ppu_address_space,
-                self.timestamp,
-                attribute as u8,
-                background_color_bits as u8,
-            );
-
-            let color_index = if self.state.oam.rendering_enabled
-                && (self.state.oam.show_sprites_leftmost_pixels || scanline_position_x >= 8)
-            {
-                sprite_color_index
+            let background_color_index = if is_background_opaque {
+                self.state.calculate_background_color::<R>(
+                    ppu_address_space,
+                    self.timestamp,
+                    attribute as u8,
+                    background_color_bits as u8,
+                )
             } else {
-                None
-            }
-            .or(
-                if self.state.background.rendering_enabled
-                    && (self.state.show_background_leftmost_pixels || scanline_position_x >= 8)
-                {
-                    Some(background_color_index)
+                // Backdrop color
+                self.state
+                    .calculate_background_color::<R>(ppu_address_space, self.timestamp, 0, 0)
+            };
+
+            let is_sprite_visible = self.state.oam.rendering_enabled
+                && (self.state.oam.show_leftmost_pixels || scanline_position_x >= 8);
+            let is_sprite_opaque = is_sprite_visible && sprite_color_index.is_some();
+
+            let color_index =
+                if is_sprite_opaque && (!sprite_behind_background || !is_background_opaque) {
+                    sprite_color_index.unwrap()
+                } else if is_background_opaque {
+                    background_color_index
+                } else if is_sprite_opaque && sprite_behind_background {
+                    sprite_color_index.unwrap()
                 } else {
-                    None
-                },
-            )
-            .unwrap_or(PPU_BLACK_INDEX);
+                    background_color_index
+                };
+
+            self.staging_buffer
+                [Point2::new(scanline_position_x, self.state.cycle_counter.y).cast()] = color_index;
 
             if let Some((sprite, _)) = potential_sprite
                 && sprite.index == 0
-                && background_color_bits != 0
+                && is_background_opaque
+                && is_sprite_opaque
                 && scanline_position_x != 255
-                && self.state.oam.rendering_enabled
-                && self.state.background.rendering_enabled
-                && (self.state.show_background_leftmost_pixels || scanline_position_x >= 8)
-                && (self.state.oam.show_sprites_leftmost_pixels || scanline_position_x >= 8)
             {
                 self.state.oam.sprite_zero_hit = true;
             }
-
-            let point = Point2::new(scanline_position_x, self.state.cycle_counter.y);
-
-            self.staging_buffer[point.cast()] = color_index;
 
             self.state
                 .drive_background_pipeline::<R>(ppu_address_space, self.timestamp);
@@ -212,5 +186,42 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
             self.state
                 .drive_background_pipeline::<R>(ppu_address_space, self.timestamp);
         }
+    }
+
+    fn fetch_potential_sprite(
+        &mut self,
+        scanline_position_x: u16,
+    ) -> Option<(CurrentlyRenderingSprite, u8)> {
+        self.state
+            .oam
+            .currently_rendering_sprites
+            .iter()
+            .rev()
+            .copied()
+            .find_map(|sprite| {
+                let in_sprite_position =
+                    scanline_position_x.checked_sub(u16::from(sprite.oam.position.x))?;
+
+                if in_sprite_position < 8 {
+                    let in_sprite_position = if !sprite.oam.flip.x {
+                        in_sprite_position
+                    } else {
+                        7 - in_sprite_position
+                    };
+
+                    let low = (sprite.pattern_table_low >> (7 - in_sprite_position)) & 1;
+                    let high = (sprite.pattern_table_high >> (7 - in_sprite_position)) & 1;
+
+                    let color_index = (high << 1) | low;
+
+                    if color_index != 0 {
+                        Some((sprite, color_index))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
     }
 }
