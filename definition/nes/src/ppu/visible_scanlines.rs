@@ -46,7 +46,9 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
             let low = (self.state.background.pattern_low_shift >> bit_position) & 1;
 
             let attribute = (self.state.background.attribute_shift
-                >> (30 - self.state.background.tile_pixel * 2))
+                >> (30
+                    - (self.state.background.fine_x_scroll + self.state.background.tile_pixel)
+                        * 2))
                 & 0b11;
 
             self.state.background.tile_pixel += 1;
