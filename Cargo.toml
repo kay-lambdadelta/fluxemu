@@ -29,7 +29,7 @@ fluxemu-program = { path = "lib/program" }
 fluxemu-range = { path = "lib/range" }
 fluxemu-runtime = { path = "lib/runtime" }
 heapless = { version = "0.9", features = ["serde"] }
-indexmap = { version = "2.13", features = ["serde"] }
+indexmap = { version = "2.14", features = ["serde"] }
 itertools = "0.14"
 nalgebra = { version = "0.34", features = [
   "convert-bytemuck",
@@ -57,7 +57,7 @@ thiserror = "2.0"
 time = "0.3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-uuid = { version = "1.22", features = ["serde", "v4"] }
+uuid = { version = "1.23", features = ["serde", "v4"] }
 versions = "7.0"
 wgpu = "29.0"
 
