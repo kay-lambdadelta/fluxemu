@@ -212,7 +212,7 @@ impl<'a> ComponentRegistry<'a> {
 
                 // Reborrow everything
                 local_component_store_guard = self.runtime.local_component_store().borrow_mut();
-                handle = self.mitigate_component(id, &mut local_component_store_guard);
+                handle = local_component_store_guard.get_slot(id).as_mut().unwrap();
 
                 // Put back the component and its timestamp
                 handle.component = Some(component);
@@ -276,11 +276,11 @@ impl<'a> ComponentRegistry<'a> {
                     .insert_sync(id, handle)
                     .expect("Component shadowed by another component");
 
-                let (_, threads_waiting) = self
-                    .data
-                    .threads_awaiting_component
-                    .remove_sync(&id)
-                    .unwrap();
+                let Some((_, threads_waiting)) =
+                    self.data.threads_awaiting_component.remove_sync(&id)
+                else {
+                    continue;
+                };
 
                 // Wake those threads up
                 for (_, thread) in threads_waiting {
