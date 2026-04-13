@@ -42,7 +42,7 @@ impl<'a> AddressSpace<'a> {
 
                     self.runtime
                         .registry()
-                        .interact_dyn_mut(
+                        .interact_dyn(
                             *component,
                             time,
                             #[inline]
@@ -101,7 +101,7 @@ impl<'a> AddressSpace<'a> {
 
                         self.runtime
                             .registry()
-                            .interact_dyn_mut(
+                            .interact_dyn(
                                 *component,
                                 time,
                                 #[inline]

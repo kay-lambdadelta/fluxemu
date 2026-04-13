@@ -80,9 +80,9 @@ impl AudioRuntime for CpalAudioRuntime {
                             for audio_stream in runtime_guard.audio_outputs() {
                                 runtime_guard
                                     .registry()
-                                    .interact_dyn_mut(
+                                    .interact_dyn(
                                         audio_stream.parent().unwrap(),
-                                        runtime_guard.now(),
+                                        runtime_guard.safe_advance_timestamp(),
                                         |component| {
                                             let audio_source =
                                                 component.get_audio_channel(audio_stream.name());

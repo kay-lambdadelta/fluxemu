@@ -9,7 +9,6 @@ harness = false
 name = "bench"
 
 [dependencies]
-bytes = { workspace = true }
 fluxemu-program = { workspace = true }
 fluxemu-range = { workspace = true }
 fluxemu-runtime = { workspace = true }

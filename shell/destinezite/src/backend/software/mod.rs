@@ -75,7 +75,7 @@ impl GraphicsRuntime for SoftwareGraphicsRuntime {
                 // Ensure we are at least on this frame for this component
                 runtime_guard.registry().interact_dyn(
                     display_path.parent().unwrap(),
-                    runtime_guard.now(),
+                    runtime_guard.safe_advance_timestamp(),
                     |_| {},
                 );
 

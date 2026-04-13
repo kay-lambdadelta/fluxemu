@@ -45,7 +45,7 @@ impl Component for Apu {
     }
 
     fn memory_read(
-        &self,
+        &mut self,
         address: Address,
         _address_space: AddressSpaceId,
         _avoid_side_effects: bool,

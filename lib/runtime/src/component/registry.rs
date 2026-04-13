@@ -1,42 +1,65 @@
-use std::{any::Any, collections::HashMap, fmt::Debug, thread::Thread};
+use std::{
+    any::Any,
+    collections::HashMap,
+    fmt::Debug,
+    ops::DerefMut,
+    thread::{Thread, ThreadId},
+};
 
 use rustc_hash::FxBuildHasher;
 
 use crate::{
     RuntimeApi,
-    component::{Component, ComponentId, handle::ComponentHandle},
+    component::{Component, ComponentId, ComponentVersion},
     path::ComponentPath,
-    scheduler::Period,
+    scheduler::{Period, SynchronizationContext},
 };
 
-struct ComponentInfo {
-    component: Option<ComponentHandle>,
-    threads_awaiting: Vec<Thread>,
-}
-
-impl Debug for ComponentInfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ComponentInfo").finish()
-    }
+#[derive(Debug)]
+pub(crate) struct ComponentHandle {
+    current_timestamp: Period,
+    synchronize: bool,
+    #[allow(unused)]
+    save_version: Option<ComponentVersion>,
+    #[allow(unused)]
+    snapshot_version: Option<ComponentVersion>,
+    component: Option<Box<dyn Component>>,
 }
 
 #[derive(Debug, Default)]
 /// The store for components
 pub(crate) struct ComponentRegistryData {
-    components: scc::HashMap<ComponentId, ComponentInfo, FxBuildHasher>,
+    global_component_store: scc::HashMap<ComponentId, ComponentHandle, FxBuildHasher>,
+    threads_awaiting_component: scc::HashMap<ComponentId, HashMap<ThreadId, Thread>, FxBuildHasher>,
+
     path2id: HashMap<ComponentPath, ComponentId, FxBuildHasher>,
+    next_component_id: u32,
 }
 
 impl ComponentRegistryData {
-    pub(crate) fn insert_component(&mut self, path: ComponentPath, component: ComponentHandle) {
-        let id = ComponentId::new();
+    pub(crate) fn insert_component<C: Component>(
+        &mut self,
+        path: ComponentPath,
+        save_version: Option<ComponentVersion>,
+        snapshot_version: Option<ComponentVersion>,
+        synchronize: bool,
+        component: C,
+    ) {
+        let id = ComponentId(self.next_component_id);
+        self.next_component_id = self
+            .next_component_id
+            .checked_add(1)
+            .expect("Too many components");
 
-        self.components
+        self.global_component_store
             .insert_sync(
                 id,
-                ComponentInfo {
-                    component: Some(component),
-                    threads_awaiting: Vec::default(),
+                ComponentHandle {
+                    current_timestamp: Period::default(),
+                    synchronize,
+                    save_version,
+                    snapshot_version,
+                    component: Some(Box::new(component)),
                 },
             )
             .unwrap_or_else(|_| {
@@ -58,69 +81,61 @@ impl<'a> ComponentRegistry<'a> {
         Self { runtime, data }
     }
 
-    /// Release all components currently available for releasing
-    pub(crate) fn unmitigate_components(&self, local_component_store: &mut LocalComponentStore) {
-        for (id, handle) in local_component_store.drain() {
-            // Fetch info
-            let mut component_info = self.data.components.get_sync(&id).unwrap();
-
-            // Put the component back
-            component_info.component = Some(handle);
-
-            // Get the threads that are waiting
-            let threads_awaiting = std::mem::take(&mut component_info.threads_awaiting);
-
-            // Unlock
-            drop(component_info);
-
-            // Wake those threads up
-            for thread in threads_awaiting {
-                thread.unpark();
-            }
-        }
-    }
-
     #[inline]
-    fn mitigate_component(&self, id: ComponentId) -> ComponentHandle {
-        let mut local_component_store_guard = self.runtime.local_component_store().borrow_mut();
-        let component_handle = local_component_store_guard.get_slot(id).take();
-        drop(local_component_store_guard);
+    fn mitigate_component<'b>(
+        &self,
+        id: ComponentId,
+        local_component_store: &'b mut LocalComponentStore,
+    ) -> &'b mut ComponentHandle {
+        if local_component_store.get_slot(id).is_some() {
+            let component_handle = local_component_store.get_slot(id);
 
-        if let Some(component_handle) = component_handle {
-            return component_handle;
+            component_handle.as_mut().unwrap()
+        } else {
+            self.mitigate_from_global(id, local_component_store)
         }
-
-        self.mitigate_from_global(id)
     }
 
     #[cold]
-    fn mitigate_from_global(&self, id: ComponentId) -> ComponentHandle {
+    fn mitigate_from_global<'b>(
+        &self,
+        id: ComponentId,
+        local_component_store: &'b mut LocalComponentStore,
+    ) -> &'b mut ComponentHandle {
         let thread = std::thread::current();
 
         loop {
-            let mut component_info_guard = self.data.components.get_sync(&id).unwrap();
-            let component_handle = component_info_guard.component.take();
+            let Some((_, handle)) = self.data.global_component_store.remove_sync(&id) else {
+                // Insert thread token
+                self.data
+                    .threads_awaiting_component
+                    .entry_sync(id)
+                    .or_default()
+                    .entry(thread.id())
+                    .or_insert(thread.clone());
 
-            let Some(component_handle) = component_handle else {
-                component_info_guard.threads_awaiting.push(thread.clone());
-                drop(component_info_guard);
-
-                let mut local_component_store_guard =
-                    self.runtime.local_component_store().borrow_mut();
-
-                // Give components back so others can access them
-                self.unmitigate_components(&mut local_component_store_guard);
-                drop(local_component_store_guard);
+                // Give components back so others can potentially access them
+                self.unmitigate_all_components(local_component_store);
 
                 // Await for that component to potentially become available
                 std::thread::park();
 
-                // Try again
+                // Try again until we can acquire that component
                 continue;
             };
-            drop(component_info_guard);
 
-            return component_handle;
+            let slot = local_component_store.get_slot(id);
+            *slot = Some(handle);
+
+            // Clean up
+            self.data
+                .threads_awaiting_component
+                .entry_sync(id)
+                .or_default()
+                .get_mut()
+                .remove(&thread.id());
+
+            return slot.as_mut().unwrap();
         }
     }
 
@@ -129,54 +144,24 @@ impl<'a> ComponentRegistry<'a> {
         &self,
         path: &ComponentPath,
         time: Period,
-        callback: impl FnOnce(&C) -> T,
-    ) -> Option<T> {
-        self.interact_dyn(path, time, |component| {
-            let component = (component as &dyn Any).downcast_ref::<C>().unwrap();
-            callback(component)
-        })
-    }
-
-    #[inline]
-    pub fn interact_mut<C: Component, T>(
-        &self,
-        path: &ComponentPath,
-        time: Period,
         callback: impl FnOnce(&mut C) -> T,
     ) -> Option<T> {
-        self.interact_dyn_mut(path, time, |component| {
-            let component = (component as &mut dyn Any).downcast_mut::<C>().unwrap();
-            callback(component)
-        })
+        self.interact_dyn(
+            path,
+            time,
+            #[inline]
+            |component| {
+                let component = (component as &mut dyn Any).downcast_mut::<C>().unwrap();
+                callback(component)
+            },
+        )
     }
 
     #[inline]
     pub fn interact_dyn<'b, T>(
         &'b self,
         id: impl Into<ComponentIdentifier<'b>>,
-        time: Period,
-        callback: impl FnOnce(&dyn Component) -> T + 'b,
-    ) -> Option<T> {
-        let id = match id.into() {
-            ComponentIdentifier::Id(id) => id,
-            ComponentIdentifier::Path(path) => self.data.path2id.get(path).copied()?,
-        };
-
-        let mut component_handle = self.mitigate_component(id);
-        let item = component_handle.interact(self.runtime, time, callback);
-
-        let mut local_component_store_guard = self.runtime.local_component_store().borrow_mut();
-        let entry = local_component_store_guard.get_slot(id);
-        *entry = Some(component_handle);
-
-        Some(item)
-    }
-
-    #[inline]
-    pub fn interact_dyn_mut<'b, T>(
-        &'b self,
-        id: impl Into<ComponentIdentifier<'b>>,
-        time: Period,
+        target_timestamp: Period,
         callback: impl FnOnce(&mut dyn Component) -> T + 'b,
     ) -> Option<T> {
         let id = match id.into() {
@@ -184,14 +169,146 @@ impl<'a> ComponentRegistry<'a> {
             ComponentIdentifier::Path(path) => self.data.path2id.get(path).copied()?,
         };
 
-        let mut component_handle = self.mitigate_component(id);
-        let item = component_handle.interact_mut(self.runtime, time, callback);
-
         let mut local_component_store_guard = self.runtime.local_component_store().borrow_mut();
-        let entry = local_component_store_guard.get_slot(id);
-        *entry = Some(component_handle);
+        let mut handle = self.mitigate_component(id, &mut local_component_store_guard);
+
+        let mut last_attempted_allocation = None;
+
+        if handle.synchronize {
+            while let Some(mut delta) = target_timestamp.checked_sub(handle.current_timestamp) {
+                // Copy out timestamp
+                let mut current_timestamp = handle.current_timestamp;
+
+                // Move out component
+                let mut component = handle.component.take().unwrap();
+
+                // Check to see if the component needs work
+                if delta == Period::ZERO || !component.needs_work(delta) {
+                    handle.component = Some(component);
+
+                    break;
+                }
+
+                // Drop guard and synchronize
+                drop(local_component_store_guard);
+                let context = SynchronizationContext {
+                    runtime: self.runtime,
+                    current_timestamp: &mut current_timestamp,
+                    target_timestamp,
+                    last_attempted_allocation: &mut last_attempted_allocation,
+                };
+                component.synchronize(context);
+
+                // Prevent bad synchronization logic from spinning forever
+                let last_attempted_allocation = last_attempted_allocation.take().expect(
+                    "Synchronization attempt for component did not attempt to allocate time",
+                );
+
+                // Update delta
+                delta = target_timestamp - current_timestamp;
+
+                // Check if the component needs more work
+                let needs_work = component.needs_work(delta);
+
+                // Reborrow everything
+                local_component_store_guard = self.runtime.local_component_store().borrow_mut();
+                handle = self.mitigate_component(id, &mut local_component_store_guard);
+
+                // Put back the component and its timestamp
+                handle.component = Some(component);
+                handle.current_timestamp = current_timestamp;
+
+                // If the component yielded and there is still work, check events and try to run it again
+                if needs_work {
+                    // Calculate when the events need to be consumed in the future
+                    let event_hazard_timestamp =
+                        handle.current_timestamp + last_attempted_allocation;
+
+                    // Drop guard
+                    drop(local_component_store_guard);
+
+                    // Try to consume any events that blocked this time allocation
+                    self.runtime
+                        .machine()
+                        .scheduler
+                        .event_manager
+                        .consume(*self, event_hazard_timestamp);
+
+                    // Reborrow everything
+                    local_component_store_guard = self.runtime.local_component_store().borrow_mut();
+                    handle = self.mitigate_component(id, &mut local_component_store_guard);
+                } else {
+                    break;
+                }
+            }
+        } else {
+            handle.current_timestamp = target_timestamp;
+        }
+
+        let handle = self.mitigate_component(id, &mut local_component_store_guard);
+        let mut component = handle.component.take().unwrap();
+        drop(local_component_store_guard);
+
+        let item = callback(component.deref_mut());
+
+        // Put component back
+        let mut local_component_store_guard = self.runtime.local_component_store().borrow_mut();
+        let slot = local_component_store_guard.get_slot(id);
+        slot.as_mut().unwrap().component = Some(component);
 
         Some(item)
+    }
+
+    /// Release all components currently available for releasing
+    pub(crate) fn unmitigate_all_components(
+        &self,
+        local_component_store: &mut LocalComponentStore,
+    ) {
+        for (id, slot) in local_component_store.iter_mut() {
+            // Check if the slot is occupied and the handle isn't borrowed
+            if let Some(handle) = slot
+                && handle.component.is_some()
+            {
+                let handle = slot.take().unwrap();
+
+                self.data
+                    .global_component_store
+                    .insert_sync(id, handle)
+                    .expect("Component shadowed by another component");
+
+                let (_, threads_waiting) = self
+                    .data
+                    .threads_awaiting_component
+                    .remove_sync(&id)
+                    .unwrap();
+
+                // Wake those threads up
+                for (_, thread) in threads_waiting {
+                    thread.unpark();
+                }
+            }
+        }
+    }
+
+    /// Get the current timestamp of a component
+    ///
+    /// This may be before the current time if that component is currently synchronizing
+    ///
+    /// It is recommended this call is only used for fetching the current timestamp of your component, outside of any `synchronize` path of
+    /// that component
+    pub fn current_timestamp<'b>(
+        &'b self,
+        id: impl Into<ComponentIdentifier<'b>>,
+    ) -> Option<Period> {
+        let id = match id.into() {
+            ComponentIdentifier::Id(id) => id,
+            ComponentIdentifier::Path(path) => self.data.path2id.get(path).copied()?,
+        };
+
+        let mut local_component_store_guard = self.runtime.local_component_store().borrow_mut();
+        let handle = self.mitigate_component(id, &mut local_component_store_guard);
+
+        Some(handle.current_timestamp)
     }
 
     pub(crate) fn path_to_id(&self, path: &ComponentPath) -> Option<ComponentId> {
@@ -199,7 +316,6 @@ impl<'a> ComponentRegistry<'a> {
     }
 }
 
-#[doc(hidden)]
 pub enum ComponentIdentifier<'a> {
     Id(ComponentId),
     Path(&'a ComponentPath),
@@ -222,7 +338,7 @@ pub(crate) struct LocalComponentStore(Vec<Option<ComponentHandle>>);
 
 impl LocalComponentStore {
     #[inline]
-    pub fn get_slot(&mut self, id: ComponentId) -> &mut Option<ComponentHandle> {
+    fn get_slot(&mut self, id: ComponentId) -> &mut Option<ComponentHandle> {
         let id = id.0 as usize;
 
         if id >= self.0.len() {
@@ -232,10 +348,11 @@ impl LocalComponentStore {
         &mut self.0[id]
     }
 
-    pub fn drain(&mut self) -> impl Iterator<Item = (ComponentId, ComponentHandle)> {
+    #[inline]
+    fn iter_mut(&mut self) -> impl Iterator<Item = (ComponentId, &mut Option<ComponentHandle>)> {
         self.0
-            .drain(..)
+            .iter_mut()
             .enumerate()
-            .filter_map(|(id, component_handle)| Some((ComponentId(id as u32), component_handle?)))
+            .map(|(id, component_handle)| (ComponentId(id as u32), component_handle))
     }
 }

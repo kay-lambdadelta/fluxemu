@@ -1,10 +1,11 @@
 use std::marker::PhantomData;
 
 pub use cartridge::ines::INes;
-use cartridge::{CartConfig, ines::TimingMode};
+use cartridge::{CartParams, ines::TimingMode};
 use fluxemu_definition_memory::{InitialContents, MemoryConfig};
 use fluxemu_definition_mos6502::{Mos6502Config, Mos6502Kind};
 use fluxemu_runtime::{
+    ComponentPath,
     machine::builder::{MachineBuilder, MachineFactory, RomRequirement},
     memory::AddressSpaceId,
     platform::Platform,
@@ -15,7 +16,7 @@ use rangemap::RangeInclusiveMap;
 use crate::{
     apu::ApuConfig,
     cartridge::{
-        ines::{INesVersion, Mirroring, RomType, expansion_device::DefaultExpansionDevice},
+        ines::{INesVersion, NametableMirroring, expansion_device::DefaultExpansionDevice},
         mapper::{mmc1::Mmc1Config, nrom::NRomConfig},
     },
     gamepad::controller::NesControllerConfig,
@@ -108,21 +109,32 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> MachineFactory<P>
             .unwrap();
 
         let header = INes::parse(rom[0..16].try_into().unwrap()).unwrap();
-        let mut machine = setup_ppu_nametables(machine, ppu_address_space, &header);
+        if header.trainer {
+            tracing::warn!("This ROM contains a trainer, which is not emulated at this time");
+        }
+        let (mut machine, nametables) = setup_ppu_nametables(machine, ppu_address_space, &header);
+
+        let prg_rom = header.extract_prg_rom(&rom);
+        let chr_rom = header.extract_chr_rom(&rom);
+
+        let cart_config = CartParams {
+            cpu_address_space,
+            ppu_address_space,
+            chr_rom,
+            prg_rom,
+            chr_ram_size: header.chr_ram_size,
+            chr_nvram_size: header.chr_nvram_size,
+            nametables,
+        };
 
         #[allow(clippy::zero_prefixed_literal)]
         match header.mapper {
             000 => {
                 machine = machine
                     .component(
-                        "cartridge",
+                        "nrom_cartridge",
                         NRomConfig {
-                            config: CartConfig {
-                                cpu_address_space,
-                                ppu_address_space,
-                                chr: rom.slice(header.roms[&RomType::Chr].clone()),
-                                prg: rom.slice(header.roms[&RomType::Prg].clone()),
-                            },
+                            config: cart_config,
                         },
                     )
                     .0;
@@ -130,20 +142,15 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> MachineFactory<P>
             001 | 155 => {
                 machine = machine
                     .component(
-                        "cartridge",
+                        "mmc1_cartridge",
                         Mmc1Config {
-                            config: CartConfig {
-                                cpu_address_space,
-                                ppu_address_space,
-                                chr: rom.slice(header.roms[&RomType::Chr].clone()),
-                                prg: rom.slice(header.roms[&RomType::Prg].clone()),
-                            },
+                            params: cart_config,
                         },
                     )
                     .0;
             }
             _ => {
-                unreachable!()
+                unimplemented!("Mapper {}", header.mapper)
             }
         };
 
@@ -238,7 +245,7 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> MachineFactory<P>
                 let processor_frequency = Ntsc::master_clock() / 12;
 
                 let (machine, processor) = machine.component(
-                    "mos_6502",
+                    "cpu",
                     Mos6502Config {
                         frequency: processor_frequency,
                         assigned_address_space: cpu_address_space,
@@ -267,14 +274,17 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> MachineFactory<P>
     }
 }
 
+// Note that these are the *default* mapping for this particular cart
+//
+// The actual cart hardware is free to and often will immediately overwrite this
 fn setup_ppu_nametables<'a, P: Platform>(
     machine: MachineBuilder<'a, P>,
     ppu_address_space: AddressSpaceId,
     ines: &INes,
-) -> MachineBuilder<'a, P> {
+) -> (MachineBuilder<'a, P>, [ComponentPath; 2]) {
     match ines.mirroring {
-        Mirroring::Vertical => {
-            let (machine, _) = machine.component(
+        NametableMirroring::Vertical => {
+            let (machine, nametable_0) = machine.component(
                 "nametable-0",
                 MemoryConfig {
                     assigned_address_space: ppu_address_space,
@@ -289,7 +299,7 @@ fn setup_ppu_nametables<'a, P: Platform>(
                 },
             );
 
-            let (machine, _) = machine.component(
+            let (machine, nametable_1) = machine.component(
                 "nametable-1",
                 MemoryConfig {
                     assigned_address_space: ppu_address_space,
@@ -304,7 +314,7 @@ fn setup_ppu_nametables<'a, P: Platform>(
                 },
             );
 
-            machine
+            let machine = machine
                 .memory_map_mirror(
                     ppu_address_space,
                     NAMETABLE_ADDRESSES[2].clone(),
@@ -314,10 +324,12 @@ fn setup_ppu_nametables<'a, P: Platform>(
                     ppu_address_space,
                     NAMETABLE_ADDRESSES[3].clone(),
                     NAMETABLE_ADDRESSES[1].clone(),
-                )
+                );
+
+            (machine, [nametable_0, nametable_1])
         }
-        Mirroring::Horizontal => {
-            let (machine, _) = machine.component(
+        NametableMirroring::Horizontal => {
+            let (machine, nametable_0) = machine.component(
                 "nametable-0",
                 MemoryConfig {
                     assigned_address_space: ppu_address_space,
@@ -332,8 +344,8 @@ fn setup_ppu_nametables<'a, P: Platform>(
                 },
             );
 
-            let (machine, _) = machine.component(
-                "nametable-2",
+            let (machine, nametable_1) = machine.component(
+                "nametable-1",
                 MemoryConfig {
                     assigned_address_space: ppu_address_space,
                     assigned_range: NAMETABLE_ADDRESSES[2].clone(),
@@ -347,7 +359,7 @@ fn setup_ppu_nametables<'a, P: Platform>(
                 },
             );
 
-            machine
+            let machine = machine
                 .memory_map_mirror(
                     ppu_address_space,
                     NAMETABLE_ADDRESSES[1].clone(),
@@ -357,7 +369,9 @@ fn setup_ppu_nametables<'a, P: Platform>(
                     ppu_address_space,
                     NAMETABLE_ADDRESSES[3].clone(),
                     NAMETABLE_ADDRESSES[2].clone(),
-                )
+                );
+
+            (machine, [nametable_0, nametable_1])
         }
     }
 }

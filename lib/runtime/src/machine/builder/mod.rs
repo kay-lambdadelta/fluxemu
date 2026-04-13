@@ -4,7 +4,6 @@ use crate::{
     component::{
         Component,
         config::{LateContext, LateInitializedData},
-        handle::ComponentHandle,
     },
     event::{Event, EventMode},
     graphics::{GraphicsApi, GraphicsRequirements},
@@ -43,10 +42,7 @@ pub enum RomRequirement {
 
 #[allow(type_alias_bounds)]
 type ComponentConstructor<'a, P: Platform> = Box<
-    dyn for<'b> FnOnce(&'b mut MachineBuilder<'a, P>) -> (ComponentHandle, ComponentData<'a, P>)
-        + Sync
-        + Send
-        + 'a,
+    dyn for<'b> FnOnce(&'b mut MachineBuilder<'a, P>) -> ComponentData<'a, P> + Sync + Send + 'a,
 >;
 
 enum MachineBuilderCommand<'a, P: Platform> {
@@ -105,7 +101,7 @@ impl<P: Platform> SealedMachineBuilder<P> {
         for (path, initializer) in self.component_late_initializers.drain() {
             runtime_guard
                 .registry()
-                .interact_dyn_mut(&path, Period::ZERO, |mut component| {
+                .interact_dyn(&path, Period::ZERO, |mut component| {
                     let provided_data = initializer(component.deref_mut(), &late_initialized_data);
 
                     for (framebuffer_name, framebuffer) in provided_data.framebuffers {

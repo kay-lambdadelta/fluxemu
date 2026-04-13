@@ -1,8 +1,4 @@
-use std::{
-    fmt::Debug,
-    ops::RangeInclusive,
-    sync::atomic::{AtomicU8, Ordering},
-};
+use std::{fmt::Debug, ops::RangeInclusive};
 
 use fluxemu_definition_memory::{InitialContents, MemoryConfig};
 use fluxemu_range::ContiguousRange;
@@ -48,10 +44,11 @@ struct TimerConfiguration {
 pub struct Mos6532Riot {
     swacnt: bool,
     swbcnt: bool,
-    instat: AtomicU8,
+    instat: u8,
     timer_configuration: Option<TimerConfiguration>,
     timestamp: Period,
     config: Mos6532RiotConfig,
+    my_path: ComponentPath,
 }
 
 impl Mos6532Riot {
@@ -68,7 +65,7 @@ impl Component for Mos6532Riot {
     type Event = ();
 
     fn memory_read(
-        &self,
+        &mut self,
         address: Address,
         _address_space: AddressSpaceId,
         _avoid_side_effects: bool,
@@ -94,7 +91,7 @@ impl Component for Mos6532Riot {
                 }
                 Register::Intim => {
                     *buffer_section = self.timer_configuration.map(|t| t.timer).unwrap_or(0);
-                    self.instat.fetch_and(0b0111_1111, Ordering::AcqRel);
+                    self.instat &= 0b0111_1111;
                 }
                 Register::Instat => todo!(),
                 _ => {
@@ -145,15 +142,20 @@ impl Component for Mos6532Riot {
                                 write: true,
                             }
                         };
+                        let current_timestamp =
+                            runtime.registry().current_timestamp(&self.my_path).unwrap();
 
                         runtime
                             .address_space(self.config.assigned_address_space)
                             .unwrap()
-                            .remap([MemoryRemappingCommand::Map {
-                                range: address..=address,
-                                target: MapTarget::Component(swacnt.clone()),
-                                permissions,
-                            }]);
+                            .remap(
+                                current_timestamp,
+                                [MemoryRemappingCommand::Map {
+                                    range: address..=address,
+                                    target: MapTarget::Component(swacnt.clone()),
+                                    permissions,
+                                }],
+                            );
                     }
                 }
                 Register::Swchb => {
@@ -178,14 +180,20 @@ impl Component for Mos6532Riot {
                             }
                         };
 
+                        let current_timestamp =
+                            runtime.registry().current_timestamp(&self.my_path).unwrap();
+
                         runtime
                             .address_space(self.config.assigned_address_space)
                             .unwrap()
-                            .remap([MemoryRemappingCommand::Map {
-                                range: address..=address,
-                                target: MapTarget::Component(swbcnt.clone()),
-                                permissions,
-                            }]);
+                            .remap(
+                                current_timestamp,
+                                [MemoryRemappingCommand::Map {
+                                    range: address..=address,
+                                    target: MapTarget::Component(swbcnt.clone()),
+                                    permissions,
+                                }],
+                            );
                     }
                 }
                 Register::Intim => {
@@ -241,7 +249,7 @@ impl Component for Mos6532Riot {
                 } else {
                     config.divider = 1;
                     config.next_timestamp += self.config.frequency.recip();
-                    self.instat.fetch_or(0b1000_0000, Ordering::AcqRel);
+                    self.instat |= 0b1000_0000;
                 }
 
                 config.timer = new_timer;
@@ -288,6 +296,8 @@ impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
             .memory_map_component_read(self.assigned_address_space, instat..=instat)
             .scheduler_participation(Some(SchedulerParticipation::OnAccess));
 
+        let my_path = component_builder.path().clone();
+
         component_builder.component(
             "ram",
             MemoryConfig {
@@ -306,10 +316,11 @@ impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
         Ok(Self::Component {
             swacnt: false,
             swbcnt: false,
-            instat: AtomicU8::new(0),
+            instat: 0,
             config: self,
             timer_configuration: None,
             timestamp: Period::default(),
+            my_path,
         })
     }
 }

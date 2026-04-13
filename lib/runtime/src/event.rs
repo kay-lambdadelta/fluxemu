@@ -1,11 +1,3 @@
-use dyn_clone::DynClone;
-use serde::{Deserialize, Serialize};
-
-use crate::{
-    ComponentPath, RuntimeApi,
-    component::{Component, handle::ComponentHandle},
-    scheduler::{Frequency, Period},
-};
 use std::{
     any::Any,
     cmp::Reverse,
@@ -15,6 +7,15 @@ use std::{
         Mutex,
         atomic::{AtomicBool, Ordering},
     },
+};
+
+use dyn_clone::DynClone;
+use serde::{Deserialize, Serialize};
+
+use crate::{
+    ComponentPath,
+    component::{Component, ComponentRegistry},
+    scheduler::{Frequency, Period},
 };
 
 /// Supertrait aggregate type for events
@@ -46,12 +47,7 @@ impl EventManager {
     }
 
     #[inline]
-    pub fn consume(
-        &self,
-        active_component: &mut ComponentHandle,
-        runtime: &RuntimeApi,
-        upto: Period,
-    ) {
+    pub fn consume(&self, registry: ComponentRegistry<'_>, upto: Period) {
         let mut heap_guard = self.heap.lock().unwrap();
 
         while let Some(event) = heap_guard.peek() {
@@ -78,18 +74,9 @@ impl EventManager {
             // Drop to prevent deadlocks due to reentrancy
             drop(heap_guard);
 
-            // Shortcut to the actively synchronizing component if relevant
-            if active_component.path() == &event.path {
-                active_component.interact_mut(runtime, event.time.0, |component| {
-                    component.handle_event(event.data);
-                })
-            } else {
-                runtime
-                    .registry()
-                    .interact_dyn_mut(&event.path, event.time.0, |component| {
-                        component.handle_event(event.data);
-                    });
-            }
+            registry.interact_dyn(&event.path, event.time.0, |component| {
+                component.handle_event(event.data);
+            });
 
             // Relock for the loop
             heap_guard = self.heap.lock().unwrap();

@@ -1,9 +1,8 @@
 use std::hint::black_box;
 
-use bytes::Bytes;
 use criterion::{Criterion, criterion_group, criterion_main};
 use fluxemu_definition_memory::{InitialContents, MemoryConfig};
-use fluxemu_runtime::machine::Machine;
+use fluxemu_runtime::{machine::Machine, scheduler::Period};
 use rangemap::RangeInclusiveMap;
 
 fn criterion_benchmark(c: &mut Criterion) {
@@ -26,16 +25,12 @@ fn criterion_benchmark(c: &mut Criterion) {
         },
     );
 
-    let (machine, buffer_path) = machine.memory_register_buffer(
-        address_space,
-        "rom-memory",
-        Bytes::from_owner(vec![0u8; 0x1000]),
-    );
     let machine = machine
-        .memory_map_buffer_read(address_space, 0x1000..=0x1fff, &buffer_path)
+        .memory_map_buffer_read(address_space, 0x1000..=0x1fff, vec![0u8; 0x1000])
         .seal()
         .unwrap()
         .build(());
+
     let runtime_guard = machine.enter_runtime();
 
     let mut address_space = runtime_guard.address_space(address_space).unwrap();
@@ -44,7 +39,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u8>(black_box(0x0000), runtime_guard.now())
+                    .read_le_value::<u8>(black_box(0x0000), Period::default())
                     .unwrap(),
             );
         })
@@ -53,7 +48,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u16>(black_box(0x0000), runtime_guard.now())
+                    .read_le_value::<u16>(black_box(0x0000), Period::default())
                     .unwrap(),
             );
         })
@@ -62,7 +57,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u32>(black_box(0x0000), runtime_guard.now())
+                    .read_le_value::<u32>(black_box(0x0000), Period::default())
                     .unwrap(),
             );
         })
@@ -71,7 +66,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u64>(black_box(0x0000), runtime_guard.now())
+                    .read_le_value::<u64>(black_box(0x0000), Period::default())
                     .unwrap(),
             );
         })
@@ -81,7 +76,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u8>(black_box(0x1000), runtime_guard.now())
+                    .read_le_value::<u8>(black_box(0x1000), Period::default())
                     .unwrap(),
             );
         })
@@ -90,7 +85,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u16>(black_box(0x1000), runtime_guard.now())
+                    .read_le_value::<u16>(black_box(0x1000), Period::default())
                     .unwrap(),
             );
         })
@@ -99,7 +94,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u32>(black_box(0x1000), runtime_guard.now())
+                    .read_le_value::<u32>(black_box(0x1000), Period::default())
                     .unwrap(),
             );
         })
@@ -108,7 +103,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u64>(black_box(0x1000), runtime_guard.now())
+                    .read_le_value::<u64>(black_box(0x1000), Period::default())
                     .unwrap(),
             );
         })
@@ -117,28 +112,28 @@ fn criterion_benchmark(c: &mut Criterion) {
     group.bench_function("write_u8", |b| {
         b.iter(|| {
             address_space
-                .write_le_value::<u8>(black_box(0x0000), runtime_guard.now(), black_box(0))
+                .write_le_value::<u8>(black_box(0x0000), Period::default(), black_box(0))
                 .unwrap();
         })
     });
     group.bench_function("write_u16", |b| {
         b.iter(|| {
             address_space
-                .write_le_value::<u16>(black_box(0x0000), runtime_guard.now(), black_box(0))
+                .write_le_value::<u16>(black_box(0x0000), Period::default(), black_box(0))
                 .unwrap();
         })
     });
     group.bench_function("write_u32", |b| {
         b.iter(|| {
             address_space
-                .write_le_value::<u32>(black_box(0x0000), runtime_guard.now(), black_box(0))
+                .write_le_value::<u32>(black_box(0x0000), Period::default(), black_box(0))
                 .unwrap();
         })
     });
     group.bench_function("write_u64", |b| {
         b.iter(|| {
             address_space
-                .write_le_value::<u64>(black_box(0x0000), runtime_guard.now(), black_box(0))
+                .write_le_value::<u64>(black_box(0x0000), Period::default(), black_box(0))
                 .unwrap();
         })
     });

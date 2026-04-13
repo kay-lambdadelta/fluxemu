@@ -42,7 +42,7 @@ where
     /// All virtual gamepads inserted by components
     pub(crate) input_devices: HashMap<ResourcePath, Arc<LogicalInputDevice>, FxBuildHasher>,
     /// Component Registry
-    pub(crate) registry: ComponentRegistryData,
+    pub(crate) registry_data: ComponentRegistryData,
     /// All framebuffers this machine has
     pub(crate) framebuffers: HashMap<ResourcePath, Mutex<Box<dyn Any + Send + Sync>>>,
     /// All audio outputs this machine has
@@ -133,7 +133,7 @@ impl<'a> Drop for RuntimeGuard<'a> {
             if let Some(context) = runtime_context {
                 // Release all components
                 self.registry()
-                    .unmitigate_components(&mut context.local_component_store().borrow_mut());
+                    .unmitigate_all_components(&mut context.local_component_store().borrow_mut());
             } else {
                 unreachable!("Runtime exited without entering");
             }

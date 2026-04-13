@@ -127,7 +127,7 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
     type Event = ();
 
     fn memory_read(
-        &self,
+        &mut self,
         address: Address,
         _address_space: AddressSpaceId,
         _avoid_side_effects: bool,

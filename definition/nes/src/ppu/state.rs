@@ -1,5 +1,3 @@
-use std::sync::atomic::{AtomicBool, AtomicU8};
-
 use fluxemu_runtime::{memory::AddressSpace, scheduler::Period};
 use nalgebra::{Point2, Vector2};
 use serde::{Deserialize, Serialize};
@@ -19,11 +17,11 @@ use crate::ppu::{
 pub struct State {
     pub vblank_nmi_enabled: bool,
     pub greyscale: bool,
-    pub entered_vblank: AtomicBool,
+    pub entered_vblank: bool,
     /// NES documents tend to call this w
-    pub vram_address_pointer_write_phase: AtomicBool,
+    pub vram_address_pointer_write_phase: bool,
     pub vram_address_pointer_increment_amount: u8,
-    pub vram_read_buffer: AtomicU8,
+    pub vram_read_buffer: u8,
     pub color_emphasis: ColorEmphasis,
     pub cycle_counter: Point2<u16>,
     pub background_pipeline_state: BackgroundPipelineState,

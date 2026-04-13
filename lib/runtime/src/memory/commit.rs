@@ -1,67 +1,35 @@
 use std::ops::RangeInclusive;
 
-use bytes::Bytes;
 use fluxemu_range::{ContiguousRange, RangeIntersection};
 use itertools::Itertools;
 
 use crate::{
     component::ComponentRegistry,
-    memory::{Address, MappingEntry, MemoryMappingTable, PAGE_SIZE, Page, PageEntry, PageTarget},
-    path::{ComponentPath, ResourcePath},
+    memory::{
+        MappingEntry, MemoryMappingTable, PAGE_SIZE, Page, PageEntry, PageTarget, Permissions,
+    },
 };
 
-#[derive(Debug, Clone)]
-pub enum MapTarget {
-    Component(ComponentPath),
-    Memory(ResourcePath),
-    Mirror {
-        destination: RangeInclusive<Address>,
-    },
-}
-
-/// Command for how the memory access table should modify the memory map
-#[allow(missing_docs)]
-#[derive(Debug, Clone)]
-pub enum MemoryRemappingCommand {
-    /// Add a target to the memory map, or add a map to an existing one
-    Map {
-        range: RangeInclusive<Address>,
-        target: MapTarget,
-        permissions: Permissions,
-    },
-    /// Clear a memory range
-    Unmap {
-        range: RangeInclusive<Address>,
-        permissions: Permissions,
-    },
-    /// Register a buffer or another item
-    Register { path: ResourcePath, buffer: Bytes },
-}
-
-#[allow(missing_docs)]
-#[derive(Debug, Clone, Copy)]
-pub struct Permissions {
-    pub read: bool,
-    pub write: bool,
-}
-
 impl Permissions {
-    /// Instance of [Self] where everything is allowed
-    pub fn all() -> Self {
-        Self {
-            read: true,
-            write: true,
-        }
-    }
+    pub const ALL: Self = Permissions {
+        read: true,
+        write: true,
+    };
+
+    pub const READ: Self = Permissions {
+        read: true,
+        write: false,
+    };
+
+    pub const WRITE: Self = Permissions {
+        read: false,
+        write: true,
+    };
 }
 
 impl MemoryMappingTable {
     /// This function flattens and splits the memory map for faster lookups
-    pub(super) fn commit(
-        &mut self,
-        registry: ComponentRegistry<'_>,
-        resources: &scc::HashMap<ResourcePath, Bytes>,
-    ) {
+    pub(super) fn commit(&mut self, registry: ComponentRegistry<'_>) {
         for (page_index, page) in self.computed_table.iter_mut().enumerate() {
             let base = page_index * PAGE_SIZE;
             let end = base + PAGE_SIZE - 1;
@@ -123,9 +91,7 @@ impl MemoryMappingTable {
                                     MappingEntry::Mirror { .. } => {
                                         panic!("Recursive mirrors are not allowed");
                                     }
-                                    MappingEntry::Memory(resource_path) => {
-                                        let memory = resources.get_sync(resource_path).unwrap();
-
+                                    MappingEntry::Buffer(memory) => {
                                         let buffer_subrange = (destination_overlap.start()
                                             - destination_range.start())
                                             ..=(destination_overlap.end()
@@ -145,9 +111,7 @@ impl MemoryMappingTable {
 
                         entries
                     }
-                    MappingEntry::Memory(resource_path) => {
-                        let memory = resources.get_sync(resource_path).unwrap();
-
+                    MappingEntry::Buffer(memory) => {
                         assert_eq!(memory.len(), source_range.len());
 
                         vec![PageEntry {
@@ -169,7 +133,7 @@ impl MemoryMappingTable {
 }
 
 #[inline]
-fn merge_and_dedup_mirror_entries(right: &mut PageEntry, left: &mut PageEntry) -> bool {
+fn merge_and_dedup_mirror_entries(left: &mut PageEntry, right: &mut PageEntry) -> bool {
     if !left.range.is_adjacent(&right.range) {
         return false;
     }

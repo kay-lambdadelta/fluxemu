@@ -53,7 +53,7 @@ impl Component for NesController {
     }
 
     fn memory_read(
-        &self,
+        &mut self,
         _address: Address,
         _address_space: AddressSpaceId,
         avoid_side_effects: bool,

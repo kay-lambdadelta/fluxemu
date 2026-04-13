@@ -102,7 +102,7 @@ impl RuntimeApi {
 
     /// Obtain a handle to the registry
     pub fn registry(&self) -> ComponentRegistry<'_> {
-        ComponentRegistry::new(self, &self.machine.registry)
+        ComponentRegistry::new(self, &self.machine.registry_data)
     }
 
     /// Commit a framebuffer, giving access to the new frame to the frontend
@@ -146,8 +146,8 @@ impl RuntimeApi {
     }
 
     /// Get the last safe time to advance any component to
-    pub fn now(&self) -> Period {
-        self.machine.scheduler.now()
+    pub fn safe_advance_timestamp(&self) -> Period {
+        self.machine.scheduler.safe_advance_timestamp()
     }
 
     /// Retrieves the timestamp that the machine started with
@@ -183,13 +183,17 @@ impl RuntimeApi {
         let logical_input_device = self.machine.input_devices.get(path).unwrap();
 
         self.registry()
-            .interact_dyn_mut(path.parent().unwrap(), self.now(), |component| {
-                for (input_id, state) in inputs {
-                    logical_input_device.set_state(input_id, state);
+            .interact_dyn(
+                path.parent().unwrap(),
+                self.safe_advance_timestamp(),
+                |component| {
+                    for (input_id, state) in inputs {
+                        logical_input_device.set_state(input_id, state);
 
-                    component.handle_input(path.name(), input_id, state);
-                }
-            })
+                        component.handle_input(path.name(), input_id, state);
+                    }
+                },
+            )
             .unwrap();
     }
 }

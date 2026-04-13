@@ -1,5 +1,4 @@
 use std::{
-    borrow::Cow,
     collections::{HashMap, HashSet},
     marker::PhantomData,
     ops::RangeInclusive,
@@ -11,7 +10,7 @@ use bytes::Bytes;
 use fluxemu_program::{MachineId, ProgramManager, ProgramSpecification, RomId};
 
 use crate::{
-    component::{ComponentRegistryData, config::ComponentConfig, handle::ComponentHandle},
+    component::{ComponentRegistryData, config::ComponentConfig},
     graphics::GraphicsRequirements,
     machine::{
         Machine,
@@ -23,10 +22,10 @@ use crate::{
     memory::{
         Address, AddressSpaceData, AddressSpaceId, MapTarget, MemoryRemappingCommand, Permissions,
     },
-    path::{ComponentPath, ResourcePath},
+    path::ComponentPath,
     persistence::{SaveManager, SnapshotManager},
     platform::Platform,
-    scheduler::Scheduler,
+    scheduler::{Period, Scheduler},
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -52,8 +51,10 @@ where
     command_queue: Vec<MachineBuilderCommand<'a, P>>,
     /// Program we were opened with
     program_specification: Option<ProgramSpecification>,
-    // Next address space
+    /// Next address space
     next_address_space_id: AddressSpaceId,
+    /// Component registry
+    registry_data: ComponentRegistryData,
 }
 
 impl<'a, P: Platform> MachineBuilder<'a, P> {
@@ -73,6 +74,7 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
             program_specification,
             next_address_space_id: AddressSpaceId(0),
             command_queue: Vec::new(),
+            registry_data: ComponentRegistryData::default(),
         }
     }
 
@@ -135,7 +137,7 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
     ) -> MachineBuilderCommand<'a, P> {
         MachineBuilderCommand::CreateComponent {
             path: path.clone(),
-            constructor: Box::new(|machine_builder| {
+            constructor: Box::new(move |machine_builder| {
                 let mut component_data = ComponentData::new::<B>();
 
                 let component_builder = ComponentBuilder::<P, B::Component> {
@@ -149,15 +151,15 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
                     .build_component(component_builder)
                     .expect("Failed to build component");
 
-                let component_handle = ComponentHandle::new(
-                    path,
-                    component_data.scheduler_participation,
+                machine_builder.registry_data.insert_component(
+                    path.clone(),
                     component_data.save_version,
                     component_data.snapshot_version,
+                    component_data.scheduler_participation.is_some(),
                     component,
                 );
 
-                (component_handle, component_data)
+                component_data
             }),
         }
     }
@@ -221,10 +223,7 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
             command: MemoryRemappingCommand::Map {
                 range: source,
                 target: MapTarget::Mirror { destination },
-                permissions: Permissions {
-                    read: true,
-                    write: false,
-                },
+                permissions: Permissions::READ,
             },
         });
 
@@ -242,10 +241,7 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
             command: MemoryRemappingCommand::Map {
                 range: source,
                 target: MapTarget::Mirror { destination },
-                permissions: Permissions {
-                    read: false,
-                    write: true,
-                },
+                permissions: Permissions::WRITE,
             },
         });
 
@@ -263,50 +259,25 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
             command: MemoryRemappingCommand::Map {
                 range: source,
                 target: MapTarget::Mirror { destination },
-                permissions: Permissions {
-                    read: true,
-                    write: true,
-                },
+                permissions: Permissions::ALL,
             },
         });
 
         self
     }
 
-    pub fn memory_register_buffer(
-        mut self,
-        address_space: AddressSpaceId,
-        name: impl Into<Cow<'static, str>>,
-        buffer: Bytes,
-    ) -> (Self, ResourcePath) {
-        let resource_path = ResourcePath::new(None, name).unwrap();
-
-        self.command_queue.push(MachineBuilderCommand::MemoryMap {
-            address_space,
-            command: MemoryRemappingCommand::Register {
-                path: resource_path.clone(),
-                buffer,
-            },
-        });
-
-        (self, resource_path)
-    }
-
     pub fn memory_map_buffer_read(
         mut self,
         address_space: AddressSpaceId,
         range: RangeInclusive<Address>,
-        path: &ResourcePath,
+        memory: impl Into<Bytes>,
     ) -> Self {
         self.command_queue.push(MachineBuilderCommand::MemoryMap {
             address_space,
             command: MemoryRemappingCommand::Map {
                 range,
-                target: MapTarget::Memory(path.clone()),
-                permissions: Permissions {
-                    read: true,
-                    write: false,
-                },
+                target: MapTarget::Buffer(memory.into()),
+                permissions: Permissions::READ,
             },
         });
 
@@ -322,7 +293,7 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
             address_space,
             command: MemoryRemappingCommand::Unmap {
                 range,
-                permissions: Permissions::all(),
+                permissions: Permissions::ALL,
             },
         });
 
@@ -338,10 +309,7 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
             address_space,
             command: MemoryRemappingCommand::Unmap {
                 range,
-                permissions: Permissions {
-                    read: true,
-                    write: false,
-                },
+                permissions: Permissions::READ,
             },
         });
 
@@ -357,10 +325,7 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
             address_space,
             command: MemoryRemappingCommand::Unmap {
                 range,
-                permissions: Permissions {
-                    read: false,
-                    write: true,
-                },
+                permissions: Permissions::WRITE,
             },
         });
 
@@ -377,7 +342,6 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
         let mut address_spaces = HashMap::default();
         let mut remapping_commands: HashMap<_, Vec<_>> = HashMap::default();
         let mut graphics_requirements = GraphicsRequirements::default();
-        let mut components = HashMap::new();
 
         // The machine builder local command queue does not receive any more items from now
         //
@@ -392,7 +356,7 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
         while let Some(command) = global_command_queue.pop() {
             match command {
                 MachineBuilderCommand::CreateComponent { path, constructor } => {
-                    let (component_handle, mut component_data) = constructor(&mut self);
+                    let mut component_data = constructor(&mut self);
 
                     component_late_initializers
                         .insert(path.clone(), component_data.late_initializer);
@@ -407,8 +371,6 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
                     // Append local commands to the start of the global queue
                     component_data.local_commands.reverse();
                     global_command_queue.extend(component_data.local_commands);
-
-                    components.insert(path, component_handle);
                 }
                 MachineBuilderCommand::MemoryMap {
                     address_space,
@@ -449,17 +411,11 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
             }
         }
 
-        // Initialize registry
-        let mut registry = ComponentRegistryData::default();
-        for (component_path, component_handle) in components.drain() {
-            registry.insert_component(component_path, component_handle);
-        }
-
         let machine = Arc::new(Machine {
             scheduler,
             address_spaces,
             input_devices,
-            registry,
+            registry_data: self.registry_data,
             framebuffers,
             save_manager: self.save_manager,
             snapshot_manager: self.snapshot_manager,
@@ -472,7 +428,7 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
         for (id, remapping_commands) in remapping_commands {
             let address_space = runtime_guard.address_space(id).unwrap();
 
-            address_space.remap(remapping_commands);
+            address_space.remap(Period::default(), remapping_commands);
         }
         drop(runtime_guard);
 

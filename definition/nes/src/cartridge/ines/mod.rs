@@ -1,15 +1,17 @@
-use std::{collections::HashMap, fmt::Debug, io::Cursor, ops::RangeInclusive};
+use std::{fmt::Debug, io::Cursor, ops::RangeInclusive};
 
 use bitstream_io::{BigEndian, BitRead2, BitReader};
+use bytes::Bytes;
 use expansion_device::DefaultExpansionDevice;
 use fluxemu_range::ContiguousRange;
 use thiserror::Error;
 
 pub mod expansion_device;
 
-pub const PRG_BANK_SIZE: usize = 16 * 1024;
-pub const CHR_BANK_SIZE: usize = 8 * 1024;
-pub const HEADER_SIZE: usize = 16;
+const PRG_BANK_SIZE: usize = 16 * 1024;
+const CHR_BANK_SIZE: usize = 8 * 1024;
+const HEADER_SIZE: usize = 16;
+const TRAINER_SIZE: usize = 512;
 
 #[derive(Error, Debug)]
 pub enum ParsingError {
@@ -54,16 +56,9 @@ pub enum INesVersion {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Mirroring {
+pub enum NametableMirroring {
     Vertical,
     Horizontal,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum RomType {
-    Trainer,
-    Prg,
-    Chr,
 }
 
 #[derive(Clone, Debug)]
@@ -71,10 +66,14 @@ pub struct INes {
     pub mapper: u16,
     pub alternative_nametables: bool,
     pub non_volatile_memory: bool,
-    pub mirroring: Mirroring,
+    pub mirroring: NametableMirroring,
     pub version: INesVersion,
     pub timing_mode: TimingMode,
-    pub roms: HashMap<RomType, RangeInclusive<usize>>,
+    pub trainer: bool,
+    pub chr_ram_size: usize,
+    pub chr_nvram_size: usize,
+    pub chr_rom_size: Option<usize>,
+    pub prg_rom_size: usize,
 }
 
 impl INes {
@@ -97,16 +96,21 @@ impl INes {
         let trainer = reader.read_bit()?;
         let non_volatile_memory = reader.read_bit()?;
         let mirroring = if reader.read_bit()? {
-            Mirroring::Vertical
+            NametableMirroring::Vertical
         } else {
-            Mirroring::Horizontal
+            NametableMirroring::Horizontal
         };
 
         mapper |= reader.read::<u16>(4)? << 4;
 
         let version_bits: u8 = reader.read(2)?;
-        let (version, timing_mode) = match version_bits {
-            0b00 => (INesVersion::V1, TimingMode::Ntsc),
+        let (version, timing_mode, chr_ram_size, chr_nvram_size) = match version_bits {
+            0b00 => (
+                INesVersion::V1,
+                TimingMode::Ntsc,
+                if chr_bank_count == 0 { 8 * 1024 } else { 0 },
+                0,
+            ),
 
             0b10 => {
                 let console_type = match reader.read::<u8>(2)? {
@@ -131,8 +135,19 @@ impl INes {
                     return Err(ParsingError::DisagreeingNonVolatileMemory);
                 }
 
-                let _chr_nvram_shift_count: u8 = reader.read(4)?;
-                let _chr_ram_shift_count: u8 = reader.read(4)?;
+                let chr_nvram_shift_count: u8 = reader.read(4)?;
+                let chr_ram_shift_count: u8 = reader.read(4)?;
+
+                let chr_ram_size = if chr_ram_shift_count > 0 {
+                    64 << chr_ram_shift_count
+                } else {
+                    0
+                };
+                let chr_nvram_size = if chr_nvram_shift_count > 0 {
+                    64 << chr_nvram_shift_count
+                } else {
+                    0
+                };
 
                 reader.skip(6)?;
 
@@ -169,6 +184,8 @@ impl INes {
                         default_expansion_device,
                     },
                     timing_mode,
+                    chr_ram_size,
+                    chr_nvram_size,
                 )
             }
 
@@ -179,26 +196,12 @@ impl INes {
             }
         };
 
-        let mut roms = HashMap::new();
-        let mut cursor = HEADER_SIZE;
-
-        if trainer {
-            roms.insert(RomType::Trainer, cursor..=(cursor + 512 - 1));
-            cursor += 512;
-        }
-
-        let prg_bank_size = prg_bank_count as usize * PRG_BANK_SIZE;
-        roms.insert(
-            RomType::Prg,
-            RangeInclusive::from_start_and_length(cursor, prg_bank_size),
-        );
-        cursor += prg_bank_size;
-
-        let chr_bank_size = chr_bank_count as usize * CHR_BANK_SIZE;
-        roms.insert(
-            RomType::Chr,
-            RangeInclusive::from_start_and_length(cursor, chr_bank_size),
-        );
+        let prg_rom_size = prg_bank_count as usize * PRG_BANK_SIZE;
+        let chr_rom_size = if chr_bank_count != 0 {
+            Some(chr_bank_count as usize * CHR_BANK_SIZE)
+        } else {
+            None
+        };
 
         Ok(Self {
             mapper,
@@ -207,19 +210,28 @@ impl INes {
             mirroring,
             version,
             timing_mode,
-            roms,
+            trainer,
+            prg_rom_size,
+            chr_rom_size,
+            chr_ram_size,
+            chr_nvram_size,
         })
     }
 
-    pub fn prg_bank_count(&self) -> usize {
-        self.roms
-            .get(&RomType::Prg)
-            .map_or(1, |rom| rom.clone().count() / PRG_BANK_SIZE)
+    pub fn extract_prg_rom(&self, rom: &Bytes) -> Bytes {
+        let cursor = HEADER_SIZE + if self.trainer { TRAINER_SIZE } else { 0 };
+
+        rom.slice(RangeInclusive::from_start_and_length(
+            cursor,
+            self.prg_rom_size,
+        ))
     }
 
-    pub fn chr_bank_count(&self) -> usize {
-        self.roms
-            .get(&RomType::Chr)
-            .map_or(1, |rom| rom.clone().count() / CHR_BANK_SIZE)
+    pub fn extract_chr_rom(&self, rom: &Bytes) -> Option<Bytes> {
+        let cursor = HEADER_SIZE + if self.trainer { TRAINER_SIZE } else { 0 } + self.prg_rom_size;
+
+        self.chr_rom_size.map(|chr_rom_size| {
+            rom.slice(RangeInclusive::from_start_and_length(cursor, chr_rom_size))
+        })
     }
 }

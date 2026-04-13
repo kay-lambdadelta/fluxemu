@@ -4,7 +4,7 @@ use fluxemu_runtime::{
     platform::Platform,
 };
 
-use crate::cartridge::CartConfig;
+use crate::cartridge::CartParams;
 
 #[derive(Debug)]
 pub struct NRom;
@@ -30,7 +30,7 @@ impl Component for NRom {
 
 #[derive(Debug)]
 pub struct NRomConfig {
-    pub config: CartConfig,
+    pub config: CartParams,
 }
 
 impl<P: Platform> ComponentConfig<P> for NRomConfig {
@@ -40,21 +40,15 @@ impl<P: Platform> ComponentConfig<P> for NRomConfig {
         self,
         component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
-        let prg_bank_count = self.config.prg.len() / (16 * 1024);
+        let prg_bank_count = self.config.prg_rom.len() / (16 * 1024);
 
         let component_builder = match prg_bank_count {
             // NROM-128
             1 => {
-                let (component_builder, prg) = component_builder.memory_register_buffer(
-                    self.config.cpu_address_space,
-                    "prg",
-                    self.config.prg.clone(),
-                );
-
                 let component_builder = component_builder.memory_map_buffer_read(
                     self.config.cpu_address_space,
                     0x8000..=0xbfff,
-                    &prg,
+                    self.config.prg_rom,
                 );
 
                 component_builder.memory_mirror_map_read(
@@ -64,34 +58,18 @@ impl<P: Platform> ComponentConfig<P> for NRomConfig {
                 )
             }
             // NROM-256
-            2 => {
-                let (component_builder, prg) = component_builder.memory_register_buffer(
-                    self.config.cpu_address_space,
-                    "prg",
-                    self.config.prg.clone(),
-                );
-
-                component_builder.memory_map_buffer_read(
-                    self.config.cpu_address_space,
-                    0x8000..=0xffff,
-                    &prg,
-                )
-            }
-            _ => {
-                panic!("Unsupported PRG ROM size for NROM mapper");
-            }
+            2 => component_builder.memory_map_buffer_read(
+                self.config.cpu_address_space,
+                0x8000..=0xffff,
+                self.config.prg_rom,
+            ),
+            _ => return Err("Unsupported PRG ROM size for NROM mapper".into()),
         };
-
-        let (component_builder, chr) = component_builder.memory_register_buffer(
-            self.config.ppu_address_space,
-            "chr",
-            self.config.chr.clone(),
-        );
 
         component_builder.memory_map_buffer_read(
             self.config.ppu_address_space,
             0x0000..=0x1fff,
-            &chr,
+            self.config.chr_rom.ok_or("NROM must have CHR-ROM")?,
         );
 
         Ok(NRom)

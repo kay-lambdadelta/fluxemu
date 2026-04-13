@@ -3,7 +3,6 @@ use std::{
     fmt::Debug,
     io::{Read, Write},
     ops::RangeInclusive,
-    sync::atomic::{AtomicU32, Ordering},
 };
 
 use fluxemu_input::{InputId, InputState};
@@ -18,10 +17,8 @@ use crate::{
 };
 
 pub mod config;
-pub(crate) mod handle;
 mod registry;
 
-pub(crate) use registry::ComponentRegistryData;
 pub use registry::*;
 
 /// Basic supertrait for all components
@@ -33,7 +30,7 @@ pub trait Component: Send + Sync + Debug + Any {
     /// Event type component accepts
     ///
     /// Use `()` if you don't care about events.
-    /// You may still recieve dummy events being used as a synchronization barrier however
+    /// You may still receive dummy events being used as a synchronization barrier however
     type Event: Event
     where
         Self: Sized;
@@ -64,7 +61,7 @@ pub trait Component: Send + Sync + Debug + Any {
     ///
     /// The default implementation of this simply denies
     fn memory_read(
-        &self,
+        &mut self,
         address: Address,
         address_space: AddressSpaceId,
         avoid_side_effects: bool,
@@ -85,6 +82,10 @@ pub trait Component: Send + Sync + Debug + Any {
         Err(denied_range(address, buffer.len()))
     }
 
+    fn memory_rebase(&mut self, base: Address) {
+        unreachable!("This component does not support rebasing");
+    }
+
     /// Give the runtime the audio sample ring buffer
     fn get_audio_channel(&mut self, name: &str) -> SampleSource<'_> {
         unreachable!()
@@ -94,6 +95,8 @@ pub trait Component: Send + Sync + Debug + Any {
     fn synchronize(&mut self, context: SynchronizationContext) {}
 
     /// Tell the scheduler that work needs to be done to close this delta
+    ///
+    /// It is logically hazardous to do any runtime interaction within this function
     fn needs_work(&self, delta: Period) -> bool {
         false
     }
@@ -126,16 +129,3 @@ fn denied_range(address: Address, len: usize) -> MemoryError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ComponentId(pub(crate) u32);
-
-impl ComponentId {
-    pub(crate) fn new() -> Self {
-        static ID_COUNTER: AtomicU32 = AtomicU32::new(0);
-        let id = ID_COUNTER.fetch_add(1, Ordering::Relaxed);
-
-        if id == u32::MAX {
-            unreachable!("Too many components");
-        }
-
-        ComponentId(id)
-    }
-}

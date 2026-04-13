@@ -1,9 +1,4 @@
-use std::{
-    collections::HashMap,
-    marker::PhantomData,
-    ops::RangeInclusive,
-    sync::atomic::{AtomicBool, AtomicU8, Ordering},
-};
+use std::{collections::HashMap, marker::PhantomData, ops::RangeInclusive};
 
 use fluxemu_definition_mos6502::{Mos6502, Mos6502Event, Pin};
 use fluxemu_range::ContiguousRange;
@@ -214,10 +209,10 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
             state: State {
                 vblank_nmi_enabled: false,
                 greyscale: false,
-                entered_vblank: AtomicBool::new(false),
-                vram_address_pointer_write_phase: AtomicBool::new(false),
+                entered_vblank: false,
+                vram_address_pointer_write_phase: false,
                 vram_address_pointer_increment_amount: 1,
-                vram_read_buffer: AtomicU8::new(0),
+                vram_read_buffer: 0,
                 color_emphasis: ColorEmphasis {
                     red: false,
                     green: false,
@@ -285,7 +280,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
     }
 
     fn memory_read(
-        &self,
+        &mut self,
         address: Address,
         _address_space: AddressSpaceId,
         avoid_side_effects: bool,
@@ -301,15 +296,13 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                 CpuAccessibleRegister::PpuMask => todo!(),
                 CpuAccessibleRegister::PpuStatus => {
                     if !avoid_side_effects {
-                        self.state
-                            .vram_address_pointer_write_phase
-                            .store(false, Ordering::Release);
+                        self.state.vram_address_pointer_write_phase = false;
                     }
 
                     let vblank = if avoid_side_effects {
-                        self.state.entered_vblank.load(Ordering::Acquire)
+                        self.state.entered_vblank
                     } else {
-                        self.state.entered_vblank.swap(false, Ordering::AcqRel)
+                        std::mem::take(&mut self.state.entered_vblank)
                     };
 
                     *buffer = (*buffer & 0b0011_1111)
@@ -340,10 +333,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                             self.timestamp,
                         )?;
 
-                        *buffer = self
-                            .state
-                            .vram_read_buffer
-                            .swap(new_value, Ordering::AcqRel);
+                        *buffer = std::mem::replace(&mut self.state.vram_read_buffer, new_value);
                     }
                 }
                 _ => {
@@ -407,12 +397,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     let mut shadow_vram_address_pointer =
                         VramAddressPointerContents::from(self.state.shadow_vram_address_pointer);
 
-                    let vram_address_pointer_write_phase = self
-                        .state
-                        .vram_address_pointer_write_phase
-                        .load(Ordering::Acquire);
-
-                    if vram_address_pointer_write_phase {
+                    if self.state.vram_address_pointer_write_phase {
                         // fine scroll y
                         shadow_vram_address_pointer.fine_y = *buffer & 0b0000_0111;
                         // coarse scroll y
@@ -424,31 +409,25 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         shadow_vram_address_pointer.coarse.x = (*buffer & 0b1111_1000) >> 3;
                     }
 
-                    self.state
-                        .vram_address_pointer_write_phase
-                        .store(!vram_address_pointer_write_phase, Ordering::Release);
-
+                    self.state.vram_address_pointer_write_phase =
+                        !self.state.vram_address_pointer_write_phase;
                     self.state.shadow_vram_address_pointer = shadow_vram_address_pointer.into();
                 }
                 CpuAccessibleRegister::PpuAddr => {
                     let mut unpacked_address = self.state.shadow_vram_address_pointer.to_be_bytes();
-                    let vram_address_pointer_write_phase = self
-                        .state
-                        .vram_address_pointer_write_phase
-                        .load(Ordering::Acquire);
 
-                    unpacked_address[usize::from(vram_address_pointer_write_phase)] = *buffer;
+                    unpacked_address[usize::from(self.state.vram_address_pointer_write_phase)] =
+                        *buffer;
                     self.state.shadow_vram_address_pointer =
                         u16::from_be_bytes(unpacked_address) & 0b0111_1111_1111_1111;
 
                     // Write the completed address
-                    if vram_address_pointer_write_phase {
+                    if self.state.vram_address_pointer_write_phase {
                         self.state.vram_address_pointer = self.state.shadow_vram_address_pointer;
                     }
 
-                    self.state
-                        .vram_address_pointer_write_phase
-                        .store(!vram_address_pointer_write_phase, Ordering::Release);
+                    self.state.vram_address_pointer_write_phase =
+                        !self.state.vram_address_pointer_write_phase;
                 }
                 CpuAccessibleRegister::PpuData => {
                     let runtime = RuntimeApi::current();
@@ -524,7 +503,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
 
         match event {
             PpuEvent::VblankStart => {
-                self.state.entered_vblank.store(true, Ordering::Release);
+                self.state.entered_vblank = true;
 
                 if self.state.vblank_nmi_enabled {
                     runtime.schedule_event::<Mos6502>(
@@ -539,7 +518,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                 }
             }
             PpuEvent::VblankEnd => {
-                self.state.entered_vblank.store(false, Ordering::Release);
+                self.state.entered_vblank = false;
 
                 runtime.schedule_event::<Mos6502>(
                     &self.processor_path,

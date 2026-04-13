@@ -62,14 +62,11 @@ impl<P: Platform> MachineFactory<P> for AtariLynx {
             .unwrap()
             .unwrap();
 
-        let (machine, bootstrap) = machine.memory_register_buffer(
+        let machine = machine.memory_map_buffer_read(
             cpu_address_space,
-            "bootstrap",
+            0xfe00..=0xffff,
             rom.slice(0x0000..=0x1fff),
         );
-
-        let machine =
-            machine.memory_map_buffer_read(cpu_address_space, 0xfe00..=0xffff, &bootstrap);
 
         let (machine, suzy) = machine.component("suzy", SuzyConfig { cpu_address_space });
 

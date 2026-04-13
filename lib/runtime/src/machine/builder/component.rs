@@ -180,10 +180,7 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
                 command: MemoryRemappingCommand::Map {
                     range,
                     target: MapTarget::Component(self.path.clone()),
-                    permissions: Permissions {
-                        read: true,
-                        write: false,
-                    },
+                    permissions: Permissions::READ,
                 },
             });
 
@@ -202,10 +199,7 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
                 command: MemoryRemappingCommand::Map {
                     range,
                     target: MapTarget::Component(self.path.clone()),
-                    permissions: Permissions {
-                        read: false,
-                        write: true,
-                    },
+                    permissions: Permissions::WRITE,
                 },
             });
 
@@ -224,10 +218,7 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
                 command: MemoryRemappingCommand::Map {
                     range,
                     target: MapTarget::Component(self.path.clone()),
-                    permissions: Permissions {
-                        read: true,
-                        write: true,
-                    },
+                    permissions: Permissions::ALL,
                 },
             });
 
@@ -247,10 +238,7 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
                 command: MemoryRemappingCommand::Map {
                     range: source,
                     target: MapTarget::Mirror { destination },
-                    permissions: Permissions {
-                        read: true,
-                        write: false,
-                    },
+                    permissions: Permissions::READ,
                 },
             });
 
@@ -270,10 +258,7 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
                 command: MemoryRemappingCommand::Map {
                     range: source,
                     target: MapTarget::Mirror { destination },
-                    permissions: Permissions {
-                        read: false,
-                        write: true,
-                    },
+                    permissions: Permissions::WRITE,
                 },
             });
 
@@ -293,42 +278,18 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
                 command: MemoryRemappingCommand::Map {
                     range: source,
                     target: MapTarget::Mirror { destination },
-                    permissions: Permissions {
-                        read: true,
-                        write: true,
-                    },
+                    permissions: Permissions::ALL,
                 },
             });
 
         self
     }
 
-    pub fn memory_register_buffer(
-        self,
-        address_space: AddressSpaceId,
-        name: impl Into<Cow<'static, str>>,
-        buffer: Bytes,
-    ) -> (Self, ResourcePath) {
-        let resource_path = self.path.clone().into_resource(name).unwrap();
-
-        self.component_data
-            .local_commands
-            .push(MachineBuilderCommand::MemoryMap {
-                address_space,
-                command: MemoryRemappingCommand::Register {
-                    path: resource_path.clone(),
-                    buffer,
-                },
-            });
-
-        (self, resource_path)
-    }
-
     pub fn memory_map_buffer_read(
         self,
         address_space: AddressSpaceId,
         range: RangeInclusive<Address>,
-        path: &ResourcePath,
+        memory: impl Into<Bytes>,
     ) -> Self {
         self.component_data
             .local_commands
@@ -336,11 +297,8 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
                 address_space,
                 command: MemoryRemappingCommand::Map {
                     range,
-                    target: MapTarget::Memory(path.clone()),
-                    permissions: Permissions {
-                        read: true,
-                        write: false,
-                    },
+                    target: MapTarget::Buffer(memory.into()),
+                    permissions: Permissions::READ,
                 },
             });
 

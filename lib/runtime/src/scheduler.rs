@@ -3,6 +3,7 @@ use std::{fmt::Debug, sync::Mutex};
 use fixed::{FixedU128, types::extra::U64};
 
 use crate::{
+    RuntimeApi,
     component::ComponentRegistry,
     event::{EventManager, PreemptionSignal},
     path::ComponentPath,
@@ -11,7 +12,7 @@ use crate::{
 #[derive(Debug)]
 pub(crate) struct Scheduler {
     pub event_manager: EventManager,
-    current_driven_time: Mutex<Period>,
+    safe_advance_timestamp: Mutex<Period>,
     driven: Vec<ComponentPath>,
     start_time: Period,
     preemption_signal: PreemptionSignal,
@@ -22,15 +23,15 @@ impl Scheduler {
         Scheduler {
             event_manager: EventManager::default(),
             driven: Vec::default(),
-            current_driven_time: Mutex::default(),
+            safe_advance_timestamp: Mutex::default(),
             start_time: Period::default(),
             preemption_signal: PreemptionSignal::new(),
         }
     }
 
     /// Retrieves the latest timestamp that the machine has been driven to
-    pub fn now(&self) -> Period {
-        *self.current_driven_time.lock().unwrap()
+    pub fn safe_advance_timestamp(&self) -> Period {
+        *self.safe_advance_timestamp.lock().unwrap()
     }
 
     pub fn start_time(&self) -> Period {
@@ -46,16 +47,16 @@ impl Scheduler {
 
     pub fn run(&self, component_registry: ComponentRegistry<'_>, allocated_time: Period) {
         // Grab current time
-        let next_time = self.now() + allocated_time;
+        let safe_advance_timestamp = self.safe_advance_timestamp() + allocated_time;
 
         // Advance the time forward for all driven components
         for path in &self.driven {
-            component_registry.interact_dyn_mut(path, next_time, |_| {});
+            component_registry.interact_dyn(path, safe_advance_timestamp, |_| {});
         }
 
         // Set the new time, marking that the machine has officially advanced to this time
-        let mut current_driven_time_guard = self.current_driven_time.lock().unwrap();
-        *current_driven_time_guard = next_time;
+        let mut safe_advance_timestamp_guard = self.safe_advance_timestamp.lock().unwrap();
+        *safe_advance_timestamp_guard = safe_advance_timestamp;
     }
 
     /// The preemption signal causes at least one [QuantaIterator] to stop active work and service events
@@ -72,7 +73,7 @@ pub type Frequency = FixedU128<U64>;
 /// Context to begin the synchronization process
 #[derive(Debug)]
 pub struct SynchronizationContext<'a> {
-    pub(crate) scheduler: &'a Scheduler,
+    pub(crate) runtime: &'a RuntimeApi,
     pub(crate) current_timestamp: &'a mut Period,
     pub(crate) target_timestamp: Period,
     pub(crate) last_attempted_allocation: &'a mut Option<Period>,
@@ -87,7 +88,7 @@ impl<'a> SynchronizationContext<'a> {
 
         let mut stop_time = self.target_timestamp;
 
-        if let Some(next_event) = self.scheduler.event_manager.next_event() {
+        if let Some(next_event) = self.runtime.machine().scheduler.event_manager.next_event() {
             stop_time = stop_time.min(next_event);
         }
 
@@ -119,7 +120,7 @@ impl Iterator for QuantaIterator<'_, '_> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        let preemption_signal = self.context.scheduler.preemption_signal();
+        let preemption_signal = self.context.runtime.machine().scheduler.preemption_signal();
 
         // New event(s) spotted we have not evaluated
         while preemption_signal.needs_preemption() {
@@ -147,7 +148,14 @@ impl<'b, 'a> QuantaIterator<'b, 'a> {
         let mut stop_time = self.context.target_timestamp;
 
         // If a event exists, allow it to cut our budget short
-        if let Some(next_event) = self.context.scheduler.event_manager.next_event() {
+        if let Some(next_event) = self
+            .context
+            .runtime
+            .machine()
+            .scheduler
+            .event_manager
+            .next_event()
+        {
             stop_time = stop_time.min(next_event);
         }
 

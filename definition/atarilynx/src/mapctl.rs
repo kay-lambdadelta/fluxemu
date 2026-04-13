@@ -28,7 +28,7 @@ impl Component for Mapctl {
     type Event = ();
 
     fn memory_read(
-        &self,
+        &mut self,
         _address: Address,
         _address_space: AddressSpaceId,
         _avoid_side_effects: bool,
@@ -54,14 +54,14 @@ impl Component for Mapctl {
         remapping_commands.push(MemoryRemappingCommand::Map {
             range: 0x0000..=0xffff,
             target: MapTarget::Component(self.config.ram.clone()),
-            permissions: Permissions::all(),
+            permissions: Permissions::ALL,
         });
 
         if self.status.suzy {
             remapping_commands.push(MemoryRemappingCommand::Map {
                 range: SUZY_ADDRESSES,
                 target: MapTarget::Component(self.config.suzy.clone()),
-                permissions: Permissions::all(),
+                permissions: Permissions::ALL,
             });
         }
 
@@ -69,33 +69,35 @@ impl Component for Mapctl {
             remapping_commands.push(MemoryRemappingCommand::Map {
                 range: MIKEY_ADDRESSES,
                 target: MapTarget::Component(self.config.mikey.clone()),
-                permissions: Permissions::all(),
+                permissions: Permissions::ALL,
             });
         }
 
         remapping_commands.push(MemoryRemappingCommand::Unmap {
             range: RESERVED_MEMORY_ADDRESS..=RESERVED_MEMORY_ADDRESS,
-            permissions: Permissions::all(),
+            permissions: Permissions::ALL,
         });
 
         if self.status.vector {
             remapping_commands.push(MemoryRemappingCommand::Map {
                 range: VECTOR_ADDRESSES,
                 target: MapTarget::Component(self.config.vector.clone()),
-                permissions: Permissions::all(),
+                permissions: Permissions::ALL,
             });
         }
 
         remapping_commands.push(MemoryRemappingCommand::Map {
             range: MAPCTL_ADDRESS..=MAPCTL_ADDRESS,
             target: MapTarget::Component(self.my_path.clone()),
-            permissions: Permissions::all(),
+            permissions: Permissions::ALL,
         });
+
+        let current_timestamp = runtime.registry().current_timestamp(&self.my_path).unwrap();
 
         runtime
             .address_space(self.config.cpu_address_space)
             .unwrap()
-            .remap(remapping_commands);
+            .remap(current_timestamp, remapping_commands);
 
         Ok(())
     }

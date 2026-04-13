@@ -2,7 +2,6 @@ use std::{fmt::Debug, hash::Hash, ops::RangeInclusive, sync::Arc};
 
 use arc_swap::{ArcSwap, Cache};
 use bytes::Bytes;
-pub use commit::{MapTarget, MemoryRemappingCommand, Permissions};
 use fluxemu_range::RangeIntersection;
 use rangemap::RangeInclusiveMap;
 use thiserror::Error;
@@ -10,7 +9,8 @@ use thiserror::Error;
 use crate::{
     RuntimeApi,
     component::{ComponentId, ComponentRegistry},
-    path::{ComponentPath, ResourcePath},
+    path::ComponentPath,
+    scheduler::Period,
 };
 
 mod commit;
@@ -47,8 +47,13 @@ impl<'a> AddressSpace<'a> {
     ///   is completing
     /// - If two remappings from different threads are done at the same time, its unspecified which one "wins"
     /// - As of the current implementation, remapping is rather expensive. Use sparingly or improve the committing code
-    pub fn remap(&self, commands: impl IntoIterator<Item = MemoryRemappingCommand>) {
-        self.data.remap(self.runtime.registry(), commands);
+    pub fn remap(
+        &self,
+        timestamp: Period,
+        commands: impl IntoIterator<Item = MemoryRemappingCommand>,
+    ) {
+        self.data
+            .remap(timestamp, self.runtime.registry(), commands);
     }
 }
 
@@ -58,15 +63,38 @@ impl<'a> AddressSpace<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 enum MappingEntry {
     Component(ComponentPath),
     Mirror {
         source_base: Address,
         destination_base: Address,
     },
-    Memory(ResourcePath),
+    Buffer(Bytes),
 }
+
+impl PartialEq for MappingEntry {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Component(a), Self::Component(b)) => a == b,
+            (
+                Self::Mirror {
+                    source_base: source_base_a,
+                    destination_base: destination_base_a,
+                },
+                Self::Mirror {
+                    source_base: source_base_b,
+                    destination_base: destination_base_b,
+                },
+            ) => source_base_a == source_base_b && destination_base_a == destination_base_b,
+            // Never coalesce buffer entries
+            (Self::Buffer(_), Self::Buffer(_)) => false,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for MappingEntry {}
 
 #[derive(Clone)]
 enum PageTarget {
@@ -167,7 +195,6 @@ pub(crate) struct AddressSpaceData {
     address_space_width: u8,
     id: AddressSpaceId,
     members: Arc<ArcSwap<Members>>,
-    resources: scc::HashMap<ResourcePath, Bytes>,
 }
 
 impl AddressSpaceData {
@@ -187,12 +214,12 @@ impl AddressSpaceData {
                 read: MemoryMappingTable::new(width),
                 write: MemoryMappingTable::new(width),
             }))),
-            resources: scc::HashMap::default(),
         }
     }
 
     pub fn remap(
         &self,
+        timestamp: Period,
         registry: ComponentRegistry<'_>,
         commands: impl IntoIterator<Item = MemoryRemappingCommand>,
     ) {
@@ -232,26 +259,19 @@ impl AddressSpaceData {
                                     );
                                 }
                             }
-                            MapTarget::Memory(resource_path) => {
-                                assert!(
-                                    self.resources.contains_sync(&resource_path),
-                                    "Resource not found {} (internal resources {:?})",
-                                    resource_path,
-                                    self.resources
-                                );
-
+                            MapTarget::Buffer(bytes) => {
                                 if permissions.read {
-                                    members.read.master.insert(
-                                        range.clone(),
-                                        MappingEntry::Memory(resource_path.clone()),
-                                    );
+                                    members
+                                        .read
+                                        .master
+                                        .insert(range.clone(), MappingEntry::Buffer(bytes.clone()));
                                 }
 
                                 if permissions.write {
                                     members
                                         .write
                                         .master
-                                        .insert(range.clone(), MappingEntry::Memory(resource_path));
+                                        .insert(range.clone(), MappingEntry::Buffer(bytes));
                                 }
                             }
                             MapTarget::Mirror { destination } => {
@@ -292,16 +312,56 @@ impl AddressSpaceData {
                             members.write.master.remove(range.clone());
                         }
                     }
-                    MemoryRemappingCommand::Register { path, buffer } => {
-                        self.resources.insert_sync(path, buffer).unwrap();
+                    MemoryRemappingCommand::RebaseComponent { component, base } => {
+                        registry.interact_dyn(&component, timestamp, |component| {
+                            component.memory_rebase(base);
+                        });
                     }
                 }
             }
 
-            members.read.commit(registry, &self.resources);
-            members.write.commit(registry, &self.resources);
+            members.read.commit(registry);
+            members.write.commit(registry);
 
             members
         });
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum MapTarget {
+    Component(ComponentPath),
+    Buffer(Bytes),
+    Mirror {
+        destination: RangeInclusive<Address>,
+    },
+}
+
+/// Command for how the memory access table should modify the memory map
+#[allow(missing_docs)]
+#[derive(Debug, Clone)]
+pub enum MemoryRemappingCommand {
+    /// Add a target to the memory map, or add a map to an existing one
+    Map {
+        range: RangeInclusive<Address>,
+        target: MapTarget,
+        permissions: Permissions,
+    },
+    /// Clear a memory range
+    Unmap {
+        range: RangeInclusive<Address>,
+        permissions: Permissions,
+    },
+    /// Notify the component that its base must be changed to an address to function correctly
+    RebaseComponent {
+        component: ComponentPath,
+        base: Address,
+    },
+}
+
+#[allow(missing_docs)]
+#[derive(Debug, Clone, Copy)]
+pub struct Permissions {
+    pub read: bool,
+    pub write: bool,
 }

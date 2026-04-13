@@ -31,7 +31,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
             Chip8InstructionSet::Chip8(InstructionSetChip8::Clr) => {
                 runtime
                     .registry()
-                    .interact_mut::<Chip8Display<G>, _>(
+                    .interact::<Chip8Display<G>, _>(
                         &self.config.display,
                         self.timestamp,
                         |component| {
@@ -253,7 +253,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
 
                     self.state.registers.work_registers[0xf] = runtime
                         .registry()
-                        .interact_mut::<Chip8Display<G>, _>(
+                        .interact::<Chip8Display<G>, _>(
                             &self.config.display,
                             self.timestamp,
                             |component| {
@@ -278,7 +278,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
 
                     self.state.registers.work_registers[0xf] = runtime
                         .registry()
-                        .interact_mut::<Chip8Display<G>, _>(
+                        .interact::<Chip8Display<G>, _>(
                             &self.config.display,
                             self.timestamp,
                             |component| u8::from(component.draw_sprite(position, &buffer)),
@@ -324,13 +324,9 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
 
                 runtime
                     .registry()
-                    .interact_mut::<Chip8Timer, _>(
-                        &self.config.timer,
-                        self.timestamp,
-                        |component| {
-                            component.set(register_value);
-                        },
-                    )
+                    .interact::<Chip8Timer, _>(&self.config.timer, self.timestamp, |component| {
+                        component.set(register_value);
+                    })
                     .unwrap();
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Loads { register }) => {
@@ -338,13 +334,9 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
 
                 runtime
                     .registry()
-                    .interact_mut::<Chip8Audio, _>(
-                        &self.config.audio,
-                        self.timestamp,
-                        |component| {
-                            component.set(register_value);
-                        },
-                    )
+                    .interact::<Chip8Audio, _>(&self.config.audio, self.timestamp, |component| {
+                        component.set(register_value);
+                    })
                     .unwrap();
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Addi { register }) => {
@@ -434,7 +426,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                     InstructionSetSuperChip8::Lores => {
                         runtime
                             .registry()
-                            .interact_mut::<Chip8Display<G>, _>(
+                            .interact::<Chip8Display<G>, _>(
                                 &self.config.display,
                                 self.timestamp,
                                 |component| {
@@ -446,7 +438,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                     InstructionSetSuperChip8::Hires => {
                         runtime
                             .registry()
-                            .interact_mut::<Chip8Display<G>, _>(
+                            .interact::<Chip8Display<G>, _>(
                                 &self.config.display,
                                 self.timestamp,
                                 |component| {
