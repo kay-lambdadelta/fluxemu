@@ -5,7 +5,7 @@ use fixed::{FixedU128, types::extra::U64};
 use crate::{
     RuntimeApi,
     component::ComponentRegistry,
-    event::{EventManager, PreemptionSignal},
+    event::{EventManager, EventPreemptionSignal},
     path::ComponentPath,
 };
 
@@ -15,7 +15,7 @@ pub(crate) struct Scheduler {
     safe_advance_timestamp: Mutex<Period>,
     driven: Vec<ComponentPath>,
     start_time: Period,
-    preemption_signal: PreemptionSignal,
+    event_preemption_signal: EventPreemptionSignal,
 }
 
 impl Scheduler {
@@ -25,7 +25,7 @@ impl Scheduler {
             driven: Vec::default(),
             safe_advance_timestamp: Mutex::default(),
             start_time: Period::default(),
-            preemption_signal: PreemptionSignal::new(),
+            event_preemption_signal: EventPreemptionSignal::new(),
         }
     }
 
@@ -60,8 +60,8 @@ impl Scheduler {
     }
 
     /// The preemption signal causes at least one [QuantaIterator] to stop active work and service events
-    pub fn preemption_signal(&self) -> &PreemptionSignal {
-        &self.preemption_signal
+    pub fn preemption_signal(&self) -> &EventPreemptionSignal {
+        &self.event_preemption_signal
     }
 }
 
@@ -86,9 +86,11 @@ impl<'a> SynchronizationContext<'a> {
     pub fn allocate<'b>(&'b mut self, period: Period) -> QuantaIterator<'b, 'a> {
         *self.last_attempted_allocation = Some(period);
 
-        let mut stop_time = self.target_timestamp;
+        let scheduler = &self.runtime.machine().scheduler;
+        let last_seen_event_generation = scheduler.preemption_signal().generation();
 
-        if let Some(next_event) = self.runtime.machine().scheduler.event_manager.next_event() {
+        let mut stop_time = self.target_timestamp;
+        if let Some(next_event) = scheduler.event_manager.next_event() {
             stop_time = stop_time.min(next_event);
         }
 
@@ -101,6 +103,7 @@ impl<'a> SynchronizationContext<'a> {
             budget,
             timestamp_at_allocation: *self.current_timestamp,
             steps_taken: 0,
+            last_seen_event_generation,
             context: self,
         }
     }
@@ -112,6 +115,7 @@ pub struct QuantaIterator<'b, 'a> {
     budget: u64,
     timestamp_at_allocation: Period,
     steps_taken: u64,
+    last_seen_event_generation: u32,
     context: &'b mut SynchronizationContext<'a>,
 }
 
@@ -122,8 +126,9 @@ impl Iterator for QuantaIterator<'_, '_> {
     fn next(&mut self) -> Option<Self::Item> {
         let preemption_signal = self.context.runtime.machine().scheduler.preemption_signal();
 
-        // New event(s) spotted we have not evaluated
-        while preemption_signal.needs_preemption() {
+        let current_generation = preemption_signal.generation();
+        if current_generation != self.last_seen_event_generation {
+            self.last_seen_event_generation = current_generation;
             self.rebudget();
         }
 

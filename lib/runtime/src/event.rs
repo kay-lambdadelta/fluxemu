@@ -5,7 +5,7 @@ use std::{
     fmt::Debug,
     sync::{
         Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicU32, Ordering},
     },
 };
 
@@ -97,24 +97,20 @@ impl EventManager {
 }
 
 #[derive(Debug)]
-pub(crate) struct PreemptionSignal(AtomicBool);
+pub(crate) struct EventPreemptionSignal(AtomicU32);
 
-impl PreemptionSignal {
+impl EventPreemptionSignal {
     pub(super) fn new() -> Self {
-        Self(AtomicBool::new(false))
+        Self(AtomicU32::new(0))
     }
 
     pub(crate) fn event_occurred(&self) {
-        self.0.store(true, Ordering::Release);
+        self.0.fetch_add(1, Ordering::Release);
     }
 
     #[inline]
-    pub(crate) fn needs_preemption(&self) -> bool {
-        if !self.0.load(Ordering::Acquire) {
-            return false;
-        }
-
-        self.0.swap(false, Ordering::AcqRel)
+    pub(crate) fn generation(&self) -> u32 {
+        self.0.load(Ordering::Acquire)
     }
 }
 
