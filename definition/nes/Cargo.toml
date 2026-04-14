@@ -5,7 +5,7 @@ edition = "2024"
 license = "GPL-3.0-or-later"
 
 [dependencies]
-bitstream-io = "4.9"
+bitstream-io = "4.10"
 bytemuck = { workspace = true }
 bytes = { workspace = true }
 fluxemu-audio = { workspace = true }
