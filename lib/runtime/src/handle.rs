@@ -32,8 +32,10 @@ pub struct RuntimeApi {
 impl RuntimeApi {
     pub(crate) fn new(machine: Arc<Machine>) -> Self {
         RuntimeApi {
+            local_component_store: Rc::new(RefCell::new(LocalComponentStore::new(
+                &machine.registry_data,
+            ))),
             machine,
-            local_component_store: Rc::new(RefCell::new(LocalComponentStore::default())),
         }
     }
 

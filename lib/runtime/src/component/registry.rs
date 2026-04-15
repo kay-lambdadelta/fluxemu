@@ -37,7 +37,11 @@ pub(crate) struct ComponentRegistryData {
 }
 
 impl ComponentRegistryData {
-    pub(crate) fn insert_component<C: Component>(
+    pub(crate) fn required_local_store_size(&self) -> usize {
+        self.next_component_id as usize
+    }
+
+    pub fn insert_component<C: Component>(
         &mut self,
         path: ComponentPath,
         save_version: Option<ComponentVersion>,
@@ -333,19 +337,19 @@ impl<'a> From<ComponentId> for ComponentIdentifier<'a> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct LocalComponentStore(Vec<Option<ComponentHandle>>);
 
 impl LocalComponentStore {
+    pub fn new(registry_data: &ComponentRegistryData) -> Self {
+        LocalComponentStore(Vec::from_iter(
+            std::iter::repeat_with(|| None).take(registry_data.required_local_store_size()),
+        ))
+    }
+
     #[inline]
     fn get_slot(&mut self, id: ComponentId) -> &mut Option<ComponentHandle> {
-        let id = id.0 as usize;
-
-        if id >= self.0.len() {
-            self.0.resize_with(id + 1, || None);
-        }
-
-        &mut self.0[id]
+        &mut self.0[id.0 as usize]
     }
 
     #[inline]
