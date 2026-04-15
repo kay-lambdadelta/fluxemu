@@ -15,16 +15,16 @@ use crate::{
 impl Mos6502 {
     #[inline]
     pub(super) fn handle_phi2(&mut self, current_cycle: &Cycle) {
-        for step in current_cycle.phi2.clone() {
+        for &step in current_cycle.phi2.iter() {
             match step {
                 Phi2::AddToPointerLikeRegister {
-                    insert_adjustment_cycle_upon_carry: insert_carry_cycle,
+                    insert_adjustment_cycle_upon_carry,
                     interpretation,
                     source,
                     destination,
                 } => {
                     self.add_to_pointer_like_register(
-                        insert_carry_cycle,
+                        insert_adjustment_cycle_upon_carry,
                         interpretation,
                         source,
                         destination,
