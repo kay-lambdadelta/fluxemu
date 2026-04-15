@@ -76,7 +76,7 @@ pub struct SynchronizationContext<'a> {
     pub(crate) runtime: &'a RuntimeApi,
     pub(crate) current_timestamp: &'a mut Period,
     pub(crate) target_timestamp: Period,
-    pub(crate) last_attempted_allocation: &'a mut Option<Period>,
+    pub(crate) last_attempted_allocation: &'a mut Period,
 }
 
 impl<'a> SynchronizationContext<'a> {
@@ -84,7 +84,9 @@ impl<'a> SynchronizationContext<'a> {
     /// or the runtime preempts the task
     #[inline]
     pub fn allocate<'b>(&'b mut self, period: Period) -> QuantaIterator<'b, 'a> {
-        *self.last_attempted_allocation = Some(period);
+        assert_ne!(period, Period::ZERO, "Cannot allocate zero period");
+
+        *self.last_attempted_allocation = period;
 
         let scheduler = &self.runtime.machine().scheduler;
         let last_seen_event_generation = scheduler.preemption_signal().generation();

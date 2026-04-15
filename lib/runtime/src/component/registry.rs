@@ -176,8 +176,6 @@ impl<'a> ComponentRegistry<'a> {
         let mut local_component_store_guard = self.runtime.local_component_store().borrow_mut();
         let mut handle = self.mitigate_component(id, &mut local_component_store_guard);
 
-        let mut last_attempted_allocation = None;
-
         if handle.synchronize {
             while let Some(mut delta) = target_timestamp.checked_sub(handle.current_timestamp) {
                 // Copy out timestamp
@@ -195,6 +193,8 @@ impl<'a> ComponentRegistry<'a> {
 
                 // Drop guard and synchronize
                 drop(local_component_store_guard);
+
+                let mut last_attempted_allocation = Period::ZERO;
                 let context = SynchronizationContext {
                     runtime: self.runtime,
                     current_timestamp: &mut current_timestamp,
@@ -204,8 +204,10 @@ impl<'a> ComponentRegistry<'a> {
                 component.synchronize(context);
 
                 // Prevent bad synchronization logic from spinning forever
-                let last_attempted_allocation = last_attempted_allocation.take().expect(
-                    "Synchronization attempt for component did not attempt to allocate time",
+                assert_ne!(
+                    last_attempted_allocation,
+                    Period::ZERO,
+                    "Synchronization attempt for component did not attempt to allocate time"
                 );
 
                 // Update delta
