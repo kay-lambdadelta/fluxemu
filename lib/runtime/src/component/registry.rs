@@ -86,64 +86,6 @@ impl<'a> ComponentRegistry<'a> {
     }
 
     #[inline]
-    fn mitigate_component<'b>(
-        &self,
-        id: ComponentId,
-        local_component_store: &'b mut LocalComponentStore,
-    ) -> &'b mut ComponentHandle {
-        if local_component_store.get_slot(id).is_some() {
-            let component_handle = local_component_store.get_slot(id);
-
-            component_handle.as_mut().unwrap()
-        } else {
-            self.mitigate_from_global(id, local_component_store)
-        }
-    }
-
-    #[cold]
-    fn mitigate_from_global<'b>(
-        &self,
-        id: ComponentId,
-        local_component_store: &'b mut LocalComponentStore,
-    ) -> &'b mut ComponentHandle {
-        let thread = std::thread::current();
-
-        loop {
-            let Some((_, handle)) = self.data.global_component_store.remove_sync(&id) else {
-                // Insert thread token
-                self.data
-                    .threads_awaiting_component
-                    .entry_sync(id)
-                    .or_default()
-                    .entry(thread.id())
-                    .or_insert(thread.clone());
-
-                // Give components back so others can potentially access them
-                self.unmitigate_all_components(local_component_store);
-
-                // Await for that component to potentially become available
-                std::thread::park();
-
-                // Try again until we can acquire that component
-                continue;
-            };
-
-            let slot = local_component_store.get_slot(id);
-            *slot = Some(handle);
-
-            // Clean up
-            self.data
-                .threads_awaiting_component
-                .entry_sync(id)
-                .or_default()
-                .get_mut()
-                .remove(&thread.id());
-
-            return slot.as_mut().unwrap();
-        }
-    }
-
-    #[inline]
     pub fn interact<C: Component, T>(
         &self,
         path: &ComponentPath,
@@ -173,103 +115,164 @@ impl<'a> ComponentRegistry<'a> {
             ComponentIdentifier::Path(path) => self.data.path2id.get(path).copied()?,
         };
 
-        let mut local_component_store_guard = self.runtime.local_component_store().borrow_mut();
-        let mut handle = self.mitigate_component(id, &mut local_component_store_guard);
+        let mut guard = self.runtime.local_component_store().borrow_mut();
+        let handle = self.fetch_or_acquire_component(id, &mut guard);
 
-        if handle.synchronize {
-            while let Some(mut delta) = target_timestamp.checked_sub(handle.current_timestamp) {
-                // Copy out timestamp
-                let mut current_timestamp = handle.current_timestamp;
-
-                // Move out component
-                let mut component = handle.component.take().unwrap();
-
-                // Check to see if the component needs work
-                if delta == Period::ZERO || !component.needs_work(delta) {
-                    handle.component = Some(component);
-
-                    break;
-                }
-
-                // Drop guard and synchronize
-                drop(local_component_store_guard);
-
-                let mut last_attempted_allocation = Period::ZERO;
-                let context = SynchronizationContext {
-                    runtime: self.runtime,
-                    current_timestamp: &mut current_timestamp,
-                    target_timestamp,
-                    last_attempted_allocation: &mut last_attempted_allocation,
-                };
-                component.synchronize(context);
-
-                // Prevent bad synchronization logic from spinning forever
-                assert_ne!(
-                    last_attempted_allocation,
-                    Period::ZERO,
-                    "Synchronization attempt for component did not attempt to allocate time"
-                );
-
-                // Update delta
-                delta = target_timestamp - current_timestamp;
-
-                // Check if the component needs more work
-                let needs_work = component.needs_work(delta);
-
-                // Reborrow everything
-                local_component_store_guard = self.runtime.local_component_store().borrow_mut();
-                handle = local_component_store_guard.get_slot(id).as_mut().unwrap();
-
-                // Put back the component and its timestamp
-                handle.component = Some(component);
-                handle.current_timestamp = current_timestamp;
-
-                // If the component yielded and there is still work, check events and try to run it again
-                if needs_work {
-                    // Calculate when the events need to be consumed in the future
-                    let event_hazard_timestamp =
-                        handle.current_timestamp + last_attempted_allocation;
-
-                    // Drop guard
-                    drop(local_component_store_guard);
-
-                    // Try to consume any events that blocked this time allocation
-                    self.runtime
-                        .machine()
-                        .scheduler
-                        .event_manager
-                        .consume(*self, event_hazard_timestamp);
-
-                    // Reborrow everything
-                    local_component_store_guard = self.runtime.local_component_store().borrow_mut();
-                    handle = self.mitigate_component(id, &mut local_component_store_guard);
-                } else {
-                    break;
-                }
-            }
-        } else {
+        if !handle.synchronize {
+            // Just simply update the timestamp
             handle.current_timestamp = target_timestamp;
+        } else {
+            // Drop guard for synchronization
+            drop(guard);
+
+            // Synchronize the component
+            self.synchronize_component(id, target_timestamp);
+
+            // Reacquire guard
+            guard = self.runtime.local_component_store().borrow_mut();
         }
 
-        let handle = self.mitigate_component(id, &mut local_component_store_guard);
+        let handle = guard.get_slot(id).as_mut().unwrap();
         let mut component = handle.component.take().unwrap();
-        drop(local_component_store_guard);
+
+        // Drop guard for callback
+        drop(guard);
 
         let item = callback(component.deref_mut());
 
         // Put component back
-        let mut local_component_store_guard = self.runtime.local_component_store().borrow_mut();
-        let slot = local_component_store_guard.get_slot(id);
-        slot.as_mut().unwrap().component = Some(component);
+        let mut guard = self.runtime.local_component_store().borrow_mut();
+        let handle = self.fetch_or_acquire_component(id, &mut guard);
+        handle.component = Some(component);
 
         Some(item)
     }
 
-    /// Release all components currently available for releasing
-    pub(crate) fn unmitigate_all_components(
+    #[cold]
+    fn synchronize_component(&self, id: ComponentId, target_timestamp: Period) {
+        let mut guard = self.runtime.local_component_store().borrow_mut();
+        let handle = guard.get_slot(id).as_mut().unwrap();
+
+        let Some(delta) = target_timestamp.checked_sub(handle.current_timestamp) else {
+            return;
+        };
+
+        let mut current_timestamp = handle.current_timestamp;
+        let mut component = handle.component.take().unwrap();
+
+        if delta == Period::ZERO || !component.needs_work(delta) {
+            handle.component = Some(component);
+            return;
+        }
+        drop(guard);
+
+        loop {
+            let mut last_attempted_allocation = Period::ZERO;
+            let context = SynchronizationContext {
+                runtime: self.runtime,
+                current_timestamp: &mut current_timestamp,
+                target_timestamp,
+                last_attempted_allocation: &mut last_attempted_allocation,
+            };
+            component.synchronize(context);
+
+            assert_ne!(
+                last_attempted_allocation,
+                Period::ZERO,
+                "Synchronization attempt for component did not attempt to allocate time"
+            );
+
+            let delta = target_timestamp - current_timestamp;
+            let needs_work = component.needs_work(delta);
+
+            let mut guard = self.runtime.local_component_store().borrow_mut();
+            let handle = guard.get_slot(id).as_mut().unwrap();
+
+            handle.component = Some(component);
+            handle.current_timestamp = current_timestamp;
+
+            if needs_work {
+                let hazard_timestamp = handle.current_timestamp + last_attempted_allocation;
+                drop(guard);
+
+                self.runtime
+                    .machine()
+                    .scheduler
+                    .event_manager
+                    .consume(*self, hazard_timestamp);
+
+                // Re-acquire
+                guard = self.runtime.local_component_store().borrow_mut();
+                let handle = self.fetch_or_acquire_component(id, &mut guard);
+
+                component = handle.component.take().unwrap();
+                current_timestamp = handle.current_timestamp;
+            } else {
+                return;
+            }
+        }
+    }
+
+    #[inline]
+    fn fetch_or_acquire_component<'b>(
         &self,
-        local_component_store: &mut LocalComponentStore,
-    ) {
+        id: ComponentId,
+        local_component_store: &'b mut LocalComponentStore,
+    ) -> &'b mut ComponentHandle {
+        if local_component_store.get_slot(id).is_some() {
+            let component_handle = local_component_store.get_slot(id);
+
+            component_handle.as_mut().unwrap()
+        } else {
+            self.acquire_component_from_global_store(id, local_component_store)
+        }
+    }
+
+    #[cold]
+    fn acquire_component_from_global_store<'b>(
+        &self,
+        id: ComponentId,
+        local_component_store: &'b mut LocalComponentStore,
+    ) -> &'b mut ComponentHandle {
+        let thread = std::thread::current();
+
+        loop {
+            let Some((_, handle)) = self.data.global_component_store.remove_sync(&id) else {
+                // Insert thread token
+                self.data
+                    .threads_awaiting_component
+                    .entry_sync(id)
+                    .or_default()
+                    .entry(thread.id())
+                    .or_insert(thread.clone());
+
+                // Give components back so others can potentially access them
+                self.release_all_components(local_component_store);
+
+                // Await for that component to potentially become available
+                std::thread::park();
+
+                // Try again until we can acquire that component
+                continue;
+            };
+
+            let slot = local_component_store.get_slot(id);
+            *slot = Some(handle);
+
+            // Clean up
+            self.data
+                .threads_awaiting_component
+                .entry_sync(id)
+                .or_default()
+                .get_mut()
+                .remove(&thread.id());
+
+            return slot.as_mut().unwrap();
+        }
+    }
+
+    /// Release all components currently available for releasing
+    pub(crate) fn release_all_components(&self, local_component_store: &mut LocalComponentStore) {
         for (id, slot) in local_component_store.iter_mut() {
             // Check if the slot is occupied and the handle isn't borrowed
             if let Some(handle) = slot
@@ -312,7 +315,7 @@ impl<'a> ComponentRegistry<'a> {
         };
 
         let mut local_component_store_guard = self.runtime.local_component_store().borrow_mut();
-        let handle = self.mitigate_component(id, &mut local_component_store_guard);
+        let handle = self.fetch_or_acquire_component(id, &mut local_component_store_guard);
 
         Some(handle.current_timestamp)
     }

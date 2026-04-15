@@ -133,7 +133,7 @@ impl<'a> Drop for RuntimeGuard<'a> {
             if let Some(context) = runtime_context {
                 // Release all components
                 self.registry()
-                    .unmitigate_all_components(&mut context.local_component_store().borrow_mut());
+                    .release_all_components(&mut context.local_component_store().borrow_mut());
             } else {
                 unreachable!("Runtime exited without entering");
             }
