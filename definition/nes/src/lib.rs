@@ -59,7 +59,7 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> MachineFactory<P>
 
         let mut machine = machine
             .component(
-                "workram",
+                "work-ram",
                 MemoryConfig {
                     readable: true,
                     writable: true,
@@ -67,7 +67,7 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> MachineFactory<P>
                     assigned_address_space: cpu_address_space,
                     initial_contents: RangeInclusiveMap::from_iter([(
                         0x0000..=0x07ff,
-                        InitialContents::Value(0),
+                        InitialContents::Random,
                     )]),
                     sram: false,
                 },
