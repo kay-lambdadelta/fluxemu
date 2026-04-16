@@ -17,7 +17,6 @@ fluxemu-definition-atari2600 = { path = "definition/atari2600" }
 fluxemu-definition-atarilynx = { path = "definition/atarilynx" }
 fluxemu-definition-chip8 = { path = "definition/chip8" }
 fluxemu-definition-intel8080 = { path = "definition/intel8080" }
-fluxemu-definition-memory = { path = "definition/memory" }
 fluxemu-definition-mos6502 = { path = "definition/mos6502" }
 fluxemu-definition-mos6532 = { path = "definition/mos6532" }
 fluxemu-definition-nes = { path = "definition/nes" }

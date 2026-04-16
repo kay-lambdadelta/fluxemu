@@ -2,12 +2,14 @@ use std::marker::PhantomData;
 
 pub use cartridge::ines::INes;
 use cartridge::{CartParams, ines::TimingMode};
-use fluxemu_definition_memory::{InitialContents, MemoryConfig};
 use fluxemu_definition_mos6502::{Mos6502Config, Mos6502Kind};
 use fluxemu_runtime::{
     ComponentPath,
     machine::builder::{MachineBuilder, MachineFactory, RomRequirement},
-    memory::AddressSpaceId,
+    memory::{
+        AddressSpaceId,
+        component::{InitialContents, MemoryConfig},
+    },
     platform::Platform,
 };
 use ppu::PpuConfig;

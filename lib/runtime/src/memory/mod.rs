@@ -14,6 +14,7 @@ use crate::{
 };
 
 mod commit;
+pub mod component;
 mod read;
 mod search;
 mod write;

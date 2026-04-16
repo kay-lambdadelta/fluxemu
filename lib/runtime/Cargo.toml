@@ -17,6 +17,7 @@ lz4_flex = "0.13"
 nalgebra = { workspace = true }
 num = { workspace = true }
 palette = { workspace = true }
+rand = { workspace = true }
 rangemap = { workspace = true }
 redb = { workspace = true }
 ringbuffer = { workspace = true }

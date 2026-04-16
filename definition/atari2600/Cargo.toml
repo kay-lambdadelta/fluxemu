@@ -7,7 +7,6 @@ license = "GPL-3.0-or-later"
 [dependencies]
 bytemuck = { workspace = true }
 bytes = { workspace = true }
-fluxemu-definition-memory = { workspace = true }
 fluxemu-definition-mos6502 = { workspace = true }
 fluxemu-definition-mos6532 = { workspace = true }
 fluxemu-input = { workspace = true }

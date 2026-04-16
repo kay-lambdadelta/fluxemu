@@ -2,9 +2,9 @@ use std::{borrow::Cow, marker::PhantomData};
 
 use audio::Chip8AudioConfig;
 use display::Chip8DisplayConfig;
-use fluxemu_definition_memory::{InitialContents, MemoryConfig};
 use fluxemu_runtime::{
     machine::builder::{MachineBuilder, MachineFactory},
+    memory::component::{InitialContents, MemoryConfig},
     platform::Platform,
     scheduler::Frequency,
 };

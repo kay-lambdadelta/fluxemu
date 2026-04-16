@@ -9,7 +9,6 @@ bitstream-io = "4.10"
 bytemuck = { workspace = true }
 bytes = { workspace = true }
 fluxemu-audio = { workspace = true }
-fluxemu-definition-memory = { workspace = true }
 fluxemu-definition-mos6502 = { workspace = true }
 fluxemu-input = { workspace = true }
 fluxemu-program = { workspace = true }

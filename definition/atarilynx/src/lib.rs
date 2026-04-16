@@ -1,10 +1,12 @@
 use std::{ops::RangeInclusive, str::FromStr};
 
-use fluxemu_definition_memory::{InitialContents, MemoryConfig};
 use fluxemu_program::RomId;
 use fluxemu_runtime::{
     machine::builder::{MachineBuilder, MachineFactory},
-    memory::Address,
+    memory::{
+        Address,
+        component::{InitialContents, MemoryConfig},
+    },
     platform::Platform,
 };
 use mapctl::MapctlConfig;

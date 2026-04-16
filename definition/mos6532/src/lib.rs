@@ -1,6 +1,5 @@
 use std::{fmt::Debug, ops::RangeInclusive};
 
-use fluxemu_definition_memory::{InitialContents, MemoryConfig};
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
     RuntimeApi,
@@ -9,6 +8,7 @@ use fluxemu_runtime::{
     memory::{
         Address, AddressSpaceId, MapTarget, MemoryError, MemoryErrorType, MemoryRemappingCommand,
         Permissions,
+        component::{InitialContents, MemoryConfig},
     },
     path::ComponentPath,
     platform::Platform,

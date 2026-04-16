@@ -6,20 +6,18 @@ use std::{
 
 use fluxemu_program::RomId;
 use fluxemu_range::{ContiguousRange, RangeIntersection};
-use fluxemu_runtime::{
+use rand::Rng;
+use rangemap::RangeInclusiveMap;
+
+use crate::{
+    Platform,
     component::{
         Component, ComponentVersion,
         config::{ComponentConfig, LateContext, LateInitializedData},
     },
     machine::builder::{ComponentBuilder, RomRequirement},
     memory::{Address, AddressSpaceId, MemoryError},
-    platform::Platform,
 };
-use rand::Rng;
-use rangemap::RangeInclusiveMap;
-
-#[cfg(test)]
-mod tests;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InitialContents {
@@ -71,6 +69,7 @@ impl Component for Memory {
         Ok(())
     }
 
+    #[inline]
     fn memory_read(
         &mut self,
         address: Address,
@@ -86,6 +85,7 @@ impl Component for Memory {
         Ok(())
     }
 
+    #[inline]
     fn memory_write(
         &mut self,
         address: Address,
