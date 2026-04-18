@@ -24,11 +24,13 @@ pub static STORAGE_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| {
     cfg_if::cfg_if! {
         if #[cfg(target_os = "espidf")] {
             PathBuf::from("/fluxemu")
+        } else if #[cfg(target_os = "nuttx")] {
+            PathBuf::from("/mnt/fluxemu")
         } else if #[cfg(target_os = "horizon")] {
             PathBuf::from("sdmc:/fluxemu")
         } else if #[cfg(target_os = "psp")] {
             PathBuf::from("ms0:/fluxemu")
-        } else if #[cfg(any(target_family = "unix", target_os = "windows"))] {
+        } else if #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))] {
             dirs::data_dir().unwrap().join("fluxemu")
         } else {
             compile_error!("Unsupported target");
@@ -39,7 +41,7 @@ pub static STORAGE_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| {
 /// Config location
 pub static ENVIRONMENT_LOCATION: LazyLock<PathBuf> = LazyLock::new(|| {
     cfg_if::cfg_if! {
-        if #[cfg(any(target_family = "unix", target_os = "windows"))] {
+        if #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))] {
             dirs::config_dir().map(|directory| {
                 directory.join("fluxemu")
             })
