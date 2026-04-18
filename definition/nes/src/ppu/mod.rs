@@ -1,4 +1,4 @@
-use std::{collections::HashMap, marker::PhantomData, ops::RangeInclusive};
+use std::{any::Any, marker::PhantomData, ops::RangeInclusive};
 
 use fluxemu_definition_mos6502::{Mos6502, Mos6502Event, Pin};
 use fluxemu_range::ContiguousRange;
@@ -6,13 +6,13 @@ use fluxemu_runtime::{
     RuntimeApi,
     component::{
         Component,
-        config::{ComponentConfig, LateContext, LateInitializedData},
+        config::{ComponentConfig, LateContext},
     },
     event::{Event, EventMode, downcast_event},
     graphics::software::Texture,
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::{Address, AddressSpace, AddressSpaceId, MemoryError},
-    path::{ComponentPath, ResourcePath},
+    path::ComponentPath,
     platform::Platform,
     scheduler::{Period, SynchronizationContext},
 };
@@ -90,7 +90,6 @@ pub struct Ppu<R: Region, G: SupportedGraphicsApiPpu> {
     backend: Option<G::Backend<R>>,
     cpu_address_space: AddressSpaceId,
     ppu_address_space: AddressSpaceId,
-    framebuffer_path: ResourcePath,
     processor_path: ComponentPath,
     staging_buffer: Texture<PpuColorIndex>,
     timestamp: Period,
@@ -102,21 +101,11 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
 {
     type Component = Ppu<R, P::GraphicsApi>;
 
-    fn late_initialize(
-        component: &mut Self::Component,
-        data: &LateContext<P>,
-    ) -> LateInitializedData<P> {
+    fn late_initialize(component: &mut Self::Component, data: &LateContext<P>) {
         let backend = <P::GraphicsApi as SupportedGraphicsApiPpu>::Backend::new(
             data.graphics_initialization_data.clone(),
         );
-        let framebuffer = backend.create_framebuffer();
         component.backend = Some(backend);
-
-        let framebuffer_name = component.framebuffer_path.name().to_string().into();
-
-        LateInitializedData {
-            framebuffers: HashMap::from_iter([(framebuffer_name, framebuffer)]),
-        }
     }
 
     fn build_component(
@@ -125,7 +114,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         let frequency = R::master_clock() / 4;
 
-        let (component_builder, framebuffer_path) = component_builder
+        let (component_builder, _) = component_builder
             .scheduler_participation(Some(SchedulerParticipation::OnAccess))
             .framebuffer("framebuffer");
 
@@ -254,7 +243,6 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
             cpu_address_space: self.cpu_address_space,
             processor_path: self.processor.clone(),
             ppu_address_space: self.ppu_address_space,
-            framebuffer_path,
             timestamp: Period::default(),
             period: frequency.recip(),
         })
@@ -530,12 +518,10 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     },
                 );
 
-                runtime.commit_framebuffer::<G>(&self.framebuffer_path, |framebuffer| {
-                    self.backend
-                        .as_mut()
-                        .unwrap()
-                        .commit_staging_buffer(&self.staging_buffer, framebuffer);
-                });
+                self.backend
+                    .as_mut()
+                    .unwrap()
+                    .commit_staging_buffer(&self.staging_buffer);
             }
         }
     }
@@ -568,6 +554,10 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
 
     fn needs_work(&self, delta: Period) -> bool {
         delta >= self.period
+    }
+
+    fn get_framebuffer(&mut self, _name: &str) -> &dyn Any {
+        self.backend.as_ref().unwrap().framebuffer()
     }
 }
 

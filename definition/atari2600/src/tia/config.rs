@@ -1,7 +1,7 @@
 use std::{collections::HashMap, marker::PhantomData};
 
 use fluxemu_runtime::{
-    component::config::{ComponentConfig, LateContext, LateInitializedData},
+    component::config::{ComponentConfig, LateContext},
     graphics::software::Texture,
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::AddressSpaceId,
@@ -32,28 +32,18 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>> ComponentConf
 {
     type Component = Tia<R, P::GraphicsApi>;
 
-    fn late_initialize(
-        component: &mut Self::Component,
-        data: &LateContext<P>,
-    ) -> LateInitializedData<P> {
+    fn late_initialize(component: &mut Self::Component, data: &LateContext<P>) {
         let backend = <P::GraphicsApi as SupportedGraphicsApiTia>::Backend::new(
             data.graphics_initialization_data.clone(),
         );
-        let framebuffer = backend.create_framebuffer();
         component.backend = Some(backend);
-
-        let framebuffer_name = component.framebuffer_path.name().to_string().into();
-
-        LateInitializedData {
-            framebuffers: HashMap::from_iter([(framebuffer_name, framebuffer)]),
-        }
     }
 
     fn build_component(
         self,
         component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
-        let (mut component_builder, framebuffer_path) = component_builder
+        let (mut component_builder, _) = component_builder
             .scheduler_participation(Some(SchedulerParticipation::OnAccess))
             .framebuffer("framebuffer");
 
@@ -91,7 +81,6 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>> ComponentConf
             playfield: Default::default(),
             high_playfield_ball_priority: false,
             background_color: Default::default(),
-            framebuffer_path,
             staging_buffer,
             timestamp: Period::default(),
         })

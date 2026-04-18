@@ -9,7 +9,9 @@ use palette::{Srgba, named::BLACK};
 use super::{SupportedGraphicsApiTia, TiaDisplayBackend};
 use crate::tia::{VISIBLE_SCANLINE_LENGTH, region::Region};
 
-pub struct SoftwareState;
+pub struct SoftwareState {
+    framebuffer: Texture<Srgba<u8>>,
+}
 
 // elide the buffers
 
@@ -23,23 +25,22 @@ impl<R: Region> TiaDisplayBackend<R> for SoftwareState {
     type GraphicsApi = Software;
 
     fn new(_: ()) -> Self {
-        SoftwareState
+        SoftwareState {
+            framebuffer: Texture::new(
+                VISIBLE_SCANLINE_LENGTH as usize,
+                R::TOTAL_SCANLINES as usize,
+                BLACK.into(),
+            ),
+        }
     }
 
-    fn create_framebuffer(&self) -> <Self::GraphicsApi as GraphicsApi>::Framebuffer {
-        Texture::new(
-            VISIBLE_SCANLINE_LENGTH as usize,
-            R::TOTAL_SCANLINES as usize,
-            BLACK.into(),
-        )
+    fn framebuffer(&self) -> &<Self::GraphicsApi as GraphicsApi>::Framebuffer {
+        &self.framebuffer
     }
 
-    fn commit_staging_buffer(
-        &mut self,
-        staging_buffer: &Texture<Srgba<u8>>,
-        framebuffer: &mut <Self::GraphicsApi as GraphicsApi>::Framebuffer,
-    ) {
-        framebuffer.copy_from(staging_buffer, CopyMode::Nearest);
+    fn commit_staging_buffer(&mut self, staging_buffer: &Texture<Srgba<u8>>) {
+        self.framebuffer
+            .copy_from(staging_buffer, CopyMode::Nearest);
     }
 }
 

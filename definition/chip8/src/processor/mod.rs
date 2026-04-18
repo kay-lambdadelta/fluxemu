@@ -6,10 +6,7 @@ use std::{
 
 use fluxemu_runtime::{
     RuntimeApi,
-    component::{
-        Component, ComponentVersion,
-        config::{ComponentConfig, LateContext, LateInitializedData},
-    },
+    component::{Component, ComponentVersion, config::ComponentConfig},
     input::LogicalInputDevice,
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::AddressSpaceId,
@@ -249,13 +246,6 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
     for Chip8ProcessorConfig<P::GraphicsApi>
 {
     type Component = Chip8Processor<P::GraphicsApi>;
-
-    fn late_initialize(
-        _component: &mut Self::Component,
-        _data: &LateContext<P>,
-    ) -> LateInitializedData<P> {
-        LateInitializedData::default()
-    }
 
     fn build_component(
         self,

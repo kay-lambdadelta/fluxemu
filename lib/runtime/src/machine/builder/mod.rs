@@ -1,16 +1,13 @@
 use std::{collections::HashMap, ops::DerefMut, sync::Arc};
 
 use crate::{
-    component::{
-        Component,
-        config::{LateContext, LateInitializedData},
-    },
+    component::{Component, config::LateContext},
     event::{Event, EventMode},
     graphics::{GraphicsApi, GraphicsRequirements},
     input::LogicalInputDevice,
     machine::Machine,
     memory::{AddressSpaceId, MemoryRemappingCommand},
-    path::{ComponentPath, ResourcePath},
+    path::ComponentPath,
     platform::Platform,
     scheduler::Period,
 };
@@ -64,9 +61,6 @@ enum MachineBuilderCommand<'a, P: Platform> {
         address_space: AddressSpaceId,
         command: MemoryRemappingCommand,
     },
-    CreateFramebuffer {
-        path: ResourcePath,
-    },
     CreateInputDevice(Arc<LogicalInputDevice>),
     AddGraphicsRequirements {
         requirements: GraphicsRequirements<P::GraphicsApi>,
@@ -74,7 +68,7 @@ enum MachineBuilderCommand<'a, P: Platform> {
 }
 
 type ComponentLateInitializer<P> =
-    Box<dyn FnOnce(&mut dyn Component, &LateContext<P>) -> LateInitializedData<P> + Send + Sync>;
+    Box<dyn FnOnce(&mut dyn Component, &LateContext<P>) + Send + Sync>;
 
 pub struct SealedMachineBuilder<P: Platform> {
     machine: Arc<Machine>,
@@ -102,23 +96,7 @@ impl<P: Platform> SealedMachineBuilder<P> {
             runtime_guard
                 .registry()
                 .interact_dyn(&path, Period::ZERO, |mut component| {
-                    let provided_data = initializer(component.deref_mut(), &late_initialized_data);
-
-                    for (framebuffer_name, framebuffer) in provided_data.framebuffers {
-                        let framebuffer_path = path
-                            .clone()
-                            .into_resource(framebuffer_name)
-                            .expect("Invalid framebuffer name");
-
-                        // Replace dummy type with actual framebuffer
-                        *self
-                            .machine
-                            .framebuffers
-                            .get(&framebuffer_path)
-                            .unwrap()
-                            .lock()
-                            .unwrap() = Box::new(framebuffer);
-                    }
+                    initializer(component.deref_mut(), &late_initialized_data);
                 })
                 .unwrap();
         }

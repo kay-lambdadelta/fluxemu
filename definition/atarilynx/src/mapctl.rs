@@ -1,9 +1,6 @@
 use fluxemu_runtime::{
     RuntimeApi,
-    component::{
-        Component,
-        config::{ComponentConfig, LateContext, LateInitializedData},
-    },
+    component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
     memory::{
         Address, AddressSpaceId, MapTarget, MemoryError, MemoryRemappingCommand, Permissions,
@@ -114,13 +111,6 @@ pub struct MapctlConfig {
 
 impl<P: Platform> ComponentConfig<P> for MapctlConfig {
     type Component = Mapctl;
-
-    fn late_initialize(
-        _component: &mut Self::Component,
-        _data: &LateContext<P>,
-    ) -> LateInitializedData<P> {
-        LateInitializedData::default()
-    }
 
     fn build_component(
         self,

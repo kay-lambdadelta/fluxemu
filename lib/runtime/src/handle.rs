@@ -1,9 +1,8 @@
 use std::{
-    any::Any,
     cell::RefCell,
     collections::{HashMap, HashSet},
     rc::Rc,
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::Duration,
 };
 
@@ -16,7 +15,6 @@ use crate::{
     ComponentPath, ResourcePath,
     component::{Component, ComponentRegistry, LocalComponentStore},
     event::EventMode,
-    graphics::GraphicsApi,
     input::LogicalInputDevice,
     machine::{Machine, RUNTIME_CONTEXT},
     memory::{AddressSpace, AddressSpaceId},
@@ -107,27 +105,6 @@ impl RuntimeApi {
         ComponentRegistry::new(self, &self.machine.registry_data)
     }
 
-    /// Commit a framebuffer, giving access to the new frame to the frontend
-    pub fn commit_framebuffer<G: GraphicsApi>(
-        &self,
-        path: &ResourcePath,
-        callback: impl FnOnce(&mut G::Framebuffer),
-    ) {
-        let mut framebuffer_guard = self
-            .machine
-            .framebuffers
-            .get(path)
-            .expect("Could not find framebuffer")
-            .lock()
-            .unwrap();
-
-        callback(
-            framebuffer_guard
-                .downcast_mut()
-                .expect("This item is not a valid framebuffer"),
-        )
-    }
-
     /// Gain access to the program specification the [Machine] was created with
     pub fn program_specification(&self) -> Option<&ProgramSpecification> {
         self.machine.program_specification.as_ref()
@@ -168,10 +145,7 @@ impl RuntimeApi {
     }
 
     /// Framebuffers this machine was created with
-    ///
-    /// HACK: You should use interact to synchronize with the parent component of these framebuffers before accessing them.
-    /// In the future, a more unified solution will be found
-    pub fn framebuffers(&self) -> &HashMap<ResourcePath, Mutex<Box<dyn Any + Send + Sync>>> {
+    pub fn framebuffer_paths(&self) -> &HashSet<ResourcePath> {
         &self.machine.framebuffers
     }
 

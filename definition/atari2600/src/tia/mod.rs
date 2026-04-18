@@ -1,4 +1,5 @@
 use std::{
+    any::Any,
     collections::{HashMap, HashSet},
     fmt::Debug,
 };
@@ -6,11 +7,10 @@ use std::{
 pub(crate) use backend::SupportedGraphicsApiTia;
 use color::TiaColor;
 use fluxemu_runtime::{
-    ComponentPath, RuntimeApi,
+    ComponentPath,
     component::Component,
     graphics::software::Texture,
     memory::{Address, AddressSpaceId, MemoryError},
-    path::ResourcePath,
     scheduler::{Period, SynchronizationContext},
 };
 use nalgebra::Point2;
@@ -120,7 +120,6 @@ pub(crate) struct Tia<R: Region, G: SupportedGraphicsApiTia> {
     cpu_path: ComponentPath,
     staging_buffer: Texture<Srgba<u8>>,
     timestamp: Period,
-    framebuffer_path: ResourcePath,
 }
 
 impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
@@ -170,17 +169,13 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
             self.timestamp = now;
 
             if let Some(cycles) = self.cycles_waiting_for_vsync {
-                let runtime = RuntimeApi::current();
-
                 self.cycles_waiting_for_vsync = Some(cycles.saturating_sub(1));
 
                 if self.cycles_waiting_for_vsync == Some(0) {
-                    runtime.commit_framebuffer::<G>(&self.framebuffer_path, |framebuffer| {
-                        self.backend
-                            .as_mut()
-                            .unwrap()
-                            .commit_staging_buffer(&self.staging_buffer, framebuffer);
-                    });
+                    self.backend
+                        .as_mut()
+                        .unwrap()
+                        .commit_staging_buffer(&self.staging_buffer);
 
                     self.cycles_waiting_for_vsync = None;
                 }
@@ -215,6 +210,10 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
 
     fn needs_work(&self, delta: Period) -> bool {
         delta >= R::frequency().recip()
+    }
+
+    fn get_framebuffer(&mut self, _name: &str) -> &dyn Any {
+        self.backend.as_ref().unwrap().framebuffer()
     }
 }
 

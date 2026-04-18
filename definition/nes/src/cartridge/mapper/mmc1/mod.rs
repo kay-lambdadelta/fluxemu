@@ -5,7 +5,7 @@ use fluxemu_runtime::{
     ComponentPath, RuntimeApi,
     component::{
         Component,
-        config::{ComponentConfig, LateContext, LateInitializedData},
+        config::{ComponentConfig, LateContext},
     },
     machine::builder::ComponentBuilder,
     memory::{
@@ -395,14 +395,9 @@ pub struct Mmc1Config {
 impl<P: Platform> ComponentConfig<P> for Mmc1Config {
     type Component = Mmc1;
 
-    fn late_initialize(
-        component: &mut Self::Component,
-        _data: &LateContext<P>,
-    ) -> LateInitializedData<P> {
+    fn late_initialize(component: &mut Self::Component, _data: &LateContext<P>) {
         // Force the system to adopt an initial mapping
         component.update_banking();
-
-        Default::default()
     }
 
     fn build_component(

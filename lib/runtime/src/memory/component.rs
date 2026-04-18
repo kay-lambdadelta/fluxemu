@@ -11,10 +11,7 @@ use rangemap::RangeInclusiveMap;
 
 use crate::{
     Platform,
-    component::{
-        Component, ComponentVersion,
-        config::{ComponentConfig, LateContext, LateInitializedData},
-    },
+    component::{Component, ComponentVersion, config::ComponentConfig},
     machine::builder::{ComponentBuilder, RomRequirement},
     memory::{Address, AddressSpaceId, MemoryError},
 };
@@ -107,13 +104,6 @@ impl Component for Memory {
 
 impl<P: Platform> ComponentConfig<P> for MemoryConfig {
     type Component = Memory;
-
-    fn late_initialize(
-        _component: &mut Self::Component,
-        _data: &LateContext<P>,
-    ) -> LateInitializedData<P> {
-        Default::default()
-    }
 
     fn build_component(
         self,

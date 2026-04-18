@@ -67,55 +67,59 @@ impl GraphicsRuntime for SoftwareGraphicsRuntime {
             surface_texture.fill(BLACK.into());
 
             let runtime_guard = machine.enter_runtime();
-            let framebuffers = runtime_guard.framebuffers();
+            let framebuffer_paths = runtime_guard.framebuffer_paths();
 
             let destination_dimensions: Vector2<f32> = surface_texture.size().cast();
 
-            for (display_path, framebuffer) in framebuffers.iter() {
+            for framebuffer_path in framebuffer_paths.iter() {
+                let framebuffer_parent_path = framebuffer_path.parent().unwrap();
+
                 // Ensure we are at least on this frame for this component
                 runtime_guard.registry().interact_dyn(
-                    display_path.parent().unwrap(),
+                    framebuffer_parent_path,
                     runtime_guard.safe_advance_timestamp(),
-                    |_| {},
+                    |component| {
+                        let framebuffer = component.get_framebuffer(framebuffer_path.name());
+
+                        let framebuffer_texture: &<Self::GraphicsApi as GraphicsApi>::Framebuffer =
+                            framebuffer.downcast_ref().unwrap();
+
+                        let source_dimensions: Vector2<f32> = framebuffer_texture.size().cast();
+
+                        let source_aspect = source_dimensions.x / source_dimensions.y;
+                        let destination_aspect =
+                            destination_dimensions.x / destination_dimensions.y;
+
+                        let (scaled_dimensions, offset) = if source_aspect > destination_aspect {
+                            let scaled_width = destination_dimensions.x;
+                            let scaled_height = destination_dimensions.x / source_aspect;
+
+                            let offset = Point2::new(
+                                0,
+                                ((destination_dimensions.y - scaled_height) / 2.0) as usize,
+                            );
+
+                            (Vector2::new(scaled_width, scaled_height), offset)
+                        } else {
+                            let scaled_width = destination_dimensions.y * source_aspect;
+                            let scaled_height = destination_dimensions.y;
+
+                            let offset = Point2::new(
+                                ((destination_dimensions.x - scaled_width) / 2.0) as usize,
+                                0,
+                            );
+
+                            (Vector2::new(scaled_width, scaled_height), offset)
+                        };
+
+                        let min = offset;
+                        let max = offset + scaled_dimensions.try_cast().unwrap();
+
+                        surface_texture
+                            .view_mut(min.x..max.x, min.y..max.y)
+                            .copy_from(framebuffer_texture, CopyMode::Nearest);
+                    },
                 );
-
-                let framebuffer_guard = framebuffer.lock().unwrap();
-                let framebuffer_texture: &<Self::GraphicsApi as GraphicsApi>::Framebuffer =
-                    framebuffer_guard.downcast_ref().unwrap();
-
-                let source_dimensions: Vector2<f32> = framebuffer_texture.size().cast();
-
-                let source_aspect = source_dimensions.x / source_dimensions.y;
-                let destination_aspect = destination_dimensions.x / destination_dimensions.y;
-
-                let (scaled_dimensions, offset) = if source_aspect > destination_aspect {
-                    let scaled_width = destination_dimensions.x;
-                    let scaled_height = destination_dimensions.x / source_aspect;
-
-                    let offset = Point2::new(
-                        0,
-                        ((destination_dimensions.y - scaled_height) / 2.0) as usize,
-                    );
-
-                    (Vector2::new(scaled_width, scaled_height), offset)
-                } else {
-                    let scaled_width = destination_dimensions.y * source_aspect;
-                    let scaled_height = destination_dimensions.y;
-
-                    let offset = Point2::new(
-                        ((destination_dimensions.x - scaled_width) / 2.0) as usize,
-                        0,
-                    );
-
-                    (Vector2::new(scaled_width, scaled_height), offset)
-                };
-
-                let min = offset;
-                let max = offset + scaled_dimensions.try_cast().unwrap();
-
-                surface_texture
-                    .view_mut(min.x..max.x, min.y..max.y)
-                    .copy_from(framebuffer_texture, CopyMode::Nearest);
             }
             drop(runtime_guard);
 

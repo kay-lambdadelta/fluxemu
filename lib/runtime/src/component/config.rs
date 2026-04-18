@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, error::Error, fmt::Debug};
+use std::{error::Error, fmt::Debug};
 
 use crate::{
     Platform, component::Component, graphics::GraphicsApi, machine::builder::ComponentBuilder,
@@ -17,10 +17,7 @@ pub trait ComponentConfig<P: Platform>: Debug + Sized + Sync + Send {
     ) -> Result<Self::Component, Box<dyn Error>>;
 
     /// Do setup for subsystems that cannot be initialized during [`Self::build_component`]
-    fn late_initialize(
-        component: &mut Self::Component,
-        data: &LateContext<P>,
-    ) -> LateInitializedData<P> {
+    fn late_initialize(component: &mut Self::Component, data: &LateContext<P>) {
         Default::default()
     }
 }
@@ -28,16 +25,4 @@ pub trait ComponentConfig<P: Platform>: Debug + Sized + Sync + Send {
 /// Data that the runtime will provide at the end of the initialization sequence
 pub struct LateContext<P: Platform> {
     pub graphics_initialization_data: <P::GraphicsApi as GraphicsApi>::InitializationData,
-}
-
-pub struct LateInitializedData<P: Platform> {
-    pub framebuffers: HashMap<Cow<'static, str>, <P::GraphicsApi as GraphicsApi>::Framebuffer>,
-}
-
-impl<P: Platform> Default for LateInitializedData<P> {
-    fn default() -> Self {
-        Self {
-            framebuffers: HashMap::default(),
-        }
-    }
 }

@@ -3,14 +3,13 @@
 //! The main runtime for the FluxEMU emulator framework
 
 use std::{
-    any::Any,
     cell::RefCell,
     collections::{HashMap, HashSet},
     fmt::Debug,
     marker::PhantomData,
     ops::Deref,
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use fluxemu_program::{ProgramManager, ProgramSpecification};
@@ -44,7 +43,7 @@ where
     /// Component Registry
     pub(crate) registry_data: ComponentRegistryData,
     /// All framebuffers this machine has
-    pub(crate) framebuffers: HashMap<ResourcePath, Mutex<Box<dyn Any + Send + Sync>>>,
+    pub(crate) framebuffers: HashSet<ResourcePath>,
     /// All audio outputs this machine has
     pub(crate) audio_outputs: HashSet<ResourcePath>,
     /// The program that this machine was set up with, if any

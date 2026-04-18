@@ -1,21 +1,19 @@
 use std::{
-    collections::HashMap,
+    any::Any,
     fmt::Debug,
     io::{Read, Write},
 };
 
 use fluxemu_runtime::{
-    RuntimeApi,
     component::{
         Component, ComponentVersion,
-        config::{ComponentConfig, LateContext, LateInitializedData},
+        config::{ComponentConfig, LateContext},
     },
     graphics::{
         GraphicsApi,
         software::{CopyMode, Texture, TextureImpl, TextureImplMut},
     },
     machine::builder::{ComponentBuilder, SchedulerParticipation},
-    path::ResourcePath,
     platform::Platform,
     scheduler::{Period, SynchronizationContext},
 };
@@ -47,7 +45,6 @@ pub struct Chip8Display<G: SupportedGraphicsApiChip8Display> {
     vsync_occurred: bool,
     staging_buffer: Texture<Srgba<u8>>,
     hires: bool,
-    framebuffer_path: ResourcePath,
     config: Chip8DisplayConfig,
 }
 
@@ -208,20 +205,19 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Display<G> {
         }
 
         if commit_staging_buffer {
-            let runtime = RuntimeApi::current();
-
-            // Commit the framebuffer
-            runtime.commit_framebuffer::<G>(&self.framebuffer_path, |framebuffer| {
-                self.backend
-                    .as_mut()
-                    .unwrap()
-                    .commit_staging_buffer(&self.staging_buffer, framebuffer);
-            });
+            self.backend
+                .as_mut()
+                .unwrap()
+                .commit_staging_buffer(&self.staging_buffer);
         }
     }
 
     fn needs_work(&self, delta: Period) -> bool {
         delta >= Period::ONE / 60
+    }
+
+    fn get_framebuffer(&mut self, _name: &str) -> &dyn Any {
+        self.backend.as_ref().unwrap().framebuffer()
     }
 }
 
@@ -229,12 +225,8 @@ pub(crate) trait Chip8DisplayBackend: Send + Sync + Debug + 'static {
     type GraphicsApi: GraphicsApi;
 
     fn new(initialization_data: <Self::GraphicsApi as GraphicsApi>::InitializationData) -> Self;
-    fn create_framebuffer(&self) -> <Self::GraphicsApi as GraphicsApi>::Framebuffer;
-    fn commit_staging_buffer(
-        &mut self,
-        staging_buffer: &Texture<Srgba<u8>>,
-        framebuffer: &mut <Self::GraphicsApi as GraphicsApi>::Framebuffer,
-    );
+    fn framebuffer(&self) -> &<Self::GraphicsApi as GraphicsApi>::Framebuffer;
+    fn commit_staging_buffer(&mut self, staging_buffer: &Texture<Srgba<u8>>);
 }
 
 #[derive(Debug, Default)]
@@ -247,28 +239,18 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
 {
     type Component = Chip8Display<P::GraphicsApi>;
 
-    fn late_initialize(
-        component: &mut Self::Component,
-        data: &LateContext<P>,
-    ) -> LateInitializedData<P> {
+    fn late_initialize(component: &mut Self::Component, data: &LateContext<P>) {
         let backend = <P::GraphicsApi as SupportedGraphicsApiChip8Display>::Backend::new(
             data.graphics_initialization_data.clone(),
         );
-        let framebuffer = backend.create_framebuffer();
         component.backend = Some(backend);
-
-        let framebuffer_name = component.framebuffer_path.name().to_string().into();
-
-        LateInitializedData {
-            framebuffers: HashMap::from_iter([(framebuffer_name, framebuffer)]),
-        }
     }
 
     fn build_component(
         self,
         component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
-        let (_, framebuffer_path) = component_builder
+        component_builder
             .scheduler_participation(Some(SchedulerParticipation::OnAccess))
             .framebuffer("framebuffer");
 
@@ -277,7 +259,6 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
             hires: false,
             vsync_occurred: false,
             staging_buffer: Texture::new(LORES.x as usize, LORES.y as usize, BLACK.into()),
-            framebuffer_path,
             config: self,
         })
     }

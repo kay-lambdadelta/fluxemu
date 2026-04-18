@@ -167,60 +167,60 @@ impl GraphicsRuntime for WebgpuGraphicsRuntime {
 
                 // We lock the guards until the operation is done to stop race conditions
                 let runtime_guard = machine.enter_runtime();
+                let framebuffer_paths = runtime_guard.framebuffer_paths();
 
-                let mut used_framebuffer_guards = Vec::default();
-                let framebuffers = runtime_guard.framebuffers();
+                for framebuffer_path in framebuffer_paths.iter() {
+                    let framebuffer_parent_path = framebuffer_path.parent().unwrap();
 
-                for (display_path, framebuffer) in framebuffers.iter() {
                     // Ensure we are at least on this frame for this component
                     runtime_guard.registry().interact_dyn(
-                        display_path.parent().unwrap(),
+                        framebuffer_parent_path,
                         runtime_guard.safe_advance_timestamp(),
-                        |_| {},
+                        |component| {
+                            let framebuffer = component.get_framebuffer(framebuffer_path.name());
+    
+                            let framebuffer_texture: &<Self::GraphicsApi as GraphicsApi>::Framebuffer =
+                                framebuffer.downcast_ref().unwrap();
+                            
+                            
+                            let texture_view =
+                                framebuffer_texture.create_view(&TextureViewDescriptor::default());
+                            let size = framebuffer_texture.size();
+        
+                            let uniforms = ShaderUniform {
+                                viewport_size: Vector2::new(
+                                    surface_texture_size.width as f32,
+                                    surface_texture_size.height as f32,
+                                ),
+                                framebuffer_size: Vector2::new(size.width as f32, size.height as f32),
+                            };
+        
+                            self.queue
+                                .write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
+        
+                            let bind_group = self.device.create_bind_group(&BindGroupDescriptor {
+                                label: None,
+                                layout: &self.bind_group_layout,
+                                entries: &[
+                                    BindGroupEntry {
+                                        binding: 0,
+                                        resource: self.uniform_buffer.as_entire_binding(),
+                                    },
+                                    BindGroupEntry {
+                                        binding: 1,
+                                        resource: BindingResource::TextureView(&texture_view),
+                                    },
+                                    BindGroupEntry {
+                                        binding: 2,
+                                        resource: BindingResource::Sampler(&self.machine_draw_sampler),
+                                    },
+                                ],
+                            });
+        
+                            render_pass.set_bind_group(0, &bind_group, &[]);
+                            render_pass.draw(0..3, 0..1);
+                        }
                     );
-
-                    let framebuffer_guard = framebuffer.lock().unwrap();
-                    let framebuffer_texture: &<Self::GraphicsApi as GraphicsApi>::Framebuffer =
-                        framebuffer_guard.downcast_ref().unwrap();
-
-                    let texture_view =
-                        framebuffer_texture.create_view(&TextureViewDescriptor::default());
-                    let size = framebuffer_texture.size();
-
-                    let uniforms = ShaderUniform {
-                        viewport_size: Vector2::new(
-                            surface_texture_size.width as f32,
-                            surface_texture_size.height as f32,
-                        ),
-                        framebuffer_size: Vector2::new(size.width as f32, size.height as f32),
-                    };
-
-                    self.queue
-                        .write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
-
-                    let bind_group = self.device.create_bind_group(&BindGroupDescriptor {
-                        label: None,
-                        layout: &self.bind_group_layout,
-                        entries: &[
-                            BindGroupEntry {
-                                binding: 0,
-                                resource: self.uniform_buffer.as_entire_binding(),
-                            },
-                            BindGroupEntry {
-                                binding: 1,
-                                resource: BindingResource::TextureView(&texture_view),
-                            },
-                            BindGroupEntry {
-                                binding: 2,
-                                resource: BindingResource::Sampler(&self.machine_draw_sampler),
-                            },
-                        ],
-                    });
-
-                    render_pass.set_bind_group(0, &bind_group, &[]);
-                    render_pass.draw(0..3, 0..1);
-
-                    used_framebuffer_guards.push(framebuffer_guard);
                 }
 
                 drop(render_pass);
@@ -236,9 +236,6 @@ impl GraphicsRuntime for WebgpuGraphicsRuntime {
                         timeout: None,
                     })
                     .unwrap();
-
-                // Allow those display components to continue again
-                drop(used_framebuffer_guards);
             }
             _ => {
                 self.refresh_surface();

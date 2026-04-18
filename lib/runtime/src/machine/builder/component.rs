@@ -134,11 +134,9 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
     pub fn framebuffer(self, name: impl Into<Cow<'static, str>>) -> (Self, ResourcePath) {
         let resource_path = self.path.clone().into_resource(name).unwrap();
 
-        self.component_data
-            .local_commands
-            .push(MachineBuilderCommand::CreateFramebuffer {
-                path: resource_path.clone(),
-            });
+        self.machine_builder
+            .framebuffers
+            .insert(resource_path.clone());
 
         (self, resource_path)
     }

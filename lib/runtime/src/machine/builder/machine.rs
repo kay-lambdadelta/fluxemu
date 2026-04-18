@@ -3,13 +3,14 @@ use std::{
     marker::PhantomData,
     ops::RangeInclusive,
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use bytes::Bytes;
 use fluxemu_program::{MachineId, ProgramManager, ProgramSpecification, RomId};
 
 use crate::{
+    ResourcePath,
     component::{ComponentRegistryData, config::ComponentConfig},
     graphics::GraphicsRequirements,
     machine::{
@@ -42,19 +43,21 @@ where
     Self: Send,
 {
     /// Rom manager
-    program_manager: Arc<ProgramManager>,
+    pub(super) program_manager: Arc<ProgramManager>,
     /// Save manager
-    save_manager: SaveManager,
+    pub(super) save_manager: SaveManager,
     /// Snapshot manager
-    snapshot_manager: SnapshotManager,
+    pub(super) snapshot_manager: SnapshotManager,
     /// Command queue
-    command_queue: Vec<MachineBuilderCommand<'a, P>>,
+    pub(super) command_queue: Vec<MachineBuilderCommand<'a, P>>,
     /// Program we were opened with
-    program_specification: Option<ProgramSpecification>,
+    pub(super) program_specification: Option<ProgramSpecification>,
     /// Next address space
-    next_address_space_id: AddressSpaceId,
+    pub(super) next_address_space_id: AddressSpaceId,
     /// Component registry
-    registry_data: ComponentRegistryData,
+    pub(super) registry_data: ComponentRegistryData,
+
+    pub(super) framebuffers: HashSet<ResourcePath>,
 }
 
 impl<'a, P: Platform> MachineBuilder<'a, P> {
@@ -75,6 +78,7 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
             next_address_space_id: AddressSpaceId(0),
             command_queue: Vec::new(),
             registry_data: ComponentRegistryData::default(),
+            framebuffers: HashSet::default(),
         }
     }
 
@@ -337,7 +341,6 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
         let mut scheduler = Scheduler::new();
         let mut input_devices = HashMap::default();
         let mut audio_outputs = HashSet::default();
-        let mut framebuffers = HashMap::default();
         let mut component_late_initializers = HashMap::default();
         let mut address_spaces = HashMap::default();
         let mut remapping_commands: HashMap<_, Vec<_>> = HashMap::default();
@@ -388,10 +391,6 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
 
                     address_spaces.insert(id, address_space);
                 }
-                MachineBuilderCommand::CreateFramebuffer { path } => {
-                    // Insert dummy type that will be replaced later
-                    framebuffers.insert(path, Mutex::new(Box::new(()) as Box<_>));
-                }
                 MachineBuilderCommand::CreateInputDevice(device) => {
                     input_devices.insert(device.metadata().path.clone(), device);
                 }
@@ -416,7 +415,7 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
             address_spaces,
             input_devices,
             registry_data: self.registry_data,
-            framebuffers,
+            framebuffers: self.framebuffers,
             save_manager: self.save_manager,
             snapshot_manager: self.snapshot_manager,
             program_specification: self.program_specification,

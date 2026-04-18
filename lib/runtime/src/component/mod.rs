@@ -91,6 +91,10 @@ pub trait Component: Send + Sync + Debug + Any {
         unreachable!()
     }
 
+    fn get_framebuffer(&mut self, name: &str) -> &dyn Any {
+        unreachable!()
+    }
+
     /// Synchronize using the utilties given by [`SynchronizationContext`]
     fn synchronize(&mut self, context: SynchronizationContext) {}
 
