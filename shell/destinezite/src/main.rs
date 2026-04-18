@@ -15,9 +15,7 @@ use fluxemu_program::ProgramManager;
 use redb::Database;
 use ron::ser::PrettyConfig;
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::{
-    EnvFilter, Layer, prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt,
-};
+use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::{backend::software::SoftwareGraphicsRuntime, windowing::DesktopEventLoop};
 
