@@ -13,6 +13,7 @@ use time::Duration;
 
 const ALPHA: f32 = 0.1;
 const SMOOTHING_WINDOW: usize = 4;
+const OUTLIER_MULTIPLE: f32 = 10.0;
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -58,66 +59,80 @@ pub fn machine_thread(
 
         let execution_time: Duration = start.elapsed().try_into().unwrap();
 
-        // Add to buffer and compute smoothed value
-        execution_time_buffer.enqueue(execution_time);
-        let smoothed_exec_time = {
-            let sum: Duration = execution_time_buffer.iter().copied().sum();
-            sum / (execution_time_buffer.len() as i32)
-        };
-
-        let frame_delta = smoothed_exec_time - execution_timeslice;
-
-        // Jitter smoothing
-        jitter_buffer.enqueue(frame_delta.abs());
-        let average_jitter: Duration = {
-            let sum: Duration = jitter_buffer.iter().copied().sum();
-            sum / (jitter_buffer.len() as i32)
-        };
-        let jitter_ratio = if execution_timeslice > Duration::ZERO {
-            (average_jitter.as_seconds_f32() / execution_timeslice.as_seconds_f32()).clamp(0.0, 1.0)
+        // Make sure unusual spikes don't freeze the emulator (like suspension)
+        let is_outlier = if execution_time_buffer.len() > 1 {
+            let average = execution_time_buffer.iter().copied().sum::<Duration>()
+                / (execution_time_buffer.len() as i32);
+            execution_time > average * OUTLIER_MULTIPLE
         } else {
-            0.0
+            false
         };
 
-        let stability = 1.0 - jitter_ratio;
-        error += smoothed_exec_time - execution_timeslice;
+        if is_outlier {
+            error = Duration::ZERO;
+        } else {
+            // Add to buffer and compute smoothed value
+            execution_time_buffer.enqueue(execution_time);
+            let smoothed_exec_time = {
+                let sum: Duration = execution_time_buffer.iter().copied().sum();
+                sum / (execution_time_buffer.len() as i32)
+            };
 
-        // Avoid windup
-        let max_error = execution_timeslice * 4;
-        if error > max_error {
-            error = max_error;
-        } else if error < -max_error {
-            error = -max_error;
-        }
+            let frame_delta = smoothed_exec_time - execution_timeslice;
 
-        // Sleep correction
-        if error < -sleep_threshold {
-            let requested = -error;
-            let sleep_start = Instant::now();
-            sleep(requested.try_into().unwrap());
-            let actual_sleep_time = sleep_start.elapsed();
+            // Jitter smoothing
+            jitter_buffer.enqueue(frame_delta.abs());
+            let average_jitter: Duration = {
+                let sum: Duration = jitter_buffer.iter().copied().sum();
+                sum / (jitter_buffer.len() as i32)
+            };
+            let jitter_ratio = if execution_timeslice > Duration::ZERO {
+                (average_jitter.as_seconds_f32() / execution_timeslice.as_seconds_f32())
+                    .clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
 
-            error += actual_sleep_time;
+            let stability = 1.0 - jitter_ratio;
+            error += smoothed_exec_time - execution_timeslice;
 
-            let overshoot = actual_sleep_time - requested;
-            average_sleep_overshoot =
-                average_sleep_overshoot + (overshoot - average_sleep_overshoot) * ALPHA;
+            // Avoid windup
+            let max_error = execution_timeslice * 4;
+            if error > max_error {
+                error = max_error;
+            } else if error < -max_error {
+                error = -max_error;
+            }
 
-            sleep_threshold = average_sleep_overshoot.max(Duration::ZERO) * 2;
-        }
+            // Sleep correction
+            if error < -sleep_threshold {
+                let requested = -error;
+                let sleep_start = Instant::now();
+                sleep(requested.try_into().unwrap());
+                let actual_sleep_time = sleep_start.elapsed();
 
-        let growth_step: Duration = execution_timeslice / 16;
-        let shrink_step: Duration = execution_timeslice / 8;
+                error += actual_sleep_time;
 
-        let growth_step = growth_step * stability.max(0.1);
-        let shrink_step = shrink_step * stability.max(0.1);
+                let overshoot = actual_sleep_time - requested;
+                average_sleep_overshoot =
+                    average_sleep_overshoot + (overshoot - average_sleep_overshoot) * ALPHA;
 
-        let required_timeslice = smoothed_exec_time + average_sleep_overshoot;
+                sleep_threshold = average_sleep_overshoot.max(Duration::ZERO) * 2;
+            }
 
-        if required_timeslice > execution_timeslice {
-            execution_timeslice += growth_step;
-        } else if execution_timeslice > min_timeslice + shrink_step {
-            execution_timeslice = (execution_timeslice - shrink_step).max(min_timeslice);
+            let growth_step: Duration = execution_timeslice / 16;
+            let shrink_step: Duration = execution_timeslice / 8;
+
+            let growth_step = growth_step * stability.max(0.1);
+            let shrink_step = shrink_step * stability.max(0.1);
+
+            let required_timeslice = smoothed_exec_time + average_sleep_overshoot;
+
+            if required_timeslice > execution_timeslice {
+                execution_timeslice += growth_step;
+            } else if execution_timeslice > min_timeslice + shrink_step {
+                execution_timeslice = (execution_timeslice - shrink_step).max(min_timeslice);
+            }
         }
 
         loop {
