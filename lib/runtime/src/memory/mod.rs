@@ -25,7 +25,7 @@ const PAGE_SIZE: Address = 0x1000;
 /// The main structure representing the devices memory address spaces
 #[derive(Debug, Clone)]
 pub struct AddressSpace<'a> {
-    runtime: &'a RuntimeApi,
+    registry: ComponentRegistry<'a>,
     data: &'a AddressSpaceData,
     members_cache: Cache<Arc<ArcSwap<Members>>, Arc<Members>>,
 }
@@ -33,7 +33,7 @@ pub struct AddressSpace<'a> {
 impl<'a> AddressSpace<'a> {
     pub(crate) fn new(runtime: &'a RuntimeApi, data: &'a AddressSpaceData) -> Self {
         Self {
-            runtime,
+            registry: runtime.registry(),
             data,
             members_cache: Cache::new(data.members.clone()),
         }
@@ -53,8 +53,7 @@ impl<'a> AddressSpace<'a> {
         timestamp: Period,
         commands: impl IntoIterator<Item = MemoryRemappingCommand>,
     ) {
-        self.data
-            .remap(timestamp, self.runtime.registry(), commands);
+        self.data.remap(timestamp, self.registry, commands);
     }
 }
 

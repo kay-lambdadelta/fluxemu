@@ -142,8 +142,10 @@ impl<'a> ComponentRegistry<'a> {
 
         // Put component back
         let mut guard = self.runtime.local_component_store().borrow_mut();
-        let handle = self.fetch_or_acquire_component(id, &mut guard);
-        handle.component = Some(component);
+        let handle = guard.get_slot(id).as_mut().unwrap();
+
+        // There is nothing to drop, we own the component, so forget the `None` for better codegen
+        std::mem::forget(handle.component.replace(component));
 
         Some(item)
     }

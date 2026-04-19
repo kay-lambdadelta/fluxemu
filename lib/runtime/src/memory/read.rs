@@ -44,8 +44,7 @@ impl<'a> AddressSpace<'a> {
                 } => {
                     let offset = address_masked - entry_assigned_range.start();
 
-                    self.runtime
-                        .registry()
+                    self.registry
                         .interact_dyn(
                             *component,
                             time,
@@ -106,8 +105,7 @@ impl<'a> AddressSpace<'a> {
                             ..=(component_access_range.end() - access_range.start());
                         let adjusted_buffer = &mut remaining_buffer[buffer_range];
 
-                        self.runtime
-                            .registry()
+                        self.registry
                             .interact_dyn(
                                 *component,
                                 time,
