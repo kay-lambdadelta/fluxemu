@@ -126,6 +126,7 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> MachineFactory<P>
             prg_rom,
             chr_ram_size: header.chr_ram_size,
             chr_nvram_size: header.chr_nvram_size,
+            prg_ram_size: header.prg_ram_size,
             nametables,
         };
 

@@ -10,9 +10,11 @@ use fluxemu_runtime::{
     machine::builder::ComponentBuilder,
     memory::{
         Address, AddressSpaceId, MapTarget, MemoryError, MemoryRemappingCommand, Permissions,
+        component::{InitialContents, MemoryConfig},
     },
     platform::Platform,
 };
+use rangemap::RangeInclusiveMap;
 
 use crate::{
     cartridge::{CartParams, mapper::mmc1::shift::ShiftRegister},
@@ -24,20 +26,20 @@ mod shift;
 const PRG_BANK_SIZE: usize = 16 * 1024;
 const CHR_BANK_SIZE: usize = 4 * 1024;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum PrgRomBankMode {
     Unified32k,
     LockFirstBank,
     LockLastBank,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum ChrRomBankMode {
     Unified8k,
     Split4k,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum Mirroring {
     OneScreenLower,
     OneScreenUpper,
@@ -342,43 +344,67 @@ impl Component for Mmc1 {
                 }
 
                 if let Some(value) = self.shift_register.shift(shift_in_bit) {
+                    let remap;
+
                     match address {
                         0x8000..=0x9fff => {
-                            self.chr_rom_bank_mode = if value & 0b0001_0000 != 0 {
+                            let chr_rom_bank_mode = if value & 0b0001_0000 != 0 {
                                 ChrRomBankMode::Split4k
                             } else {
                                 ChrRomBankMode::Unified8k
                             };
 
-                            self.prg_rom_bank_mode = match (value & 0b0000_1100) >> 2 {
+                            let prg_rom_bank_mode = match (value & 0b0000_1100) >> 2 {
                                 0 | 1 => PrgRomBankMode::Unified32k,
                                 2 => PrgRomBankMode::LockFirstBank,
                                 3 => PrgRomBankMode::LockLastBank,
                                 _ => unreachable!(),
                             };
 
-                            self.mirroring = match value & 0b0000_0011 {
+                            let mirroring = match value & 0b0000_0011 {
                                 0 => Mirroring::OneScreenLower,
                                 1 => Mirroring::OneScreenUpper,
                                 2 => Mirroring::Vertical,
                                 3 => Mirroring::Horizontal,
                                 _ => unreachable!(),
                             };
+
+                            remap = chr_rom_bank_mode != self.chr_rom_bank_mode
+                                || prg_rom_bank_mode != self.prg_rom_bank_mode
+                                || mirroring != self.mirroring;
+
+                            self.chr_rom_bank_mode = chr_rom_bank_mode;
+                            self.prg_rom_bank_mode = prg_rom_bank_mode;
+                            self.mirroring = mirroring;
                         }
                         0xa000..=0xbfff => {
-                            self.chr_rom_bank_indexes[0] = value & 0b0001_1111;
+                            let index = value & 0b0001_1111;
+
+                            remap = index != self.chr_rom_bank_indexes[0];
+
+                            self.chr_rom_bank_indexes[0] = index;
                         }
                         0xc000..=0xdfff => {
-                            self.chr_rom_bank_indexes[1] = value & 0b0001_1111;
+                            let index = value & 0b0001_1111;
+
+                            remap = index != self.chr_rom_bank_indexes[1];
+
+                            self.chr_rom_bank_indexes[1] = index;
                         }
                         0xe000..=0xffff => {
-                            self.prg_rom_bank_index = value & 0b0000_1111;
+                            let index = value & 0b0000_1111;
+
+                            remap = index != self.prg_rom_bank_index;
+
+                            self.prg_rom_bank_index = index;
                         }
                         _ => unreachable!(),
                     }
 
-                    self.update_banking();
-                    self.update_nametables();
+                    if remap {
+                        self.update_banking();
+                        self.update_nametables();
+                    }
                 }
             }
         }
@@ -402,13 +428,36 @@ impl<P: Platform> ComponentConfig<P> for Mmc1Config {
 
     fn build_component(
         self,
-        component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
+        mut component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         if self.params.chr_ram_size != 0
             || self.params.chr_nvram_size != 0
             || self.params.chr_rom.is_none()
         {
             return Err("CHR-RAM is not implemented at this time".into());
+        }
+
+        if self.params.prg_ram_size != 0 {
+            if self.params.prg_ram_size != 8 * 1024 {
+                return Err("PRG-RAM size is invalid for MMC1".into());
+            }
+
+            let (cb, _) = component_builder.component(
+                "prg-ram",
+                MemoryConfig {
+                    readable: true,
+                    writable: true,
+                    assigned_range: 0x6000..=0x7fff,
+                    assigned_address_space: self.params.cpu_address_space,
+                    initial_contents: RangeInclusiveMap::from_iter([(
+                        0x6000..=0x7fff,
+                        InitialContents::Random,
+                    )]),
+                    sram: true,
+                },
+            );
+
+            component_builder = cb;
         }
 
         let my_path = component_builder.path().clone();

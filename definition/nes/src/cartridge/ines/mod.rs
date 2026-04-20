@@ -73,6 +73,7 @@ pub struct INes {
     pub chr_ram_size: usize,
     pub chr_nvram_size: usize,
     pub chr_rom_size: Option<usize>,
+    pub prg_ram_size: usize,
     pub prg_rom_size: usize,
 }
 
@@ -104,15 +105,18 @@ impl INes {
         mapper |= reader.read::<u16>(4)? << 4;
 
         let version_bits: u8 = reader.read(2)?;
-        let (version, timing_mode, chr_ram_size, chr_nvram_size) = match version_bits {
+        let (version, timing_mode, chr_ram_size, chr_nvram_size, prg_ram_size) = match version_bits
+        {
             0b00 => (
                 INesVersion::V1,
                 TimingMode::Ntsc,
                 if chr_bank_count == 0 { 8 * 1024 } else { 0 },
                 0,
+                if non_volatile_memory { 8 * 1024 } else { 0 },
             ),
 
             0b10 => {
+                // iNES 2.0
                 let console_type = match reader.read::<u8>(2)? {
                     0b00 => Some(ConsoleType::NintendoEntertainmentSystem),
                     0b01 => Some(ConsoleType::NintendoVsSystem),
@@ -147,6 +151,21 @@ impl INes {
                     64 << chr_nvram_shift_count
                 } else {
                     0
+                };
+
+                let prg_ram_size = {
+                    let nvram = if prg_nvram_shift_count > 0 {
+                        64 << prg_nvram_shift_count
+                    } else {
+                        0
+                    };
+                    let ram = if prg_ram_shift_count > 0 {
+                        64 << prg_ram_shift_count
+                    } else {
+                        0
+                    };
+
+                    nvram + ram
                 };
 
                 reader.skip(6)?;
@@ -186,6 +205,7 @@ impl INes {
                     timing_mode,
                     chr_ram_size,
                     chr_nvram_size,
+                    prg_ram_size,
                 )
             }
 
@@ -215,6 +235,7 @@ impl INes {
             chr_rom_size,
             chr_ram_size,
             chr_nvram_size,
+            prg_ram_size,
         })
     }
 
