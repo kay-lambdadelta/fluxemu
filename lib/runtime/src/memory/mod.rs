@@ -3,7 +3,7 @@ use std::{fmt::Debug, hash::Hash, ops::RangeInclusive, sync::Arc};
 use arc_swap::{ArcSwap, Cache};
 use bytes::Bytes;
 use fluxemu_range::RangeIntersection;
-use rangemap::RangeInclusiveMap;
+use rangemap::{RangeInclusiveMap, RangeInclusiveSet};
 use thiserror::Error;
 
 use crate::{
@@ -17,6 +17,8 @@ mod commit;
 pub mod component;
 mod read;
 mod search;
+#[cfg(test)]
+mod tests;
 mod write;
 
 pub type Address = usize;
@@ -227,6 +229,9 @@ impl AddressSpaceData {
         let valid_range = 0..=max;
         let commands: Vec<_> = commands.into_iter().collect();
 
+        let mut dirty_read = RangeInclusiveSet::new();
+        let mut dirty_write = RangeInclusiveSet::new();
+
         self.members.rcu(|members| {
             let mut members = Members::clone(members);
 
@@ -242,6 +247,14 @@ impl AddressSpaceData {
                             "Range {range:#04x?} is invalid for a address space that ends at \
                              {max:04x?}"
                         );
+
+                        if permissions.read {
+                            dirty_read.insert(range.clone());
+                        }
+
+                        if permissions.write {
+                            dirty_write.insert(range.clone());
+                        }
 
                         match target {
                             MapTarget::Component(component_path) => {
@@ -306,10 +319,12 @@ impl AddressSpaceData {
                     MemoryRemappingCommand::Unmap { range, permissions } => {
                         if permissions.read {
                             members.read.master.remove(range.clone());
+                            dirty_read.insert(range.clone());
                         }
 
                         if permissions.write {
                             members.write.master.remove(range.clone());
+                            dirty_write.insert(range.clone());
                         }
                     }
                     MemoryRemappingCommand::RebaseComponent { component, base } => {
@@ -320,8 +335,10 @@ impl AddressSpaceData {
                 }
             }
 
-            members.read.commit(registry);
-            members.write.commit(registry);
+            members.read.mirror_dirtying_pass(&mut dirty_read);
+            members.read.commit(dirty_read.clone(), registry);
+            members.write.mirror_dirtying_pass(&mut dirty_write);
+            members.write.commit(dirty_write.clone(), registry);
 
             members
         });
