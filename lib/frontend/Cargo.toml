@@ -11,6 +11,7 @@ egui_extras = "0.34"
 egui_material_icons = { version = "0.6", default-features = false, features = [
   "filled"
 ] }
+egui_tracing = { workspace = true }
 fluxemu-environment = { workspace = true }
 fluxemu-input = { workspace = true }
 fluxemu-program = { workspace = true }

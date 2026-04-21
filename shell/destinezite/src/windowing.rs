@@ -1,6 +1,7 @@
 use std::{borrow::Cow, collections::HashMap, ops::Deref, sync::Arc};
 
 use egui::ViewportId;
+use egui_tracing::EventCollector;
 use fluxemu_environment::{ENVIRONMENT_LOCATION, Environment};
 use fluxemu_frontend::{
     AudioRuntime, Frontend, GraphicsRuntime, MachineFactories, PhysicalInputDeviceMetadata,
@@ -39,6 +40,7 @@ pub struct DesktopEventLoop<R: WinitCompatibleGraphicsRuntime> {
 impl<R: WinitCompatibleGraphicsRuntime> DesktopEventLoop<R> {
     pub fn run(
         environment: Environment,
+        tracing_collector: EventCollector,
         program_manager: Arc<ProgramManager>,
         machine_factories: MachineFactories<DesktopPlatform<R>>,
         initial_program: Option<Vec<RomId>>,
@@ -50,6 +52,7 @@ impl<R: WinitCompatibleGraphicsRuntime> DesktopEventLoop<R> {
 
         let frontend = Frontend::new(
             environment,
+            tracing_collector,
             machine_factories,
             program_manager,
             audio_runtime,
