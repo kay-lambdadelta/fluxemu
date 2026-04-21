@@ -81,3 +81,39 @@ pub struct OamState {
     pub sprite_zero_hit: bool,
     pub sprite_8x16_mode: bool,
 }
+
+impl OamState {
+    #[inline]
+    pub fn calculate_sprite_pattern_address(
+        &self,
+        sprite: &OamSprite,
+        scanline_y: u16,
+        high_byte: bool,
+    ) -> u16 {
+        let byte_offset = if high_byte { 8 } else { 0 };
+
+        if self.sprite_8x16_mode {
+            let mut row = scanline_y.saturating_sub(u16::from(sprite.position.y)) % 16;
+            if sprite.flip.y {
+                row = 15 - row;
+            }
+
+            let pattern_table_base = u16::from(sprite.tile_index & 0b0000_0001) * 0x1000;
+            let base_tile = u16::from(sprite.tile_index & 0b1111_1110);
+
+            let (tile_offset, row_within_tile) = if row < 8 { (0, row) } else { (1, row - 8) };
+
+            pattern_table_base + (base_tile + tile_offset) * 16 + row_within_tile + byte_offset
+        } else {
+            let mut row = scanline_y.saturating_sub(u16::from(sprite.position.y)) % 8;
+            if sprite.flip.y {
+                row = 7 - row;
+            }
+
+            u16::from(self.sprite_8x8_pattern_table_index) * 0x1000
+                + u16::from(sprite.tile_index) * 16
+                + row
+                + byte_offset
+        }
+    }
+}

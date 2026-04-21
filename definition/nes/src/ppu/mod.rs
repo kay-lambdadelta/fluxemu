@@ -355,11 +355,10 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
 
                     self.state.vram_address_pointer_increment_amount =
                         if *buffer & 0b0000_0100 != 0 { 32 } else { 1 };
-
                     self.state.oam.sprite_8x8_pattern_table_index =
                         (*buffer & 0b0000_1000 != 0) as u8;
-
                     self.state.background.pattern_table_index = (*buffer & 0b0001_0000 != 0) as u8;
+                    self.state.oam.sprite_8x16_mode = *buffer & 0b0010_0000 != 0;
 
                     self.state.vblank_nmi_enabled = *buffer & 0b1000_0000 != 0;
                     self.state.shadow_vram_address_pointer = shadow_vram_address_pointer.into();

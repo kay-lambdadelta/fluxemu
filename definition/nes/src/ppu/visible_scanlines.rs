@@ -110,8 +110,14 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
                             SpriteEvaluationState::Evaluating { sprite_y };
                     }
                     SpriteEvaluationState::Evaluating { sprite_y } => {
-                        if (u16::from(sprite_y)..u16::from(sprite_y) + 8)
-                            .contains(&(self.state.cycle_counter.y))
+                        let sprite_height: u16 = if self.state.oam.sprite_8x16_mode {
+                            16
+                        } else {
+                            8
+                        };
+
+                        if (u16::from(sprite_y)..u16::from(sprite_y) + sprite_height)
+                            .contains(&self.state.cycle_counter.y)
                         {
                             let mut bytes = [0; 4];
                             bytes.copy_from_slice(

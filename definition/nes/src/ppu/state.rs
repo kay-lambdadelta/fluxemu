@@ -57,16 +57,11 @@ impl State {
                 }
                 SpritePipelineState::FetchingPatternTableLow => {
                     if let Some(currently_relevant_sprite) = currently_relevant_sprite {
-                        let mut row = (self.cycle_counter.y
-                            - u16::from(currently_relevant_sprite.position.y))
-                            % 8;
-                        if currently_relevant_sprite.flip.y {
-                            row = 7 - row;
-                        }
-
-                        let address = u16::from(self.oam.sprite_8x8_pattern_table_index) * 0x1000
-                            + u16::from(currently_relevant_sprite.tile_index) * 16
-                            + row;
+                        let address = self.oam.calculate_sprite_pattern_address(
+                            currently_relevant_sprite,
+                            self.cycle_counter.y,
+                            false,
+                        );
 
                         let pattern_table_low = ppu_address_space
                             .read_le_value(address as usize, timestamp)
@@ -84,17 +79,11 @@ impl State {
                 }
                 SpritePipelineState::FetchingPatternTableHigh { pattern_table_low } => {
                     if let Some(currently_relevant_sprite) = currently_relevant_sprite {
-                        let mut row = (self.cycle_counter.y
-                            - u16::from(currently_relevant_sprite.position.y))
-                            % 8;
-                        if currently_relevant_sprite.flip.y {
-                            row = 7 - row;
-                        }
-
-                        let address = u16::from(self.oam.sprite_8x8_pattern_table_index) * 0x1000
-                            + u16::from(currently_relevant_sprite.tile_index) * 16
-                            + row
-                            + 8;
+                        let address = self.oam.calculate_sprite_pattern_address(
+                            currently_relevant_sprite,
+                            self.cycle_counter.y,
+                            true,
+                        );
 
                         let pattern_table_high = ppu_address_space
                             .read_le_value(address as usize, timestamp)
