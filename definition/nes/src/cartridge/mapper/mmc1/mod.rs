@@ -102,43 +102,46 @@ impl Mmc1 {
             permissions: Permissions::READ,
         });
 
-        let chr_rom = self.config.params.chr_rom.as_ref().unwrap();
-
-        match self.chr_rom_bank_mode {
-            ChrRomBankMode::Unified8k => {
-                let bank = (self.chr_rom_bank_indexes[0] & !1) as usize;
-
-                ppu_commands.push(MemoryRemappingCommand::Map {
-                    range: 0x0000..=0x0fff,
-                    target: MapTarget::Buffer(chr_rom.slice(
-                        RangeInclusive::from_start_and_length(bank * CHR_BANK_SIZE, CHR_BANK_SIZE),
-                    )),
-                    permissions: Permissions::READ,
-                });
-
-                ppu_commands.push(MemoryRemappingCommand::Map {
-                    range: 0x1000..=0x1fff,
-                    target: MapTarget::Buffer(chr_rom.slice(
-                        RangeInclusive::from_start_and_length(
-                            (bank + 1) * CHR_BANK_SIZE,
-                            CHR_BANK_SIZE,
-                        ),
-                    )),
-                    permissions: Permissions::READ,
-                });
-            }
-            ChrRomBankMode::Split4k => {
-                for (i, &bank_index) in self.chr_rom_bank_indexes.iter().enumerate() {
-                    let ppu_base = i * 0x1000;
-                    let rom_offset = bank_index as usize * CHR_BANK_SIZE;
+        if let Some(chr_rom) = self.config.params.chr_rom.as_ref() {
+            match self.chr_rom_bank_mode {
+                ChrRomBankMode::Unified8k => {
+                    let bank = (self.chr_rom_bank_indexes[0] & !1) as usize;
 
                     ppu_commands.push(MemoryRemappingCommand::Map {
-                        range: RangeInclusive::from_start_and_length(ppu_base, 0x1000),
+                        range: 0x0000..=0x0fff,
                         target: MapTarget::Buffer(chr_rom.slice(
-                            RangeInclusive::from_start_and_length(rom_offset, CHR_BANK_SIZE),
+                            RangeInclusive::from_start_and_length(
+                                bank * CHR_BANK_SIZE,
+                                CHR_BANK_SIZE,
+                            ),
                         )),
                         permissions: Permissions::READ,
                     });
+
+                    ppu_commands.push(MemoryRemappingCommand::Map {
+                        range: 0x1000..=0x1fff,
+                        target: MapTarget::Buffer(chr_rom.slice(
+                            RangeInclusive::from_start_and_length(
+                                (bank + 1) * CHR_BANK_SIZE,
+                                CHR_BANK_SIZE,
+                            ),
+                        )),
+                        permissions: Permissions::READ,
+                    });
+                }
+                ChrRomBankMode::Split4k => {
+                    for (i, &bank_index) in self.chr_rom_bank_indexes.iter().enumerate() {
+                        let ppu_base = i * 0x1000;
+                        let rom_offset = bank_index as usize * CHR_BANK_SIZE;
+
+                        ppu_commands.push(MemoryRemappingCommand::Map {
+                            range: RangeInclusive::from_start_and_length(ppu_base, 0x1000),
+                            target: MapTarget::Buffer(chr_rom.slice(
+                                RangeInclusive::from_start_and_length(rom_offset, CHR_BANK_SIZE),
+                            )),
+                            permissions: Permissions::READ,
+                        });
+                    }
                 }
             }
         }
@@ -430,11 +433,45 @@ impl<P: Platform> ComponentConfig<P> for Mmc1Config {
         self,
         mut component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
-        if self.params.chr_ram_size != 0
-            || self.params.chr_nvram_size != 0
-            || self.params.chr_rom.is_none()
+        if self.params.chr_rom.is_some()
+            && (self.params.chr_ram_size != 0 || self.params.chr_nvram_size != 0)
         {
-            return Err("CHR-RAM is not implemented at this time".into());
+            return Err(
+                "Cartridge has both CHR-ROM and CHR-RAM, which are mutually exclusive for MMC1"
+                    .into(),
+            );
+        }
+
+        if self.params.chr_rom.is_none()
+            && self.params.chr_ram_size == 0
+            && self.params.chr_nvram_size == 0
+        {
+            return Err("Cartridge has neither CHR-ROM nor CHR-RAM".into());
+        }
+
+        if self.params.chr_rom.is_none() {
+            let (size, sram) = if self.params.chr_nvram_size > 0 {
+                (self.params.chr_nvram_size, true)
+            } else {
+                (self.params.chr_ram_size, false)
+            };
+
+            let (cb, _) = component_builder.component(
+                "chr-ram",
+                MemoryConfig {
+                    readable: true,
+                    writable: true,
+                    assigned_range: RangeInclusive::from_start_and_length(0x0000, size),
+                    assigned_address_space: self.params.ppu_address_space,
+                    initial_contents: RangeInclusiveMap::from_iter([(
+                        RangeInclusive::from_start_and_length(0x0000, size),
+                        InitialContents::Random,
+                    )]),
+                    sram,
+                },
+            );
+
+            component_builder = cb;
         }
 
         if self.params.prg_ram_size != 0 {
