@@ -336,9 +336,9 @@ impl AddressSpaceData {
             }
 
             members.read.mirror_dirtying_pass(&mut dirty_read);
-            members.read.commit(dirty_read.clone(), registry);
+            members.read.commit(&dirty_read, registry);
             members.write.mirror_dirtying_pass(&mut dirty_write);
-            members.write.commit(dirty_write.clone(), registry);
+            members.write.commit(&dirty_write, registry);
 
             members
         });

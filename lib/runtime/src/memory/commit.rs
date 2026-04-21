@@ -33,10 +33,10 @@ impl MemoryMappingTable {
     /// This function flattens and splits the memory map for faster lookups
     pub(super) fn commit(
         &mut self,
-        dirty: RangeInclusiveSet<Address>,
+        dirty: &RangeInclusiveSet<Address>,
         registry: ComponentRegistry<'_>,
     ) {
-        for region in dirty {
+        for region in dirty.iter() {
             let region_page_range = region.start() / PAGE_SIZE..=region.end() / PAGE_SIZE;
 
             // Touch the pages in the region that are dirty
