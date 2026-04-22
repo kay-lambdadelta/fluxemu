@@ -1,4 +1,6 @@
-use std::{borrow::Cow, collections::HashMap, ops::Deref, sync::Arc};
+use std::{
+    borrow::Cow, collections::HashMap, ops::Deref, sync::Arc, thread::sleep, time::Duration,
+};
 
 use egui::ViewportId;
 use egui_tracing::EventCollector;
@@ -105,6 +107,9 @@ impl<R: WinitCompatibleGraphicsRuntime> ApplicationHandler<()> for DesktopEventL
     ) {
         self.frontend.reset_graphics_to_meet_machine_requirements(
             |egui_context, sealed_machine_builder| {
+                // HACK: Stop race condition causing crash on wayland. I can't think of a better way to do this.
+                sleep(Duration::from_millis(250));
+
                 let WindowingContext {
                     window,
                     graphics_runtime,
