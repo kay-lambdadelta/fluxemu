@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     cell::RefCell,
     collections::{HashMap, HashSet},
     rc::Rc,
@@ -37,27 +38,11 @@ impl RuntimeApi {
         }
     }
 
-    /// Retrieves the current runtime api context for this thread.
-    ///
-    /// # Panics
-    /// Panics if called outside of an active runtime scope.
-    ///
-    /// This should be impossible as the runtime guards component access behind the runtime scope
-    ///
-    ///
-    /// This is intended for use inside component implementations only.
-    ///
-    /// Frontend code should interact with the runtime exclusively through the guard obtained via [`Machine::enter_runtime`].
-    #[inline]
-    pub fn current() -> Self {
-        RUNTIME_CONTEXT.with_borrow(|runtime_context| {
-            let runtime_api = runtime_context.as_ref().expect("Not inside runtime");
-
-            Self {
-                machine: runtime_api.machine.clone(),
-                local_component_store: runtime_api.local_component_store.clone(),
-            }
-        })
+    pub(crate) fn duplicate(&self) -> Self {
+        Self {
+            machine: self.machine.clone(),
+            local_component_store: self.local_component_store.clone(),
+        }
     }
 
     pub(crate) fn machine(&self) -> &Machine {
@@ -71,33 +56,12 @@ impl RuntimeApi {
     /// Obtain a handle to a address space denoted by the given id
     ///
     /// Note that the handle to the address space contains a cache to make successive loads of the mapping faster
-    /// so handles should be as long lived as possible, by component or frontend structure
+    /// so handles should be as long lived as possible
     pub fn address_space(&self, address_space_id: AddressSpaceId) -> Option<AddressSpace<'_>> {
         self.machine
             .address_spaces
             .get(&address_space_id)
             .map(|address_space_data| AddressSpace::new(self, address_space_data))
-    }
-
-    /// Schedule an event by the [Component]s event type
-    ///
-    /// This event will fire at the specified timestamp, or if the timestamp is too early (ie: the period for it had already been allocated)
-    /// directly after the timestamp
-    pub fn schedule_event<C: Component>(
-        &self,
-        target_path: &ComponentPath,
-        requeue_mode: EventMode,
-        time: Period,
-        data: C::Event,
-    ) {
-        self.machine.scheduler.event_manager.schedule(
-            time,
-            target_path.clone(),
-            requeue_mode,
-            Box::new(data),
-        );
-
-        self.machine.scheduler.preemption_signal().event_occurred();
     }
 
     /// Obtain a handle to the registry
@@ -171,5 +135,97 @@ impl RuntimeApi {
                 },
             )
             .unwrap();
+    }
+}
+
+#[derive(Debug)]
+pub struct ComponentRuntimeApi<'a> {
+    runtime: RuntimeApi,
+    component: Cow<'a, ComponentPath>,
+}
+
+impl<'a> ComponentRuntimeApi<'a> {
+    /// Retrieves the current runtime api context for this thread.
+    ///
+    /// # Panics
+    /// Panics if called outside of an active runtime scope.
+    ///
+    /// This should be impossible as the runtime guards component access behind the runtime scope
+    ///
+    ///
+    /// This is intended for use inside component implementations only.
+    ///
+    /// Frontend code should interact with the runtime exclusively through the guard obtained via [`Machine::enter_runtime`].
+    #[inline]
+    pub fn current(component: impl Into<Cow<'a, ComponentPath>>) -> Self {
+        RUNTIME_CONTEXT.with_borrow(|runtime_context| {
+            let runtime = runtime_context.as_ref().expect("Not inside runtime");
+            let runtime = runtime.duplicate();
+
+            Self {
+                runtime,
+                component: component.into(),
+            }
+        })
+    }
+
+    /// Retrieves the timestamp that the machine started with
+    pub fn start_time(&self) -> Period {
+        self.runtime.start_time()
+    }
+
+    /// Gain access to the program specification the [Machine] was created with
+    pub fn program_specification(&self) -> Option<&ProgramSpecification> {
+        self.runtime.program_specification()
+    }
+
+    /// Obtain a handle to the registry
+    pub fn registry(&self) -> ComponentRegistry<'_> {
+        self.runtime.registry()
+    }
+
+    /// Obtain a handle to a address space denoted by the given id
+    ///
+    /// Note that the handle to the address space contains a cache to make successive loads of the mapping faster
+    /// so handles should be as long lived as possible
+    pub fn address_space(&self, address_space_id: AddressSpaceId) -> Option<AddressSpace<'_>> {
+        self.runtime.address_space(address_space_id)
+    }
+
+    /// Schedule an event by the [Component]s event type
+    ///
+    /// This event will fire at the specified timestamp, or if the timestamp is too early (ie: the period for it had already been allocated) directly after the timestamp
+    pub fn schedule_event<C: Component>(
+        &self,
+        target_path: &ComponentPath,
+        requeue_mode: EventMode,
+        time: Period,
+        data: C::Event,
+    ) {
+        self.runtime.machine.scheduler.event_manager.schedule(
+            time,
+            target_path.clone(),
+            requeue_mode,
+            Box::new(data),
+        );
+
+        self.runtime
+            .machine
+            .scheduler
+            .preemption_signal()
+            .event_occurred();
+    }
+
+    /// Get the current timestamp of your component
+    ///
+    /// This will NOT be reliable within a synchronization call, and will give the time when the synchronization call started!
+    pub fn current_timestamp(&self) -> Period {
+        self.registry()
+            .get_timestamp(self.component.as_ref())
+            .unwrap()
+    }
+
+    pub fn suggest_save(&self) {
+        todo!()
     }
 }

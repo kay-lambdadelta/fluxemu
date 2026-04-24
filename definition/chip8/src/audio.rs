@@ -2,8 +2,9 @@ use std::io::{Read, Write};
 
 use fluxemu_audio::SquareWave;
 use fluxemu_runtime::{
-    component::{Component, ComponentVersion, SampleSource, config::ComponentConfig},
+    component::{Component, SampleSource, config::ComponentConfig},
     machine::builder::{ComponentBuilder, SchedulerParticipation},
+    persistence::PersistanceFormatVersion,
     platform::Platform,
     scheduler::{Frequency, Period, SynchronizationContext},
 };
@@ -35,12 +36,10 @@ impl Component for Chip8Audio {
 
     fn load_snapshot(
         &mut self,
-        version: ComponentVersion,
+        _version: PersistanceFormatVersion,
         reader: &mut dyn Read,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        assert_eq!(version, 0);
         let timer = std::array::from_mut(&mut self.timer);
-
         reader.read_exact(timer)?;
 
         Ok(())
@@ -48,7 +47,6 @@ impl Component for Chip8Audio {
 
     fn store_snapshot(&self, writer: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>> {
         let timer = std::array::from_ref(&self.timer);
-
         writer.write_all(timer)?;
 
         Ok(())
@@ -85,8 +83,8 @@ impl Component for Chip8Audio {
         }
     }
 
-    fn needs_work(&self, delta: Period) -> bool {
-        delta >= self.processor_frequency.recip()
+    fn needs_work(&self, _timestamp: &Period, delta: &Period) -> bool {
+        *delta >= self.processor_frequency.recip()
     }
 }
 
@@ -97,6 +95,7 @@ pub struct Chip8AudioConfig {
 
 impl<P: Platform> ComponentConfig<P> for Chip8AudioConfig {
     type Component = Chip8Audio;
+    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn build_component(
         self,

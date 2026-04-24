@@ -1,6 +1,7 @@
 use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
+    persistence::PersistanceFormatVersion,
     platform::Platform,
 };
 
@@ -32,7 +33,7 @@ impl Component for Intel8080 {
 
     fn load_snapshot(
         &mut self,
-        _version: fluxemu_runtime::component::ComponentVersion,
+        _version: PersistanceFormatVersion,
         _reader: &mut dyn std::io::Read,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
@@ -66,6 +67,7 @@ impl Intel8080Config {
 
 impl<P: Platform> ComponentConfig<P> for Intel8080Config {
     type Component = Intel8080;
+    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn build_component(
         self,

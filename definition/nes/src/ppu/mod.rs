@@ -3,7 +3,7 @@ use std::{any::Any, marker::PhantomData, ops::RangeInclusive};
 use fluxemu_definition_mos6502::{Mos6502, Mos6502Event, Pin};
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
-    RuntimeApi,
+    ComponentRuntimeApi,
     component::{
         Component,
         config::{ComponentConfig, LateContext},
@@ -13,6 +13,7 @@ use fluxemu_runtime::{
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::{Address, AddressSpace, AddressSpaceId, MemoryError},
     path::ComponentPath,
+    persistence::PersistanceFormatVersion,
     platform::Platform,
     scheduler::{Period, SynchronizationContext},
 };
@@ -92,7 +93,7 @@ pub struct Ppu<R: Region, G: SupportedGraphicsApiPpu> {
     ppu_address_space: AddressSpaceId,
     processor_path: ComponentPath,
     staging_buffer: Texture<PpuColorIndex>,
-    timestamp: Period,
+    path: ComponentPath,
     period: Period,
 }
 
@@ -100,6 +101,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
     for PpuConfig<R>
 {
     type Component = Ppu<R, P::GraphicsApi>;
+    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn late_initialize(component: &mut Self::Component, data: &LateContext<P>) {
         let backend = <P::GraphicsApi as SupportedGraphicsApiPpu>::Backend::new(
@@ -130,7 +132,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
 
         let my_path = component_builder.path().clone();
 
-        component_builder
+        let component_builder = component_builder
             .memory_map_component_write(
                 self.cpu_address_space,
                 CpuAccessibleRegister::PpuCtrl as usize..=CpuAccessibleRegister::PpuCtrl as usize,
@@ -243,7 +245,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
             cpu_address_space: self.cpu_address_space,
             processor_path: self.processor.clone(),
             ppu_address_space: self.ppu_address_space,
-            timestamp: Period::default(),
+            path: component_builder.path().clone(),
             period: frequency.recip(),
         })
     }
@@ -254,7 +256,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
 
     fn load_snapshot(
         &mut self,
-        _version: fluxemu_runtime::component::ComponentVersion,
+        _version: PersistanceFormatVersion,
         _reader: &mut dyn std::io::Read,
     ) -> Result<(), Box<dyn std::error::Error>> {
         todo!()
@@ -306,19 +308,21 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                 CpuAccessibleRegister::PpuScroll => todo!(),
                 CpuAccessibleRegister::PpuAddr => todo!(),
                 CpuAccessibleRegister::PpuData => {
-                    let runtime = RuntimeApi::current();
+                    let runtime = ComponentRuntimeApi::current(&self.path);
+                    let timestamp = runtime.current_timestamp();
+
                     let mut ppu_address_space =
                         runtime.address_space(self.ppu_address_space).unwrap();
 
                     if avoid_side_effects {
                         *buffer = ppu_address_space.read_le_value_pure(
                             self.state.vram_address_pointer as usize,
-                            self.timestamp,
+                            timestamp,
                         )?;
                     } else {
                         let new_value = ppu_address_space.read_le_value::<u8>(
                             self.state.vram_address_pointer as usize,
-                            self.timestamp,
+                            timestamp,
                         )?;
 
                         *buffer = std::mem::replace(&mut self.state.vram_read_buffer, new_value);
@@ -417,14 +421,15 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         !self.state.vram_address_pointer_write_phase;
                 }
                 CpuAccessibleRegister::PpuData => {
-                    let runtime = RuntimeApi::current();
+                    let runtime = ComponentRuntimeApi::current(&self.path);
+                    let timestamp = runtime.current_timestamp();
                     let mut ppu_address_space =
                         runtime.address_space(self.ppu_address_space).unwrap();
 
                     // Redirect into the ppu address space
                     ppu_address_space.write_le_value(
                         self.state.vram_address_pointer as usize,
-                        self.timestamp,
+                        timestamp,
                         *buffer,
                     )?;
 
@@ -434,7 +439,9 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         )) & 0b0111_1111_1111_1111;
                 }
                 CpuAccessibleRegister::OamDma => {
-                    let runtime = RuntimeApi::current();
+                    let runtime = ComponentRuntimeApi::current(&self.path);
+                    let timestamp = runtime.current_timestamp();
+
                     let mut cpu_address_space =
                         runtime.address_space(self.cpu_address_space).unwrap();
 
@@ -443,7 +450,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     runtime.schedule_event::<Mos6502>(
                         &self.processor_path,
                         EventMode::Once,
-                        self.timestamp,
+                        timestamp,
                         Mos6502Event::FlagChange {
                             pin: Pin::Rdy,
                             value: false,
@@ -453,8 +460,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     // TODO: Extract to constant or extract from cpu directly within the config builder
                     let processor_frequency = R::master_clock() / 12;
 
-                    let next_processor_rdy_high =
-                        self.timestamp + (processor_frequency.recip() * 514);
+                    let next_processor_rdy_high = timestamp + (processor_frequency.recip() * 514);
 
                     // Make sure the cpu wakes up
                     runtime.schedule_event::<Mos6502>(
@@ -469,11 +475,8 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
 
                     // Read off OAM data immediately, this is done for performance and should not
                     // have any side effects
-                    let _ = cpu_address_space.read(
-                        page as usize,
-                        self.timestamp,
-                        &mut self.state.oam.data,
-                    );
+                    let _ =
+                        cpu_address_space.read(page as usize, timestamp, &mut self.state.oam.data);
                 }
                 _ => {
                     unreachable!("{:?}", register);
@@ -485,7 +488,9 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
     }
 
     fn handle_event(&mut self, event: Box<dyn Event>) {
-        let runtime = RuntimeApi::current();
+        let runtime = ComponentRuntimeApi::current(&self.path);
+        let timestamp = runtime.current_timestamp();
+
         let event = downcast_event::<Self>(event);
 
         match event {
@@ -496,7 +501,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     runtime.schedule_event::<Mos6502>(
                         &self.processor_path,
                         EventMode::Once,
-                        self.timestamp,
+                        timestamp,
                         Mos6502Event::FlagChange {
                             pin: Pin::Nmi,
                             value: false,
@@ -510,7 +515,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                 runtime.schedule_event::<Mos6502>(
                     &self.processor_path,
                     EventMode::Once,
-                    self.timestamp,
+                    timestamp,
                     Mos6502Event::FlagChange {
                         pin: Pin::Nmi,
                         value: true,
@@ -526,16 +531,14 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
     }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
-        let runtime = RuntimeApi::current();
+        let runtime = ComponentRuntimeApi::current(self.path.clone());
         let mut ppu_address_space = runtime.address_space(self.ppu_address_space).unwrap();
 
-        for now in context.allocate(self.period) {
-            self.timestamp = now;
-
+        for timestamp in context.allocate(self.period) {
             if (0..R::VISIBLE_SCANLINES).contains(&self.state.cycle_counter.y) {
-                self.handle_visible_scanlines(&mut ppu_address_space);
+                self.handle_visible_scanlines(&mut ppu_address_space, timestamp);
             } else if self.state.cycle_counter.y == 261 {
-                self.handle_prerender(&mut ppu_address_space);
+                self.handle_prerender(&mut ppu_address_space, timestamp);
             }
 
             self.state.cycle_counter.x += 1;
@@ -551,8 +554,8 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
         }
     }
 
-    fn needs_work(&self, delta: Period) -> bool {
-        delta >= self.period
+    fn needs_work(&self, _timestamp: &Period, delta: &Period) -> bool {
+        delta >= &self.period
     }
 
     fn get_framebuffer(&mut self, _name: &str) -> &dyn Any {
@@ -561,7 +564,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
 }
 
 impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
-    fn handle_prerender(&mut self, ppu_address_space: &mut AddressSpace<'_>) {
+    fn handle_prerender(&mut self, ppu_address_space: &mut AddressSpace<'_>, timestamp: Period) {
         if self.state.cycle_counter.x == 1 {
             self.state.oam.sprite_zero_hit = false;
         }
@@ -595,7 +598,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
             && self.state.background.rendering_enabled
         {
             self.state
-                .drive_background_pipeline::<R>(ppu_address_space, self.timestamp);
+                .drive_background_pipeline::<R>(ppu_address_space, timestamp);
         }
     }
 }

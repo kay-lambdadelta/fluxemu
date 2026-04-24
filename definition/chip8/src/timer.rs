@@ -1,8 +1,9 @@
 use std::io::{Read, Write};
 
 use fluxemu_runtime::{
-    component::{Component, ComponentVersion, config::ComponentConfig},
+    component::{Component, config::ComponentConfig},
     machine::builder::{ComponentBuilder, SchedulerParticipation},
+    persistence::PersistanceFormatVersion,
     platform::Platform,
     scheduler::{Period, SynchronizationContext},
 };
@@ -28,12 +29,10 @@ impl Component for Chip8Timer {
 
     fn load_snapshot(
         &mut self,
-        version: ComponentVersion,
+        _version: PersistanceFormatVersion,
         reader: &mut dyn Read,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        assert_eq!(version, 0);
         let timer = std::array::from_mut(&mut self.timer);
-
         reader.read_exact(timer)?;
 
         Ok(())
@@ -41,7 +40,6 @@ impl Component for Chip8Timer {
 
     fn store_snapshot(&self, writer: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>> {
         let timer = std::array::from_ref(&self.timer);
-
         writer.write_all(timer)?;
 
         Ok(())
@@ -53,8 +51,8 @@ impl Component for Chip8Timer {
         }
     }
 
-    fn needs_work(&self, delta: Period) -> bool {
-        delta >= Period::ONE / 60
+    fn needs_work(&self, _timestamp: &Period, delta: &Period) -> bool {
+        *delta >= Period::ONE / 60
     }
 }
 
@@ -63,6 +61,7 @@ pub struct Chip8TimerConfig;
 
 impl<P: Platform> ComponentConfig<P> for Chip8TimerConfig {
     type Component = Chip8Timer;
+    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn build_component(
         self,

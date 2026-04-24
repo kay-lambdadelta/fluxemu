@@ -90,18 +90,22 @@ impl Machine {
     /// Enter the runtime for this machine on this thread
     #[must_use]
     pub fn enter_runtime(self: &Arc<Self>) -> RuntimeGuard<'_> {
-        RUNTIME_CONTEXT.with(|runtime_context| {
+        let runtime = RUNTIME_CONTEXT.with(|runtime_context| {
             let mut runtime_context_guard = runtime_context.borrow_mut();
 
             if runtime_context_guard.is_some() {
                 panic!("Runtime already entered");
             }
 
-            *runtime_context_guard = Some(RuntimeApi::new(self.clone()));
+            let runtime = RuntimeApi::new(self.clone());
+
+            *runtime_context_guard = Some(runtime.duplicate());
+
+            runtime
         });
 
         RuntimeGuard {
-            api: RuntimeApi::current(),
+            runtime,
             _phantom: PhantomData,
         }
     }
@@ -111,7 +115,7 @@ impl Machine {
 ///
 /// When this is dropped, the runtime is exited
 pub struct RuntimeGuard<'a> {
-    api: RuntimeApi,
+    runtime: RuntimeApi,
     _phantom: PhantomData<&'a ()>,
 }
 
@@ -119,7 +123,7 @@ impl<'a> Deref for RuntimeGuard<'a> {
     type Target = RuntimeApi;
 
     fn deref(&self) -> &Self::Target {
-        &self.api
+        &self.runtime
     }
 }
 

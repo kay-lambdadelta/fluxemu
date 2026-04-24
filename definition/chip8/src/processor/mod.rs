@@ -5,12 +5,13 @@ use std::{
 };
 
 use fluxemu_runtime::{
-    RuntimeApi,
-    component::{Component, ComponentVersion, config::ComponentConfig},
+    ComponentRuntimeApi,
+    component::{Component, config::ComponentConfig},
     input::LogicalInputDevice,
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::AddressSpaceId,
     path::ComponentPath,
+    persistence::PersistanceFormatVersion,
     platform::Platform,
     scheduler::{Frequency, Period, SynchronizationContext},
 };
@@ -88,8 +89,8 @@ pub struct Chip8Processor<G: SupportedGraphicsApiChip8Display> {
     keypad: Arc<LogicalInputDevice>,
     // What chip8 mode we are currently in
     mode: Arc<Mutex<Chip8Mode>>,
+    path: ComponentPath,
     config: Chip8ProcessorConfig<G>,
-    timestamp: Period,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -104,11 +105,9 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
 
     fn load_snapshot(
         &mut self,
-        version: ComponentVersion,
+        _version: PersistanceFormatVersion,
         reader: &mut dyn Read,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        assert_eq!(version, 0);
-
         let snapshot: Chip8ProcessorSnapshot = rmp_serde::decode::from_read(reader)?;
 
         self.state.registers = snapshot.registers;
@@ -125,21 +124,19 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
             execution_state: self.state.execution_state.clone(),
         };
 
-        rmp_serde::encode::write_named(&mut writer, &snapshot)?;
+        rmp_serde::encode::write(&mut writer, &snapshot)?;
 
         Ok(())
     }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
-        let runtime = RuntimeApi::current();
+        let runtime = ComponentRuntimeApi::current(self.path.clone());
 
         let mut address_space = runtime
             .address_space(self.config.cpu_address_space)
             .unwrap();
 
-        for now in context.allocate(self.config.frequency.recip()) {
-            self.timestamp = now;
-
+        for timestamp in context.allocate(self.config.frequency.recip()) {
             'main: {
                 match &self.state.execution_state {
                     ExecutionState::Normal => {
@@ -148,7 +145,7 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
                         address_space
                             .read(
                                 self.state.registers.program as usize,
-                                self.timestamp,
+                                timestamp,
                                 &mut instruction,
                             )
                             .unwrap();
@@ -158,7 +155,12 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
 
                         self.state.registers.program = self.state.registers.program.wrapping_add(2);
 
-                        self.interpret_instruction(&runtime, &mut address_space, instruction);
+                        self.interpret_instruction(
+                            &runtime,
+                            &mut address_space,
+                            timestamp,
+                            instruction,
+                        );
                     }
                     ExecutionState::AwaitingKeyPress { register } => {
                         let mut pressed = Vec::new();
@@ -200,13 +202,11 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
                         }
                     }
                     ExecutionState::AwaitingVsync => {
-                        let runtime = RuntimeApi::current();
-
                         let vsync_occured = runtime
                             .registry()
                             .interact::<Chip8Display<G>, _>(
                                 &self.config.display,
-                                self.timestamp,
+                                timestamp,
                                 |component| component.vsync_occurred(),
                             )
                             .unwrap();
@@ -224,8 +224,8 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
         }
     }
 
-    fn needs_work(&self, delta: Period) -> bool {
-        delta >= self.config.frequency.recip()
+    fn needs_work(&self, _timestamp: &Period, delta: &Period) -> bool {
+        *delta >= self.config.frequency.recip()
     }
 }
 
@@ -246,6 +246,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
     for Chip8ProcessorConfig<P::GraphicsApi>
 {
     type Component = Chip8Processor<P::GraphicsApi>;
+    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn build_component(
         self,
@@ -254,7 +255,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
         let mode = Arc::new(Mutex::new(self.force_mode.unwrap_or(Chip8Mode::Chip8)));
         let state = ProcessorState::default();
 
-        let (_component_builder, keypad) = component_builder
+        let (component_builder, keypad) = component_builder
             .scheduler_participation(Some(SchedulerParticipation::SchedulerDriven))
             .input("keypad", PRESENT_INPUTS, DEFAULT_MAPPINGS);
 
@@ -262,8 +263,8 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
             state,
             keypad,
             mode,
+            path: component_builder.path().clone(),
             config: self,
-            timestamp: Period::default(),
         })
     }
 }

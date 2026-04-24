@@ -8,7 +8,7 @@ use fluxemu_input::InputId;
 use fluxemu_program::{ProgramManager, RomId};
 
 use crate::{
-    component::{Component, ComponentVersion, config::ComponentConfig},
+    component::{Component, config::ComponentConfig},
     event::EventMode,
     graphics::GraphicsRequirements,
     input::{LogicalInputDevice, LogicalInputDeviceMetadata},
@@ -18,6 +18,7 @@ use crate::{
     },
     memory::{Address, AddressSpaceId, MapTarget, MemoryRemappingCommand, Permissions},
     path::{ComponentPath, ResourcePath},
+    persistence::PersistanceFormatVersion,
     platform::Platform,
     scheduler::Period,
 };
@@ -27,8 +28,8 @@ pub(super) struct ComponentData<'a, P: Platform> {
     pub audio_outputs: HashSet<ResourcePath>,
     pub late_initializer: ComponentLateInitializer<P>,
     pub scheduler_participation: Option<SchedulerParticipation>,
-    pub save_version: Option<ComponentVersion>,
-    pub snapshot_version: Option<ComponentVersion>,
+    pub save_version: Option<PersistanceFormatVersion>,
+    pub snapshot_version: PersistanceFormatVersion,
     pub local_commands: Vec<MachineBuilderCommand<'a, P>>,
 }
 
@@ -44,7 +45,7 @@ impl<P: Platform> ComponentData<'_, P> {
             }),
             scheduler_participation: None,
             save_version: None,
-            snapshot_version: None,
+            snapshot_version: B::CURRENT_SNAPSHOT_VERSION,
             local_commands: Vec::default(),
         }
     }
@@ -62,7 +63,7 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
         self.path
     }
 
-    pub fn get_save(&self) -> Option<(impl Read, ComponentVersion)> {
+    pub fn get_save(&self) -> Option<(impl Read, PersistanceFormatVersion)> {
         None::<(&[u8], _)>
     }
 
@@ -78,12 +79,11 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
         self.machine_builder.program_manager()
     }
 
-    pub fn save_version(self, version: ComponentVersion) {
+    /// Register that this component will participate in saves
+    pub fn save_version(self, version: PersistanceFormatVersion) -> Self {
         self.component_data.save_version = Some(version);
-    }
 
-    pub fn snapshot_version(self, version: ComponentVersion) {
-        self.component_data.snapshot_version = Some(version);
+        self
     }
 
     pub fn scheduler_participation(

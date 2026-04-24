@@ -1,6 +1,7 @@
 use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
+    persistence::PersistanceFormatVersion,
     platform::Platform,
 };
 
@@ -14,7 +15,7 @@ impl Component for NRom {
 
     fn load_snapshot(
         &mut self,
-        _version: fluxemu_runtime::component::ComponentVersion,
+        _version: PersistanceFormatVersion,
         _reader: &mut dyn std::io::Read,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
@@ -35,6 +36,7 @@ pub struct NRomConfig {
 
 impl<P: Platform> ComponentConfig<P> for NRomConfig {
     type Component = NRom;
+    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn build_component(
         self,

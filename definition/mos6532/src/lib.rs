@@ -2,7 +2,7 @@ use std::{fmt::Debug, ops::RangeInclusive};
 
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
-    RuntimeApi,
+    ComponentRuntimeApi,
     component::{Component, config::ComponentConfig},
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::{
@@ -11,6 +11,7 @@ use fluxemu_runtime::{
         component::{InitialContents, MemoryConfig},
     },
     path::ComponentPath,
+    persistence::PersistanceFormatVersion,
     platform::Platform,
     scheduler::{Frequency, Period, SynchronizationContext},
 };
@@ -40,15 +41,19 @@ struct TimerConfiguration {
     next_timestamp: Period,
 }
 
-#[derive(Debug)]
-pub struct Mos6532Riot {
+#[derive(Serialize, Deserialize, Debug)]
+struct State {
     swacnt: bool,
     swbcnt: bool,
     instat: u8,
     timer_configuration: Option<TimerConfiguration>,
-    timestamp: Period,
+}
+
+#[derive(Debug)]
+pub struct Mos6532Riot {
+    state: State,
     config: Mos6532RiotConfig,
-    my_path: ComponentPath,
+    path: ComponentPath,
 }
 
 impl Mos6532Riot {
@@ -63,6 +68,25 @@ impl Mos6532Riot {
 
 impl Component for Mos6532Riot {
     type Event = ();
+
+    fn load_snapshot(
+        &mut self,
+        _version: PersistanceFormatVersion,
+        reader: &mut dyn std::io::Read,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.state = rmp_serde::decode::from_read(reader)?;
+
+        Ok(())
+    }
+
+    fn store_snapshot(
+        &self,
+        writer: &mut dyn std::io::Write,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        rmp_serde::encode::write(writer, &self.state)?;
+
+        Ok(())
+    }
 
     fn memory_read(
         &mut self,
@@ -81,17 +105,17 @@ impl Component for Mos6532Riot {
                     unreachable!()
                 }
                 Register::Swacnt => {
-                    *buffer_section = self.swacnt.into();
+                    *buffer_section = self.state.swacnt.into();
                 }
                 Register::Swchb => {
                     unreachable!()
                 }
                 Register::Swbcnt => {
-                    *buffer_section = self.swbcnt.into();
+                    *buffer_section = self.state.swbcnt.into();
                 }
                 Register::Intim => {
-                    *buffer_section = self.timer_configuration.map(|t| t.timer).unwrap_or(0);
-                    self.instat &= 0b0111_1111;
+                    *buffer_section = self.state.timer_configuration.map(|t| t.timer).unwrap_or(0);
+                    self.state.instat &= 0b0111_1111;
                 }
                 Register::Instat => todo!(),
                 _ => {
@@ -115,6 +139,9 @@ impl Component for Mos6532Riot {
         _address_space: AddressSpaceId,
         buffer: &[u8],
     ) -> Result<(), MemoryError> {
+        let runtime = ComponentRuntimeApi::current(&self.path);
+        let timestamp = runtime.current_timestamp();
+
         for (address, buffer_section) in
             RangeInclusive::from_start_and_length(address, buffer.len()).zip(buffer.iter())
         {
@@ -125,13 +152,12 @@ impl Component for Mos6532Riot {
                     unreachable!()
                 }
                 Register::Swacnt => {
-                    self.swacnt = *buffer_section != 0;
+                    self.state.swacnt = *buffer_section != 0;
 
                     if let Some(swacnt) = &self.config.swcha {
-                        let runtime = RuntimeApi::current();
                         let address = self.swcha_address();
 
-                        let permissions = if self.swbcnt {
+                        let permissions = if self.state.swbcnt {
                             Permissions {
                                 read: true,
                                 write: false,
@@ -142,14 +168,12 @@ impl Component for Mos6532Riot {
                                 write: true,
                             }
                         };
-                        let current_timestamp =
-                            runtime.registry().current_timestamp(&self.my_path).unwrap();
 
                         runtime
                             .address_space(self.config.assigned_address_space)
                             .unwrap()
                             .remap(
-                                current_timestamp,
+                                timestamp,
                                 [MemoryRemappingCommand::Map {
                                     range: address..=address,
                                     target: MapTarget::Component(swacnt.clone()),
@@ -162,13 +186,12 @@ impl Component for Mos6532Riot {
                     unreachable!()
                 }
                 Register::Swbcnt => {
-                    self.swbcnt = *buffer_section != 0;
+                    self.state.swbcnt = *buffer_section != 0;
 
                     if let Some(swbcnt) = &self.config.swchb {
-                        let runtime = RuntimeApi::current();
                         let address = self.swchb_address();
 
-                        let permissions = if self.swbcnt {
+                        let permissions = if self.state.swbcnt {
                             Permissions {
                                 read: true,
                                 write: false,
@@ -180,14 +203,11 @@ impl Component for Mos6532Riot {
                             }
                         };
 
-                        let current_timestamp =
-                            runtime.registry().current_timestamp(&self.my_path).unwrap();
-
                         runtime
                             .address_space(self.config.assigned_address_space)
                             .unwrap()
                             .remap(
-                                current_timestamp,
+                                timestamp,
                                 [MemoryRemappingCommand::Map {
                                     range: address..=address,
                                     target: MapTarget::Component(swbcnt.clone()),
@@ -201,31 +221,31 @@ impl Component for Mos6532Riot {
                     unreachable!()
                 }
                 Register::Tim1t => {
-                    self.timer_configuration = Some(TimerConfiguration {
+                    self.state.timer_configuration = Some(TimerConfiguration {
                         timer: *buffer_section,
                         divider: 1,
-                        next_timestamp: self.timestamp + self.config.frequency.recip(),
+                        next_timestamp: timestamp + self.config.frequency.recip(),
                     });
                 }
                 Register::Tim8t => {
-                    self.timer_configuration = Some(TimerConfiguration {
+                    self.state.timer_configuration = Some(TimerConfiguration {
                         timer: *buffer_section,
                         divider: 8,
-                        next_timestamp: self.timestamp + self.config.frequency.recip() * 8,
+                        next_timestamp: timestamp + self.config.frequency.recip() * 8,
                     });
                 }
                 Register::Tim64t => {
-                    self.timer_configuration = Some(TimerConfiguration {
+                    self.state.timer_configuration = Some(TimerConfiguration {
                         timer: *buffer_section,
                         divider: 64,
-                        next_timestamp: self.timestamp + self.config.frequency.recip() * 64,
+                        next_timestamp: timestamp + self.config.frequency.recip() * 64,
                     });
                 }
                 Register::T1024t => {
-                    self.timer_configuration = Some(TimerConfiguration {
+                    self.state.timer_configuration = Some(TimerConfiguration {
                         timer: *buffer_section,
                         divider: 1024,
-                        next_timestamp: self.timestamp + self.config.frequency.recip() * 1024,
+                        next_timestamp: timestamp + self.config.frequency.recip() * 1024,
                     });
                 }
                 Register::Instat => todo!(),
@@ -237,10 +257,8 @@ impl Component for Mos6532Riot {
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
         for timestamp in context.allocate(self.config.frequency.recip()) {
-            self.timestamp = timestamp;
-
-            if let Some(config) = &mut self.timer_configuration
-                && self.timestamp == config.next_timestamp
+            if let Some(config) = &mut self.state.timer_configuration
+                && timestamp == config.next_timestamp
             {
                 let (new_timer, underflowed) = config.timer.overflowing_sub(1);
 
@@ -249,7 +267,7 @@ impl Component for Mos6532Riot {
                 } else {
                     config.divider = 1;
                     config.next_timestamp += self.config.frequency.recip();
-                    self.instat |= 0b1000_0000;
+                    self.state.instat |= 0b1000_0000;
                 }
 
                 config.timer = new_timer;
@@ -257,9 +275,9 @@ impl Component for Mos6532Riot {
         }
     }
 
-    fn needs_work(&self, delta: Period) -> bool {
-        if let Some(config) = self.timer_configuration {
-            self.timestamp + delta >= config.next_timestamp
+    fn needs_work(&self, current_timestamp: &Period, delta: &Period) -> bool {
+        if let Some(config) = self.state.timer_configuration {
+            current_timestamp + delta >= config.next_timestamp
         } else {
             false
         }
@@ -268,6 +286,7 @@ impl Component for Mos6532Riot {
 
 impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
     type Component = Mos6532Riot;
+    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn build_component(
         self,
@@ -296,7 +315,7 @@ impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
             .memory_map_component_read(self.assigned_address_space, instat..=instat)
             .scheduler_participation(Some(SchedulerParticipation::OnAccess));
 
-        let my_path = component_builder.path().clone();
+        let path = component_builder.path().clone();
 
         component_builder.component(
             "ram",
@@ -314,13 +333,14 @@ impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
         );
 
         Ok(Self::Component {
-            swacnt: false,
-            swbcnt: false,
-            instat: 0,
+            state: State {
+                swacnt: false,
+                swbcnt: false,
+                instat: 0,
+                timer_configuration: None,
+            },
             config: self,
-            timer_configuration: None,
-            timestamp: Period::default(),
-            my_path,
+            path,
         })
     }
 }

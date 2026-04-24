@@ -1,10 +1,11 @@
-use std::ops::RangeInclusive;
+use std::{io::Read, ops::RangeInclusive};
 
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId, MemoryError},
+    persistence::PersistanceFormatVersion,
     platform::Platform,
 };
 
@@ -38,8 +39,8 @@ impl Component for Apu {
 
     fn load_snapshot(
         &mut self,
-        _version: fluxemu_runtime::component::ComponentVersion,
-        _reader: &mut dyn std::io::Read,
+        _version: PersistanceFormatVersion,
+        _reader: &mut dyn Read,
     ) -> Result<(), Box<dyn std::error::Error>> {
         todo!()
     }
@@ -95,6 +96,7 @@ pub struct ApuConfig {
 
 impl<P: Platform> ComponentConfig<P> for ApuConfig {
     type Component = Apu;
+    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn build_component(
         self,

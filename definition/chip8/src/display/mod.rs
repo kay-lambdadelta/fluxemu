@@ -6,7 +6,7 @@ use std::{
 
 use fluxemu_runtime::{
     component::{
-        Component, ComponentVersion,
+        Component,
         config::{ComponentConfig, LateContext},
     },
     graphics::{
@@ -14,6 +14,7 @@ use fluxemu_runtime::{
         software::{CopyMode, Texture, TextureImpl, TextureImplMut},
     },
     machine::builder::{ComponentBuilder, SchedulerParticipation},
+    persistence::PersistanceFormatVersion,
     platform::Platform,
     scheduler::{Period, SynchronizationContext},
 };
@@ -168,13 +169,13 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Display<G> {
 
     fn load_snapshot(
         &mut self,
-        version: ComponentVersion,
+        version: PersistanceFormatVersion,
         reader: &mut dyn Read,
     ) -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(version, 0);
         let snapshot: Snapshot = rmp_serde::decode::from_read(reader)?;
-        self.set_hires(snapshot.hires);
 
+        self.set_hires(snapshot.hires);
         self.staging_buffer
             .copy_from(&snapshot.screen_buffer, CopyMode::Nearest);
 
@@ -190,7 +191,7 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Display<G> {
             vsync_occurred: self.vsync_occurred,
         };
 
-        rmp_serde::encode::write_named(&mut writer, &snapshot)?;
+        rmp_serde::encode::write(&mut writer, &snapshot)?;
 
         Ok(())
     }
@@ -212,8 +213,8 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Display<G> {
         }
     }
 
-    fn needs_work(&self, delta: Period) -> bool {
-        delta >= Period::ONE / 60
+    fn needs_work(&self, _timestamp: &Period, delta: &Period) -> bool {
+        *delta >= Period::ONE / 60
     }
 
     fn get_framebuffer(&mut self, _name: &str) -> &dyn Any {
@@ -238,6 +239,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
     for Chip8DisplayConfig
 {
     type Component = Chip8Display<P::GraphicsApi>;
+    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn late_initialize(component: &mut Self::Component, data: &LateContext<P>) {
         let backend = <P::GraphicsApi as SupportedGraphicsApiChip8Display>::Backend::new(

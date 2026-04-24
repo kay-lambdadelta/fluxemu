@@ -10,8 +10,9 @@ use rustc_hash::FxBuildHasher;
 
 use crate::{
     RuntimeApi,
-    component::{Component, ComponentId, ComponentVersion},
+    component::{Component, ComponentId},
     path::ComponentPath,
+    persistence::PersistanceFormatVersion,
     scheduler::{Period, SynchronizationContext},
 };
 
@@ -19,10 +20,8 @@ use crate::{
 pub(crate) struct ComponentHandle {
     current_timestamp: Period,
     synchronize: bool,
-    #[allow(unused)]
-    save_version: Option<ComponentVersion>,
-    #[allow(unused)]
-    snapshot_version: Option<ComponentVersion>,
+    save_version: Option<PersistanceFormatVersion>,
+    snapshot_version: PersistanceFormatVersion,
     component: Option<Box<dyn Component>>,
 }
 
@@ -44,8 +43,8 @@ impl ComponentRegistryData {
     pub fn insert_component<C: Component>(
         &mut self,
         path: ComponentPath,
-        save_version: Option<ComponentVersion>,
-        snapshot_version: Option<ComponentVersion>,
+        save_version: Option<PersistanceFormatVersion>,
+        snapshot_version: PersistanceFormatVersion,
         synchronize: bool,
         component: C,
     ) {
@@ -86,18 +85,19 @@ impl<'a> ComponentRegistry<'a> {
     }
 
     #[inline]
-    pub fn interact<C: Component, T>(
-        &self,
-        path: &ComponentPath,
+    pub fn interact<'b, C: Component, T>(
+        &'b self,
+        id: impl Into<ComponentIdentifier<'b>>,
         time: Period,
         callback: impl FnOnce(&mut C) -> T,
     ) -> Option<T> {
         self.interact_dyn(
-            path,
+            id,
             time,
             #[inline]
             |component| {
                 let component = (component as &mut dyn Any).downcast_mut::<C>().unwrap();
+
                 callback(component)
             },
         )
@@ -108,7 +108,7 @@ impl<'a> ComponentRegistry<'a> {
         &'b self,
         id: impl Into<ComponentIdentifier<'b>>,
         target_timestamp: Period,
-        callback: impl FnOnce(&mut dyn Component) -> T + 'b,
+        callback: impl FnOnce(&mut dyn Component) -> T,
     ) -> Option<T> {
         let id = match id.into() {
             ComponentIdentifier::Id(id) => id,
@@ -155,14 +155,14 @@ impl<'a> ComponentRegistry<'a> {
         let mut guard = self.runtime.local_component_store().borrow_mut();
         let handle = guard.get_slot(id).as_mut().unwrap();
 
-        let Some(delta) = target_timestamp.checked_sub(handle.current_timestamp) else {
+        let Some(mut delta) = target_timestamp.checked_sub(handle.current_timestamp) else {
             return;
         };
 
         let mut current_timestamp = handle.current_timestamp;
         let mut component = handle.component.take().unwrap();
 
-        if delta == Period::ZERO || !component.needs_work(delta) {
+        if delta == Period::ZERO || !component.needs_work(&current_timestamp, &delta) {
             handle.component = Some(component);
             return;
         }
@@ -184,8 +184,8 @@ impl<'a> ComponentRegistry<'a> {
                 "Synchronization attempt for component did not attempt to allocate time"
             );
 
-            let delta = target_timestamp - current_timestamp;
-            let needs_work = component.needs_work(delta);
+            delta = target_timestamp - current_timestamp;
+            let needs_work = component.needs_work(&current_timestamp, &delta);
 
             let mut guard = self.runtime.local_component_store().borrow_mut();
             let handle = guard.get_slot(id).as_mut().unwrap();
@@ -301,13 +301,22 @@ impl<'a> ComponentRegistry<'a> {
         }
     }
 
-    /// Get the current timestamp of a component
-    ///
-    /// This may be before the current time if that component is currently synchronizing
-    ///
-    /// It is recommended this call is only used for fetching the current timestamp of your component, outside of any `synchronize` path of
-    /// that component
-    pub fn current_timestamp<'b>(
+    pub(crate) fn interact_all(
+        &self,
+        time: Period,
+        mut callback: impl FnMut(&ComponentPath, &mut dyn Component),
+    ) {
+        for (path, id) in self.data.path2id.iter() {
+            self.interact_dyn(*id, time, |component| callback(path, component))
+                .unwrap()
+        }
+    }
+
+    pub(crate) fn path_to_id(&self, path: &ComponentPath) -> Option<ComponentId> {
+        self.data.path2id.get(path).copied()
+    }
+
+    pub(crate) fn get_timestamp<'b>(
         &'b self,
         id: impl Into<ComponentIdentifier<'b>>,
     ) -> Option<Period> {
@@ -320,10 +329,6 @@ impl<'a> ComponentRegistry<'a> {
         let handle = self.fetch_or_acquire_component(id, &mut local_component_store_guard);
 
         Some(handle.current_timestamp)
-    }
-
-    pub(crate) fn path_to_id(&self, path: &ComponentPath) -> Option<ComponentId> {
-        self.data.path2id.get(path).copied()
     }
 }
 

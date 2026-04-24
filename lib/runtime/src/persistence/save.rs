@@ -1,23 +1,28 @@
 use std::{collections::HashMap, io::Read, path::PathBuf};
 
-use fluxemu_program::RomId;
+use fluxemu_program::ProgramId;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    component::{ComponentRegistry, ComponentVersion},
+    component::ComponentRegistry,
     path::ComponentPath,
-    persistence::CompressionFormat,
+    persistence::{CompressionFormat, PersistanceFormatVersion},
 };
 
-#[derive(Debug, Serialize, Deserialize)]
 pub struct Save {
-    pub components: HashMap<ComponentPath, ComponentSave>,
+    metadata: Metadata,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Metadata {
+    pub version: u32,
+    pub components: HashMap<ComponentPath, ComponentMetadata>,
     pub compression: Option<CompressionFormat>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ComponentSave {
-    pub version: ComponentVersion,
+pub struct ComponentMetadata {
+    version: PersistanceFormatVersion,
 }
 
 #[allow(unused)]
@@ -33,17 +38,15 @@ impl SaveManager {
 
     pub fn get(
         &self,
-        _rom_id: RomId,
-        _rom_name: &str,
+        _program_id: &ProgramId,
         _component_path: ComponentPath,
-    ) -> Result<Option<(impl Read, ComponentVersion)>, Box<dyn std::error::Error>> {
+    ) -> Result<Option<(impl Read, PersistanceFormatVersion)>, Box<dyn std::error::Error>> {
         Ok(None::<(&[u8], _)>)
     }
 
     pub fn write(
         &self,
-        _rom_id: RomId,
-        _rom_name: &str,
+        _program_id: &ProgramId,
         _registry: &ComponentRegistry,
     ) -> Result<(), Box<dyn std::error::Error>> {
         todo!()

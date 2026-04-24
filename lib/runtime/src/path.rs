@@ -163,6 +163,18 @@ impl Key for ComponentPath {
     }
 }
 
+impl<'a> From<ComponentPath> for Cow<'a, ComponentPath> {
+    fn from(path: ComponentPath) -> Self {
+        Cow::Owned(path)
+    }
+}
+
+impl<'a> From<&'a ComponentPath> for Cow<'a, ComponentPath> {
+    fn from(path: &'a ComponentPath) -> Self {
+        Cow::Borrowed(path)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ResourcePath {
     component: Option<ComponentPath>,

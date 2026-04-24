@@ -4,11 +4,12 @@ use std::{
 };
 
 use fluxemu_runtime::{
-    RuntimeApi,
-    component::{Component, ComponentVersion, config::ComponentConfig},
+    ComponentPath, ComponentRuntimeApi,
+    component::{Component, config::ComponentConfig},
     event::{Event, downcast_event},
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::{Address, AddressSpaceId},
+    persistence::PersistanceFormatVersion,
     platform::Platform,
     scheduler::{Frequency, Period, SynchronizationContext},
 };
@@ -70,8 +71,8 @@ impl Mos6502Kind {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
 /// We don't store this in memory bitpacked for performance reasons
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
 pub struct FlagRegister {
     negative: bool,
     overflow: bool,
@@ -113,8 +114,8 @@ pub struct Mos6502Config {
     pub broken_ror: bool,
 }
 
-#[derive(Debug)]
-pub struct Mos6502 {
+#[derive(Debug, Serialize, Deserialize)]
+struct State {
     a: u8,
     x: u8,
     y: u8,
@@ -129,43 +130,46 @@ pub struct Mos6502 {
     rdy: bool,
     nmi: NmiFlag,
     irq: bool,
+}
+
+#[derive(Debug)]
+pub struct Mos6502 {
+    state: State,
     config: Mos6502Config,
-    timestamp: Period,
     period: Period,
+    path: ComponentPath,
 }
 
 impl Component for Mos6502 {
     type Event = Mos6502Event;
 
-    fn store_snapshot(&self, _writer: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>> {
-        todo!()
+    fn store_snapshot(&self, writer: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>> {
+        rmp_serde::encode::write(writer, &self.state)?;
+
+        Ok(())
     }
 
     fn load_snapshot(
         &mut self,
-        version: ComponentVersion,
-        _reader: &mut dyn Read,
+        _version: PersistanceFormatVersion,
+        reader: &mut dyn Read,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        match version {
-            0 => {
-                todo!()
-            }
-            other => Err(format!("Unsupported snapshot version: {other}").into()),
-        }
+        self.state = rmp_serde::from_read(reader)?;
+
+        Ok(())
     }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
-        let runtime = RuntimeApi::current();
+        let runtime = ComponentRuntimeApi::current(self.path.clone());
 
         let mut address_space = runtime
             .address_space(self.config.assigned_address_space)
             .unwrap();
 
-        for now in context.allocate(self.period) {
-            self.timestamp = now;
-
-            if self.cycle_queue.is_empty() {
-                self.cycle_queue
+        for timestamp in context.allocate(self.period) {
+            if self.state.cycle_queue.is_empty() {
+                self.state
+                    .cycle_queue
                     .push_back(Cycle::new(
                         BusMode::Read,
                         Some(Phi1::SetAddressBus {
@@ -182,49 +186,49 @@ impl Component for Mos6502 {
                     .unwrap();
             }
 
-            let current_cycle = self.cycle_queue.front_mut().unwrap();
+            let current_cycle = self.state.cycle_queue.front_mut().unwrap();
 
             match current_cycle.phi1 {
                 Some(Phi1::SetAddressBus {
                     source: SetAddressBusSource::InstructionPointer,
                 }) => {
-                    self.bus.address = self.instruction_pointer;
+                    self.state.bus.address = self.state.instruction_pointer;
                 }
                 Some(Phi1::SetAddressBus {
                     source: SetAddressBusSource::EffectiveAddress,
                 }) => {
-                    match self.effective_address.len() {
+                    match self.state.effective_address.len() {
                         1 => {
-                            self.bus.address = u16::from(self.effective_address[0]);
+                            self.state.bus.address = u16::from(self.state.effective_address[0]);
                         }
                         2 => {
-                            self.bus.address = u16::from_le_bytes([
-                                self.effective_address[0],
-                                self.effective_address[1],
+                            self.state.bus.address = u16::from_le_bytes([
+                                self.state.effective_address[0],
+                                self.state.effective_address[1],
                             ]);
                         }
                         _ => unreachable!(),
                     }
 
-                    self.consume_effective_address = true;
+                    self.state.consume_effective_address = true;
                 }
                 Some(Phi1::SetAddressBus {
                     source: SetAddressBusSource::Constant(value),
                 }) => {
-                    self.bus.address = value;
+                    self.state.bus.address = value;
                 }
                 Some(Phi1::SetAddressBus {
                     source: SetAddressBusSource::Stack,
                 }) => {
-                    self.bus.address = u16::from(self.stack) | STACK_BASE_ADDRESS;
+                    self.state.bus.address = u16::from(self.state.stack) | STACK_BASE_ADDRESS;
                 }
                 None => {}
             }
 
             let is_read_cycle = match current_cycle.bus_mode {
                 BusMode::Read => {
-                    self.bus.data = address_space
-                        .read_le_value(self.bus.address as Address, self.timestamp)
+                    self.state.bus.data = address_space
+                        .read_le_value(self.state.bus.address as Address, timestamp)
                         .unwrap_or_default();
 
                     true
@@ -232,12 +236,12 @@ impl Component for Mos6502 {
                 BusMode::Write => false,
             };
 
-            if self.rdy || !is_read_cycle {
-                if std::mem::take(&mut self.consume_effective_address) {
-                    self.effective_address.clear();
+            if self.state.rdy || !is_read_cycle {
+                if std::mem::take(&mut self.state.consume_effective_address) {
+                    self.state.effective_address.clear();
                 }
 
-                let current_cycle = self.cycle_queue.pop_front().unwrap();
+                let current_cycle = self.state.cycle_queue.pop_front().unwrap();
 
                 self.handle_phi2(&current_cycle);
 
@@ -246,9 +250,9 @@ impl Component for Mos6502 {
                     BusMode::Write => {
                         address_space
                             .write_le_value(
-                                self.bus.address as Address,
-                                self.timestamp,
-                                self.bus.data,
+                                self.state.bus.address as Address,
+                                timestamp,
+                                self.state.bus.data,
                             )
                             .unwrap_or_default();
                     }
@@ -256,10 +260,10 @@ impl Component for Mos6502 {
 
                 // Check for interrupts
 
-                if self.config.kind.supports_interrupts() && self.cycle_queue.is_empty() {
-                    if self.nmi.interrupt_required() {
+                if self.config.kind.supports_interrupts() && self.state.cycle_queue.is_empty() {
+                    if self.state.nmi.interrupt_required() {
                         self.handle_nmi();
-                    } else if std::mem::take(&mut self.irq) {
+                    } else if std::mem::take(&mut self.state.irq) {
                         self.handle_irq();
                     }
                 }
@@ -267,8 +271,8 @@ impl Component for Mos6502 {
         }
     }
 
-    fn needs_work(&self, delta: Period) -> bool {
-        delta >= self.period
+    fn needs_work(&self, _timestamp: &Period, delta: &Period) -> bool {
+        delta >= &self.period
     }
 
     fn handle_event(&mut self, event: Box<dyn Event>) {
@@ -276,9 +280,9 @@ impl Component for Mos6502 {
 
         match event {
             Mos6502Event::FlagChange { pin: flag, value } => match flag {
-                Pin::Nmi => self.nmi.store(value),
-                Pin::Irq => self.irq = value,
-                Pin::Rdy => self.rdy = value,
+                Pin::Nmi => self.state.nmi.store(value),
+                Pin::Irq => self.state.irq = value,
+                Pin::Rdy => self.state.rdy = value,
             },
         }
     }
@@ -286,35 +290,39 @@ impl Component for Mos6502 {
 
 impl<P: Platform> ComponentConfig<P> for Mos6502Config {
     type Component = Mos6502;
+    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn build_component(
         self,
         component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
-        component_builder.scheduler_participation(Some(SchedulerParticipation::SchedulerDriven));
+        let component_builder = component_builder
+            .scheduler_participation(Some(SchedulerParticipation::SchedulerDriven));
 
         let mut component = Mos6502 {
-            a: 0,
-            x: 0,
-            y: 0,
-            flags: FlagRegister::default(),
-            stack: 0xff,
-            // Will be set later
-            instruction_pointer: 0x0000,
-            cycle_queue: heapless::Deque::default(),
-            operand: 0,
-            bus: Bus {
-                address: 0x0000,
-                data: 0x00,
+            state: State {
+                a: 0,
+                x: 0,
+                y: 0,
+                flags: FlagRegister::default(),
+                stack: 0xff,
+                // Will be set later
+                instruction_pointer: 0x0000,
+                cycle_queue: heapless::Deque::default(),
+                operand: 0,
+                bus: Bus {
+                    address: 0x0000,
+                    data: 0x00,
+                },
+                rdy: true,
+                irq: false,
+                nmi: NmiFlag::default(),
+                effective_address: heapless::Vec::default(),
+                consume_effective_address: false,
             },
-            rdy: true,
-            irq: false,
-            nmi: NmiFlag::default(),
-            effective_address: heapless::Vec::default(),
-            consume_effective_address: false,
             period: self.frequency.recip(),
+            path: component_builder.path().clone(),
             config: self,
-            timestamp: Period::default(),
         };
 
         // Put it in the reset state for startup
@@ -325,7 +333,7 @@ impl<P: Platform> ComponentConfig<P> for Mos6502Config {
 }
 
 /// NMI is falling edge
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 struct NmiFlag {
     current_state: bool,
     falling_edge_occured: bool,
@@ -358,8 +366,8 @@ impl Mos6502 {
     }
 
     fn reset(&mut self) {
-        self.cycle_queue.clear();
-        self.cycle_queue.extend([
+        self.state.cycle_queue.clear();
+        self.state.cycle_queue.extend([
             // Two dummy cycles
             Cycle::new(BusMode::Read, None, []),
             Cycle::new(BusMode::Read, None, []),
@@ -419,7 +427,7 @@ impl Mos6502 {
     }
 
     fn handle_nmi(&mut self) {
-        self.cycle_queue.extend([
+        self.state.cycle_queue.extend([
             Cycle::new(
                 BusMode::Read,
                 Some(Phi1::SetAddressBus {
@@ -493,7 +501,7 @@ impl Mos6502 {
     }
 
     fn handle_irq(&mut self) {
-        self.cycle_queue.extend([
+        self.state.cycle_queue.extend([
             Cycle::new(
                 BusMode::Read,
                 Some(Phi1::SetAddressBus {

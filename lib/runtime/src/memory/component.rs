@@ -11,9 +11,10 @@ use rangemap::RangeInclusiveMap;
 
 use crate::{
     Platform,
-    component::{Component, ComponentVersion, config::ComponentConfig},
+    component::{Component, config::ComponentConfig},
     machine::builder::{ComponentBuilder, RomRequirement},
     memory::{Address, AddressSpaceId, MemoryError},
+    persistence::PersistanceFormatVersion,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,11 +46,15 @@ impl Component for Memory {
 
     fn load_snapshot(
         &mut self,
-        version: ComponentVersion,
+        _version: PersistanceFormatVersion,
         reader: &mut dyn Read,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        assert_eq!(version, 0);
+        // Read out base
+        let mut base = [0; size_of::<u64>()];
+        reader.read_exact(&mut base)?;
+        self.base = u64::from_le_bytes(base).try_into()?;
 
+        // Read out buffer
         reader.read_exact(&mut self.buffer)?;
 
         Ok(())
@@ -61,6 +66,7 @@ impl Component for Memory {
     }
 
     fn store_snapshot(&self, writer: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>> {
+        writer.write_all(&self.base.to_le_bytes())?;
         writer.write_all(&self.buffer)?;
 
         Ok(())
@@ -104,6 +110,8 @@ impl Component for Memory {
 
 impl<P: Platform> ComponentConfig<P> for MemoryConfig {
     type Component = Memory;
+
+    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn build_component(
         self,
@@ -166,18 +174,21 @@ impl<P: Platform> ComponentConfig<P> for MemoryConfig {
             }
         }
 
-        match (self.readable, self.writable) {
-            (true, true) => {
-                component_builder.memory_map_component(assigned_address_space, assigned_range)
-            }
-            (true, false) => {
-                component_builder.memory_map_component_read(assigned_address_space, assigned_range)
-            }
-            (false, true) => {
-                component_builder.memory_map_component_write(assigned_address_space, assigned_range)
-            }
-            (false, false) => component_builder,
-        };
+        let component_builder =
+            match (self.readable, self.writable) {
+                (true, true) => {
+                    component_builder.memory_map_component(assigned_address_space, assigned_range)
+                }
+                (true, false) => component_builder
+                    .memory_map_component_read(assigned_address_space, assigned_range),
+                (false, true) => component_builder
+                    .memory_map_component_write(assigned_address_space, assigned_range),
+                (false, false) => component_builder,
+            };
+
+        if self.sram {
+            component_builder.save_version(0);
+        }
 
         Ok(component)
     }

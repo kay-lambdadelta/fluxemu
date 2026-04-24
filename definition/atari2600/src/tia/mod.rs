@@ -103,8 +103,8 @@ struct Player {
     color: TiaColor,
 }
 
-#[derive(Debug)]
-pub(crate) struct Tia<R: Region, G: SupportedGraphicsApiTia> {
+#[derive(Debug, Serialize, Deserialize)]
+struct State {
     collision_matrix: HashMap<ObjectId, HashSet<ObjectId>>,
     vblank_active: bool,
     cycles_waiting_for_vsync: Option<u16>,
@@ -116,10 +116,15 @@ pub(crate) struct Tia<R: Region, G: SupportedGraphicsApiTia> {
     playfield: Playfield,
     high_playfield_ball_priority: bool,
     background_color: TiaColor,
+    staging_buffer: Texture<Srgba<u8>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct Tia<R: Region, G: SupportedGraphicsApiTia> {
+    state: State,
     backend: Option<G::Backend<R>>,
     cpu_path: ComponentPath,
-    staging_buffer: Texture<Srgba<u8>>,
-    timestamp: Period,
+    path: ComponentPath,
 }
 
 impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
@@ -165,51 +170,49 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
     }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
-        for now in context.allocate(R::frequency().recip()) {
-            self.timestamp = now;
+        for _ in context.allocate(R::frequency().recip()) {
+            if let Some(cycles) = self.state.cycles_waiting_for_vsync {
+                self.state.cycles_waiting_for_vsync = Some(cycles.saturating_sub(1));
 
-            if let Some(cycles) = self.cycles_waiting_for_vsync {
-                self.cycles_waiting_for_vsync = Some(cycles.saturating_sub(1));
-
-                if self.cycles_waiting_for_vsync == Some(0) {
+                if self.state.cycles_waiting_for_vsync == Some(0) {
                     self.backend
                         .as_mut()
                         .unwrap()
-                        .commit_staging_buffer(&self.staging_buffer);
+                        .commit_staging_buffer(&self.state.staging_buffer);
 
-                    self.cycles_waiting_for_vsync = None;
+                    self.state.cycles_waiting_for_vsync = None;
                 }
             }
 
-            if !(self.cycles_waiting_for_vsync.is_some() || self.vblank_active)
+            if !(self.state.cycles_waiting_for_vsync.is_some() || self.state.vblank_active)
                 && (HBLANK_LENGTH..(VISIBLE_SCANLINE_LENGTH + HBLANK_LENGTH))
-                    .contains(&self.electron_beam.x)
+                    .contains(&self.state.electron_beam.x)
             {
                 let color = R::color_to_srgb(self.get_rendered_color());
 
                 let point = Point2::new(
-                    (self.electron_beam.x - HBLANK_LENGTH) as usize,
-                    self.electron_beam.y as usize,
+                    (self.state.electron_beam.x - HBLANK_LENGTH) as usize,
+                    self.state.electron_beam.y as usize,
                 );
 
-                self.staging_buffer[point] = color.into();
+                self.state.staging_buffer[point] = color.into();
             }
 
-            self.electron_beam.x += 1;
+            self.state.electron_beam.x += 1;
 
-            if self.electron_beam.x >= SCANLINE_LENGTH {
-                self.electron_beam.x = 0;
-                self.electron_beam.y += 1;
+            if self.state.electron_beam.x >= SCANLINE_LENGTH {
+                self.state.electron_beam.x = 0;
+                self.state.electron_beam.y += 1;
             }
 
-            if self.electron_beam.y >= R::TOTAL_SCANLINES {
-                self.electron_beam.y = 0;
+            if self.state.electron_beam.y >= R::TOTAL_SCANLINES {
+                self.state.electron_beam.y = 0;
             }
         }
     }
 
-    fn needs_work(&self, delta: Period) -> bool {
-        delta >= R::frequency().recip()
+    fn needs_work(&self, _timestamp: &Period, delta: &Period) -> bool {
+        *delta >= R::frequency().recip()
     }
 
     fn get_framebuffer(&mut self, _name: &str) -> &dyn Any {
@@ -219,10 +222,10 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
 
 impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
     fn get_rendered_color(&self) -> TiaColor {
-        if self.high_playfield_ball_priority {
+        if self.state.high_playfield_ball_priority {
             // Check if in the bounds of ball
             if self.get_ball_color() {
-                return self.ball.color;
+                return self.state.ball.color;
             }
 
             // Check if in the bounds of playfield
@@ -242,12 +245,12 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
 
             // Check if in the bounds of missile 0
             if self.get_missile_color(0) {
-                return self.missiles[0].color;
+                return self.state.missiles[0].color;
             }
 
             // Check if in the bounds of missile 1
             if self.get_missile_color(1) {
-                return self.missiles[1].color;
+                return self.state.missiles[1].color;
             }
         } else {
             // Check if in the bounds of player 0
@@ -262,17 +265,17 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
 
             // Check if in the bounds of missile 0
             if self.get_missile_color(0) {
-                return self.missiles[0].color;
+                return self.state.missiles[0].color;
             }
 
             // Check if in the bounds of missile 1
             if self.get_missile_color(1) {
-                return self.missiles[1].color;
+                return self.state.missiles[1].color;
             }
 
             // Check if in the bounds of ball
             if self.get_ball_color() {
-                return self.ball.color;
+                return self.state.ball.color;
             }
 
             // Check if in the bounds of playfield
@@ -281,13 +284,14 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
             }
         }
 
-        self.background_color
+        self.state.background_color
     }
 
     #[inline]
     fn get_player_color(&self, index: usize) -> Option<TiaColor> {
-        let player = &self.players[index];
+        let player = &self.state.players[index];
         if let Some(sprite_pixel) = self
+            .state
             .electron_beam
             .x
             .checked_sub(player.position)
@@ -308,50 +312,48 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
 
     #[inline]
     fn get_missile_color(&self, index: usize) -> bool {
-        let missile = &self.missiles[index];
+        let missile = &self.state.missiles[index];
 
         if missile.locked {
             return false;
         }
 
-        self.electron_beam.x == missile.position
+        self.state.electron_beam.x == missile.position
     }
 
     #[inline]
     fn get_ball_color(&self) -> bool {
-        let ball = &self.ball;
-
-        self.electron_beam.x == ball.position
+        self.state.electron_beam.x == self.state.ball.position
     }
 
     #[inline]
     fn get_playfield_color(&self) -> Option<TiaColor> {
-        let playfield_position = ((self.electron_beam.x - HBLANK_LENGTH) / 4) as usize;
+        let playfield_position = ((self.state.electron_beam.x - HBLANK_LENGTH) / 4) as usize;
 
         match playfield_position {
             0..20 => {
-                if self.playfield.data[playfield_position] {
-                    if self.playfield.score_mode {
-                        Some(self.players[0].color)
+                if self.state.playfield.data[playfield_position] {
+                    if self.state.playfield.score_mode {
+                        Some(self.state.players[0].color)
                     } else {
-                        Some(self.playfield.color)
+                        Some(self.state.playfield.color)
                     }
                 } else {
                     None
                 }
             }
             20..40 => {
-                let mut data = self.playfield.data;
+                let mut data = self.state.playfield.data;
 
-                if self.playfield.mirror {
+                if self.state.playfield.mirror {
                     data.reverse();
                 }
 
                 if data[playfield_position - 20] {
-                    if self.playfield.score_mode {
-                        Some(self.players[1].color)
+                    if self.state.playfield.score_mode {
+                        Some(self.state.players[1].color)
                     } else {
-                        Some(self.playfield.color)
+                        Some(self.state.playfield.color)
                     }
                 } else {
                     None

@@ -1,4 +1,4 @@
-use fluxemu_runtime::{RuntimeApi, memory::AddressSpace};
+use fluxemu_runtime::{ComponentRuntimeApi, memory::AddressSpace, scheduler::Period};
 use nalgebra::Point2;
 use rand::RngExt;
 
@@ -21,8 +21,9 @@ use crate::{
 impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
     pub(super) fn interpret_instruction(
         &mut self,
-        runtime: &RuntimeApi,
+        runtime: &ComponentRuntimeApi<'_>,
         address_space: &mut AddressSpace<'_>,
+        timestamp: Period,
         instruction: Chip8InstructionSet,
     ) {
         let mut mode_guard = self.mode.lock().unwrap();
@@ -31,13 +32,9 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
             Chip8InstructionSet::Chip8(InstructionSetChip8::Clr) => {
                 runtime
                     .registry()
-                    .interact::<Chip8Display<G>, _>(
-                        &self.config.display,
-                        self.timestamp,
-                        |component| {
-                            component.clear_display();
-                        },
-                    )
+                    .interact::<Chip8Display<G>, _>(&self.config.display, timestamp, |component| {
+                        component.clear_display();
+                    })
                     .unwrap();
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Rtrn) => {
@@ -244,7 +241,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                         address_space
                             .read(
                                 self.state.registers.index as usize + cursor,
-                                self.timestamp,
+                                timestamp,
                                 buffer_section,
                             )
                             .unwrap();
@@ -255,7 +252,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                         .registry()
                         .interact::<Chip8Display<G>, _>(
                             &self.config.display,
-                            self.timestamp,
+                            timestamp,
                             |component| {
                                 u8::from(component.draw_supersized_sprite(position, buffer))
                             },
@@ -269,7 +266,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                         address_space
                             .read(
                                 self.state.registers.index as usize + cursor,
-                                self.timestamp,
+                                timestamp,
                                 buffer_section,
                             )
                             .unwrap();
@@ -280,7 +277,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                         .registry()
                         .interact::<Chip8Display<G>, _>(
                             &self.config.display,
-                            self.timestamp,
+                            timestamp,
                             |component| u8::from(component.draw_sprite(position, &buffer)),
                         )
                         .unwrap();
@@ -311,7 +308,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
             Chip8InstructionSet::Chip8(InstructionSetChip8::Moved { register }) => {
                 self.state.registers.work_registers[register as usize] = runtime
                     .registry()
-                    .interact::<Chip8Timer, _>(&self.config.timer, self.timestamp, |component| {
+                    .interact::<Chip8Timer, _>(&self.config.timer, timestamp, |component| {
                         component.get()
                     })
                     .unwrap();
@@ -324,7 +321,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
 
                 runtime
                     .registry()
-                    .interact::<Chip8Timer, _>(&self.config.timer, self.timestamp, |component| {
+                    .interact::<Chip8Timer, _>(&self.config.timer, timestamp, |component| {
                         component.set(register_value);
                     })
                     .unwrap();
@@ -334,7 +331,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
 
                 runtime
                     .registry()
-                    .interact::<Chip8Audio, _>(&self.config.audio, self.timestamp, |component| {
+                    .interact::<Chip8Audio, _>(&self.config.audio, timestamp, |component| {
                         component.set(register_value);
                     })
                     .unwrap();
@@ -358,25 +355,13 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                 let [hundreds, tens, ones] = bcd_encode(register_value);
 
                 address_space
-                    .write_le_value(
-                        self.state.registers.index as usize,
-                        self.timestamp,
-                        hundreds,
-                    )
+                    .write_le_value(self.state.registers.index as usize, timestamp, hundreds)
                     .unwrap();
                 address_space
-                    .write_le_value(
-                        self.state.registers.index as usize + 1,
-                        self.timestamp,
-                        tens,
-                    )
+                    .write_le_value(self.state.registers.index as usize + 1, timestamp, tens)
                     .unwrap();
                 address_space
-                    .write_le_value(
-                        self.state.registers.index as usize + 2,
-                        self.timestamp,
-                        ones,
-                    )
+                    .write_le_value(self.state.registers.index as usize + 2, timestamp, ones)
                     .unwrap();
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Save { count }) => {
@@ -384,7 +369,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                     address_space
                         .write(
                             self.state.registers.index as usize + i as usize,
-                            self.timestamp,
+                            timestamp,
                             &self.state.registers.work_registers[i as usize..=i as usize],
                         )
                         .unwrap();
@@ -404,7 +389,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                     address_space
                         .read(
                             self.state.registers.index as usize + i as usize,
-                            self.timestamp,
+                            timestamp,
                             &mut self.state.registers.work_registers[i as usize..=i as usize],
                         )
                         .unwrap();
@@ -428,7 +413,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                             .registry()
                             .interact::<Chip8Display<G>, _>(
                                 &self.config.display,
-                                self.timestamp,
+                                timestamp,
                                 |component| {
                                     component.set_hires(false);
                                 },
@@ -440,7 +425,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                             .registry()
                             .interact::<Chip8Display<G>, _>(
                                 &self.config.display,
-                                self.timestamp,
+                                timestamp,
                                 |component| {
                                     component.set_hires(true);
                                 },

@@ -1,8 +1,8 @@
-use std::ops::RangeInclusive;
+use std::{io::Read, ops::RangeInclusive};
 
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
-    ComponentPath, RuntimeApi,
+    ComponentPath, ComponentRuntimeApi,
     component::{
         Component,
         config::{ComponentConfig, LateContext},
@@ -12,6 +12,7 @@ use fluxemu_runtime::{
         Address, AddressSpaceId, MapTarget, MemoryError, MemoryRemappingCommand, Permissions,
         component::{InitialContents, MemoryConfig},
     },
+    persistence::PersistanceFormatVersion,
     platform::Platform,
 };
 use rangemap::RangeInclusiveMap;
@@ -56,7 +57,7 @@ pub struct Mmc1 {
     prg_rom_bank_index: u8,
     mirroring: Mirroring,
     config: Mmc1Config,
-    my_path: ComponentPath,
+    path: ComponentPath,
 }
 
 impl Mmc1 {
@@ -68,7 +69,9 @@ impl Mmc1 {
         //
         // Therefore the ppu can never observe stale mappings
 
-        let runtime = RuntimeApi::current();
+        let runtime = ComponentRuntimeApi::current(&self.path);
+        let timestamp = runtime.current_timestamp();
+
         let mut cpu_commands = Vec::new();
         let mut ppu_commands = Vec::new();
 
@@ -146,21 +149,21 @@ impl Mmc1 {
             }
         }
 
-        let current_timestamp = runtime.registry().current_timestamp(&self.my_path).unwrap();
-
         runtime
             .address_space(self.config.params.cpu_address_space)
             .unwrap()
-            .remap(current_timestamp, cpu_commands);
+            .remap(timestamp, cpu_commands);
 
         runtime
             .address_space(self.config.params.ppu_address_space)
             .unwrap()
-            .remap(current_timestamp, ppu_commands);
+            .remap(timestamp, ppu_commands);
     }
 
     fn update_nametables(&mut self) {
-        let runtime = RuntimeApi::current();
+        let runtime = ComponentRuntimeApi::current(&self.path);
+        let timestamp = runtime.current_timestamp();
+
         let [nametable_0, nametable_1] = &self.config.params.nametables;
 
         let commands = match self.mirroring {
@@ -298,12 +301,10 @@ impl Mmc1 {
             ],
         };
 
-        let current_timestamp = runtime.registry().current_timestamp(&self.my_path).unwrap();
-
         runtime
             .address_space(self.config.params.ppu_address_space)
             .unwrap()
-            .remap(current_timestamp, commands);
+            .remap(timestamp, commands);
     }
 }
 
@@ -312,8 +313,8 @@ impl Component for Mmc1 {
 
     fn load_snapshot(
         &mut self,
-        _version: fluxemu_runtime::component::ComponentVersion,
-        _reader: &mut dyn std::io::Read,
+        _version: PersistanceFormatVersion,
+        _reader: &mut dyn Read,
     ) -> Result<(), Box<dyn std::error::Error>> {
         todo!()
     }
@@ -423,6 +424,7 @@ pub struct Mmc1Config {
 
 impl<P: Platform> ComponentConfig<P> for Mmc1Config {
     type Component = Mmc1;
+    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn late_initialize(component: &mut Self::Component, _data: &LateContext<P>) {
         // Force the system to adopt an initial mapping
@@ -511,7 +513,7 @@ impl<P: Platform> ComponentConfig<P> for Mmc1Config {
             prg_rom_bank_mode: PrgRomBankMode::LockLastBank,
             prg_rom_bank_index: 0,
             mirroring: Mirroring::Horizontal,
-            my_path,
+            path: my_path,
         })
     }
 }

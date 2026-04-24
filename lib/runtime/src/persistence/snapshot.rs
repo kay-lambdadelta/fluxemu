@@ -4,9 +4,9 @@ use fluxemu_program::RomId;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    component::{ComponentRegistry, ComponentVersion},
+    component::ComponentRegistry,
     path::ComponentPath,
-    persistence::CompressionFormat,
+    persistence::{CompressionFormat, PersistanceFormatVersion},
 };
 
 pub type SnapshotSlot = u16;
@@ -19,7 +19,7 @@ pub struct SnapshotMetadata {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ComponentSnapshotInfo {
-    pub version: ComponentVersion,
+    pub version: PersistanceFormatVersion,
 }
 
 #[allow(unused)]
@@ -39,7 +39,7 @@ impl SnapshotManager {
         _rom_name: &str,
         _slot: SnapshotSlot,
         _registry: &ComponentRegistry,
-    ) -> Result<Option<(impl Read, ComponentVersion)>, Box<dyn std::error::Error>> {
+    ) -> Result<Option<(impl Read, PersistanceFormatVersion)>, Box<dyn std::error::Error>> {
         Ok(None::<(&[u8], _)>)
     }
 

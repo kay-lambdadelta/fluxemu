@@ -11,3 +11,6 @@ pub const MAGIC: [u8; 7] = *b"fluxemu";
 pub enum CompressionFormat {
     Zlib,
 }
+
+/// Version that components use
+pub type PersistanceFormatVersion = u32;

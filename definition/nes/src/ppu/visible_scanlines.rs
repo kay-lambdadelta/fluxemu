@@ -1,7 +1,7 @@
 use std::ops::RangeInclusive;
 
 use fluxemu_range::ContiguousRange;
-use fluxemu_runtime::memory::AddressSpace;
+use fluxemu_runtime::{memory::AddressSpace, scheduler::Period};
 use nalgebra::Point2;
 
 use crate::ppu::{
@@ -13,7 +13,11 @@ use crate::ppu::{
 };
 
 impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
-    pub(super) fn handle_visible_scanlines(&mut self, ppu_address_space: &mut AddressSpace<'_>) {
+    pub(super) fn handle_visible_scanlines(
+        &mut self,
+        ppu_address_space: &mut AddressSpace<'_>,
+        timestamp: Period,
+    ) {
         if self.state.cycle_counter.x == 1 {
             // Technically the NES does it over 64 cycles
             self.state.oam.secondary_data.clear();
@@ -33,7 +37,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
             if let Some((sprite, color_index)) = color_relevant_sprite {
                 sprite_color_index = Some(self.state.calculate_sprite_color::<R>(
                     ppu_address_space,
-                    self.timestamp,
+                    timestamp,
                     sprite.oam,
                     color_index,
                 ));
@@ -64,14 +68,14 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
             let background_color_index = if is_background_opaque {
                 self.state.calculate_background_color::<R>(
                     ppu_address_space,
-                    self.timestamp,
+                    timestamp,
                     attribute as u8,
                     background_color_bits as u8,
                 )
             } else {
                 // Backdrop color
                 self.state
-                    .calculate_background_color::<R>(ppu_address_space, self.timestamp, 0, 0)
+                    .calculate_background_color::<R>(ppu_address_space, timestamp, 0, 0)
             };
 
             let is_sprite_visible = self.state.oam.rendering_enabled
@@ -94,7 +98,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
 
             self.sprite_zero_check(scanline_position_x, is_background_opaque);
             self.state
-                .drive_background_pipeline::<R>(ppu_address_space, self.timestamp);
+                .drive_background_pipeline::<R>(ppu_address_space, timestamp);
         }
 
         if let 65..=256 = self.state.cycle_counter.x {
@@ -187,12 +191,12 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
 
         if let 257..=320 = self.state.cycle_counter.x {
             self.state
-                .drive_sprite_pipeline::<R>(ppu_address_space, self.timestamp);
+                .drive_sprite_pipeline::<R>(ppu_address_space, timestamp);
         }
 
         if let 321..=336 = self.state.cycle_counter.x {
             self.state
-                .drive_background_pipeline::<R>(ppu_address_space, self.timestamp);
+                .drive_background_pipeline::<R>(ppu_address_space, timestamp);
         }
     }
 

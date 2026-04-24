@@ -1,11 +1,12 @@
 use fluxemu_runtime::{
-    RuntimeApi,
+    ComponentRuntimeApi,
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
     memory::{
         Address, AddressSpaceId, MapTarget, MemoryError, MemoryRemappingCommand, Permissions,
     },
     path::ComponentPath,
+    persistence::PersistanceFormatVersion,
     platform::Platform,
 };
 use serde::{Deserialize, Serialize};
@@ -18,7 +19,7 @@ use crate::{
 pub struct Mapctl {
     config: MapctlConfig,
     status: MapctlStatus,
-    my_path: ComponentPath,
+    path: ComponentPath,
 }
 
 impl Component for Mapctl {
@@ -42,7 +43,8 @@ impl Component for Mapctl {
         _address_space: AddressSpaceId,
         buffer: &[u8],
     ) -> Result<(), MemoryError> {
-        let runtime = RuntimeApi::current();
+        let runtime = ComponentRuntimeApi::current(&self.path);
+        let timestamp = runtime.current_timestamp();
 
         self.status = MapctlStatus::from_byte(buffer[0]);
 
@@ -85,16 +87,14 @@ impl Component for Mapctl {
 
         remapping_commands.push(MemoryRemappingCommand::Map {
             range: MAPCTL_ADDRESS..=MAPCTL_ADDRESS,
-            target: MapTarget::Component(self.my_path.clone()),
+            target: MapTarget::Component(self.path.clone()),
             permissions: Permissions::ALL,
         });
-
-        let current_timestamp = runtime.registry().current_timestamp(&self.my_path).unwrap();
 
         runtime
             .address_space(self.config.cpu_address_space)
             .unwrap()
-            .remap(current_timestamp, remapping_commands);
+            .remap(timestamp, remapping_commands);
 
         Ok(())
     }
@@ -111,6 +111,7 @@ pub struct MapctlConfig {
 
 impl<P: Platform> ComponentConfig<P> for MapctlConfig {
     type Component = Mapctl;
+    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn build_component(
         self,
@@ -123,7 +124,7 @@ impl<P: Platform> ComponentConfig<P> for MapctlConfig {
         Ok(Mapctl {
             config: self,
             status: Default::default(),
-            my_path,
+            path: my_path,
         })
     }
 }

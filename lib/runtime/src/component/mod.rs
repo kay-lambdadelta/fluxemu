@@ -13,6 +13,7 @@ use ringbuffer::AllocRingBuffer;
 use crate::{
     event::Event,
     memory::{Address, AddressSpaceId, MemoryError, MemoryErrorType},
+    persistence::PersistanceFormatVersion,
     scheduler::{Period, SynchronizationContext},
 };
 
@@ -48,7 +49,7 @@ pub trait Component: Send + Sync + Debug + Any {
     /// Read a snapshot and restore the state given within it
     fn load_snapshot(
         &mut self,
-        version: ComponentVersion,
+        version: PersistanceFormatVersion,
         reader: &mut dyn Read,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
@@ -101,7 +102,7 @@ pub trait Component: Send + Sync + Debug + Any {
     /// Tell the scheduler that work needs to be done to close this delta
     ///
     /// It is logically hazardous to do any runtime interaction within this function
-    fn needs_work(&self, delta: Period) -> bool {
+    fn needs_work(&self, current_timestamp: &Period, delta: &Period) -> bool {
         false
     }
 
@@ -111,9 +112,6 @@ pub trait Component: Send + Sync + Debug + Any {
     /// Handle some input targeted at destination
     fn handle_input(&mut self, destination: &str, id: InputId, state: InputState) {}
 }
-
-/// Version that components use
-pub type ComponentVersion = u32;
 
 pub struct SampleSource<'a> {
     pub source: &'a mut AllocRingBuffer<SVector<f32, 1>>,
