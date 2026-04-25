@@ -171,6 +171,9 @@ impl<R: WinitCompatibleGraphicsRuntime> ApplicationHandler<()> for DesktopEventL
                         .frontend
                         .run_menu(egui_winit_context.take_egui_input(window));
 
+                    egui_winit_context
+                        .handle_platform_output(window, full_output.platform_output.clone());
+
                     graphics_runtime
                         .present_egui_overlay(self.frontend.egui_context(), full_output);
                 } else if let Some(machine) = self.frontend.machine() {
