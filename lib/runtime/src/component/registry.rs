@@ -20,10 +20,15 @@ use crate::{
 pub(crate) struct ComponentHandle {
     current_timestamp: Period,
     synchronize: bool,
+    component: Option<Box<dyn Component>>,
+}
+
+#[derive(Debug)]
+struct GlobalComponentMetadata {
+    id: ComponentId,
     save_version: Option<PersistanceFormatVersion>,
     snapshot_version: PersistanceFormatVersion,
     type_id: TypeId,
-    component: Option<Box<dyn Component>>,
 }
 
 #[derive(Debug, Default)]
@@ -32,7 +37,7 @@ pub(crate) struct ComponentRegistryData {
     global_component_store: scc::HashMap<ComponentId, ComponentHandle, FxBuildHasher>,
     threads_awaiting_component: scc::HashMap<ComponentId, HashMap<ThreadId, Thread>, FxBuildHasher>,
 
-    path2id: HashMap<ComponentPath, ComponentId, FxBuildHasher>,
+    metadata: HashMap<ComponentPath, GlobalComponentMetadata, FxBuildHasher>,
     next_component_id: u32,
 }
 
@@ -61,9 +66,6 @@ impl ComponentRegistryData {
                 ComponentHandle {
                     current_timestamp: Period::default(),
                     synchronize,
-                    save_version,
-                    snapshot_version,
-                    type_id: TypeId::of::<C>(),
                     component: Some(Box::new(component)),
                 },
             )
@@ -71,7 +73,15 @@ impl ComponentRegistryData {
                 panic!("Component with the same path already exists");
             });
 
-        self.path2id.insert(path, id);
+        self.metadata.insert(
+            path,
+            GlobalComponentMetadata {
+                id,
+                save_version,
+                snapshot_version,
+                type_id: TypeId::of::<C>(),
+            },
+        );
     }
 }
 
@@ -114,7 +124,7 @@ impl<'a> ComponentRegistry<'a> {
     ) -> Option<T> {
         let id = match id.into() {
             ComponentIdentifier::Id(id) => id,
-            ComponentIdentifier::Path(path) => self.data.path2id.get(path).copied()?,
+            ComponentIdentifier::Path(path) => self.data.metadata.get(path)?.id,
         };
 
         let mut guard = self.runtime.local_component_store().borrow_mut();
@@ -308,14 +318,14 @@ impl<'a> ComponentRegistry<'a> {
         time: Period,
         mut callback: impl FnMut(&ComponentPath, &mut dyn Component),
     ) {
-        for (path, id) in self.data.path2id.iter() {
-            self.interact_dyn(*id, time, |component| callback(path, component))
+        for (path, metadata) in self.data.metadata.iter() {
+            self.interact_dyn(metadata.id, time, |component| callback(path, component))
                 .unwrap()
         }
     }
 
     pub(crate) fn path_to_id(&self, path: &ComponentPath) -> Option<ComponentId> {
-        self.data.path2id.get(path).copied()
+        Some(self.data.metadata.get(path)?.id)
     }
 
     pub(crate) fn get_timestamp<'b>(
@@ -324,7 +334,7 @@ impl<'a> ComponentRegistry<'a> {
     ) -> Option<Period> {
         let id = match id.into() {
             ComponentIdentifier::Id(id) => id,
-            ComponentIdentifier::Path(path) => self.data.path2id.get(path).copied()?,
+            ComponentIdentifier::Path(path) => self.data.metadata.get(path)?.id,
         };
 
         let mut local_component_store_guard = self.runtime.local_component_store().borrow_mut();
@@ -333,13 +343,8 @@ impl<'a> ComponentRegistry<'a> {
         Some(handle.current_timestamp)
     }
 
-    pub(crate) fn typeid<'b>(&'b self, id: impl Into<ComponentIdentifier<'b>>) -> Option<TypeId> {
-        let id = match id.into() {
-            ComponentIdentifier::Id(id) => id,
-            ComponentIdentifier::Path(path) => self.data.path2id.get(path).copied()?,
-        };
-
-        Some(self.data.global_component_store.get_sync(&id)?.type_id)
+    pub(crate) fn typeid(&self, path: &ComponentPath) -> Option<TypeId> {
+        Some(self.data.metadata.get(path)?.type_id)
     }
 }
 
