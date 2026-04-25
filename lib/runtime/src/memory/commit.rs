@@ -1,4 +1,4 @@
-use std::ops::RangeInclusive;
+use std::{any::TypeId, ops::RangeInclusive};
 
 use fluxemu_range::{ContiguousRange, RangeIntersection};
 use itertools::Itertools;
@@ -8,7 +8,7 @@ use crate::{
     component::ComponentRegistry,
     memory::{
         Address, MappingEntry, MemoryMappingTable, PAGE_SIZE, Page, PageEntry, PageTarget,
-        Permissions,
+        Permissions, component::Memory,
     },
 };
 
@@ -59,6 +59,8 @@ impl MemoryMappingTable {
                                 target: PageTarget::Component {
                                     destination_start: *source_range.start(),
                                     component: registry.path_to_id(path).unwrap(),
+                                    is_standard_memory: registry.typeid(path).unwrap()
+                                        == TypeId::of::<Memory>(),
                                 },
                                 range: source_range,
                             }]
@@ -103,6 +105,8 @@ impl MemoryMappingTable {
                                             target: PageTarget::Component {
                                                 destination_start: *destination_overlap.start(),
                                                 component: registry.path_to_id(path).unwrap(),
+                                                is_standard_memory: registry.typeid(path).unwrap()
+                                                    == TypeId::of::<Memory>(),
                                             },
                                         },
                                         MappingEntry::Mirror { .. } => {
@@ -182,10 +186,12 @@ fn merge_and_dedup_mirror_entries(left: &mut PageEntry, right: &mut PageEntry) -
             PageTarget::Component {
                 destination_start: destination_start_left,
                 component: component_left,
+                is_standard_memory: _,
             },
             PageTarget::Component {
                 destination_start: destination_start_right,
                 component: component_right,
+                is_standard_memory: _,
             },
         ) if component_left == component_right
             && *destination_start_right

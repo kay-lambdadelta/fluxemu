@@ -1,5 +1,5 @@
 use std::{
-    any::Any,
+    any::{Any, TypeId},
     collections::HashMap,
     fmt::Debug,
     ops::DerefMut,
@@ -22,6 +22,7 @@ pub(crate) struct ComponentHandle {
     synchronize: bool,
     save_version: Option<PersistanceFormatVersion>,
     snapshot_version: PersistanceFormatVersion,
+    type_id: TypeId,
     component: Option<Box<dyn Component>>,
 }
 
@@ -62,6 +63,7 @@ impl ComponentRegistryData {
                     synchronize,
                     save_version,
                     snapshot_version,
+                    type_id: TypeId::of::<C>(),
                     component: Some(Box::new(component)),
                 },
             )
@@ -329,6 +331,15 @@ impl<'a> ComponentRegistry<'a> {
         let handle = self.fetch_or_acquire_component(id, &mut local_component_store_guard);
 
         Some(handle.current_timestamp)
+    }
+
+    pub(crate) fn typeid<'b>(&'b self, id: impl Into<ComponentIdentifier<'b>>) -> Option<TypeId> {
+        let id = match id.into() {
+            ComponentIdentifier::Id(id) => id,
+            ComponentIdentifier::Path(path) => self.data.path2id.get(path).copied()?,
+        };
+
+        Some(self.data.global_component_store.get_sync(&id)?.type_id)
     }
 }
 

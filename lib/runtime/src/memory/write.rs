@@ -5,7 +5,8 @@ use num::traits::{ToBytes, ops::bytes::NumBytes};
 
 use super::AddressSpace;
 use crate::{
-    memory::{Address, MemoryError, MemoryErrorType, PageTarget, search::Item},
+    component::Component,
+    memory::{Address, MemoryError, MemoryErrorType, PageEntry, PageTarget, component::Memory},
     scheduler::Period,
 };
 
@@ -24,8 +25,8 @@ impl<'a> AddressSpace<'a> {
         if buffer.len() == 1 {
             let address_masked = address & self.data.width_mask;
 
-            let Item {
-                entry_assigned_range,
+            let PageEntry {
+                range: entry_assigned_range,
                 target,
             } = members.write.get(address_masked).ok_or_else(
                 #[cold]
@@ -40,6 +41,7 @@ impl<'a> AddressSpace<'a> {
                 PageTarget::Component {
                     destination_start,
                     component,
+                    is_standard_memory,
                 } => {
                     let offset = address_masked - entry_assigned_range.start();
 
@@ -49,11 +51,23 @@ impl<'a> AddressSpace<'a> {
                             time,
                             #[inline]
                             |component| {
-                                component.memory_write(
-                                    destination_start + offset,
-                                    self.data.id,
-                                    buffer,
-                                )
+                                if *is_standard_memory {
+                                    let component = unsafe {
+                                        &mut *(std::ptr::from_mut(component) as *mut Memory)
+                                    };
+
+                                    component.memory_write(
+                                        destination_start + offset,
+                                        self.data.id,
+                                        buffer,
+                                    )
+                                } else {
+                                    component.memory_write(
+                                        destination_start + offset,
+                                        self.data.id,
+                                        buffer,
+                                    )
+                                }
                             },
                         )
                         .unwrap()?;
@@ -82,8 +96,8 @@ impl<'a> AddressSpace<'a> {
             let access_range = RangeInclusive::from_start_and_length(address_masked, chunk_len);
             let mut handled = false;
 
-            for Item {
-                entry_assigned_range,
+            for PageEntry {
+                range: entry_assigned_range,
                 target,
             } in members.write.overlapping(access_range.clone())
             {
@@ -93,6 +107,7 @@ impl<'a> AddressSpace<'a> {
                     PageTarget::Component {
                         destination_start,
                         component,
+                        is_standard_memory,
                     } => {
                         let component_access_range =
                             entry_assigned_range.intersection(&access_range);
@@ -107,11 +122,23 @@ impl<'a> AddressSpace<'a> {
                                 time,
                                 #[inline]
                                 |component| {
-                                    component.memory_write(
-                                        destination_start + offset,
-                                        self.data.id,
-                                        adjusted_buffer,
-                                    )
+                                    if *is_standard_memory {
+                                        let component = unsafe {
+                                            &mut *(std::ptr::from_mut(component) as *mut Memory)
+                                        };
+
+                                        component.memory_write(
+                                            destination_start + offset,
+                                            self.data.id,
+                                            adjusted_buffer,
+                                        )
+                                    } else {
+                                        component.memory_write(
+                                            destination_start + offset,
+                                            self.data.id,
+                                            adjusted_buffer,
+                                        )
+                                    }
                                 },
                             )
                             .unwrap()?;

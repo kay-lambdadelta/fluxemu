@@ -5,7 +5,8 @@ use num::traits::{FromBytes, ops::bytes::NumBytes};
 
 use super::AddressSpace;
 use crate::{
-    memory::{Address, MemoryError, MemoryErrorType, PageTarget, search::Item},
+    component::Component,
+    memory::{Address, MemoryError, MemoryErrorType, PageEntry, PageTarget, component::Memory},
     scheduler::Period,
 };
 
@@ -25,8 +26,8 @@ impl<'a> AddressSpace<'a> {
         if buffer.len() == 1 {
             let address_masked = address & self.data.width_mask;
 
-            let Item {
-                entry_assigned_range,
+            let PageEntry {
+                range: entry_assigned_range,
                 target,
             } = members.read.get(address_masked).ok_or_else(
                 #[cold]
@@ -38,9 +39,15 @@ impl<'a> AddressSpace<'a> {
             )?;
 
             match target {
+                PageTarget::Memory(bytes) => {
+                    let memory_offset = address_masked - entry_assigned_range.start();
+
+                    buffer[0] = bytes[memory_offset];
+                }
                 PageTarget::Component {
                     destination_start,
                     component,
+                    is_standard_memory,
                 } => {
                     let offset = address_masked - entry_assigned_range.start();
 
@@ -50,20 +57,28 @@ impl<'a> AddressSpace<'a> {
                             time,
                             #[inline]
                             |component| {
-                                component.memory_read(
-                                    destination_start + offset,
-                                    self.data.id,
-                                    avoid_side_effects,
-                                    buffer,
-                                )
+                                if *is_standard_memory {
+                                    let component = unsafe {
+                                        &mut *(std::ptr::from_mut(component) as *mut Memory)
+                                    };
+
+                                    component.memory_read(
+                                        destination_start + offset,
+                                        self.data.id,
+                                        avoid_side_effects,
+                                        buffer,
+                                    )
+                                } else {
+                                    component.memory_read(
+                                        destination_start + offset,
+                                        self.data.id,
+                                        avoid_side_effects,
+                                        buffer,
+                                    )
+                                }
                             },
                         )
                         .unwrap()?;
-                }
-                PageTarget::Memory(bytes) => {
-                    let memory_offset = address_masked - entry_assigned_range.start();
-
-                    buffer[0] = bytes[memory_offset];
                 }
             }
 
@@ -86,8 +101,8 @@ impl<'a> AddressSpace<'a> {
             let access_range = RangeInclusive::from_start_and_length(address_masked, chunk_len);
             let mut handled = false;
 
-            for Item {
-                entry_assigned_range,
+            for PageEntry {
+                range: entry_assigned_range,
                 target,
             } in members.read.overlapping(access_range.clone())
             {
@@ -97,6 +112,7 @@ impl<'a> AddressSpace<'a> {
                     PageTarget::Component {
                         destination_start,
                         component,
+                        is_standard_memory,
                     } => {
                         let component_access_range =
                             entry_assigned_range.intersection(&access_range);
@@ -111,12 +127,25 @@ impl<'a> AddressSpace<'a> {
                                 time,
                                 #[inline]
                                 |component| {
-                                    component.memory_read(
-                                        destination_start + offset,
-                                        self.data.id,
-                                        avoid_side_effects,
-                                        adjusted_buffer,
-                                    )
+                                    if *is_standard_memory {
+                                        let component = unsafe {
+                                            &mut *(std::ptr::from_mut(component) as *mut Memory)
+                                        };
+
+                                        component.memory_read(
+                                            destination_start + offset,
+                                            self.data.id,
+                                            avoid_side_effects,
+                                            adjusted_buffer,
+                                        )
+                                    } else {
+                                        component.memory_read(
+                                            destination_start + offset,
+                                            self.data.id,
+                                            avoid_side_effects,
+                                            adjusted_buffer,
+                                        )
+                                    }
                                 },
                             )
                             .unwrap()?;

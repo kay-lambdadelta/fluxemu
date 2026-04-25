@@ -27,7 +27,7 @@ fluxemu-frontend = { workspace = true, features = ["external-file-dialog"] }
 fluxemu-input = { workspace = true }
 # Any platform this crate supports will have memmap or at least won't have compile errors if it doesn't work
 fluxemu-program = { workspace = true, features = ["mmap"] }
-fluxemu-runtime = { workspace = true, features = ["std"] }
+fluxemu-runtime = { workspace = true }
 gilrs = "0.11"
 itertools = { workspace = true }
 nalgebra = { workspace = true }

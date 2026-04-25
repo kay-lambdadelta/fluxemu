@@ -100,11 +100,12 @@ impl Eq for MappingEntry {}
 
 #[derive(Clone)]
 enum PageTarget {
+    Memory(Bytes),
     Component {
         destination_start: Address,
         component: ComponentId,
+        is_standard_memory: bool,
     },
-    Memory(Bytes),
 }
 
 impl Debug for PageTarget {
@@ -113,10 +114,12 @@ impl Debug for PageTarget {
             PageTarget::Component {
                 destination_start,
                 component,
+                is_standard_memory,
             } => f
                 .debug_struct("Component")
                 .field("destination_start", destination_start)
                 .field("component", component)
+                .field("is_standard_memory", is_standard_memory)
                 .finish(),
             PageTarget::Memory(_) => f.debug_tuple("Memory").finish(),
         }

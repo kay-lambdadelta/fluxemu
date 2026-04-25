@@ -2,7 +2,7 @@ use std::ops::RangeInclusive;
 
 use fluxemu_range::RangeIntersection;
 
-use crate::memory::{Address, MemoryMappingTable, PAGE_SIZE, Page, PageTarget};
+use crate::memory::{Address, MemoryMappingTable, PAGE_SIZE, Page, PageEntry};
 
 pub(super) struct OverlappingMappingsIter<'a> {
     pages: &'a [Option<Page>],
@@ -27,25 +27,19 @@ impl MemoryMappingTable {
     }
 
     #[inline]
-    pub fn get(&self, address: Address) -> Option<Item<'_>> {
+    pub fn get(&self, address: Address) -> Option<&PageEntry> {
         let page = address / PAGE_SIZE;
 
         match self.computed_table[page].as_ref()? {
             Page::Single(entry) => {
                 if entry.range.contains(&address) {
-                    return Some(Item {
-                        entry_assigned_range: &entry.range,
-                        target: &entry.target,
-                    });
+                    return Some(entry);
                 }
             }
             Page::Multi(entries) => {
                 for entry in entries {
                     if entry.range.contains(&address) {
-                        return Some(Item {
-                            entry_assigned_range: &entry.range,
-                            target: &entry.target,
-                        });
+                        return Some(entry);
                     }
                 }
             }
@@ -55,13 +49,8 @@ impl MemoryMappingTable {
     }
 }
 
-pub struct Item<'a> {
-    pub entry_assigned_range: &'a RangeInclusive<Address>,
-    pub target: &'a PageTarget,
-}
-
 impl<'a> Iterator for OverlappingMappingsIter<'a> {
-    type Item = Item<'a>;
+    type Item = &'a PageEntry;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -75,10 +64,7 @@ impl<'a> Iterator for OverlappingMappingsIter<'a> {
                     self.entry_index = 0;
 
                     if self.access_range.intersects(&entry.range) {
-                        return Some(Item {
-                            entry_assigned_range: &entry.range,
-                            target: &entry.target,
-                        });
+                        return Some(entry);
                     }
                 }
                 Some(Page::Multi(entries)) => {
@@ -88,10 +74,7 @@ impl<'a> Iterator for OverlappingMappingsIter<'a> {
                         self.entry_index += 1;
 
                         if self.access_range.intersects(&entry.range) {
-                            return Some(Item {
-                                entry_assigned_range: &entry.range,
-                                target: &entry.target,
-                            });
+                            return Some(entry);
                         }
                     }
 
