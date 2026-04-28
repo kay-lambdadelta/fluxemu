@@ -4,13 +4,8 @@ use egui::{FullOutput, TextureId};
 use fluxemu_runtime::graphics::software::{
     CopyMode, Texture, TextureImpl, TextureImplMut, TextureViewMut,
 };
-use nalgebra::{Point2, Scalar, Vector2, Vector3, Vector4};
-use palette::{
-    Srgba, WithAlpha,
-    blend::Compose,
-    cast::{ComponentOrder, Packed},
-    named::BLACK,
-};
+use nalgebra::{Point2, Vector2, Vector3, Vector4};
+use palette::{Srgba, WithAlpha, blend::Compose, named::BLACK};
 use rustc_hash::FxBuildHasher;
 
 // NOTE: https://github.com/emilk/egui/pull/2071
@@ -35,7 +30,7 @@ impl From<egui::epaint::Vertex> for Vertex {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-struct Triangle {
+struct Triangle<'a> {
     // Vertexes
     v0: Vertex,
     v1: Vertex,
@@ -47,14 +42,15 @@ struct Triangle {
     edge2: Vector2<f32>,
 
     signed_double_area: f32,
+    texture: &'a Texture<Srgba<f32>>,
 }
 
-impl Triangle {
+impl<'a> Triangle<'a> {
     #[inline]
-    fn new(v0: Vertex, v1: Vertex, v2: Vertex) -> Self {
+    fn new(v0: Vertex, v1: Vertex, v2: Vertex, texture: &'a Texture<Srgba<f32>>) -> Self {
         let edge0 = v0.position - v1.position;
+        let edge1 = v1.position - v2.position;
         let edge2 = v2.position - v0.position;
-
         let signed_double_area = (-edge0).perp(&edge2);
 
         Triangle {
@@ -62,37 +58,65 @@ impl Triangle {
             v1,
             v2,
             edge0,
-            edge1: v1.position - v2.position,
+            edge1,
             edge2,
             signed_double_area,
+            texture,
         }
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct EguiRenderer {
     textures: HashMap<TextureId, Texture<Srgba<f32>>, FxBuildHasher>,
+    render_texture: Texture<Srgba<f32>>,
+}
+
+impl Default for EguiRenderer {
+    fn default() -> Self {
+        Self {
+            textures: HashMap::default(),
+            render_texture: Texture::new(0, 0, BLACK.with_alpha(0).into()),
+        }
+    }
 }
 
 impl EguiRenderer {
     /// Render to a surface given the pixel order
-    pub fn render<P: ComponentOrder<Srgba<u8>, [u8; 4]> + Scalar + Send + Sync>(
+    #[inline(never)]
+    pub fn render<P: From<Srgba<u8>> + Into<Srgba<u8>> + Copy>(
         &mut self,
         context: &egui::Context,
         full_output: FullOutput,
-        mut target_texture: TextureViewMut<Packed<P, [u8; 4]>>,
+        target_texture: TextureViewMut<P>,
+    ) {
+        Self::render_inner(&mut self.textures, context, full_output, target_texture);
+    }
+
+    #[inline]
+    #[multiversion::multiversion(targets(
+        "x86_64+avx512f+avx512dq+fma",
+        "x86_64+avx2+fma",
+        "x86_64+sse4.2",
+        "aarch64+sve",
+    ))]
+    fn render_inner<P: From<Srgba<u8>> + Into<Srgba<u8>> + Copy>(
+        textures: &mut HashMap<TextureId, Texture<Srgba<f32>>, FxBuildHasher>,
+        context: &egui::Context,
+        full_output: FullOutput,
+        mut target_texture: TextureViewMut<P>,
     ) {
         for (new_texture_id, image_delta) in full_output.textures_delta.set {
             assert!(
-                image_delta.is_whole() || self.textures.contains_key(&new_texture_id),
+                image_delta.is_whole() || textures.contains_key(&new_texture_id),
                 "Texture not found: {new_texture_id:?}"
             );
 
             if image_delta.is_whole() {
-                self.textures.remove(&new_texture_id);
+                textures.remove(&new_texture_id);
             }
 
-            let destination_texture = self.textures.entry(new_texture_id).or_insert_with(|| {
+            let destination_texture = textures.entry(new_texture_id).or_insert_with(|| {
                 let image_size = image_delta.image.size();
                 Texture::new(image_size[0], image_size[1], BLACK.into_format().into())
             });
@@ -124,12 +148,12 @@ impl EguiRenderer {
 
         let render_buffer_dimensions: Vector2<f32> = target_texture.size().cast();
 
-        for (triangle, texture_id) in context
-            .tessellate(full_output.shapes, full_output.pixels_per_point)
-            .iter()
-            .flat_map(|shape| match &shape.primitive {
-                egui::epaint::Primitive::Mesh(mesh) => {
-                    mesh.indices.chunks_exact(3).map(|vertex_indexes| {
+        let primitives = context.tessellate(full_output.shapes, full_output.pixels_per_point);
+        let triangles = primitives.iter().flat_map(|shape| match &shape.primitive {
+            egui::epaint::Primitive::Mesh(mesh) => {
+                mesh.indices
+                    .chunks_exact(3)
+                    .map(|vertex_indexes| {
                         let [mut v0, mut v1, mut v2]: [Vertex; 3] = [
                             mesh.vertices[vertex_indexes[0] as usize].into(),
                             mesh.vertices[vertex_indexes[1] as usize].into(),
@@ -141,16 +165,18 @@ impl EguiRenderer {
                         v1.position *= full_output.pixels_per_point;
                         v2.position *= full_output.pixels_per_point;
 
-                        (Triangle::new(v0, v1, v2), mesh.texture_id)
-                    })
-                }
-                egui::epaint::Primitive::Callback(_) => {
-                    unreachable!("Epaint callbacks should not be sent");
-                }
-            })
-        {
-            let texture = self.textures.get(&texture_id).unwrap();
+                        let texture = textures.get(&mesh.texture_id).unwrap();
 
+                        Triangle::new(v0, v1, v2, texture)
+                    })
+                    .filter(|triangle| triangle.signed_double_area.abs() >= f32::EPSILON)
+            }
+            egui::epaint::Primitive::Callback(_) => {
+                unreachable!("Epaint callbacks should not be sent");
+            }
+        });
+
+        for triangle in triangles {
             let triangle_bounding_max = Point2::new(
                 Vector3::new(
                     triangle.v0.position.x,
@@ -158,14 +184,16 @@ impl EguiRenderer {
                     triangle.v2.position.x,
                 )
                 .max()
-                .min(render_buffer_dimensions.x - 1.0) as usize,
+                .min(render_buffer_dimensions.x - 1.0)
+                .floor(),
                 Vector3::new(
                     triangle.v0.position.y,
                     triangle.v1.position.y,
                     triangle.v2.position.y,
                 )
                 .max()
-                .min(render_buffer_dimensions.y - 1.0) as usize,
+                .min(render_buffer_dimensions.y - 1.0)
+                .floor(),
             );
 
             let triangle_bounding_min = Point2::new(
@@ -173,31 +201,30 @@ impl EguiRenderer {
                     triangle.v0.position.x,
                     triangle.v1.position.x,
                     triangle.v2.position.x,
-                    triangle_bounding_max.x as f32,
+                    triangle_bounding_max.x,
                 )
                 .min()
-                .max(0.0) as usize,
+                .max(0.0)
+                .ceil(),
                 Vector4::new(
                     triangle.v0.position.y,
                     triangle.v1.position.y,
                     triangle.v2.position.y,
-                    triangle_bounding_max.y as f32,
+                    triangle_bounding_max.y,
                 )
                 .min()
-                .max(0.0) as usize,
+                .max(0.0)
+                .ceil(),
             );
 
             let mut barycentric_coordinates = barycentric_coordinates(
-                triangle_bounding_min.cast() + Vector2::from_element(0.5),
+                triangle_bounding_min + Vector2::from_element(0.5),
                 &triangle,
             );
             let mut row_start_barycentric_coordinates = barycentric_coordinates;
 
-            let step_x = Vector3::new(
-                triangle.v1.position.y - triangle.v2.position.y,
-                triangle.v2.position.y - triangle.v0.position.y,
-                triangle.v0.position.y - triangle.v1.position.y,
-            ) / triangle.signed_double_area;
+            let step_x = Vector3::new(triangle.edge1.y, triangle.edge2.y, triangle.edge0.y)
+                / triangle.signed_double_area;
 
             let step_y = Vector3::new(
                 triangle.v2.position.x - triangle.v1.position.x,
@@ -205,46 +232,100 @@ impl EguiRenderer {
                 triangle.v1.position.x - triangle.v0.position.x,
             ) / triangle.signed_double_area;
 
-            let texture_dimensions: Vector2<f32> = texture.size().cast();
+            let step_uv = Vector2::new(
+                step_x.x * triangle.v0.uv.x
+                    + step_x.y * triangle.v1.uv.x
+                    + step_x.z * triangle.v2.uv.x,
+                step_x.x * triangle.v0.uv.y
+                    + step_x.y * triangle.v1.uv.y
+                    + step_x.z * triangle.v2.uv.y,
+            );
 
-            for y in triangle_bounding_min.y..=triangle_bounding_max.y {
-                barycentric_coordinates = row_start_barycentric_coordinates;
+            let step_color = Srgba::new(
+                step_x.dot(&Vector3::new(
+                    triangle.v0.color.red,
+                    triangle.v1.color.red,
+                    triangle.v2.color.red,
+                )),
+                step_x.dot(&Vector3::new(
+                    triangle.v0.color.green,
+                    triangle.v1.color.green,
+                    triangle.v2.color.green,
+                )),
+                step_x.dot(&Vector3::new(
+                    triangle.v0.color.blue,
+                    triangle.v1.color.blue,
+                    triangle.v2.color.blue,
+                )),
+                step_x.dot(&Vector3::new(
+                    triangle.v0.color.alpha,
+                    triangle.v1.color.alpha,
+                    triangle.v2.color.alpha,
+                )),
+            );
 
-                for x in triangle_bounding_min.x..=triangle_bounding_max.x {
-                    let position = Point2::new(x, y);
+            let texture_dimensions: Vector2<f32> = triangle.texture.size().cast();
 
-                    let source_pixel = if is_inside_triangle(barycentric_coordinates) {
-                        let interpolated_color = triangle.v0.color * barycentric_coordinates.x
-                            + triangle.v1.color * barycentric_coordinates.y
-                            + triangle.v2.color * barycentric_coordinates.z;
+            for y in triangle_bounding_min.y as usize..=triangle_bounding_max.y as usize {
+                let x_enter = (0..3)
+                    .map(|i| {
+                        if step_x[i] > 0.0 {
+                            triangle_bounding_min.x
+                                - row_start_barycentric_coordinates[i] / step_x[i]
+                        } else {
+                            triangle_bounding_min.x
+                        }
+                    })
+                    .fold(triangle_bounding_min.x, f32::max)
+                    .ceil() as usize;
 
-                        let interpolated_uv = triangle.v0.uv.coords * barycentric_coordinates.x
-                            + triangle.v1.uv.coords * barycentric_coordinates.y
-                            + triangle.v2.uv.coords * barycentric_coordinates.z;
+                let x_exit = (0..3)
+                    .map(|i| {
+                        if step_x[i] < 0.0 {
+                            triangle_bounding_min.x
+                                - row_start_barycentric_coordinates[i] / step_x[i]
+                        } else {
+                            triangle_bounding_max.x
+                        }
+                    })
+                    .fold(triangle_bounding_max.x, f32::min)
+                    .ceil() as usize;
 
-                        let pixel_coords: Point2<_> = Point2::new(
-                            (texture_dimensions.x * interpolated_uv.x) as usize,
-                            (texture_dimensions.y * interpolated_uv.y) as usize,
-                        )
-                        .coords
-                        .zip_map(&(texture.size() - Vector2::from_element(1)), |a, b| {
-                            a.min(b)
-                        })
+                barycentric_coordinates = row_start_barycentric_coordinates
+                    + step_x * (x_enter as f32 - triangle_bounding_min.x);
+
+                let mut current_uv = triangle.v0.uv.coords * barycentric_coordinates.x
+                    + triangle.v1.uv.coords * barycentric_coordinates.y
+                    + triangle.v2.uv.coords * barycentric_coordinates.z;
+
+                let mut current_color = triangle.v0.color * barycentric_coordinates.x
+                    + triangle.v1.color * barycentric_coordinates.y
+                    + triangle.v2.color * barycentric_coordinates.z;
+
+                for x in x_enter..=x_exit {
+                    let pixel_coords: Point2<_> = Point2::new(
+                        (texture_dimensions.x * current_uv.x) as usize,
+                        (texture_dimensions.y * current_uv.y) as usize,
+                    )
+                    .coords
+                    .zip_map(
+                        &(triangle.texture.size() - Vector2::from_element(1)),
+                        |a, b| a.min(b),
+                    )
+                    .into();
+
+                    let texture_pixel = triangle.texture[pixel_coords];
+
+                    let source_pixel = current_color * texture_pixel;
+                    let destination_pixel = &mut target_texture[Point2::new(x, y)];
+
+                    *destination_pixel = source_pixel
+                        .over((*destination_pixel).into().into_format())
+                        .into_format()
                         .into();
 
-                        let pixel = texture[pixel_coords];
-
-                        interpolated_color * pixel
-                    } else {
-                        BLACK.with_alpha(0.0).into_format()
-                    };
-
-                    let destination_pixel = &mut target_texture[position];
-
-                    *destination_pixel = Packed::pack(Srgba::from_format(
-                        source_pixel.over(destination_pixel.unpack().into_format()),
-                    ));
-
+                    current_uv += step_uv;
+                    current_color += step_color;
                     barycentric_coordinates += step_x;
                 }
 
@@ -254,7 +335,7 @@ impl EguiRenderer {
 
         for remove_texture_id in full_output.textures_delta.free {
             tracing::trace!("Freeing egui texture {:?}", remove_texture_id);
-            self.textures.remove(&remove_texture_id);
+            textures.remove(&remove_texture_id);
         }
     }
 }
@@ -267,15 +348,5 @@ fn barycentric_coordinates(point: Point2<f32>, triangle: &Triangle) -> Vector3<f
 
     let area = Vector3::new(v1p.perp(&v2p), v2p.perp(&v0p), v0p.perp(&v1p));
 
-    if triangle.signed_double_area.abs() < f32::EPSILON {
-        return Vector3::default();
-    }
-
     area / triangle.signed_double_area
-}
-
-// Winding order of egui is undefined
-#[inline]
-fn is_inside_triangle(coords: Vector3<f32>) -> bool {
-    coords.into_iter().all(|&val| val >= 0.0) || coords.into_iter().all(|&val| val <= 0.0)
 }

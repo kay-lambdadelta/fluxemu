@@ -47,7 +47,7 @@ impl GraphicsRuntime for SoftwareGraphicsRuntime {
             surface_texture.fill(BLACK.into());
 
             self.renderer
-                .render::<Bgra>(context, full_output, surface_texture);
+                .render::<Packed<Bgra, [u8; 4]>>(context, full_output, surface_texture);
 
             surface_buffer.present().unwrap();
         }

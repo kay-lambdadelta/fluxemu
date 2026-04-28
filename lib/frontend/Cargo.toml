@@ -19,6 +19,7 @@ fluxemu-range = { workspace = true }
 fluxemu-runtime = { workspace = true }
 indexmap = { workspace = true }
 itertools = { workspace = true }
+multiversion = "0.8"
 nalgebra = { workspace = true }
 num = { workspace = true }
 palette = { workspace = true }
