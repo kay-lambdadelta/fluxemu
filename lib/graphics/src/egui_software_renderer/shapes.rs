@@ -48,14 +48,19 @@ pub struct Triangle<'a> {
 
 impl<'a> Triangle<'a> {
     #[inline]
-    fn new(v0: Vertex, v1: Vertex, v2: Vertex, texture: &'a Texture<Srgba<f32>>) -> Self {
+    fn new(v0: Vertex, v1: Vertex, v2: Vertex, texture: &'a Texture<Srgba<f32>>) -> Option<Self> {
         let edge0 = v0.position - v1.position;
         let edge1 = v1.position - v2.position;
         let edge2 = v2.position - v0.position;
 
         let signed_double_area = (-edge0).perp(&edge2);
 
-        Triangle {
+        // Guard against degenerate triangles
+        if !signed_double_area.is_finite() || signed_double_area == 0.0 {
+            return None;
+        }
+
+        Some(Triangle {
             v0,
             v1,
             v2,
@@ -64,7 +69,7 @@ impl<'a> Triangle<'a> {
             edge2,
             signed_double_area,
             texture,
-        }
+        })
     }
 }
 
@@ -208,7 +213,9 @@ pub fn emit_shapes<'a>(
                     } else {
                         let texture = &textures[&texture_id];
 
-                        shapes.push(Shape::Triangle(Triangle::new(v0, v1, v2, texture)));
+                        if let Some(triangle) = Triangle::new(v0, v1, v2, texture) {
+                            shapes.push(Shape::Triangle(triangle));
+                        }
                     }
                 }
             }

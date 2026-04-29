@@ -36,26 +36,35 @@ pub fn pixel_rounds<const C: usize, P: From<Srgba<u8>> + Into<Srgba<u8>> + Copy>
     }
     *current_color += step_color * C as f32;
 
+    // Calculate positions within the texture
+    let mut texture_positions = SMatrix::<u32, 2, C>::from_element(0);
+    for index in 0..C {
+        let uv = interpolated_uvs.column(index);
+
+        let texture_position = texture_dimensions
+            .component_mul(&uv)
+            .zip_map(&Vector2::from_element(0.0), |a, b| a.max(b));
+
+        let pixel_coords =
+            Vector2::<u32>::new(unsafe { texture_position.x.to_int_unchecked() }, unsafe {
+                texture_position.y.to_int_unchecked()
+            })
+            .zip_map(
+                &(triangle.texture.size().cast() - Vector2::from_element(1)),
+                |a, b| a.min(b),
+            );
+
+        texture_positions.column_mut(index).copy_from(&pixel_coords);
+    }
+
     // Gather fetch
     let mut texture_pixels_red = SVector::<_, C>::from_element(0.0);
     let mut texture_pixels_green = SVector::<_, C>::from_element(0.0);
     let mut texture_pixels_blue = SVector::<_, C>::from_element(0.0);
     let mut texture_pixels_alpha = SVector::<_, C>::from_element(0.0);
     for index in 0..C {
-        let uv = interpolated_uvs.column(index);
-
-        let pixel_coords: Point2<_> = Point2::new(
-            (texture_dimensions.x * uv.x) as usize,
-            (texture_dimensions.y * uv.y) as usize,
-        )
-        .coords
-        .zip_map(
-            &(triangle.texture.size() - Vector2::from_element(1)),
-            |a, b| a.min(b),
-        )
-        .into();
-
-        let texture_pixel = unsafe { triangle.texture.get_unchecked(pixel_coords) };
+        let texture_position = texture_positions.column(index).into_owned();
+        let texture_pixel = unsafe { triangle.texture.get_unchecked(texture_position.cast()) };
 
         texture_pixels_red[index] = texture_pixel.red;
         texture_pixels_green[index] = texture_pixel.green;
