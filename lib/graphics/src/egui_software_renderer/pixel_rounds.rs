@@ -1,4 +1,4 @@
-use nalgebra::{Point2, SMatrix, SVector, Vector2, Vector3};
+use nalgebra::{Point2, SMatrix, SVector, Vector2};
 use palette::{Srgba, blend::Compose};
 
 use crate::{
@@ -7,15 +7,12 @@ use crate::{
 };
 
 #[inline(always)]
-#[allow(clippy::too_many_arguments)]
 pub fn pixel_rounds<const C: usize, P: From<Srgba<u8>> + Into<Srgba<u8>> + Copy>(
     mut target_pixel_row: TextureViewMut<P>,
     triangle: &Triangle<'_>,
     texture_dimensions: Vector2<f32>,
-    barycentric_coordinates: &mut Vector3<f32>,
     current_uv: &mut Vector2<f32>,
     current_color: &mut Srgba<f32>,
-    step_x: Vector3<f32>,
     step_uv: Vector2<f32>,
     step_color: Srgba<f32>,
 ) {
@@ -39,11 +36,11 @@ pub fn pixel_rounds<const C: usize, P: From<Srgba<u8>> + Into<Srgba<u8>> + Copy>
     }
     *current_color += step_color * C as f32;
 
-    // Scatter gather fetch
-    let mut texture_pixels_red = SVector::<f32, C>::from_element(0.0);
-    let mut texture_pixels_green = SVector::<f32, C>::from_element(0.0);
-    let mut texture_pixels_blue = SVector::<f32, C>::from_element(0.0);
-    let mut texture_pixels_alpha = SVector::<f32, C>::from_element(0.0);
+    // Gather fetch
+    let mut texture_pixels_red = SVector::<_, C>::from_element(0.0);
+    let mut texture_pixels_green = SVector::<_, C>::from_element(0.0);
+    let mut texture_pixels_blue = SVector::<_, C>::from_element(0.0);
+    let mut texture_pixels_alpha = SVector::<_, C>::from_element(0.0);
     for index in 0..C {
         let uv = interpolated_uvs.column(index);
 
@@ -58,35 +55,19 @@ pub fn pixel_rounds<const C: usize, P: From<Srgba<u8>> + Into<Srgba<u8>> + Copy>
         )
         .into();
 
-        let texture_pixel = triangle.texture[pixel_coords].into_format();
+        let texture_pixel = unsafe { triangle.texture.get_unchecked(pixel_coords) };
 
         texture_pixels_red[index] = texture_pixel.red;
         texture_pixels_green[index] = texture_pixel.green;
         texture_pixels_blue[index] = texture_pixel.blue;
         texture_pixels_alpha[index] = texture_pixel.alpha;
-
-        *barycentric_coordinates += step_x;
-    }
-
-    // Read destination pixels
-    let mut destination_pixels_red = SVector::<f32, C>::from_element(0.0);
-    let mut destination_pixels_green = SVector::<f32, C>::from_element(0.0);
-    let mut destination_pixels_blue = SVector::<f32, C>::from_element(0.0);
-    let mut destination_pixels_alpha = SVector::<f32, C>::from_element(0.0);
-    for index in 0..C {
-        let pixel = target_pixel_row[Point2::new(index, 0)].into().into_format();
-
-        destination_pixels_red[index] = pixel.red;
-        destination_pixels_green[index] = pixel.green;
-        destination_pixels_blue[index] = pixel.blue;
-        destination_pixels_alpha[index] = pixel.alpha;
     }
 
     // Read source pixels and tint by texture pixels
-    let mut source_pixels_red = SVector::<f32, C>::from_element(0.0);
-    let mut source_pixels_green = SVector::<f32, C>::from_element(0.0);
-    let mut source_pixels_blue = SVector::<f32, C>::from_element(0.0);
-    let mut source_pixels_alpha = SVector::<f32, C>::from_element(0.0);
+    let mut source_pixels_red = SVector::<_, C>::from_element(0.0);
+    let mut source_pixels_green = SVector::<_, C>::from_element(0.0);
+    let mut source_pixels_blue = SVector::<_, C>::from_element(0.0);
+    let mut source_pixels_alpha = SVector::<_, C>::from_element(0.0);
     for index in 0..C {
         let color = interpolated_colors[index];
 
@@ -94,6 +75,20 @@ pub fn pixel_rounds<const C: usize, P: From<Srgba<u8>> + Into<Srgba<u8>> + Copy>
         source_pixels_green[index] = color.green * texture_pixels_green[index];
         source_pixels_blue[index] = color.blue * texture_pixels_blue[index];
         source_pixels_alpha[index] = color.alpha * texture_pixels_alpha[index];
+    }
+
+    // Read destination pixels
+    let mut destination_pixels_red = SVector::<_, C>::from_element(0.0);
+    let mut destination_pixels_green = SVector::<_, C>::from_element(0.0);
+    let mut destination_pixels_blue = SVector::<_, C>::from_element(0.0);
+    let mut destination_pixels_alpha = SVector::<_, C>::from_element(0.0);
+    for index in 0..C {
+        let pixel = target_pixel_row[Point2::new(index, 0)].into().into_format();
+
+        destination_pixels_red[index] = pixel.red;
+        destination_pixels_green[index] = pixel.green;
+        destination_pixels_blue[index] = pixel.blue;
+        destination_pixels_alpha[index] = pixel.alpha;
     }
 
     // Over composite

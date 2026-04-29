@@ -18,17 +18,6 @@ pub trait TextureImpl<T: Sized>: Index<Point2<usize>, Output = T> + Sized {
         Vector2::new(self.width(), self.height())
     }
 
-    #[inline]
-    fn get(&self, point: impl Into<Point2<usize>>) -> Option<&T> {
-        let point = point.into();
-
-        if point.x < self.width() && point.y < self.height() {
-            Some(&self[point])
-        } else {
-            None
-        }
-    }
-
     fn as_view(&'_ self) -> TextureView<'_, T>;
     fn view(&self, x: impl RangeBounds<usize>, y: impl RangeBounds<usize>) -> TextureView<'_, T>;
 
@@ -59,20 +48,13 @@ pub trait TextureImpl<T: Sized>: Index<Point2<usize>, Output = T> + Sized {
                 (point, &self[point])
             })
     }
+
+    ///  # Safety
+    ///     Access must not be out of bounds
+    unsafe fn get_unchecked(&self, point: impl Into<Point2<usize>>) -> &T;
 }
 
 pub trait TextureImplMut<T: Sized>: TextureImpl<T> + IndexMut<Point2<usize>> {
-    #[inline]
-    fn get_mut(&mut self, point: impl Into<Point2<usize>>) -> Option<&mut T> {
-        let point = point.into();
-
-        if point.x < self.width() && point.y < self.height() {
-            Some(&mut self[point])
-        } else {
-            None
-        }
-    }
-
     fn as_view_mut(&'_ mut self) -> TextureViewMut<'_, T>;
 
     #[inline]
@@ -179,11 +161,16 @@ pub trait TextureImplMut<T: Sized>: TextureImpl<T> + IndexMut<Point2<usize>> {
     fn iter_pixels_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut T> + 'a
     where
         T: 'a;
+
     fn iter_pixels_indexed_mut<'a>(
         &'a mut self,
     ) -> impl Iterator<Item = (Point2<usize>, &'a mut T)> + 'a
     where
         T: 'a;
+
+    ///  # Safety
+    ///     Access must not be out of bounds
+    unsafe fn get_unchecked_mut(&mut self, point: impl Into<Point2<usize>>) -> &mut T;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -275,27 +262,43 @@ impl<T: Sized + 'static> TextureImpl<T> for Texture<T> {
             size: end - start,
         }
     }
+
+    #[inline]
+    unsafe fn get_unchecked(&self, point: impl Into<Point2<usize>>) -> &T {
+        let point = point.into();
+
+        debug_assert!(point.x < self.width());
+        debug_assert!(point.y < self.height());
+
+        let index = point.y * self.size.x + point.x;
+
+        unsafe { self.data.get_unchecked(index) }
+    }
 }
 
-impl<P: Into<Point2<usize>>, T> Index<P> for Texture<T> {
+impl<P: Into<Point2<usize>>, T: 'static> Index<P> for Texture<T> {
     type Output = T;
 
     #[inline]
     fn index(&self, point: P) -> &Self::Output {
         let point = point.into();
-        let index = point.y * self.size.x + point.x;
 
-        &self.data[index]
+        assert!(point.x < self.width());
+        assert!(point.y < self.height());
+
+        unsafe { self.get_unchecked(point) }
     }
 }
 
-impl<P: Into<Point2<usize>>, T> IndexMut<P> for Texture<T> {
+impl<P: Into<Point2<usize>>, T: 'static> IndexMut<P> for Texture<T> {
     #[inline]
     fn index_mut(&mut self, point: P) -> &mut Self::Output {
         let point = point.into();
-        let index = point.y * self.size.x + point.x;
 
-        &mut self.data[index]
+        assert!(point.x < self.width());
+        assert!(point.y < self.height());
+
+        unsafe { self.get_unchecked_mut(point) }
     }
 }
 
@@ -360,6 +363,17 @@ impl<T: Sized + 'static> TextureImplMut<T> for Texture<T> {
             .enumerate()
             .map(move |(i, pixel)| (Point2::new(i % width, i / width), pixel))
     }
+
+    unsafe fn get_unchecked_mut(&mut self, point: impl Into<Point2<usize>>) -> &mut T {
+        let point = point.into();
+
+        debug_assert!(point.x < self.width());
+        debug_assert!(point.y < self.height());
+
+        let index = point.y * self.size.x + point.x;
+
+        unsafe { self.data.get_unchecked_mut(index) }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -394,10 +408,7 @@ impl<'a, P: Into<Point2<usize>>, T> Index<P> for TextureView<'a, T> {
         assert!(point.x < self.size.x);
         assert!(point.y < self.size.y);
 
-        let global = point + self.offset.coords;
-
-        let index = global.y * self.texture_size.x + global.x;
-        &self.texture[index]
+        unsafe { self.get_unchecked(point) }
     }
 }
 
@@ -437,6 +448,18 @@ impl<'a, T: Sized> TextureImpl<T> for TextureView<'a, T> {
             size: end - start,
         }
     }
+
+    unsafe fn get_unchecked(&self, point: impl Into<Point2<usize>>) -> &T {
+        let point = point.into();
+
+        debug_assert!(point.x < self.width());
+        debug_assert!(point.y < self.height());
+
+        let global = point + self.offset.coords;
+        let index = global.y * self.texture_size.x + global.x;
+
+        unsafe { self.texture.get_unchecked(index) }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -473,10 +496,7 @@ impl<'a, P: Into<Point2<usize>>, T> Index<P> for TextureViewMut<'a, T> {
         assert!(point.x < self.size.x);
         assert!(point.y < self.size.y);
 
-        let global = point + self.offset.coords;
-
-        let index = global.y * self.texture_size.x + global.x;
-        &self.texture[index]
+        unsafe { self.get_unchecked(point) }
     }
 }
 
@@ -488,10 +508,7 @@ impl<'a, P: Into<Point2<usize>>, T> IndexMut<P> for TextureViewMut<'a, T> {
         assert!(point.x < self.size.x);
         assert!(point.y < self.size.y);
 
-        let global = point + self.offset.coords;
-
-        let index = global.y * self.texture_size.x + global.x;
-        &mut self.texture[index]
+        unsafe { self.get_unchecked_mut(point) }
     }
 }
 
@@ -530,6 +547,18 @@ impl<'a, T: Sized> TextureImpl<T> for TextureViewMut<'a, T> {
             offset: start + self.offset.coords,
             size: end - start,
         }
+    }
+
+    unsafe fn get_unchecked(&self, point: impl Into<Point2<usize>>) -> &T {
+        let point = point.into();
+
+        debug_assert!(point.x < self.width());
+        debug_assert!(point.y < self.height());
+
+        let global = point + self.offset.coords;
+        let index = global.y * self.texture_size.x + global.x;
+
+        unsafe { self.texture.get_unchecked(index) }
     }
 }
 
@@ -602,6 +631,18 @@ impl<'a, T: Sized> TextureImplMut<T> for TextureViewMut<'a, T> {
                     .enumerate()
                     .map(move |(x, pixel)| (Point2::new(x, y), pixel))
             })
+    }
+
+    unsafe fn get_unchecked_mut(&mut self, point: impl Into<Point2<usize>>) -> &mut T {
+        let point = point.into();
+
+        debug_assert!(point.x < self.width());
+        debug_assert!(point.y < self.height());
+
+        let global = point + self.offset.coords;
+        let index = global.y * self.texture_size.x + global.x;
+
+        unsafe { self.texture.get_unchecked_mut(index) }
     }
 }
 

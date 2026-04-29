@@ -49,12 +49,12 @@ struct Triangle<'a> {
     edge2: Vector2<f32>,
 
     signed_double_area: f32,
-    texture: &'a Texture<Srgba<u8>>,
+    texture: &'a Texture<Srgba<f32>>,
 }
 
 impl<'a> Triangle<'a> {
     #[inline]
-    fn new(v0: Vertex, v1: Vertex, v2: Vertex, texture: &'a Texture<Srgba<u8>>) -> Self {
+    fn new(v0: Vertex, v1: Vertex, v2: Vertex, texture: &'a Texture<Srgba<f32>>) -> Self {
         let edge0 = v0.position - v1.position;
         let edge1 = v1.position - v2.position;
         let edge2 = v2.position - v0.position;
@@ -76,7 +76,7 @@ impl<'a> Triangle<'a> {
 
 #[derive(Debug, Default)]
 pub struct Renderer {
-    textures: HashMap<TextureId, Texture<Srgba<u8>>, FxBuildHasher>,
+    textures: HashMap<TextureId, Texture<Srgba<f32>>, FxBuildHasher>,
 }
 
 impl Renderer {
@@ -100,7 +100,7 @@ impl Renderer {
         "aarch64+sve",
     ))]
     fn render_inner<P: From<Srgba<u8>> + Into<Srgba<u8>> + Copy>(
-        textures: &mut HashMap<TextureId, Texture<Srgba<u8>>, FxBuildHasher>,
+        textures: &mut HashMap<TextureId, Texture<Srgba<f32>>, FxBuildHasher>,
         context: &egui::Context,
         full_output: FullOutput,
         mut target_texture: TextureViewMut<P>,
@@ -314,10 +314,8 @@ impl Renderer {
                                 target_pixel_row,
                                 &triangle,
                                 texture_dimensions,
-                                &mut barycentric_coordinates,
                                 &mut current_uv,
                                 &mut current_color,
-                                step_x,
                                 step_uv,
                                 step_color,
                             );
@@ -327,10 +325,8 @@ impl Renderer {
                                 target_pixel_row,
                                 &triangle,
                                 texture_dimensions,
-                                &mut barycentric_coordinates,
                                 &mut current_uv,
                                 &mut current_color,
-                                step_x,
                                 step_uv,
                                 step_color,
                             );
@@ -340,10 +336,8 @@ impl Renderer {
                                 target_pixel_row,
                                 &triangle,
                                 texture_dimensions,
-                                &mut barycentric_coordinates,
                                 &mut current_uv,
                                 &mut current_color,
-                                step_x,
                                 step_uv,
                                 step_color,
                             );
@@ -353,10 +347,8 @@ impl Renderer {
                                 target_pixel_row,
                                 &triangle,
                                 texture_dimensions,
-                                &mut barycentric_coordinates,
                                 &mut current_uv,
                                 &mut current_color,
-                                step_x,
                                 step_uv,
                                 step_color,
                             );
@@ -366,10 +358,8 @@ impl Renderer {
                                 target_pixel_row,
                                 &triangle,
                                 texture_dimensions,
-                                &mut barycentric_coordinates,
                                 &mut current_uv,
                                 &mut current_color,
-                                step_x,
                                 step_uv,
                                 step_color,
                             );
@@ -380,6 +370,7 @@ impl Renderer {
                     }
 
                     x += len;
+                    barycentric_coordinates += step_x * len as f32;
                 }
 
                 row_start_barycentric_coordinates += step_y;
