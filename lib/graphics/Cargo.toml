@@ -1,0 +1,15 @@
+[package]
+name = "fluxemu-graphics"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+egui = { workspace = true }
+fluxemu-range = { workspace = true }
+itertools = { workspace = true }
+multiversion = "0.8"
+nalgebra = { workspace = true }
+palette = { workspace = true }
+rustc-hash = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }

@@ -1,12 +1,19 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::RangeInclusive};
 
 use egui::{FullOutput, TextureId};
-use fluxemu_runtime::graphics::software::{
-    CopyMode, Texture, TextureImpl, TextureImplMut, TextureViewMut,
-};
+use fluxemu_range::ContiguousRange;
 use nalgebra::{Point2, Vector2, Vector3, Vector4};
-use palette::{Srgba, WithAlpha, blend::Compose, named::BLACK};
+use palette::{Srgba, named::BLACK};
+use pixel_rounds::pixel_rounds;
 use rustc_hash::FxBuildHasher;
+
+use crate::{
+    egui_software_renderer::powerof2::PowerOfTwoIter,
+    texture::{CopyMode, Texture, TextureImpl, TextureImplMut, TextureViewMut},
+};
+
+mod pixel_rounds;
+mod powerof2;
 
 // NOTE: https://github.com/emilk/egui/pull/2071
 //
@@ -42,15 +49,16 @@ struct Triangle<'a> {
     edge2: Vector2<f32>,
 
     signed_double_area: f32,
-    texture: &'a Texture<Srgba<f32>>,
+    texture: &'a Texture<Srgba<u8>>,
 }
 
 impl<'a> Triangle<'a> {
     #[inline]
-    fn new(v0: Vertex, v1: Vertex, v2: Vertex, texture: &'a Texture<Srgba<f32>>) -> Self {
+    fn new(v0: Vertex, v1: Vertex, v2: Vertex, texture: &'a Texture<Srgba<u8>>) -> Self {
         let edge0 = v0.position - v1.position;
         let edge1 = v1.position - v2.position;
         let edge2 = v2.position - v0.position;
+
         let signed_double_area = (-edge0).perp(&edge2);
 
         Triangle {
@@ -66,22 +74,12 @@ impl<'a> Triangle<'a> {
     }
 }
 
-#[derive(Debug)]
-pub struct EguiRenderer {
-    textures: HashMap<TextureId, Texture<Srgba<f32>>, FxBuildHasher>,
-    render_texture: Texture<Srgba<f32>>,
+#[derive(Debug, Default)]
+pub struct Renderer {
+    textures: HashMap<TextureId, Texture<Srgba<u8>>, FxBuildHasher>,
 }
 
-impl Default for EguiRenderer {
-    fn default() -> Self {
-        Self {
-            textures: HashMap::default(),
-            render_texture: Texture::new(0, 0, BLACK.with_alpha(0).into()),
-        }
-    }
-}
-
-impl EguiRenderer {
+impl Renderer {
     /// Render to a surface given the pixel order
     #[inline(never)]
     pub fn render<P: From<Srgba<u8>> + Into<Srgba<u8>> + Copy>(
@@ -97,11 +95,12 @@ impl EguiRenderer {
     #[multiversion::multiversion(targets(
         "x86_64+avx512f+avx512dq+fma",
         "x86_64+avx2+fma",
+        "x86_64+avx+fma",
         "x86_64+sse4.2",
         "aarch64+sve",
     ))]
     fn render_inner<P: From<Srgba<u8>> + Into<Srgba<u8>> + Copy>(
-        textures: &mut HashMap<TextureId, Texture<Srgba<f32>>, FxBuildHasher>,
+        textures: &mut HashMap<TextureId, Texture<Srgba<u8>>, FxBuildHasher>,
         context: &egui::Context,
         full_output: FullOutput,
         mut target_texture: TextureViewMut<P>,
@@ -302,31 +301,85 @@ impl EguiRenderer {
                     + triangle.v1.color * barycentric_coordinates.y
                     + triangle.v2.color * barycentric_coordinates.z;
 
-                for x in x_enter..=x_exit {
-                    let pixel_coords: Point2<_> = Point2::new(
-                        (texture_dimensions.x * current_uv.x) as usize,
-                        (texture_dimensions.y * current_uv.y) as usize,
-                    )
-                    .coords
-                    .zip_map(
-                        &(triangle.texture.size() - Vector2::from_element(1)),
-                        |a, b| a.min(b),
-                    )
-                    .into();
+                let x_range = x_enter..=x_exit;
+                let mut x = *x_range.start();
 
-                    let texture_pixel = triangle.texture[pixel_coords];
+                for len in PowerOfTwoIter::<16>::new(x_range.len()) {
+                    let target_pixel_row = target_texture
+                        .view_mut(RangeInclusive::from_start_and_length(x, len), y..=y);
 
-                    let source_pixel = current_color * texture_pixel;
-                    let destination_pixel = &mut target_texture[Point2::new(x, y)];
+                    match len {
+                        16 => {
+                            pixel_rounds::<16, P>(
+                                target_pixel_row,
+                                &triangle,
+                                texture_dimensions,
+                                &mut barycentric_coordinates,
+                                &mut current_uv,
+                                &mut current_color,
+                                step_x,
+                                step_uv,
+                                step_color,
+                            );
+                        }
+                        8 => {
+                            pixel_rounds::<8, P>(
+                                target_pixel_row,
+                                &triangle,
+                                texture_dimensions,
+                                &mut barycentric_coordinates,
+                                &mut current_uv,
+                                &mut current_color,
+                                step_x,
+                                step_uv,
+                                step_color,
+                            );
+                        }
+                        4 => {
+                            pixel_rounds::<4, P>(
+                                target_pixel_row,
+                                &triangle,
+                                texture_dimensions,
+                                &mut barycentric_coordinates,
+                                &mut current_uv,
+                                &mut current_color,
+                                step_x,
+                                step_uv,
+                                step_color,
+                            );
+                        }
+                        2 => {
+                            pixel_rounds::<2, P>(
+                                target_pixel_row,
+                                &triangle,
+                                texture_dimensions,
+                                &mut barycentric_coordinates,
+                                &mut current_uv,
+                                &mut current_color,
+                                step_x,
+                                step_uv,
+                                step_color,
+                            );
+                        }
+                        1 => {
+                            pixel_rounds::<1, P>(
+                                target_pixel_row,
+                                &triangle,
+                                texture_dimensions,
+                                &mut barycentric_coordinates,
+                                &mut current_uv,
+                                &mut current_color,
+                                step_x,
+                                step_uv,
+                                step_color,
+                            );
+                        }
+                        _ => {
+                            unreachable!()
+                        }
+                    }
 
-                    *destination_pixel = source_pixel
-                        .over((*destination_pixel).into().into_format())
-                        .into_format()
-                        .into();
-
-                    current_uv += step_uv;
-                    current_color += step_color;
-                    barycentric_coordinates += step_x;
+                    x += len;
                 }
 
                 row_start_barycentric_coordinates += step_y;

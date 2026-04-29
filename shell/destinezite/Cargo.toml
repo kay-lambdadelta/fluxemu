@@ -24,6 +24,7 @@ fluxemu-definition-chip8 = { workspace = true }
 fluxemu-definition-nes = { workspace = true }
 fluxemu-environment = { workspace = true }
 fluxemu-frontend = { workspace = true, features = ["external-file-dialog"] }
+fluxemu-graphics = { workspace = true }
 fluxemu-input = { workspace = true }
 # Any platform this crate supports will have memmap or at least won't have compile errors if it doesn't work
 fluxemu-program = { workspace = true, features = ["mmap"] }

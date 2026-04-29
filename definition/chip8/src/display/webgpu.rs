@@ -1,6 +1,6 @@
+use fluxemu_graphics::texture::TextureImpl;
 use fluxemu_runtime::graphics::{
     GraphicsApi,
-    software::{self, TextureImpl},
     webgpu::{Webgpu, suggested_framebuffer_texture_usages},
 };
 use palette::Srgba;
@@ -51,7 +51,10 @@ impl Chip8DisplayBackend for State {
         &self.framebuffer
     }
 
-    fn commit_staging_buffer(&mut self, staging_buffer: &software::Texture<Srgba<u8>>) {
+    fn commit_staging_buffer(
+        &mut self,
+        staging_buffer: &fluxemu_graphics::texture::Texture<Srgba<u8>>,
+    ) {
         if staging_buffer.width() != self.framebuffer.width() as usize
             || staging_buffer.height() != self.framebuffer.height() as usize
         {

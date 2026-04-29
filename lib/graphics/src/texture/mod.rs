@@ -1,5 +1,6 @@
 use std::ops::{Bound, Index, IndexMut, RangeBounds};
 
+use itertools::Itertools;
 use nalgebra::{Point2, Vector2};
 use serde::{Deserialize, Serialize};
 
@@ -31,14 +32,32 @@ pub trait TextureImpl<T: Sized>: Index<Point2<usize>, Output = T> + Sized {
     fn as_view(&'_ self) -> TextureView<'_, T>;
     fn view(&self, x: impl RangeBounds<usize>, y: impl RangeBounds<usize>) -> TextureView<'_, T>;
 
-    fn iter_pixels(&self, mut callback: impl FnMut(Point2<usize>, &T)) {
-        for y in 0..self.height() {
-            for x in 0..self.width() {
+    #[inline]
+    fn iter_pixels<'a>(&'a self) -> impl Iterator<Item = &'a T> + 'a
+    where
+        T: 'a,
+    {
+        (0..self.height())
+            .cartesian_product(0..self.width())
+            .map(|(x, y)| {
                 let point = Point2::new(x, y);
 
-                callback(point, &self[point]);
-            }
-        }
+                &self[point]
+            })
+    }
+
+    #[inline]
+    fn iter_pixels_indexed<'a>(&'a self) -> impl Iterator<Item = (Point2<usize>, &'a T)> + 'a
+    where
+        T: 'a,
+    {
+        (0..self.height())
+            .cartesian_product(0..self.width())
+            .map(|(x, y)| {
+                let point = Point2::new(x, y);
+
+                (point, &self[point])
+            })
     }
 }
 
@@ -157,15 +176,14 @@ pub trait TextureImplMut<T: Sized>: TextureImpl<T> + IndexMut<Point2<usize>> {
         }
     }
 
-    fn iter_pixels_mut(&mut self, mut callback: impl FnMut(Point2<usize>, &mut T)) {
-        for y in 0..self.height() {
-            for x in 0..self.width() {
-                let point = Point2::new(x, y);
-
-                callback(point, &mut self[point]);
-            }
-        }
-    }
+    fn iter_pixels_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut T> + 'a
+    where
+        T: 'a;
+    fn iter_pixels_indexed_mut<'a>(
+        &'a mut self,
+    ) -> impl Iterator<Item = (Point2<usize>, &'a mut T)> + 'a
+    where
+        T: 'a;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -318,6 +336,29 @@ impl<T: Sized + 'static> TextureImplMut<T> for Texture<T> {
             offset: start,
             size: end - start,
         }
+    }
+
+    #[inline]
+    fn iter_pixels_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut T> + 'a
+    where
+        T: 'a,
+    {
+        self.data.iter_mut()
+    }
+
+    #[inline]
+    fn iter_pixels_indexed_mut<'a>(
+        &'a mut self,
+    ) -> impl Iterator<Item = (Point2<usize>, &'a mut T)> + 'a
+    where
+        T: 'a,
+    {
+        let width = self.width();
+
+        self.data
+            .iter_mut()
+            .enumerate()
+            .map(move |(i, pixel)| (Point2::new(i % width, i / width), pixel))
     }
 }
 
@@ -521,6 +562,46 @@ impl<'a, T: Sized> TextureImplMut<T> for TextureViewMut<'a, T> {
             offset: start + self.offset.coords,
             size: end - start,
         }
+    }
+
+    #[inline]
+    fn iter_pixels_mut<'b>(&'b mut self) -> impl Iterator<Item = &'b mut T> + 'b
+    where
+        T: 'b,
+    {
+        let view_width = self.width();
+        let offset = self.offset;
+        let texture_width = self.texture_size.x;
+
+        self.texture
+            .chunks_exact_mut(texture_width)
+            .skip(offset.y)
+            .take(self.size.y)
+            .flat_map(move |row| row[offset.x..offset.x + view_width].iter_mut())
+    }
+
+    #[inline]
+    fn iter_pixels_indexed_mut<'b>(
+        &'b mut self,
+    ) -> impl Iterator<Item = (Point2<usize>, &'b mut T)> + 'b
+    where
+        T: 'b,
+    {
+        let view_width = self.width();
+        let offset = self.offset;
+        let texture_width = self.texture_size.x;
+
+        self.texture
+            .chunks_exact_mut(texture_width)
+            .skip(offset.y)
+            .take(self.size.y)
+            .enumerate()
+            .flat_map(move |(y, row)| {
+                row[offset.x..offset.x + view_width]
+                    .iter_mut()
+                    .enumerate()
+                    .map(move |(x, pixel)| (Point2::new(x, y), pixel))
+            })
     }
 }
 

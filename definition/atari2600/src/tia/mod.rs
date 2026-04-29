@@ -6,10 +6,10 @@ use std::{
 
 pub(crate) use backend::SupportedGraphicsApiTia;
 use color::TiaColor;
+use fluxemu_graphics::texture::Texture;
 use fluxemu_runtime::{
     ComponentPath,
     component::Component,
-    graphics::software::Texture,
     memory::{Address, AddressSpaceId, MemoryError},
     scheduler::{Period, SynchronizationContext},
 };

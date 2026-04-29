@@ -1453,6 +1453,7 @@ dependencies = [
  "bytes",
  "fluxemu-definition-mos6502",
  "fluxemu-definition-mos6532",
+ "fluxemu-graphics",
  "fluxemu-input",
  "fluxemu-program",
  "fluxemu-range",
@@ -1489,6 +1490,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "fluxemu-audio",
+ "fluxemu-graphics",
  "fluxemu-input",
  "fluxemu-program",
  "fluxemu-runtime",
@@ -1549,6 +1551,7 @@ dependencies = [
  "bytes",
  "fluxemu-audio",
  "fluxemu-definition-mos6502",
+ "fluxemu-graphics",
  "fluxemu-input",
  "fluxemu-program",
  "fluxemu-range",
@@ -1599,7 +1602,6 @@ dependencies = [
  "fluxemu-runtime",
  "indexmap 2.14.0",
  "itertools 0.14.0",
- "multiversion",
  "nalgebra",
  "num",
  "palette",
@@ -1616,6 +1618,21 @@ dependencies = [
  "tracing",
  "uuid",
  "versions",
+]
+
+[[package]]
+name = "fluxemu-graphics"
+version = "0.1.0"
+dependencies = [
+ "egui",
+ "fluxemu-range",
+ "itertools 0.14.0",
+ "multiversion",
+ "nalgebra",
+ "palette",
+ "rustc-hash 2.1.2",
+ "serde",
+ "tracing",
 ]
 
 [[package]]
@@ -1679,6 +1696,7 @@ dependencies = [
  "criterion",
  "dyn-clone",
  "fixed",
+ "fluxemu-graphics",
  "fluxemu-input",
  "fluxemu-program",
  "fluxemu-range",
@@ -1723,6 +1741,7 @@ dependencies = [
  "fluxemu-definition-nes",
  "fluxemu-environment",
  "fluxemu-frontend",
+ "fluxemu-graphics",
  "fluxemu-input",
  "fluxemu-program",
  "fluxemu-runtime",

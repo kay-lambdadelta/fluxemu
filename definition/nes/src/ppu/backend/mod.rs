@@ -1,9 +1,7 @@
 use std::fmt::Debug;
 
-use fluxemu_runtime::graphics::{
-    GraphicsApi,
-    software::{Texture, TextureImpl},
-};
+use fluxemu_graphics::texture::{Texture, TextureImpl};
+use fluxemu_runtime::graphics::GraphicsApi;
 use palette::Srgba;
 
 use crate::ppu::{color::PpuColorIndex, region::Region};
@@ -30,9 +28,9 @@ fn convert_paletted_staging_buffer<R: Region>(
     staging_buffer: &Texture<u8>,
     framebuffer: &mut Texture<Srgba<u8>>,
 ) {
-    staging_buffer.iter_pixels(|point, index| {
+    for (point, index) in staging_buffer.iter_pixels_indexed() {
         let color = R::COLOR_PALETTE[*index as usize];
 
         framebuffer[point] = color.into();
-    });
+    }
 }

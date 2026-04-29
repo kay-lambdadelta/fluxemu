@@ -23,6 +23,7 @@ fluxemu-definition-mos6532 = { path = "definition/mos6532" }
 fluxemu-definition-nes = { path = "definition/nes" }
 fluxemu-environment = { path = "lib/environment" }
 fluxemu-frontend = { path = "lib/frontend" }
+fluxemu-graphics = { path = "lib/graphics" }
 fluxemu-input = { path = "lib/input" }
 fluxemu-locale = { path = "lib/locale" }
 fluxemu-program = { path = "lib/program" }

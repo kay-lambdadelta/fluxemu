@@ -1,9 +1,7 @@
 use std::fmt::Debug;
 
-use fluxemu_runtime::graphics::{
-    GraphicsApi,
-    software::{CopyMode, Software, Texture, TextureImplMut},
-};
+use fluxemu_graphics::texture::{CopyMode, Texture, TextureImplMut};
+use fluxemu_runtime::graphics::{GraphicsApi, software::Software};
 use palette::{Srgba, named::BLACK};
 
 use super::{SupportedGraphicsApiTia, TiaDisplayBackend};

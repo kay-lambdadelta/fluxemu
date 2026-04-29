@@ -1,9 +1,7 @@
 use std::fmt::Debug;
 
-use fluxemu_runtime::graphics::{
-    GraphicsApi,
-    software::{Software, Texture},
-};
+use fluxemu_graphics::texture::Texture;
+use fluxemu_runtime::graphics::{GraphicsApi, software::Software};
 use palette::{Srgba, named::BLACK};
 
 use super::{PpuDisplayBackend, SupportedGraphicsApiPpu};

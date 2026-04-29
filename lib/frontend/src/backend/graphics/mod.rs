@@ -1,5 +1,3 @@
-pub mod software;
-
 use std::sync::Arc;
 
 use egui::{Context, FullOutput};

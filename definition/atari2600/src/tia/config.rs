@@ -1,8 +1,8 @@
 use std::{collections::HashMap, marker::PhantomData};
 
+use fluxemu_graphics::texture::Texture;
 use fluxemu_runtime::{
     component::config::{ComponentConfig, LateContext},
-    graphics::software::Texture,
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::AddressSpaceId,
     path::ComponentPath,

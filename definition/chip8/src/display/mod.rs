@@ -4,15 +4,13 @@ use std::{
     io::{Read, Write},
 };
 
+use fluxemu_graphics::texture::{CopyMode, Texture, TextureImpl, TextureImplMut};
 use fluxemu_runtime::{
     component::{
         Component,
         config::{ComponentConfig, LateContext},
     },
-    graphics::{
-        GraphicsApi,
-        software::{CopyMode, Texture, TextureImpl, TextureImplMut},
-    },
+    graphics::GraphicsApi,
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     persistence::PersistanceFormatVersion,
     platform::Platform,

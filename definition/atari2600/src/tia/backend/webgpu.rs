@@ -1,6 +1,6 @@
+use fluxemu_graphics::texture::TextureImpl;
 use fluxemu_runtime::graphics::{
     GraphicsApi,
-    software::{self, TextureImpl},
     webgpu::{InitializationData, Webgpu, suggested_framebuffer_texture_usages},
 };
 use palette::Srgba;
@@ -50,7 +50,10 @@ impl<R: Region> TiaDisplayBackend<R> for State {
         &self.framebuffer
     }
 
-    fn commit_staging_buffer(&mut self, staging_buffer: &software::Texture<Srgba<u8>>) {
+    fn commit_staging_buffer(
+        &mut self,
+        staging_buffer: &fluxemu_graphics::texture::Texture<Srgba<u8>>,
+    ) {
         self.queue.write_texture(
             TexelCopyTextureInfo {
                 texture: &self.framebuffer,

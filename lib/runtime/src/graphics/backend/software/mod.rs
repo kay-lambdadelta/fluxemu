@@ -6,13 +6,12 @@
 
 use std::{fmt::Debug, ops::BitOr};
 
+use fluxemu_graphics::texture::Texture;
 use palette::Srgba;
-pub use texture::*;
 
 use crate::graphics::GraphicsApi;
 
 pub mod rgb565;
-mod texture;
 
 /// Marker trait for software rendering
 ///

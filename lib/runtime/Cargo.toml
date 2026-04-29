@@ -13,6 +13,7 @@ arc-swap = { workspace = true }
 bytes = { workspace = true }
 dyn-clone = "1.0"
 fixed = { workspace = true }
+fluxemu-graphics = { workspace = true }
 fluxemu-input = { workspace = true }
 fluxemu-program = { workspace = true }
 fluxemu-range = { workspace = true }

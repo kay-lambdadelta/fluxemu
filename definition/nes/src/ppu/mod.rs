@@ -1,6 +1,7 @@
 use std::{any::Any, marker::PhantomData, ops::RangeInclusive};
 
 use fluxemu_definition_mos6502::{Mos6502, Mos6502Event, Pin};
+use fluxemu_graphics::texture::Texture;
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
     ComponentRuntimeApi,
@@ -9,7 +10,6 @@ use fluxemu_runtime::{
         config::{ComponentConfig, LateContext},
     },
     event::{Event, EventMode, downcast_event},
-    graphics::software::Texture,
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::{Address, AddressSpace, AddressSpaceId, MemoryError},
     path::ComponentPath,

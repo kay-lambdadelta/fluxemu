@@ -1,10 +1,14 @@
 use std::sync::Arc;
 
-use fluxemu_frontend::{GraphicsRuntime, software::EguiRenderer};
+use fluxemu_frontend::GraphicsRuntime;
+use fluxemu_graphics::{
+    egui_software_renderer::Renderer,
+    texture::{CopyMode, TextureImpl, TextureImplMut, TextureViewMut},
+};
 use fluxemu_runtime::{
     graphics::{
         GraphicsApi, GraphicsRequirements,
-        software::{CopyMode, Requirements, Software, TextureImpl, TextureImplMut, TextureViewMut},
+        software::{Requirements, Software},
     },
     machine::Machine,
 };
@@ -16,7 +20,7 @@ use winit::window::Window;
 use crate::windowing::WinitCompatibleGraphicsRuntime;
 
 pub struct SoftwareGraphicsRuntime {
-    renderer: EguiRenderer,
+    renderer: Renderer,
     surface: Surface<Arc<Window>, Arc<Window>>,
 }
 
@@ -161,7 +165,7 @@ impl WinitCompatibleGraphicsRuntime for SoftwareGraphicsRuntime {
 
         Self {
             surface,
-            renderer: EguiRenderer::default(),
+            renderer: Renderer::default(),
         }
     }
 }
