@@ -2,7 +2,7 @@ use nalgebra::{Point2, SMatrix, SVector, Vector2};
 use palette::{Srgba, blend::Compose};
 
 use crate::{
-    egui_software_renderer::Triangle,
+    egui_software_renderer::shapes::Triangle,
     texture::{TextureImpl, TextureViewMut},
 };
 

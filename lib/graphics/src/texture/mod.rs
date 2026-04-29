@@ -1,5 +1,6 @@
-use std::ops::{Bound, Index, IndexMut, RangeBounds};
+use std::ops::{Bound, Index, IndexMut, RangeBounds, RangeInclusive};
 
+use fluxemu_range::ContiguousRange;
 use itertools::Itertools;
 use nalgebra::{Point2, Vector2};
 use serde::{Deserialize, Serialize};
@@ -28,9 +29,8 @@ pub trait TextureImpl<T: Sized>: Index<Point2<usize>, Output = T> + Sized {
     {
         (0..self.height())
             .cartesian_product(0..self.width())
-            .map(|(x, y)| {
+            .map(|(y, x)| {
                 let point = Point2::new(x, y);
-
                 &self[point]
             })
     }
@@ -42,7 +42,7 @@ pub trait TextureImpl<T: Sized>: Index<Point2<usize>, Output = T> + Sized {
     {
         (0..self.height())
             .cartesian_product(0..self.width())
-            .map(|(x, y)| {
+            .map(|(y, x)| {
                 let point = Point2::new(x, y);
 
                 (point, &self[point])
@@ -364,6 +364,7 @@ impl<T: Sized + 'static> TextureImplMut<T> for Texture<T> {
             .map(move |(i, pixel)| (Point2::new(i % width, i / width), pixel))
     }
 
+    #[inline]
     unsafe fn get_unchecked_mut(&mut self, point: impl Into<Point2<usize>>) -> &mut T {
         let point = point.into();
 
@@ -472,6 +473,11 @@ pub struct TextureViewMut<'a, T> {
 
 impl<'a, T> TextureViewMut<'a, T> {
     #[inline]
+    fn is_full_texture_view(&self) -> bool {
+        self.texture_size == self.size && self.offset == Point2::new(0, 0)
+    }
+
+    #[inline]
     pub fn from_slice(texture: &'a mut [T], width: usize, height: usize) -> Self {
         assert_eq!(texture.len(), width * height);
 
@@ -549,6 +555,7 @@ impl<'a, T: Sized> TextureImpl<T> for TextureViewMut<'a, T> {
         }
     }
 
+    #[inline]
     unsafe fn get_unchecked(&self, point: impl Into<Point2<usize>>) -> &T {
         let point = point.into();
 
@@ -633,6 +640,29 @@ impl<'a, T: Sized> TextureImplMut<T> for TextureViewMut<'a, T> {
             })
     }
 
+    #[inline]
+    fn fill(&mut self, value: T)
+    where
+        T: Clone,
+    {
+        if self.is_full_texture_view() {
+            self.texture.fill(value);
+        } else {
+            for row in self
+                .texture
+                .chunks_exact_mut(self.texture_size.x)
+                .skip(self.offset.y)
+                .take(self.size.y)
+            {
+                let row_slice =
+                    &mut row[RangeInclusive::from_start_and_length(self.offset.x, self.size.x)];
+
+                row_slice.fill(value.clone());
+            }
+        }
+    }
+
+    #[inline]
     unsafe fn get_unchecked_mut(&mut self, point: impl Into<Point2<usize>>) -> &mut T {
         let point = point.into();
 

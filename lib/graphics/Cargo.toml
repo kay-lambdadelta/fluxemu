@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 egui = { workspace = true }
 fluxemu-range = { workspace = true }
+heapless = { workspace = true }
 itertools = { workspace = true }
 multiversion = "0.8"
 nalgebra = { workspace = true }
