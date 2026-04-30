@@ -117,7 +117,7 @@ impl SolidQuad {
                 .total_cmp(&point_b.x)
                 .then(point_a.y.total_cmp(&point_b.y))
         });
-        let unique_positions: heapless::Vec<_, 4> = points
+        let unique_positions: heapless::Vec<_, 6> = points
             .into_iter()
             .dedup_by(|point_a, point_b| {
                 point_a.x.total_cmp(&point_b.x).is_eq() && point_a.y.total_cmp(&point_b.y).is_eq()
