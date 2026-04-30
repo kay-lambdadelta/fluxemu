@@ -18,7 +18,7 @@ use uuid::Uuid;
 use winit::{
     application::ApplicationHandler,
     event::{ElementState, WindowEvent},
-    event_loop::{ActiveEventLoop, EventLoop},
+    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     window::{Window, WindowId},
 };
 
@@ -78,6 +78,8 @@ impl<R: WinitCompatibleGraphicsRuntime> DesktopEventLoop<R> {
 
 impl<R: WinitCompatibleGraphicsRuntime> ApplicationHandler<()> for DesktopEventLoop<R> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        event_loop.set_control_flow(ControlFlow::Wait);
+
         let window = setup_window(event_loop);
         let egui_context = self.frontend.egui_context().clone();
 
@@ -153,8 +155,17 @@ impl<R: WinitCompatibleGraphicsRuntime> ApplicationHandler<()> for DesktopEventL
         } = self.windowing_context.as_mut().unwrap();
 
         // Pass events to egui if the frontend overlay is active
-        if self.frontend.frontend_overlay_active() {
-            let _ = egui_winit_context.on_window_event(window, &event);
+        let repaint = if self.frontend.frontend_overlay_active() {
+            let response = egui_winit_context.on_window_event(window, &event);
+
+            // We have our own redrawing logic
+            response.repaint && event != WindowEvent::RedrawRequested
+        } else {
+            true
+        };
+
+        if repaint {
+            window.request_redraw();
         }
 
         match event {
@@ -179,8 +190,6 @@ impl<R: WinitCompatibleGraphicsRuntime> ApplicationHandler<()> for DesktopEventL
                 } else if let Some(machine) = self.frontend.machine() {
                     graphics_runtime.present_machine(machine)
                 }
-
-                window.request_redraw();
             }
             WindowEvent::KeyboardInput {
                 event,

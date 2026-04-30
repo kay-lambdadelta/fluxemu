@@ -3,8 +3,8 @@ use std::{collections::HashMap, ops::RangeInclusive};
 use egui::{FullOutput, TextureId};
 use fluxemu_range::ContiguousRange;
 use nalgebra::{Point2, Vector2, Vector3, Vector4};
-use palette::{Srgba, named::BLACK};
-use pixel_rounds::pixel_rounds;
+use nalgebra::{SMatrix, SVector};
+use palette::{Srgba, blend::Compose, named::BLACK};
 use rustc_hash::FxBuildHasher;
 
 use crate::{
@@ -15,7 +15,6 @@ use crate::{
     texture::{CopyMode, Texture, TextureImpl, TextureImplMut, TextureViewMut},
 };
 
-mod pixel_rounds;
 mod powerof2;
 mod shapes;
 
@@ -25,7 +24,7 @@ mod shapes;
 
 #[derive(Debug, Default)]
 pub struct Renderer {
-    textures: HashMap<TextureId, Texture<Srgba<f32>>, FxBuildHasher>,
+    textures: HashMap<TextureId, Texture<Srgba<u8>>, FxBuildHasher>,
 }
 
 impl Renderer {
@@ -37,45 +36,28 @@ impl Renderer {
         full_output: FullOutput,
         target_texture: TextureViewMut<P>,
     ) {
-        Self::render_inner(&mut self.textures, context, full_output, target_texture);
-    }
-
-    #[inline]
-    #[multiversion::multiversion(targets(
-        "x86_64+avx512f+avx512dq+fma",
-        "x86_64+avx2+fma",
-        "x86_64+avx+fma",
-        "x86_64+sse4.2",
-        "aarch64+sve",
-    ))]
-    fn render_inner<P: From<Srgba<u8>> + Into<Srgba<u8>> + Copy>(
-        textures: &mut HashMap<TextureId, Texture<Srgba<f32>>, FxBuildHasher>,
-        context: &egui::Context,
-        full_output: FullOutput,
-        mut target_texture: TextureViewMut<P>,
-    ) {
-        for (new_texture_id, image_delta) in full_output.textures_delta.set {
+        for (new_texture_id, image_delta) in &full_output.textures_delta.set {
             assert!(
-                image_delta.is_whole() || textures.contains_key(&new_texture_id),
+                image_delta.is_whole() || self.textures.contains_key(new_texture_id),
                 "Texture not found: {new_texture_id:?}"
             );
 
             if image_delta.is_whole() {
-                textures.remove(&new_texture_id);
+                self.textures.remove(new_texture_id);
             }
 
-            let destination_texture = textures.entry(new_texture_id).or_insert_with(|| {
+            let destination_texture = self.textures.entry(*new_texture_id).or_insert_with(|| {
                 let image_size = image_delta.image.size();
                 Texture::new(image_size[0], image_size[1], BLACK.into_format().into())
             });
 
-            let source_texture_view: Texture<Srgba<f32>> = match &image_delta.image {
+            let source_texture_view = match &image_delta.image {
                 egui::ImageData::Color(image) => {
                     let converted_image = image
                         .pixels
                         .clone()
                         .into_iter()
-                        .map(|pixel| Srgba::from_components(pixel.to_tuple()).into_format())
+                        .map(|pixel| Srgba::from_components(pixel.to_tuple()))
                         .collect();
 
                     Texture::from_vec(image.size[0], image.size[1], converted_image)
@@ -93,6 +75,28 @@ impl Renderer {
                 )
                 .copy_from(&source_texture_view, CopyMode::Nearest);
         }
+
+        Self::render_inner(&mut self.textures, context, full_output, target_texture);
+    }
+
+    #[inline]
+    #[multiversion::multiversion(targets(
+        "x86_64+avx512f+avx512dq+fma",
+        "x86_64+avx2+fma",
+        "x86_64+avx+fma",
+        "x86_64+sse4.2",
+        "x86+sse2",
+        "x86+sse",
+        "aarch64+sve2",
+        "aarch64+sve",
+    ))]
+    fn render_inner<P: From<Srgba<u8>> + Into<Srgba<u8>> + Copy>(
+        textures: &mut HashMap<TextureId, Texture<Srgba<u8>>, FxBuildHasher>,
+        context: &egui::Context,
+        full_output: FullOutput,
+        mut target_texture: TextureViewMut<P>,
+    ) {
+        use multiversion::inherit_target;
 
         for shape in emit_shapes(
             context,
@@ -252,8 +256,11 @@ impl Renderer {
                             let target_pixel_row = target_texture
                                 .view_mut(RangeInclusive::from_start_and_length(x, len), y..=y);
 
+                            // Note these functions are perfectly safe, the unsafe is required due to enabling simd features
+                            // that are already guarded against by multiversion
+
                             match len {
-                                16 => {
+                                16 => unsafe {
                                     pixel_rounds::<16, P>(
                                         target_pixel_row,
                                         &triangle,
@@ -263,8 +270,8 @@ impl Renderer {
                                         step_uv,
                                         step_color,
                                     );
-                                }
-                                8 => {
+                                },
+                                8 => unsafe {
                                     pixel_rounds::<8, P>(
                                         target_pixel_row,
                                         &triangle,
@@ -274,8 +281,8 @@ impl Renderer {
                                         step_uv,
                                         step_color,
                                     );
-                                }
-                                4 => {
+                                },
+                                4 => unsafe {
                                     pixel_rounds::<4, P>(
                                         target_pixel_row,
                                         &triangle,
@@ -285,8 +292,8 @@ impl Renderer {
                                         step_uv,
                                         step_color,
                                     );
-                                }
-                                2 => {
+                                },
+                                2 => unsafe {
                                     pixel_rounds::<2, P>(
                                         target_pixel_row,
                                         &triangle,
@@ -296,8 +303,8 @@ impl Renderer {
                                         step_uv,
                                         step_color,
                                     );
-                                }
-                                1 => {
+                                },
+                                1 => unsafe {
                                     pixel_rounds::<1, P>(
                                         target_pixel_row,
                                         &triangle,
@@ -307,7 +314,7 @@ impl Renderer {
                                         step_uv,
                                         step_color,
                                     );
-                                }
+                                },
                                 _ => {
                                     unreachable!()
                                 }
@@ -326,6 +333,139 @@ impl Renderer {
         for remove_texture_id in full_output.textures_delta.free {
             tracing::trace!("Freeing egui texture {:?}", remove_texture_id);
             textures.remove(&remove_texture_id);
+        }
+
+        #[inline]
+        #[inherit_target]
+        pub unsafe fn pixel_rounds<const C: usize, P: From<Srgba<u8>> + Into<Srgba<u8>> + Copy>(
+            mut target_pixel_row: TextureViewMut<P>,
+            triangle: &Triangle<'_>,
+            texture_dimensions: Vector2<f32>,
+            current_uv: &mut Vector2<f32>,
+            current_color: &mut Srgba<f32>,
+            step_uv: Vector2<f32>,
+            step_color: Srgba<f32>,
+        ) {
+            // Const assert these dimensions so the compiler doesn't forget
+            assert_eq!(target_pixel_row.width(), C);
+            assert_eq!(target_pixel_row.height(), 1);
+
+            // Calculate UVs
+            let mut interpolated_uvs = SMatrix::<f32, 2, C>::from_element(0.0);
+            for index in 0..C {
+                let uv = *current_uv + (step_uv * index as f32);
+                interpolated_uvs.column_mut(index).copy_from(&uv);
+            }
+            *current_uv += step_uv * C as f32;
+
+            // Calculate positions within the texture
+            let mut texture_positions = SMatrix::<u32, 2, C>::from_element(0);
+            for index in 0..C {
+                let uv = interpolated_uvs.column(index);
+
+                let texture_position = texture_dimensions
+                    .component_mul(&uv)
+                    .zip_map(&Vector2::from_element(0.0), |a, b| a.max(b));
+
+                let pixel_coords =
+                    Vector2::<u32>::new(texture_position.x as u32, texture_position.y as u32)
+                        .zip_map(
+                            &(triangle.texture.size().cast() - Vector2::from_element(1)),
+                            |a, b| a.min(b),
+                        );
+
+                texture_positions.column_mut(index).copy_from(&pixel_coords);
+            }
+
+            // Gather fetch
+            let mut texture_pixels_red = SVector::<_, C>::from_element(0.0);
+            let mut texture_pixels_green = SVector::<_, C>::from_element(0.0);
+            let mut texture_pixels_blue = SVector::<_, C>::from_element(0.0);
+            let mut texture_pixels_alpha = SVector::<_, C>::from_element(0.0);
+            for index in 0..C {
+                let texture_position = texture_positions.column(index).into_owned();
+                let texture_pixel =
+                    unsafe { triangle.texture.get_unchecked(texture_position.cast()) }
+                        .into_format();
+
+                texture_pixels_red[index] = texture_pixel.red;
+                texture_pixels_green[index] = texture_pixel.green;
+                texture_pixels_blue[index] = texture_pixel.blue;
+                texture_pixels_alpha[index] = texture_pixel.alpha;
+            }
+
+            // Calculate colors
+            let mut interpolated_colors =
+                SVector::<Srgba<f32>, C>::from_element(Default::default());
+            for index in 0..C {
+                let color = *current_color + (step_color * index as f32);
+                interpolated_colors[index] = color;
+            }
+            *current_color += step_color * C as f32;
+
+            // Read source pixels and tint by texture pixels
+            let mut source_pixels_red = SVector::<_, C>::from_element(0.0);
+            let mut source_pixels_green = SVector::<_, C>::from_element(0.0);
+            let mut source_pixels_blue = SVector::<_, C>::from_element(0.0);
+            let mut source_pixels_alpha = SVector::<_, C>::from_element(0.0);
+            for index in 0..C {
+                let color = interpolated_colors[index];
+
+                source_pixels_red[index] = color.red * texture_pixels_red[index];
+                source_pixels_green[index] = color.green * texture_pixels_green[index];
+                source_pixels_blue[index] = color.blue * texture_pixels_blue[index];
+                source_pixels_alpha[index] = color.alpha * texture_pixels_alpha[index];
+            }
+
+            // Read destination pixels
+            let mut destination_pixels_red = SVector::<_, C>::from_element(0.0);
+            let mut destination_pixels_green = SVector::<_, C>::from_element(0.0);
+            let mut destination_pixels_blue = SVector::<_, C>::from_element(0.0);
+            let mut destination_pixels_alpha = SVector::<_, C>::from_element(0.0);
+            for index in 0..C {
+                let pixel = target_pixel_row[Point2::new(index, 0)].into().into_format();
+
+                destination_pixels_red[index] = pixel.red;
+                destination_pixels_green[index] = pixel.green;
+                destination_pixels_blue[index] = pixel.blue;
+                destination_pixels_alpha[index] = pixel.alpha;
+            }
+
+            // Over composite
+            for index in 0..C {
+                let source = Srgba::new(
+                    source_pixels_red[index],
+                    source_pixels_green[index],
+                    source_pixels_blue[index],
+                    source_pixels_alpha[index],
+                );
+
+                let destination = Srgba::new(
+                    destination_pixels_red[index],
+                    destination_pixels_green[index],
+                    destination_pixels_blue[index],
+                    destination_pixels_alpha[index],
+                );
+
+                let output = source.over(destination);
+
+                destination_pixels_red[index] = output.red;
+                destination_pixels_green[index] = output.green;
+                destination_pixels_blue[index] = output.blue;
+                destination_pixels_alpha[index] = output.alpha;
+            }
+
+            // Write and pack back
+            for index in 0..C {
+                target_pixel_row[Point2::new(index, 0)] = Srgba::new(
+                    destination_pixels_red[index],
+                    destination_pixels_green[index],
+                    destination_pixels_blue[index],
+                    destination_pixels_alpha[index],
+                )
+                .into_format()
+                .into();
+            }
         }
     }
 }

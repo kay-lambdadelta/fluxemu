@@ -43,12 +43,12 @@ pub struct Triangle<'a> {
     pub edge2: Vector2<f32>,
 
     pub signed_double_area: f32,
-    pub texture: &'a Texture<Srgba<f32>>,
+    pub texture: &'a Texture<Srgba<u8>>,
 }
 
 impl<'a> Triangle<'a> {
     #[inline]
-    fn new(v0: Vertex, v1: Vertex, v2: Vertex, texture: &'a Texture<Srgba<f32>>) -> Option<Self> {
+    fn new(v0: Vertex, v1: Vertex, v2: Vertex, texture: &'a Texture<Srgba<u8>>) -> Option<Self> {
         let edge0 = v0.position - v1.position;
         let edge1 = v1.position - v2.position;
         let edge2 = v2.position - v0.position;
@@ -171,7 +171,7 @@ pub fn emit_shapes<'a>(
     context: &'a Context,
     input_shapes: Vec<ClippedShape>,
     pixels_per_point: f32,
-    textures: &'a HashMap<TextureId, Texture<Srgba<f32>>, FxBuildHasher>,
+    textures: &'a HashMap<TextureId, Texture<Srgba<u8>>, FxBuildHasher>,
 ) -> impl Iterator<Item = Shape<'a>> + 'a {
     let mut shapes = Vec::default();
 
