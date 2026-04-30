@@ -46,10 +46,7 @@ pub fn pixel_rounds<const C: usize, P: From<Srgba<u8>> + Into<Srgba<u8>> + Copy>
             .zip_map(&Vector2::from_element(0.0), |a, b| a.max(b));
 
         let pixel_coords =
-            Vector2::<u32>::new(unsafe { texture_position.x.to_int_unchecked() }, unsafe {
-                texture_position.y.to_int_unchecked()
-            })
-            .zip_map(
+            Vector2::<u32>::new(texture_position.x as u32, texture_position.y as u32).zip_map(
                 &(triangle.texture.size().cast() - Vector2::from_element(1)),
                 |a, b| a.min(b),
             );
