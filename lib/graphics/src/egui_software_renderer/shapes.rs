@@ -1,15 +1,7 @@
-use std::collections::HashMap;
-
-use egui::{
-    Context, TextureId,
-    epaint::{ClippedShape, Primitive},
-};
+use egui::{Context, TextureId, epaint::ClippedShape};
 use itertools::Itertools;
 use nalgebra::{Point2, Vector2};
 use palette::Srgba;
-use rustc_hash::FxBuildHasher;
-
-use crate::texture::Texture;
 
 const WHITE_UV: Point2<f32> = Point2::new(0.0, 0.0);
 
@@ -31,7 +23,7 @@ impl From<egui::epaint::Vertex> for Vertex {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Triangle<'a> {
+pub struct Triangle {
     // Vertexes
     pub v0: Vertex,
     pub v1: Vertex,
@@ -42,13 +34,13 @@ pub struct Triangle<'a> {
     pub edge1: Vector2<f32>,
     pub edge2: Vector2<f32>,
 
+    // Double area
     pub signed_double_area: f32,
-    pub texture: &'a Texture<Srgba<u8>>,
 }
 
-impl<'a> Triangle<'a> {
+impl Triangle {
     #[inline]
-    fn new(v0: Vertex, v1: Vertex, v2: Vertex, texture: &'a Texture<Srgba<u8>>) -> Option<Self> {
+    fn new(v0: Vertex, v1: Vertex, v2: Vertex) -> Option<Self> {
         let edge0 = v0.position - v1.position;
         let edge1 = v1.position - v2.position;
         let edge2 = v2.position - v0.position;
@@ -68,7 +60,6 @@ impl<'a> Triangle<'a> {
             edge1,
             edge2,
             signed_double_area,
-            texture,
         })
     }
 }
@@ -161,23 +152,33 @@ impl SolidQuad {
     }
 }
 
-pub enum Shape<'a> {
-    Triangle(Triangle<'a>),
+#[derive(Debug)]
+pub struct Shape {
+    pub min: Point2<f32>,
+    pub max: Point2<f32>,
+    pub texture_id: TextureId,
+    pub primitives: Vec<Primitive>,
+}
+
+#[derive(Debug)]
+pub enum Primitive {
+    Triangle(Triangle),
     SolidQuad(SolidQuad),
 }
 
 #[inline(always)]
-pub fn emit_shapes<'a>(
-    context: &'a Context,
+pub fn reduce_shapes(
+    context: &Context,
     input_shapes: Vec<ClippedShape>,
     pixels_per_point: f32,
-    textures: &'a HashMap<TextureId, Texture<Srgba<u8>>, FxBuildHasher>,
-) -> impl Iterator<Item = Shape<'a>> + 'a {
+) -> impl Iterator<Item = Shape> {
     let mut shapes = Vec::default();
 
     for clipped_primitive in context.tessellate(input_shapes, pixels_per_point) {
         match clipped_primitive.primitive {
-            Primitive::Mesh(mesh) => {
+            egui::epaint::Primitive::Mesh(mesh) => {
+                let mut primitives = Vec::default();
+
                 let mut triangles = mesh
                     .indices
                     .chunks_exact(3)
@@ -195,12 +196,12 @@ pub fn emit_shapes<'a>(
                             v1.position *= pixels_per_point;
                             v2.position *= pixels_per_point;
 
-                            (v0, v1, v2, mesh.texture_id)
+                            (v0, v1, v2)
                         },
                     )
                     .peekable();
 
-                while let Some((v0, v1, v2, texture_id)) = triangles.next() {
+                while let Some((v0, v1, v2)) = triangles.next() {
                     if let Some(next_triangle) = triangles.peek()
                         && let Some(solid_quad) = SolidQuad::new_if_eligible([
                             [v0, v1, v2],
@@ -209,17 +210,28 @@ pub fn emit_shapes<'a>(
                     {
                         triangles.next();
 
-                        shapes.push(Shape::SolidQuad(solid_quad));
+                        primitives.push(Primitive::SolidQuad(solid_quad));
                     } else {
-                        let texture = &textures[&texture_id];
-
-                        if let Some(triangle) = Triangle::new(v0, v1, v2, texture) {
-                            shapes.push(Shape::Triangle(triangle));
+                        if let Some(triangle) = Triangle::new(v0, v1, v2) {
+                            primitives.push(Primitive::Triangle(triangle));
                         }
                     }
                 }
+
+                shapes.push(Shape {
+                    min: Point2::new(
+                        clipped_primitive.clip_rect.min.x,
+                        clipped_primitive.clip_rect.min.y,
+                    ),
+                    max: Point2::new(
+                        clipped_primitive.clip_rect.max.x,
+                        clipped_primitive.clip_rect.max.y,
+                    ),
+                    texture_id: mesh.texture_id,
+                    primitives,
+                });
             }
-            Primitive::Callback(_) => {
+            egui::epaint::Primitive::Callback(_) => {
                 unreachable!("Epaint callbacks should not be sent");
             }
         }

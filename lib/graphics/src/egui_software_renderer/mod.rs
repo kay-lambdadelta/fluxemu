@@ -2,15 +2,15 @@ use std::{collections::HashMap, ops::RangeInclusive};
 
 use egui::{FullOutput, TextureId};
 use fluxemu_range::ContiguousRange;
-use nalgebra::{Point2, Vector2, Vector3, Vector4};
-use nalgebra::{SMatrix, SVector};
+use multiversion::inherit_target;
+use nalgebra::{Point2, SMatrix, SVector, Vector2, Vector3};
 use palette::{Srgba, blend::Compose, named::BLACK};
 use rustc_hash::FxBuildHasher;
 
 use crate::{
     egui_software_renderer::{
         powerof2::PowerOfTwoIter,
-        shapes::{Shape, Triangle, emit_shapes},
+        shapes::{Primitive, Triangle, reduce_shapes},
     },
     texture::{CopyMode, Texture, TextureImpl, TextureImplMut, TextureViewMut},
 };
@@ -96,235 +96,247 @@ impl Renderer {
         full_output: FullOutput,
         mut target_texture: TextureViewMut<P>,
     ) {
-        use multiversion::inherit_target;
+        for shape in reduce_shapes(context, full_output.shapes, full_output.pixels_per_point) {
+            for primitive in shape.primitives {
+                match primitive {
+                    Primitive::SolidQuad(solid_quad) => {
+                        let min = solid_quad
+                            .min
+                            .coords
+                            .zip_map(&shape.min.coords, |a, b| a.max(b));
 
-        for shape in emit_shapes(
-            context,
-            full_output.shapes,
-            full_output.pixels_per_point,
-            textures,
-        ) {
-            match shape {
-                Shape::SolidQuad(solid_quad) => {
-                    let min: Point2<_> =
-                        Point2::new(solid_quad.min.x as usize, solid_quad.min.y as usize)
+                        let max = solid_quad
+                            .max
                             .coords
-                            .zip_map(&target_texture.size(), |a, b| a.min(b))
-                            .into();
-                    let max: Point2<_> =
-                        Point2::new(solid_quad.max.x as usize, solid_quad.max.y as usize)
-                            .coords
+                            .zip_map(&shape.max.coords, |a, b| a.min(b));
+
+                        let min: Point2<_> = Vector2::new(min.x as usize, min.y as usize)
                             .zip_map(&target_texture.size(), |a, b| a.min(b))
                             .into();
 
-                    let mut region = target_texture.view_mut(min.x..max.x, min.y..max.y);
-                    region.fill(solid_quad.color.into_format().into());
-                }
-                Shape::Triangle(triangle) => {
-                    let target_texture_width = target_texture.width() as f32;
-                    let target_texture_height = target_texture.height() as f32;
+                        let max: Point2<_> = Vector2::new(max.x as usize, max.y as usize)
+                            .zip_map(&target_texture.size(), |a, b| a.min(b))
+                            .into();
 
-                    let triangle_bounding_max = Point2::new(
-                        Vector3::new(
+                        let mut region = target_texture.view_mut(min.x..max.x, min.y..max.y);
+                        region.fill(solid_quad.color.into_format().into());
+                    }
+                    Primitive::Triangle(triangle) => {
+                        let texture = &textures[&shape.texture_id];
+
+                        let target_texture_width = target_texture.width() as f32;
+                        let target_texture_height = target_texture.height() as f32;
+
+                        let vertex_x_max = Vector3::new(
                             triangle.v0.position.x,
                             triangle.v1.position.x,
                             triangle.v2.position.x,
                         )
-                        .max()
-                        .min(target_texture_width - 1.0)
-                        .floor(),
-                        Vector3::new(
+                        .max();
+                        let vertex_y_max = Vector3::new(
                             triangle.v0.position.y,
                             triangle.v1.position.y,
                             triangle.v2.position.y,
                         )
-                        .max()
-                        .min(target_texture_height - 1.0)
-                        .floor(),
-                    );
+                        .max();
 
-                    let triangle_bounding_min = Point2::new(
-                        Vector4::new(
+                        let clip_x_max =
+                            Vector2::new(target_texture_width - 1.0, shape.max.x).min();
+                        let clip_y_max =
+                            Vector2::new(target_texture_height - 1.0, shape.max.y).min();
+
+                        let triangle_bounding_max = Point2::new(
+                            vertex_x_max.min(clip_x_max).floor(),
+                            vertex_y_max.min(clip_y_max).floor(),
+                        );
+
+                        let vertex_x_min = Vector3::new(
                             triangle.v0.position.x,
                             triangle.v1.position.x,
                             triangle.v2.position.x,
-                            triangle_bounding_max.x,
                         )
-                        .min()
-                        .max(0.0)
-                        .ceil(),
-                        Vector4::new(
+                        .min();
+                        let vertex_y_min = Vector3::new(
                             triangle.v0.position.y,
                             triangle.v1.position.y,
                             triangle.v2.position.y,
-                            triangle_bounding_max.y,
                         )
-                        .min()
-                        .max(0.0)
-                        .ceil(),
-                    );
+                        .min();
 
-                    let mut barycentric_coordinates = barycentric_coordinates(
-                        triangle_bounding_min + Vector2::from_element(0.5),
-                        &triangle,
-                    );
-                    let mut row_start_barycentric_coordinates = barycentric_coordinates;
+                        let clip_x_min = Vector2::new(0.0, shape.min.x).max();
+                        let clip_y_min = Vector2::new(0.0, shape.min.y).max();
 
-                    let step_x = Vector3::new(triangle.edge1.y, triangle.edge2.y, triangle.edge0.y)
-                        / triangle.signed_double_area;
+                        let triangle_bounding_min = Point2::new(
+                            vertex_x_min.max(clip_x_min).ceil(),
+                            vertex_y_min.max(clip_y_min).ceil(),
+                        );
 
-                    let step_y = Vector3::new(
-                        triangle.v2.position.x - triangle.v1.position.x,
-                        triangle.v0.position.x - triangle.v2.position.x,
-                        triangle.v1.position.x - triangle.v0.position.x,
-                    ) / triangle.signed_double_area;
+                        let mut barycentric_coordinates = barycentric_coordinates(
+                            triangle_bounding_min + Vector2::from_element(0.5),
+                            &triangle,
+                        );
+                        let mut row_start_barycentric_coordinates = barycentric_coordinates;
 
-                    let step_uv = Vector2::new(
-                        step_x.x * triangle.v0.uv.x
-                            + step_x.y * triangle.v1.uv.x
-                            + step_x.z * triangle.v2.uv.x,
-                        step_x.x * triangle.v0.uv.y
-                            + step_x.y * triangle.v1.uv.y
-                            + step_x.z * triangle.v2.uv.y,
-                    );
+                        let step_x =
+                            Vector3::new(triangle.edge1.y, triangle.edge2.y, triangle.edge0.y)
+                                / triangle.signed_double_area;
 
-                    let step_color = Srgba::new(
-                        step_x.dot(&Vector3::new(
-                            triangle.v0.color.red,
-                            triangle.v1.color.red,
-                            triangle.v2.color.red,
-                        )),
-                        step_x.dot(&Vector3::new(
-                            triangle.v0.color.green,
-                            triangle.v1.color.green,
-                            triangle.v2.color.green,
-                        )),
-                        step_x.dot(&Vector3::new(
-                            triangle.v0.color.blue,
-                            triangle.v1.color.blue,
-                            triangle.v2.color.blue,
-                        )),
-                        step_x.dot(&Vector3::new(
-                            triangle.v0.color.alpha,
-                            triangle.v1.color.alpha,
-                            triangle.v2.color.alpha,
-                        )),
-                    );
+                        let step_y = Vector3::new(
+                            triangle.v2.position.x - triangle.v1.position.x,
+                            triangle.v0.position.x - triangle.v2.position.x,
+                            triangle.v1.position.x - triangle.v0.position.x,
+                        ) / triangle.signed_double_area;
 
-                    let texture_dimensions: Vector2<f32> = triangle.texture.size().cast();
+                        let step_uv = Vector2::new(
+                            step_x.x * triangle.v0.uv.x
+                                + step_x.y * triangle.v1.uv.x
+                                + step_x.z * triangle.v2.uv.x,
+                            step_x.x * triangle.v0.uv.y
+                                + step_x.y * triangle.v1.uv.y
+                                + step_x.z * triangle.v2.uv.y,
+                        );
 
-                    for y in triangle_bounding_min.y as usize..=triangle_bounding_max.y as usize {
-                        let x_enter = (0..3)
-                            .map(|index| {
-                                (if step_x[index] > 0.0 {
-                                    triangle_bounding_min.x
-                                        - row_start_barycentric_coordinates[index] / step_x[index]
-                                } else {
-                                    triangle_bounding_min.x
-                                }) - 0.5
-                            })
-                            .fold(triangle_bounding_min.x, f32::max)
-                            .ceil() as usize;
+                        let step_color = Srgba::new(
+                            step_x.dot(&Vector3::new(
+                                triangle.v0.color.red,
+                                triangle.v1.color.red,
+                                triangle.v2.color.red,
+                            )),
+                            step_x.dot(&Vector3::new(
+                                triangle.v0.color.green,
+                                triangle.v1.color.green,
+                                triangle.v2.color.green,
+                            )),
+                            step_x.dot(&Vector3::new(
+                                triangle.v0.color.blue,
+                                triangle.v1.color.blue,
+                                triangle.v2.color.blue,
+                            )),
+                            step_x.dot(&Vector3::new(
+                                triangle.v0.color.alpha,
+                                triangle.v1.color.alpha,
+                                triangle.v2.color.alpha,
+                            )),
+                        );
 
-                        let x_exit = (0..3)
-                            .map(|index| {
-                                (if step_x[index] < 0.0 {
-                                    triangle_bounding_min.x
-                                        - row_start_barycentric_coordinates[index] / step_x[index]
-                                } else {
-                                    triangle_bounding_max.x
-                                }) + 0.5
-                            })
-                            .fold(triangle_bounding_max.x, f32::min)
-                            .floor() as usize;
+                        let texture_dimensions: Vector2<f32> = texture.size().cast();
 
-                        barycentric_coordinates = row_start_barycentric_coordinates
-                            + step_x * (x_enter as f32 - triangle_bounding_min.x);
+                        for y in triangle_bounding_min.y as usize..=triangle_bounding_max.y as usize
+                        {
+                            let x_enter = (0..3)
+                                .map(|index| {
+                                    (if step_x[index] > 0.0 {
+                                        triangle_bounding_min.x
+                                            - row_start_barycentric_coordinates[index]
+                                                / step_x[index]
+                                    } else {
+                                        triangle_bounding_min.x
+                                    }) - 0.5
+                                })
+                                .fold(triangle_bounding_min.x, f32::max)
+                                .ceil() as usize;
 
-                        let mut current_uv = triangle.v0.uv.coords * barycentric_coordinates.x
-                            + triangle.v1.uv.coords * barycentric_coordinates.y
-                            + triangle.v2.uv.coords * barycentric_coordinates.z;
+                            let x_exit = (0..3)
+                                .map(|index| {
+                                    (if step_x[index] < 0.0 {
+                                        triangle_bounding_min.x
+                                            - row_start_barycentric_coordinates[index]
+                                                / step_x[index]
+                                    } else {
+                                        triangle_bounding_max.x
+                                    }) + 0.5
+                                })
+                                .fold(triangle_bounding_max.x, f32::min)
+                                .floor() as usize;
 
-                        let mut current_color = triangle.v0.color * barycentric_coordinates.x
-                            + triangle.v1.color * barycentric_coordinates.y
-                            + triangle.v2.color * barycentric_coordinates.z;
+                            barycentric_coordinates = row_start_barycentric_coordinates
+                                + step_x * (x_enter as f32 - triangle_bounding_min.x);
 
-                        let x_range = x_enter..=x_exit;
-                        let mut x = *x_range.start();
+                            let mut current_uv = triangle.v0.uv.coords * barycentric_coordinates.x
+                                + triangle.v1.uv.coords * barycentric_coordinates.y
+                                + triangle.v2.uv.coords * barycentric_coordinates.z;
 
-                        for len in PowerOfTwoIter::<16>::new(x_range.len()) {
-                            let target_pixel_row = target_texture
-                                .view_mut(RangeInclusive::from_start_and_length(x, len), y..=y);
+                            let mut current_color = triangle.v0.color * barycentric_coordinates.x
+                                + triangle.v1.color * barycentric_coordinates.y
+                                + triangle.v2.color * barycentric_coordinates.z;
 
-                            // Note these functions are perfectly safe, the unsafe is required due to enabling simd features
-                            // that are already guarded against by multiversion
+                            let x_range = x_enter..=x_exit;
+                            let mut x = *x_range.start();
 
-                            match len {
-                                16 => unsafe {
-                                    pixel_rounds::<16, P>(
-                                        target_pixel_row,
-                                        &triangle,
-                                        texture_dimensions,
-                                        &mut current_uv,
-                                        &mut current_color,
-                                        step_uv,
-                                        step_color,
-                                    );
-                                },
-                                8 => unsafe {
-                                    pixel_rounds::<8, P>(
-                                        target_pixel_row,
-                                        &triangle,
-                                        texture_dimensions,
-                                        &mut current_uv,
-                                        &mut current_color,
-                                        step_uv,
-                                        step_color,
-                                    );
-                                },
-                                4 => unsafe {
-                                    pixel_rounds::<4, P>(
-                                        target_pixel_row,
-                                        &triangle,
-                                        texture_dimensions,
-                                        &mut current_uv,
-                                        &mut current_color,
-                                        step_uv,
-                                        step_color,
-                                    );
-                                },
-                                2 => unsafe {
-                                    pixel_rounds::<2, P>(
-                                        target_pixel_row,
-                                        &triangle,
-                                        texture_dimensions,
-                                        &mut current_uv,
-                                        &mut current_color,
-                                        step_uv,
-                                        step_color,
-                                    );
-                                },
-                                1 => unsafe {
-                                    pixel_rounds::<1, P>(
-                                        target_pixel_row,
-                                        &triangle,
-                                        texture_dimensions,
-                                        &mut current_uv,
-                                        &mut current_color,
-                                        step_uv,
-                                        step_color,
-                                    );
-                                },
-                                _ => {
-                                    unreachable!()
+                            for len in PowerOfTwoIter::<16>::new(x_range.len()) {
+                                let target_pixel_row = target_texture
+                                    .view_mut(RangeInclusive::from_start_and_length(x, len), y..=y);
+
+                                // Note these functions are perfectly safe, the unsafe is required due to enabling simd features
+                                // that are already guarded against by multiversion
+
+                                match len {
+                                    16 => unsafe {
+                                        pixel_rounds::<16, P>(
+                                            target_pixel_row,
+                                            texture,
+                                            texture_dimensions,
+                                            &mut current_uv,
+                                            &mut current_color,
+                                            step_uv,
+                                            step_color,
+                                        );
+                                    },
+                                    8 => unsafe {
+                                        pixel_rounds::<8, P>(
+                                            target_pixel_row,
+                                            texture,
+                                            texture_dimensions,
+                                            &mut current_uv,
+                                            &mut current_color,
+                                            step_uv,
+                                            step_color,
+                                        );
+                                    },
+                                    4 => unsafe {
+                                        pixel_rounds::<4, P>(
+                                            target_pixel_row,
+                                            texture,
+                                            texture_dimensions,
+                                            &mut current_uv,
+                                            &mut current_color,
+                                            step_uv,
+                                            step_color,
+                                        );
+                                    },
+                                    2 => unsafe {
+                                        pixel_rounds::<2, P>(
+                                            target_pixel_row,
+                                            texture,
+                                            texture_dimensions,
+                                            &mut current_uv,
+                                            &mut current_color,
+                                            step_uv,
+                                            step_color,
+                                        );
+                                    },
+                                    1 => unsafe {
+                                        pixel_rounds::<1, P>(
+                                            target_pixel_row,
+                                            texture,
+                                            texture_dimensions,
+                                            &mut current_uv,
+                                            &mut current_color,
+                                            step_uv,
+                                            step_color,
+                                        );
+                                    },
+                                    _ => {
+                                        unreachable!()
+                                    }
                                 }
+
+                                x += len;
+                                barycentric_coordinates += step_x * len as f32;
                             }
 
-                            x += len;
-                            barycentric_coordinates += step_x * len as f32;
+                            row_start_barycentric_coordinates += step_y;
                         }
-
-                        row_start_barycentric_coordinates += step_y;
                     }
                 }
             }
@@ -339,7 +351,7 @@ impl Renderer {
         #[inherit_target]
         pub unsafe fn pixel_rounds<const C: usize, P: From<Srgba<u8>> + Into<Srgba<u8>> + Copy>(
             mut target_pixel_row: TextureViewMut<P>,
-            triangle: &Triangle<'_>,
+            texture: &Texture<Srgba<u8>>,
             texture_dimensions: Vector2<f32>,
             current_uv: &mut Vector2<f32>,
             current_color: &mut Srgba<f32>,
@@ -370,7 +382,7 @@ impl Renderer {
                 let pixel_coords =
                     Vector2::<u32>::new(texture_position.x as u32, texture_position.y as u32)
                         .zip_map(
-                            &(triangle.texture.size().cast() - Vector2::from_element(1)),
+                            &(texture.size().cast() - Vector2::from_element(1)),
                             |a, b| a.min(b),
                         );
 
@@ -385,8 +397,7 @@ impl Renderer {
             for index in 0..C {
                 let texture_position = texture_positions.column(index).into_owned();
                 let texture_pixel =
-                    unsafe { triangle.texture.get_unchecked(texture_position.cast()) }
-                        .into_format();
+                    unsafe { texture.get_unchecked(texture_position.cast()) }.into_format();
 
                 texture_pixels_red[index] = texture_pixel.red;
                 texture_pixels_green[index] = texture_pixel.green;
