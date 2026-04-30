@@ -1,6 +1,4 @@
-use std::{
-    borrow::Cow, collections::HashMap, ops::Deref, sync::Arc, thread::sleep, time::Duration,
-};
+use std::{borrow::Cow, collections::HashMap, ops::Deref, sync::Arc};
 
 use egui::ViewportId;
 use egui_tracing::EventCollector;
@@ -107,47 +105,6 @@ impl<R: WinitCompatibleGraphicsRuntime> ApplicationHandler<()> for DesktopEventL
         _window_id: WindowId,
         event: WindowEvent,
     ) {
-        self.frontend.reset_graphics_to_meet_machine_requirements(
-            |egui_context, sealed_machine_builder| {
-                // HACK: Stop race condition causing crash on wayland. I can't think of a better way to do this.
-                sleep(Duration::from_millis(250));
-
-                let WindowingContext {
-                    window,
-                    graphics_runtime,
-                    ..
-                } = self.windowing_context.take().unwrap();
-
-                // Destroy old graphics context
-                drop(graphics_runtime);
-
-                let graphics_runtime = R::new(
-                    window.clone(),
-                    sealed_machine_builder.graphics_requirements(),
-                );
-
-                let egui_winit_context = egui_winit::State::new(
-                    egui_context.clone(),
-                    ViewportId::ROOT,
-                    &window,
-                    Some(window.scale_factor() as f32),
-                    window.theme(),
-                    Some(graphics_runtime.max_texture_side() as usize),
-                );
-
-                let component_initialization_data =
-                    graphics_runtime.component_initialization_data();
-
-                self.windowing_context = Some(WindowingContext {
-                    egui_winit_context,
-                    window,
-                    graphics_runtime,
-                });
-
-                component_initialization_data
-            },
-        );
-
         let WindowingContext {
             window,
             graphics_runtime,
@@ -233,6 +190,49 @@ impl<R: WinitCompatibleGraphicsRuntime> ApplicationHandler<()> for DesktopEventL
             }
             _ => {}
         }
+    }
+
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        self.frontend.reset_graphics_to_meet_machine_requirements(
+            |egui_context, sealed_machine_builder| {
+                let WindowingContext {
+                    window,
+                    graphics_runtime,
+                    ..
+                } = self.windowing_context.take().unwrap();
+
+                // Destroy old graphics context
+                drop(graphics_runtime);
+
+                let graphics_runtime = R::new(
+                    window.clone(),
+                    sealed_machine_builder.graphics_requirements(),
+                );
+
+                let egui_winit_context = egui_winit::State::new(
+                    egui_context.clone(),
+                    ViewportId::ROOT,
+                    &window,
+                    Some(window.scale_factor() as f32),
+                    window.theme(),
+                    Some(graphics_runtime.max_texture_side() as usize),
+                );
+
+                let component_initialization_data =
+                    graphics_runtime.component_initialization_data();
+
+                // Make sure the user sees the game as it loads immediately
+                window.request_redraw();
+
+                self.windowing_context = Some(WindowingContext {
+                    egui_winit_context,
+                    window,
+                    graphics_runtime,
+                });
+
+                component_initialization_data
+            },
+        );
     }
 
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
