@@ -61,6 +61,8 @@ impl GraphicsRuntime for SoftwareGraphicsRuntime {
     }
 
     fn present_machine(&mut self, machine: &Arc<Machine>) {
+        let window = self.surface.window().clone();
+
         if let Ok(mut surface_buffer) = self.surface.buffer_mut() {
             let width = surface_buffer.width();
             let height = surface_buffer.height();
@@ -130,6 +132,7 @@ impl GraphicsRuntime for SoftwareGraphicsRuntime {
             }
             drop(runtime_guard);
 
+            window.pre_present_notify();
             surface_buffer.present().unwrap();
         }
     }
