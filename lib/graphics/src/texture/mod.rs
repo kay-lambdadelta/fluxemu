@@ -91,25 +91,32 @@ pub trait TextureImplMut<T: Sized>: TextureImpl<T> + IndexMut<Point2<usize>> {
             return;
         }
 
-        for y in 0..self.height() {
-            for x in 0..self.width() {
-                let index = Point2::new(x, y);
+        match mode {
+            CopyMode::Nearest => {
+                let mut source_position = Point2::new(0, 0);
+                let mut error = Vector2::new(0, 0);
 
-                let source_pixel = match mode {
-                    CopyMode::Nearest => {
-                        let source_coordinates = index
-                            .coords
-                            .component_mul(&other.size())
-                            .component_div(&self.size());
+                for y in 0..self.height() {
+                    source_position.x = 0;
+                    error.x = 0;
 
-                        let clamped_source_coords = source_coordinates
-                            .zip_map(&other.size(), |a: usize, b| a.min(b.saturating_sub(1)));
+                    for x in 0..self.width() {
+                        let source_pixel = other[source_position].clone().into();
+                        self[Point2::new(x, y)] = source_pixel;
 
-                        other[clamped_source_coords.into()].clone()
+                        error.x += other.width();
+                        if error.x >= self.width() {
+                            error.x -= self.width();
+                            source_position.x += 1;
+                        }
                     }
-                };
 
-                self[index] = source_pixel.into();
+                    error.y += other.height();
+                    if error.y >= self.height() {
+                        error.y -= self.height();
+                        source_position.y += 1;
+                    }
+                }
             }
         }
     }
