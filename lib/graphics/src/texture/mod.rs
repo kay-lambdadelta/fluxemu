@@ -473,11 +473,6 @@ pub struct TextureViewMut<'a, T> {
 
 impl<'a, T> TextureViewMut<'a, T> {
     #[inline]
-    fn is_full_texture_view(&self) -> bool {
-        self.texture_size == self.size && self.offset == Point2::new(0, 0)
-    }
-
-    #[inline]
     pub fn from_slice(texture: &'a mut [T], width: usize, height: usize) -> Self {
         assert_eq!(texture.len(), width * height);
 
@@ -645,19 +640,23 @@ impl<'a, T: Sized> TextureImplMut<T> for TextureViewMut<'a, T> {
     where
         T: Clone,
     {
-        if self.is_full_texture_view() {
-            self.texture.fill(value);
+        if self.offset.x == 0 && self.size.x == self.texture_size.x {
+            let range = RangeInclusive::from_start_and_length(
+                self.offset.y * self.texture_size.x,
+                self.size.y * self.texture_size.x,
+            );
+
+            self.texture[range].fill(value);
         } else {
+            let x_range = RangeInclusive::from_start_and_length(self.offset.x, self.size.x);
+
             for row in self
                 .texture
                 .chunks_exact_mut(self.texture_size.x)
                 .skip(self.offset.y)
                 .take(self.size.y)
             {
-                let row_slice =
-                    &mut row[RangeInclusive::from_start_and_length(self.offset.x, self.size.x)];
-
-                row_slice.fill(value.clone());
+                row[x_range.clone()].fill(value.clone());
             }
         }
     }
