@@ -1,6 +1,7 @@
-use std::{borrow::Cow, collections::HashMap, ops::Deref, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, ops::Deref, sync::Arc, time::Instant};
 
-use egui::ViewportId;
+use crate::{audio::CpalAudioRuntime, input::keyboard::winit2key, platform::DesktopPlatform};
+use egui::{Context, ViewportId};
 use egui_tracing::EventCollector;
 use fluxemu_environment::{ENVIRONMENT_LOCATION, Environment};
 use fluxemu_frontend::{
@@ -15,12 +16,15 @@ use strum::IntoEnumIterator;
 use uuid::Uuid;
 use winit::{
     application::ApplicationHandler,
-    event::{ElementState, WindowEvent},
-    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
+    event::{ElementState, StartCause, WindowEvent},
+    event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy},
     window::{Window, WindowId},
 };
 
-use crate::{audio::CpalAudioRuntime, input::keyboard::winit2key, platform::DesktopPlatform};
+#[derive(Debug)]
+enum Message {
+    RedrawAt(Instant),
+}
 
 struct WindowingContext<R: WinitCompatibleGraphicsRuntime> {
     window: Arc<Window>,
@@ -33,6 +37,7 @@ pub struct DesktopEventLoop<R: WinitCompatibleGraphicsRuntime> {
     gilrs_context: Gilrs,
     non_stable_controller_identification: HashMap<gilrs::GamepadId, PhysicalInputDeviceId>,
     frontend: Frontend<DesktopPlatform<R>>,
+    event_loop_proxy: EventLoopProxy<Message>,
     refresh_surface: bool,
     added_keyboard: bool,
 }
@@ -45,7 +50,7 @@ impl<R: WinitCompatibleGraphicsRuntime> DesktopEventLoop<R> {
         machine_factories: MachineFactories<DesktopPlatform<R>>,
         initial_program: Option<Vec<RomId>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let event_loop = EventLoop::new()?;
+        let event_loop = EventLoop::with_user_event().build()?;
         let gilrs_context = GilrsBuilder::new().build().unwrap();
         let non_stable_controller_identification = HashMap::new();
         let audio_runtime = CpalAudioRuntime::new().unwrap();
@@ -59,11 +64,14 @@ impl<R: WinitCompatibleGraphicsRuntime> DesktopEventLoop<R> {
             initial_program,
         );
 
+        let event_loop_proxy = event_loop.create_proxy();
+
         let mut me = Self {
             frontend,
             windowing_context: None,
             gilrs_context,
             non_stable_controller_identification,
+            event_loop_proxy,
             refresh_surface: false,
             added_keyboard: false,
         };
@@ -74,17 +82,18 @@ impl<R: WinitCompatibleGraphicsRuntime> DesktopEventLoop<R> {
     }
 }
 
-impl<R: WinitCompatibleGraphicsRuntime> ApplicationHandler<()> for DesktopEventLoop<R> {
+impl<R: WinitCompatibleGraphicsRuntime> ApplicationHandler<Message> for DesktopEventLoop<R> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         event_loop.set_control_flow(ControlFlow::Wait);
 
         let window = setup_window(event_loop);
-        let egui_context = self.frontend.egui_context().clone();
-
         let graphics_runtime = R::new(window.clone(), Default::default());
+        let egui_context = self.frontend.egui_context();
+
+        setup_egui_context(egui_context, self.event_loop_proxy.clone(), window.clone());
 
         let egui_winit_context = egui_winit::State::new(
-            egui_context,
+            egui_context.clone(),
             ViewportId::ROOT,
             &window,
             Some(window.scale_factor() as f32),
@@ -201,6 +210,8 @@ impl<R: WinitCompatibleGraphicsRuntime> ApplicationHandler<()> for DesktopEventL
                     ..
                 } = self.windowing_context.take().unwrap();
 
+                setup_egui_context(egui_context, self.event_loop_proxy.clone(), window.clone());
+
                 // Destroy old graphics context
                 drop(graphics_runtime);
 
@@ -244,6 +255,24 @@ impl<R: WinitCompatibleGraphicsRuntime> ApplicationHandler<()> for DesktopEventL
             tracing::error!("Failed to write environment file: {}", error);
         }
     }
+
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Message) {
+        match event {
+            Message::RedrawAt(at) => {
+                event_loop.set_control_flow(ControlFlow::WaitUntil(at));
+            }
+        }
+    }
+
+    fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
+        // Timer ran out. Redraw and return to waiting
+        if let StartCause::ResumeTimeReached { .. } = cause {
+            let WindowingContext { window, .. } = self.windowing_context.as_mut().unwrap();
+
+            event_loop.set_control_flow(ControlFlow::Wait);
+            window.request_redraw();
+        }
+    }
 }
 
 fn produce_id_for_gilrs_gamepad(
@@ -266,6 +295,21 @@ fn produce_id_for_gilrs_gamepad(
     }
 
     PhysicalInputDeviceId::new(gamepad_id.try_into().unwrap())
+}
+
+fn setup_egui_context(
+    context: &Context,
+    event_loop_proxy: EventLoopProxy<Message>,
+    window: Arc<Window>,
+) {
+    context.set_request_repaint_callback(move |info| {
+        if info.delay.is_zero() {
+            window.request_redraw();
+        } else {
+            let at = Instant::now() + info.delay;
+            let _ = event_loop_proxy.send_event(Message::RedrawAt(at));
+        }
+    });
 }
 
 fn setup_window(event_loop: &ActiveEventLoop) -> Arc<Window> {

@@ -228,6 +228,7 @@ impl GraphicsRuntime for WebgpuGraphicsRuntime {
                 let command_buffer = encoder.finish();
                 let submission_index = self.queue.submit([command_buffer]);
 
+                self.window.pre_present_notify();
                 surface_texture.present();
 
                 self.device

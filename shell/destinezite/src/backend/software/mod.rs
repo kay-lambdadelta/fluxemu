@@ -39,6 +39,8 @@ impl GraphicsRuntime for SoftwareGraphicsRuntime {
     }
 
     fn present_egui_overlay(&mut self, context: &egui::Context, full_output: egui::FullOutput) {
+        let window = self.surface.window().clone();
+
         if let Ok(mut surface_buffer) = self.surface.buffer_mut() {
             let width = surface_buffer.width();
             let height = surface_buffer.height();
@@ -53,6 +55,7 @@ impl GraphicsRuntime for SoftwareGraphicsRuntime {
             self.renderer
                 .render::<Packed<Bgra, [u8; 4]>>(context, full_output, surface_texture);
 
+            window.pre_present_notify();
             surface_buffer.present().unwrap();
         }
     }
