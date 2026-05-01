@@ -256,7 +256,7 @@ impl Component for Mos6532Riot {
     }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
-        for timestamp in context.allocate(self.config.frequency.recip()) {
+        for timestamp in context.allocate_continuous(self.config.frequency.recip()) {
             if let Some(config) = &mut self.state.timer_configuration
                 && timestamp == config.next_timestamp
             {

@@ -80,12 +80,33 @@ pub struct SynchronizationContext<'a> {
 }
 
 impl<'a> SynchronizationContext<'a> {
+    #[inline]
+    pub fn allocate(&mut self, period: Period) -> bool {
+        let (_, budget) = self.check_allocation_preconditions(period);
+
+        // This allocation is possible
+        budget > 0
+    }
+
     /// Create an iterator that continously allocates an amount of time represented by period until either the target timestamp is reached
     /// or the runtime preempts the task
     #[inline]
-    pub fn allocate<'b>(&'b mut self, period: Period) -> QuantaIterator<'b, 'a> {
-        assert_ne!(period, Period::ZERO, "Cannot allocate zero period");
+    pub fn allocate_continuous<'b>(&'b mut self, period: Period) -> QuantaIterator<'b, 'a> {
+        let (last_seen_event_generation, budget) = self.check_allocation_preconditions(period);
 
+        QuantaIterator {
+            period,
+            budget,
+            timestamp_at_allocation: *self.current_timestamp,
+            steps_taken: 0,
+            last_seen_event_generation,
+            context: self,
+        }
+    }
+
+    #[inline]
+    fn check_allocation_preconditions(&mut self, period: Period) -> (u32, u64) {
+        assert_ne!(period, Period::ZERO, "Cannot allocate zero period");
         *self.last_attempted_allocation = period;
 
         let scheduler = &self.runtime.machine().scheduler;
@@ -100,14 +121,7 @@ impl<'a> SynchronizationContext<'a> {
             .floor()
             .to_num::<u64>();
 
-        QuantaIterator {
-            period,
-            budget,
-            timestamp_at_allocation: *self.current_timestamp,
-            steps_taken: 0,
-            last_seen_event_generation,
-            context: self,
-        }
+        (last_seen_event_generation, budget)
     }
 }
 

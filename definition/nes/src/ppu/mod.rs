@@ -534,7 +534,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
         let runtime = ComponentRuntimeApi::current(self.path.clone());
         let mut ppu_address_space = runtime.address_space(self.ppu_address_space).unwrap();
 
-        for timestamp in context.allocate(self.period) {
+        for timestamp in context.allocate_continuous(self.period) {
             if (0..R::VISIBLE_SCANLINES).contains(&self.state.cycle_counter.y) {
                 self.handle_visible_scanlines(&mut ppu_address_space, timestamp);
             } else if self.state.cycle_counter.y == 261 {

@@ -166,7 +166,7 @@ impl Component for Mos6502 {
             .address_space(self.config.assigned_address_space)
             .unwrap();
 
-        for timestamp in context.allocate(self.period) {
+        for timestamp in context.allocate_continuous(self.period) {
             if self.state.cycle_queue.is_empty() {
                 self.state
                     .cycle_queue

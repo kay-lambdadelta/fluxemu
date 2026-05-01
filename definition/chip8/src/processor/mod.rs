@@ -136,7 +136,7 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
             .address_space(self.config.cpu_address_space)
             .unwrap();
 
-        for timestamp in context.allocate(self.config.frequency.recip()) {
+        for timestamp in context.allocate_continuous(self.config.frequency.recip()) {
             'main: {
                 match &self.state.execution_state {
                     ExecutionState::Normal => {

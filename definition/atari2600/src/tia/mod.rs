@@ -170,7 +170,7 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
     }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
-        for _ in context.allocate(R::frequency().recip()) {
+        for _ in context.allocate_continuous(R::frequency().recip()) {
             if let Some(cycles) = self.state.cycles_waiting_for_vsync {
                 self.state.cycles_waiting_for_vsync = Some(cycles.saturating_sub(1));
 
