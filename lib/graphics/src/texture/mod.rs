@@ -93,28 +93,19 @@ pub trait TextureImplMut<T: Sized>: TextureImpl<T> + IndexMut<Point2<usize>> {
 
         match mode {
             CopyMode::Nearest => {
-                let mut source_position = Point2::new(0, 0);
-                let mut error = Vector2::new(0, 0);
+                let ratio = Vector2::new(
+                    other.width() as f32 / self.width() as f32,
+                    other.height() as f32 / self.height() as f32,
+                );
 
                 for y in 0..self.height() {
-                    source_position.x = 0;
-                    error.x = 0;
-
                     for x in 0..self.width() {
-                        let source_pixel = other[source_position].clone().into();
-                        self[Point2::new(x, y)] = source_pixel;
+                        let source_position = Point2::new(
+                            (x as f32 * ratio.x) as usize,
+                            (y as f32 * ratio.y) as usize,
+                        );
 
-                        error.x += other.width();
-                        if error.x >= self.width() {
-                            error.x -= self.width();
-                            source_position.x += 1;
-                        }
-                    }
-
-                    error.y += other.height();
-                    if error.y >= self.height() {
-                        error.y -= self.height();
-                        source_position.y += 1;
+                        self[Point2::new(x, y)] = other[source_position].clone().into();
                     }
                 }
             }
