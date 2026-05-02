@@ -11,8 +11,6 @@ use palette::Srgba;
 
 use crate::graphics::GraphicsApi;
 
-pub mod rgb565;
-
 /// Marker trait for software rendering
 ///
 /// This is the only graphics api that is guaranteed to always work anywhere
