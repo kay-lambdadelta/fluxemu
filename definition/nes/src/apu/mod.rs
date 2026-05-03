@@ -1,4 +1,4 @@
-use std::{io::Read, ops::RangeInclusive};
+use std::ops::RangeInclusive;
 
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
@@ -29,21 +29,6 @@ pub struct Apu {
 
 impl Component for Apu {
     type Event = ();
-
-    fn store_snapshot(
-        &self,
-        _writer: &mut dyn std::io::Write,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        todo!()
-    }
-
-    fn load_snapshot(
-        &mut self,
-        _version: PersistanceFormatVersion,
-        _reader: &mut dyn Read,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        todo!()
-    }
 
     fn memory_read(
         &mut self,

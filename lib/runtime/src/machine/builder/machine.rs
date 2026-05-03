@@ -2,7 +2,6 @@ use std::{
     collections::{HashMap, HashSet},
     marker::PhantomData,
     ops::RangeInclusive,
-    path::PathBuf,
     sync::Arc,
 };
 
@@ -24,7 +23,6 @@ use crate::{
         Address, AddressSpaceData, AddressSpaceId, MapTarget, MemoryRemappingCommand, Permissions,
     },
     path::ComponentPath,
-    persistence::{SaveManager, SnapshotManager},
     platform::Platform,
     scheduler::{Period, Scheduler},
 };
@@ -44,10 +42,6 @@ where
 {
     /// Rom manager
     pub(super) program_manager: Arc<ProgramManager>,
-    /// Save manager
-    pub(super) save_manager: SaveManager,
-    /// Snapshot manager
-    pub(super) snapshot_manager: SnapshotManager,
     /// Command queue
     pub(super) command_queue: Vec<MachineBuilderCommand<'a, P>>,
     /// Program we were opened with
@@ -64,15 +58,8 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
     pub(crate) fn new(
         program_specification: Option<ProgramSpecification>,
         program_manager: Arc<ProgramManager>,
-        save_path: Option<PathBuf>,
-        snapshot_path: Option<PathBuf>,
     ) -> Self {
-        let save_manager = SaveManager::new(save_path);
-        let snapshot_manager = SnapshotManager::new(snapshot_path);
-
         MachineBuilder::<P> {
-            save_manager,
-            snapshot_manager,
             program_manager,
             program_specification,
             next_address_space_id: AddressSpaceId(0),
@@ -416,8 +403,6 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
             input_devices,
             registry_data: self.registry_data,
             framebuffers: self.framebuffers,
-            save_manager: self.save_manager,
-            snapshot_manager: self.snapshot_manager,
             program_specification: self.program_specification,
             audio_outputs,
         });

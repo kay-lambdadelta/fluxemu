@@ -1,6 +1,6 @@
 use std::{
-    any::Any, borrow::Cow, collections::HashSet, io::Read, marker::PhantomData,
-    ops::RangeInclusive, sync::Arc,
+    any::Any, borrow::Cow, collections::HashSet, marker::PhantomData, ops::RangeInclusive,
+    sync::Arc,
 };
 
 use bytes::Bytes;
@@ -61,10 +61,6 @@ pub struct ComponentBuilder<'a, 'b, P: Platform, C: Component> {
 impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
     pub fn path(&self) -> &ComponentPath {
         self.path
-    }
-
-    pub fn get_save(&self) -> Option<(impl Read, PersistanceFormatVersion)> {
-        None::<(&[u8], _)>
     }
 
     pub fn open_rom(

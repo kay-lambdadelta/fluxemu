@@ -254,21 +254,6 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
 impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
     type Event = PpuEvent;
 
-    fn load_snapshot(
-        &mut self,
-        _version: PersistanceFormatVersion,
-        _reader: &mut dyn std::io::Read,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        todo!()
-    }
-
-    fn store_snapshot(
-        &self,
-        _writer: &mut dyn std::io::Write,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        todo!()
-    }
-
     fn memory_read(
         &mut self,
         address: Address,

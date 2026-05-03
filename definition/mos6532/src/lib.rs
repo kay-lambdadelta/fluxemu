@@ -69,25 +69,6 @@ impl Mos6532Riot {
 impl Component for Mos6532Riot {
     type Event = ();
 
-    fn load_snapshot(
-        &mut self,
-        _version: PersistanceFormatVersion,
-        reader: &mut dyn std::io::Read,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        self.state = rmp_serde::decode::from_read(reader)?;
-
-        Ok(())
-    }
-
-    fn store_snapshot(
-        &self,
-        writer: &mut dyn std::io::Write,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        rmp_serde::encode::write(writer, &self.state)?;
-
-        Ok(())
-    }
-
     fn memory_read(
         &mut self,
         address: Address,

@@ -1,7 +1,6 @@
 use std::{
     any::Any,
     fmt::Debug,
-    io::{Read, Write},
 };
 
 use fluxemu_graphics::texture::{CopyMode, Texture, TextureImpl, TextureImplMut};
@@ -164,35 +163,6 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Display<G> {
 
 impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Display<G> {
     type Event = ();
-
-    fn load_snapshot(
-        &mut self,
-        version: PersistanceFormatVersion,
-        reader: &mut dyn Read,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        assert_eq!(version, 0);
-        let snapshot: Snapshot = rmp_serde::decode::from_read(reader)?;
-
-        self.set_hires(snapshot.hires);
-        self.staging_buffer
-            .copy_from(&snapshot.screen_buffer, CopyMode::Nearest);
-
-        self.vsync_occurred = snapshot.vsync_occurred;
-
-        Ok(())
-    }
-
-    fn store_snapshot(&self, mut writer: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>> {
-        let snapshot = Snapshot {
-            screen_buffer: self.staging_buffer.clone(),
-            hires: self.hires,
-            vsync_occurred: self.vsync_occurred,
-        };
-
-        rmp_serde::encode::write(&mut writer, &snapshot)?;
-
-        Ok(())
-    }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
         let mut commit_staging_buffer = false;

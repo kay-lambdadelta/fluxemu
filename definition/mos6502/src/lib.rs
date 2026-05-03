@@ -1,7 +1,4 @@
-use std::{
-    fmt::Debug,
-    io::{Read, Write},
-};
+use std::fmt::Debug;
 
 use fluxemu_runtime::{
     ComponentPath, ComponentRuntimeApi,
@@ -142,22 +139,6 @@ pub struct Mos6502 {
 
 impl Component for Mos6502 {
     type Event = Mos6502Event;
-
-    fn store_snapshot(&self, writer: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>> {
-        rmp_serde::encode::write(writer, &self.state)?;
-
-        Ok(())
-    }
-
-    fn load_snapshot(
-        &mut self,
-        _version: PersistanceFormatVersion,
-        reader: &mut dyn Read,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        self.state = rmp_serde::from_read(reader)?;
-
-        Ok(())
-    }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
         let runtime = ComponentRuntimeApi::current(self.path.clone());

@@ -1,4 +1,4 @@
-use std::{io::Read, ops::RangeInclusive};
+use std::ops::RangeInclusive;
 
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
@@ -310,21 +310,6 @@ impl Mmc1 {
 
 impl Component for Mmc1 {
     type Event = ();
-
-    fn load_snapshot(
-        &mut self,
-        _version: PersistanceFormatVersion,
-        _reader: &mut dyn Read,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        todo!()
-    }
-
-    fn store_snapshot(
-        &self,
-        _writer: &mut dyn std::io::Write,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        todo!()
-    }
 
     fn memory_write(
         &mut self,

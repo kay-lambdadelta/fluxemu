@@ -1,20 +1,17 @@
-use std::{
-    borrow::Cow,
-    io::{Read, Write},
-    ops::RangeInclusive,
-};
+use std::{borrow::Cow, ops::RangeInclusive};
 
 use fluxemu_program::RomId;
 use fluxemu_range::{ContiguousRange, RangeIntersection};
 use rand::Rng;
 use rangemap::RangeInclusiveMap;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     Platform,
     component::{Component, config::ComponentConfig},
     machine::builder::{ComponentBuilder, RomRequirement},
     memory::{Address, AddressSpaceId, MemoryError},
-    persistence::PersistanceFormatVersion,
+    persistence::{AutoSerializableComponent, PersistanceFormatVersion},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,6 +32,12 @@ pub struct MemoryConfig {
     pub sram: bool,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct MemoryPersistance<'a> {
+    buffer: Cow<'a, [u8]>,
+    base: Address,
+}
+
 #[derive(Debug)]
 pub struct Memory {
     buffer: Box<[u8]>,
@@ -43,34 +46,6 @@ pub struct Memory {
 
 impl Component for Memory {
     type Event = ();
-
-    fn load_snapshot(
-        &mut self,
-        _version: PersistanceFormatVersion,
-        reader: &mut dyn Read,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        // Read out base
-        let mut base = [0; size_of::<u64>()];
-        reader.read_exact(&mut base)?;
-        self.base = u64::from_le_bytes(base).try_into()?;
-
-        // Read out buffer
-        reader.read_exact(&mut self.buffer)?;
-
-        Ok(())
-    }
-
-    fn store_save(&self, writer: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>> {
-        // It's the exact same
-        self.store_snapshot(writer)
-    }
-
-    fn store_snapshot(&self, writer: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>> {
-        writer.write_all(&self.base.to_le_bytes())?;
-        writer.write_all(&self.buffer)?;
-
-        Ok(())
-    }
 
     #[inline]
     fn memory_read(
@@ -131,45 +106,32 @@ impl<P: Platform> ComponentConfig<P> for MemoryConfig {
             base: *self.assigned_range.start(),
         };
 
-        match component_builder.get_save() {
-            Some((mut save, 0)) if self.sram => {
-                // snapshot and save format are the exact same
-                component.load_snapshot(0, &mut save).unwrap();
-            }
-            Some(_) => return Err("Invalid save version".into()),
-            None => {
-                for (range, operation) in self.initial_contents.iter() {
-                    let range = range.start() - self.assigned_range.start()
-                        ..=(range.end() - self.assigned_range.start());
+        for (range, operation) in self.initial_contents.iter() {
+            let range = range.start() - self.assigned_range.start()
+                ..=(range.end() - self.assigned_range.start());
 
-                    match operation {
-                        InitialContents::Value(value) => {
-                            component.buffer[range.clone()].fill(*value);
-                        }
-                        InitialContents::Random => {
-                            rand::rng().fill_bytes(&mut component.buffer[range.clone()]);
-                        }
-                        InitialContents::Array(value) => {
-                            component.buffer[range.clone()].copy_from_slice(value);
-                        }
-                        InitialContents::Rom(rom_id) => {
-                            let rom_bytes = component_builder
-                                .open_rom(*rom_id, RomRequirement::Required)?
-                                .unwrap();
+            match operation {
+                InitialContents::Value(value) => {
+                    component.buffer[range.clone()].fill(*value);
+                }
+                InitialContents::Random => {
+                    rand::rng().fill_bytes(&mut component.buffer[range.clone()]);
+                }
+                InitialContents::Array(value) => {
+                    component.buffer[range.clone()].copy_from_slice(value);
+                }
+                InitialContents::Rom(rom_id) => {
+                    let rom_bytes = component_builder
+                        .open_rom(*rom_id, RomRequirement::Required)?
+                        .unwrap();
 
-                            let actual_buffer_range =
-                                range.intersection(&RangeInclusive::from_start_and_length(
-                                    *range.start(),
-                                    rom_bytes.len(),
-                                ));
+                    let actual_buffer_range = range.intersection(
+                        &RangeInclusive::from_start_and_length(*range.start(), rom_bytes.len()),
+                    );
 
-                            let rom_range =
-                                0..=(actual_buffer_range.end() - actual_buffer_range.start());
+                    let rom_range = 0..=(actual_buffer_range.end() - actual_buffer_range.start());
 
-                            component.buffer[actual_buffer_range]
-                                .copy_from_slice(&rom_bytes[rom_range]);
-                        }
-                    }
+                    component.buffer[actual_buffer_range].copy_from_slice(&rom_bytes[rom_range]);
                 }
             }
         }
@@ -191,5 +153,39 @@ impl<P: Platform> ComponentConfig<P> for MemoryConfig {
         }
 
         Ok(component)
+    }
+}
+
+impl AutoSerializableComponent for Memory {
+    type SaveState<'a> = MemoryPersistance<'a>;
+    type SnapshotState<'a> = MemoryPersistance<'a>;
+
+    fn impending_snapshot(&mut self) {
+        // Clear memory
+        self.buffer = Box::default();
+    }
+
+    fn read_save(&self) -> Self::SaveState<'_> {
+        MemoryPersistance {
+            buffer: Cow::Borrowed(&self.buffer),
+            base: self.base,
+        }
+    }
+
+    fn read_snapshot(&self) -> Self::SnapshotState<'_> {
+        MemoryPersistance {
+            buffer: Cow::Borrowed(&self.buffer),
+            base: self.base,
+        }
+    }
+
+    fn write_save(&mut self, save: Self::SaveState<'_>) {
+        self.buffer = save.buffer.into_owned().into_boxed_slice();
+        self.base = save.base;
+    }
+
+    fn write_snapshot(&mut self, snapshot: Self::SnapshotState<'_>) {
+        self.buffer = snapshot.buffer.into_owned().into_boxed_slice();
+        self.base = snapshot.base;
     }
 }

@@ -1,5 +1,5 @@
 use std::{
-    io::{Read, Write},
+    io::Read,
     marker::PhantomData,
     sync::{Arc, Mutex},
 };
@@ -102,32 +102,6 @@ pub struct Chip8ProcessorSnapshot {
 
 impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
     type Event = ();
-
-    fn load_snapshot(
-        &mut self,
-        _version: PersistanceFormatVersion,
-        reader: &mut dyn Read,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let snapshot: Chip8ProcessorSnapshot = rmp_serde::decode::from_read(reader)?;
-
-        self.state.registers = snapshot.registers;
-        self.state.stack = snapshot.stack;
-        self.state.execution_state = snapshot.execution_state;
-
-        Ok(())
-    }
-
-    fn store_snapshot(&self, mut writer: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>> {
-        let snapshot = Chip8ProcessorSnapshot {
-            registers: self.state.registers.clone(),
-            stack: self.state.stack.clone(),
-            execution_state: self.state.execution_state.clone(),
-        };
-
-        rmp_serde::encode::write(&mut writer, &snapshot)?;
-
-        Ok(())
-    }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
         let runtime = ComponentRuntimeApi::current(self.path.clone());

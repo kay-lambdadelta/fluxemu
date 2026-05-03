@@ -38,21 +38,6 @@ pub struct NesController {
 impl Component for NesController {
     type Event = ();
 
-    fn load_snapshot(
-        &mut self,
-        _version: PersistanceFormatVersion,
-        _reader: &mut dyn std::io::Read,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        todo!()
-    }
-
-    fn store_snapshot(
-        &self,
-        _writer: &mut dyn std::io::Write,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        todo!()
-    }
-
     fn memory_read(
         &mut self,
         _address: Address,

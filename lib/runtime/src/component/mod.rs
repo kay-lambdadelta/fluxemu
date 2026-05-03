@@ -1,9 +1,4 @@
-use std::{
-    any::Any,
-    fmt::Debug,
-    io::{Read, Write},
-    ops::RangeInclusive,
-};
+use std::{any::Any, fmt::Debug, ops::RangeInclusive};
 
 use fluxemu_input::{InputId, InputState};
 use fluxemu_range::ContiguousRange;
@@ -13,7 +8,6 @@ use ringbuffer::AllocRingBuffer;
 use crate::{
     event::Event,
     memory::{Address, AddressSpaceId, MemoryError, MemoryErrorType},
-    persistence::PersistanceFormatVersion,
     scheduler::{Period, SynchronizationContext},
 };
 
@@ -32,28 +26,11 @@ pub trait Component: Send + Sync + Debug + Any {
     ///
     /// Use `()` if you don't care about events.
     /// You may still receive dummy events being used as a synchronization barrier however
+    ///
+    /// FIXME: When rust gets default associated types, this should be `()`
     type Event: Event
     where
         Self: Sized;
-
-    /// Write a save representative of the current state of the save relevant aspects of the component
-    fn store_save(&self, writer: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>> {
-        Ok(())
-    }
-
-    /// Write a snapshot representative of the current state of the component
-    fn store_snapshot(&self, writer: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>> {
-        Ok(())
-    }
-
-    /// Read a snapshot and restore the state given within it
-    fn load_snapshot(
-        &mut self,
-        version: PersistanceFormatVersion,
-        reader: &mut dyn Read,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        Ok(())
-    }
 
     /// Read memory at the specified address given the address space id
     ///

@@ -12,21 +12,6 @@ pub struct NRom;
 
 impl Component for NRom {
     type Event = ();
-
-    fn load_snapshot(
-        &mut self,
-        _version: PersistanceFormatVersion,
-        _reader: &mut dyn std::io::Read,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        Ok(())
-    }
-
-    fn store_snapshot(
-        &self,
-        _writer: &mut dyn std::io::Write,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        Ok(())
-    }
 }
 
 #[derive(Debug)]

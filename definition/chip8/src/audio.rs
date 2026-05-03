@@ -1,5 +1,3 @@
-use std::io::{Read, Write};
-
 use fluxemu_audio::SquareWave;
 use fluxemu_runtime::{
     component::{Component, SampleSource, config::ComponentConfig},
@@ -33,24 +31,6 @@ impl Chip8Audio {
 
 impl Component for Chip8Audio {
     type Event = ();
-
-    fn load_snapshot(
-        &mut self,
-        _version: PersistanceFormatVersion,
-        reader: &mut dyn Read,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let timer = std::array::from_mut(&mut self.timer);
-        reader.read_exact(timer)?;
-
-        Ok(())
-    }
-
-    fn store_snapshot(&self, writer: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>> {
-        let timer = std::array::from_ref(&self.timer);
-        writer.write_all(timer)?;
-
-        Ok(())
-    }
 
     fn get_audio_channel(&mut self, _name: &str) -> SampleSource<'_> {
         SampleSource {

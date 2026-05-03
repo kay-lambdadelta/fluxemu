@@ -1,6 +1,5 @@
 use std::{borrow::Cow, collections::HashMap, ops::Deref, sync::Arc, time::Instant};
 
-use crate::{audio::CpalAudioRuntime, input::keyboard::winit2key, platform::DesktopPlatform};
 use egui::{Context, ViewportId};
 use egui_tracing::EventCollector;
 use fluxemu_environment::{ENVIRONMENT_LOCATION, Environment};
@@ -20,6 +19,8 @@ use winit::{
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy},
     window::{Window, WindowId},
 };
+
+use crate::{audio::CpalAudioRuntime, input::keyboard::winit2key, platform::DesktopPlatform};
 
 #[derive(Debug)]
 enum Message {

@@ -8,7 +8,6 @@ use std::{
     fmt::Debug,
     marker::PhantomData,
     ops::Deref,
-    path::PathBuf,
     sync::Arc,
 };
 
@@ -22,7 +21,6 @@ use crate::{
     machine::builder::MachineBuilder,
     memory::{AddressSpaceData, AddressSpaceId},
     path::ResourcePath,
-    persistence::{SaveManager, SnapshotManager},
     platform::{Platform, TestPlatform},
     scheduler::Scheduler,
 };
@@ -48,43 +46,25 @@ where
     pub(crate) audio_outputs: HashSet<ResourcePath>,
     /// The program that this machine was set up with, if any
     pub(crate) program_specification: Option<ProgramSpecification>,
-    #[allow(unused)]
-    pub(crate) save_manager: SaveManager,
-    #[allow(unused)]
-    pub(crate) snapshot_manager: SnapshotManager,
 }
 
 impl Machine {
     pub fn build<'a, P: Platform>(
         program_specification: Option<ProgramSpecification>,
         program_manager: Arc<ProgramManager>,
-        save_path: Option<PathBuf>,
-        snapshot_path: Option<PathBuf>,
     ) -> MachineBuilder<'a, P> {
-        MachineBuilder::<P>::new(
-            program_specification,
-            program_manager,
-            save_path,
-            snapshot_path,
-        )
+        MachineBuilder::<P>::new(program_specification, program_manager)
     }
 
     pub fn build_test<'a>(
         program_specification: Option<ProgramSpecification>,
         program_manager: Arc<ProgramManager>,
-        save_path: Option<PathBuf>,
-        snapshot_path: Option<PathBuf>,
     ) -> MachineBuilder<'a, TestPlatform> {
-        Self::build(
-            program_specification,
-            program_manager,
-            save_path,
-            snapshot_path,
-        )
+        Self::build(program_specification, program_manager)
     }
 
     pub fn build_test_minimal<'a>() -> MachineBuilder<'a, TestPlatform> {
-        Self::build(None, ProgramManager::dummy().unwrap(), None, None)
+        Self::build(None, ProgramManager::dummy().unwrap())
     }
 
     /// Enter the runtime for this machine on this thread

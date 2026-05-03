@@ -1,54 +1,23 @@
-use std::{collections::HashMap, io::Read, path::PathBuf};
-
-use fluxemu_program::ProgramId;
-use serde::{Deserialize, Serialize};
-
-use crate::{
-    component::ComponentRegistry,
-    path::ComponentPath,
-    persistence::{CompressionFormat, PersistanceFormatVersion},
+use std::{
+    fmt::Debug,
+    io::{Read, Write},
 };
 
-pub struct Save {
-    metadata: Metadata,
-}
+use crate::component::Component;
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Metadata {
-    pub version: u32,
-    pub components: HashMap<ComponentPath, ComponentMetadata>,
-    pub compression: Option<CompressionFormat>,
-}
+pub trait SaveCodec: Debug {
+    type Component: Component;
+    type Error: std::error::Error;
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ComponentMetadata {
-    version: PersistanceFormatVersion,
-}
+    fn serialize(
+        &mut self,
+        component: &Self::Component,
+        write: &mut dyn Write,
+    ) -> Result<(), Self::Error>;
 
-#[allow(unused)]
-#[derive(Debug)]
-pub struct SaveManager {
-    save_directory: Option<PathBuf>,
-}
-
-impl SaveManager {
-    pub fn new(save_directory: Option<PathBuf>) -> Self {
-        Self { save_directory }
-    }
-
-    pub fn get(
-        &self,
-        _program_id: &ProgramId,
-        _component_path: ComponentPath,
-    ) -> Result<Option<(impl Read, PersistanceFormatVersion)>, Box<dyn std::error::Error>> {
-        Ok(None::<(&[u8], _)>)
-    }
-
-    pub fn write(
-        &self,
-        _program_id: &ProgramId,
-        _registry: &ComponentRegistry,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        todo!()
-    }
+    fn deserialize(
+        &mut self,
+        component: &mut Self::Component,
+        read: &mut dyn Read,
+    ) -> Result<(), Self::Error>;
 }

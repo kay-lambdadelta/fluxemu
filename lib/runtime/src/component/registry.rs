@@ -313,17 +313,6 @@ impl<'a> ComponentRegistry<'a> {
         }
     }
 
-    pub(crate) fn interact_all(
-        &self,
-        time: Period,
-        mut callback: impl FnMut(&ComponentPath, &mut dyn Component),
-    ) {
-        for (path, metadata) in self.data.metadata.iter() {
-            self.interact_dyn(metadata.id, time, |component| callback(path, component))
-                .unwrap()
-        }
-    }
-
     pub(crate) fn path_to_id(&self, path: &ComponentPath) -> Option<ComponentId> {
         Some(self.data.metadata.get(path)?.id)
     }

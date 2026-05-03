@@ -42,7 +42,6 @@ use fluxemu_runtime::{
         builder::{MachineError, SealedMachineBuilder},
     },
     path::ResourcePath,
-    persistence::SnapshotSlot,
     platform::Platform,
 };
 use indexmap::IndexMap;
@@ -119,7 +118,7 @@ pub struct Frontend<P: FrontendPlatform> {
     machine_context: Option<MachineContext>,
     pending_machine: Option<SealedMachineBuilder<P>>,
     audio_runtime: P::AudioRuntime,
-    current_snapshot_slot: Wrapping<SnapshotSlot>,
+    current_snapshot_slot: Wrapping<u8>,
     machine_factories: Arc<MachineFactories<P>>,
     program_manager: Arc<ProgramManager>,
     machine_loading: bool,
@@ -160,7 +159,7 @@ impl<P: FrontendPlatform> Frontend<P> {
             environment,
             audio_runtime,
             machine_factories: Arc::new(machine_factories),
-            current_snapshot_slot: Wrapping(SnapshotSlot::default()),
+            current_snapshot_slot: Wrapping(0),
             program_manager,
             machine_loading: false,
             frontend_overlay_active: true,
@@ -408,16 +407,9 @@ impl<P: FrontendPlatform> Frontend<P> {
 
     fn build_machine_for_specification(&mut self, specification: ProgramSpecification) {
         let program_manager = self.program_manager.clone();
-        let save_path = self.environment.save_directory.clone();
-        let snapshot_path = self.environment.snapshot_directory.clone();
         let machine_factories = self.machine_factories.clone();
 
-        let machine_builder = Machine::build(
-            Some(specification),
-            program_manager,
-            Some(save_path),
-            Some(snapshot_path),
-        );
+        let machine_builder = Machine::build(Some(specification), program_manager);
 
         let handle = std::thread::spawn(move || {
             machine_factories
