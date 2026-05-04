@@ -42,7 +42,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>> ComponentConf
 
     fn build_component(
         self,
-        component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
+        component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         let (mut component_builder, _) = component_builder
             .scheduler_participation(Some(SchedulerParticipation::OnAccess))

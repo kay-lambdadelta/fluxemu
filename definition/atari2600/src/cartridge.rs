@@ -63,7 +63,7 @@ impl<P: Platform> ComponentConfig<P> for Atari2600CartridgeConfig {
 
     fn build_component(
         self,
-        component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
+        component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         let rom = component_builder
             .open_rom(self.rom, RomRequirement::Required)

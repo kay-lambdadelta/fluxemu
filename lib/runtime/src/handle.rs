@@ -2,6 +2,7 @@ use std::{
     borrow::Cow,
     cell::RefCell,
     collections::{HashMap, HashSet},
+    io::Read,
     rc::Rc,
     sync::Arc,
     time::Duration,
@@ -100,7 +101,7 @@ impl RuntimeApi {
 
     /// List of paths to any audio outputs this machine was created with
     pub fn audio_outputs(&self) -> &HashSet<ResourcePath> {
-        &self.machine.audio_outputs
+        &self.machine.audio_channels
     }
 
     /// Input devices this machine was created with
@@ -136,6 +137,8 @@ impl RuntimeApi {
             )
             .unwrap();
     }
+
+    pub fn load_snapshot<R: Read>(&self, components: impl Iterator<Item = R>) {}
 }
 
 #[derive(Debug)]
@@ -223,9 +226,5 @@ impl<'a> ComponentRuntimeApi<'a> {
         self.registry()
             .get_timestamp(self.component.as_ref())
             .unwrap()
-    }
-
-    pub fn suggest_save(&self) {
-        todo!()
     }
 }

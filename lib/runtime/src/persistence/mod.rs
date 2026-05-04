@@ -1,7 +1,9 @@
 mod codec;
 mod save;
 
+pub use codec::*;
 pub use save::*;
+
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::component::Component;

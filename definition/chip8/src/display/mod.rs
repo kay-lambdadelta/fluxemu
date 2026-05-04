@@ -1,7 +1,4 @@
-use std::{
-    any::Any,
-    fmt::Debug,
-};
+use std::{any::Any, fmt::Debug};
 
 use fluxemu_graphics::texture::{CopyMode, Texture, TextureImpl, TextureImplMut};
 use fluxemu_runtime::{
@@ -218,7 +215,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
 
     fn build_component(
         self,
-        component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
+        component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         component_builder
             .scheduler_participation(Some(SchedulerParticipation::OnAccess))

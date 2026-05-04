@@ -85,7 +85,7 @@ impl<P: Platform> ComponentConfig<P> for Atari2600JoystickConfig {
 
     fn build_component(
         self,
-        component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
+        component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         let (component_builder, player1) =
             component_builder.input("player-1", PRESENT_INPUTS, DEFAULT_MAPPINGS);

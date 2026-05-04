@@ -29,7 +29,7 @@ const MAPCTL_ADDRESS: Address = 0xfff9;
 pub struct AtariLynx;
 
 impl<P: Platform> MachineFactory<P> for AtariLynx {
-    fn construct<'a>(&self, machine: MachineBuilder<'a, P>) -> MachineBuilder<'a, P> {
+    fn construct<'a>(&self, machine: MachineBuilder<P>) -> MachineBuilder<P> {
         // 16 Mhz
         let _base_clock = Ratio::from_integer(16000000);
         let (machine, cpu_address_space) = machine.address_space(16);

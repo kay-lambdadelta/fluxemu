@@ -79,7 +79,7 @@ impl<P: Platform> ComponentConfig<P> for Chip8AudioConfig {
 
     fn build_component(
         self,
-        component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
+        component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         component_builder
             .scheduler_participation(Some(SchedulerParticipation::OnAccess))

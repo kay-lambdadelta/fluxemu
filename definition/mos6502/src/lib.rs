@@ -275,7 +275,7 @@ impl<P: Platform> ComponentConfig<P> for Mos6502Config {
 
     fn build_component(
         self,
-        component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
+        component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         let component_builder = component_builder
             .scheduler_participation(Some(SchedulerParticipation::SchedulerDriven));

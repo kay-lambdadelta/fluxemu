@@ -115,7 +115,7 @@ impl<P: Platform> ComponentConfig<P> for MapctlConfig {
 
     fn build_component(
         self,
-        component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
+        component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         let my_path = component_builder.path().clone();
 

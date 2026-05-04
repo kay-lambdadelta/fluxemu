@@ -56,7 +56,7 @@ impl<P: Platform> ComponentConfig<P> for Intel8080Config {
 
     fn build_component(
         self,
-        _component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
+        _component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         todo!()
     }

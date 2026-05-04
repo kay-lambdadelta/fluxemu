@@ -36,7 +36,7 @@ pub enum Chip8Mode {
 pub struct Chip8;
 
 impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> MachineFactory<P> for Chip8 {
-    fn construct<'a>(&self, machine: MachineBuilder<'a, P>) -> MachineBuilder<'a, P> {
+    fn construct<'a>(&self, machine: MachineBuilder<P>) -> MachineBuilder<P> {
         let (machine, cpu_address_space) = machine.address_space(12);
         let (machine, timer) = machine.default_component::<Chip8TimerConfig>("timer");
         let (machine, audio) = machine.component(

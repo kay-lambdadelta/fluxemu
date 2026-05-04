@@ -38,7 +38,7 @@ mod ppu;
 pub struct Nes;
 
 impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> MachineFactory<P> for Nes {
-    fn construct<'a>(&self, machine: MachineBuilder<'a, P>) -> MachineBuilder<'a, P> {
+    fn construct<'a>(&self, machine: MachineBuilder<P>) -> MachineBuilder<P> {
         let (machine, cpu_address_space) = machine.address_space(16);
         let (machine, ppu_address_space) = machine.address_space(14);
 
@@ -280,11 +280,11 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> MachineFactory<P>
 // Note that these are the *default* mapping for this particular cart
 //
 // The actual cart hardware is free to and often will immediately overwrite this
-fn setup_ppu_nametables<'a, P: Platform>(
-    machine: MachineBuilder<'a, P>,
+fn setup_ppu_nametables<P: Platform>(
+    machine: MachineBuilder<P>,
     ppu_address_space: AddressSpaceId,
     ines: &INes,
-) -> (MachineBuilder<'a, P>, [ComponentPath; 2]) {
+) -> (MachineBuilder<P>, [ComponentPath; 2]) {
     match ines.mirroring {
         NametableMirroring::Vertical => {
             let (machine, nametable_0) = machine.component(

@@ -2,11 +2,8 @@ use std::{collections::HashMap, ops::DerefMut, sync::Arc};
 
 use crate::{
     component::{Component, config::LateContext},
-    event::{Event, EventMode},
     graphics::{GraphicsApi, GraphicsRequirements},
-    input::LogicalInputDevice,
     machine::Machine,
-    memory::{AddressSpaceId, MemoryRemappingCommand},
     path::ComponentPath,
     platform::Platform,
     scheduler::Period,
@@ -35,36 +32,6 @@ pub enum RomRequirement {
     Optional,
     /// Machine can not boot without this ROM
     Required,
-}
-
-#[allow(type_alias_bounds)]
-type ComponentConstructor<'a, P: Platform> = Box<
-    dyn for<'b> FnOnce(&'b mut MachineBuilder<'a, P>) -> ComponentData<'a, P> + Sync + Send + 'a,
->;
-
-enum MachineBuilderCommand<'a, P: Platform> {
-    CreateComponent {
-        constructor: ComponentConstructor<'a, P>,
-        path: ComponentPath,
-    },
-    CreateAddressSpace {
-        id: AddressSpaceId,
-        width: u8,
-    },
-    InsertEvent {
-        path: ComponentPath,
-        requeue_mode: EventMode,
-        time: Period,
-        data: Box<dyn Event>,
-    },
-    MemoryMap {
-        address_space: AddressSpaceId,
-        command: MemoryRemappingCommand,
-    },
-    CreateInputDevice(Arc<LogicalInputDevice>),
-    AddGraphicsRequirements {
-        requirements: GraphicsRequirements<P::GraphicsApi>,
-    },
 }
 
 type ComponentLateInitializer<P> =
@@ -109,5 +76,5 @@ impl<P: Platform> SealedMachineBuilder<P> {
 
 pub trait MachineFactory<P: Platform>: Send + Sync + 'static {
     /// Construct a new machine given the parameters
-    fn construct<'a>(&self, machine_builder: MachineBuilder<'a, P>) -> MachineBuilder<'a, P>;
+    fn construct(&self, machine_builder: MachineBuilder<P>) -> MachineBuilder<P>;
 }

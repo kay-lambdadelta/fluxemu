@@ -15,12 +15,13 @@ use fluxemu_program::{ProgramManager, ProgramSpecification};
 use rustc_hash::FxBuildHasher;
 
 use crate::{
-    RuntimeApi,
+    ComponentPath, RuntimeApi,
     component::ComponentRegistryData,
     input::LogicalInputDevice,
     machine::builder::MachineBuilder,
     memory::{AddressSpaceData, AddressSpaceId},
     path::ResourcePath,
+    persistence::ErasedCodec,
     platform::{Platform, TestPlatform},
     scheduler::Scheduler,
 };
@@ -43,27 +44,29 @@ where
     /// All framebuffers this machine has
     pub(crate) framebuffers: HashSet<ResourcePath>,
     /// All audio outputs this machine has
-    pub(crate) audio_outputs: HashSet<ResourcePath>,
+    pub(crate) audio_channels: HashSet<ResourcePath>,
     /// The program that this machine was set up with, if any
     pub(crate) program_specification: Option<ProgramSpecification>,
+    pub(crate) save_codecs: HashMap<ComponentPath, Box<dyn ErasedCodec>>,
+    pub(crate) snapshot_codecs: HashMap<ComponentPath, Box<dyn ErasedCodec>>,
 }
 
 impl Machine {
-    pub fn build<'a, P: Platform>(
+    pub fn build<P: Platform>(
         program_specification: Option<ProgramSpecification>,
         program_manager: Arc<ProgramManager>,
-    ) -> MachineBuilder<'a, P> {
+    ) -> MachineBuilder<P> {
         MachineBuilder::<P>::new(program_specification, program_manager)
     }
 
-    pub fn build_test<'a>(
+    pub fn build_test(
         program_specification: Option<ProgramSpecification>,
         program_manager: Arc<ProgramManager>,
-    ) -> MachineBuilder<'a, TestPlatform> {
+    ) -> MachineBuilder<TestPlatform> {
         Self::build(program_specification, program_manager)
     }
 
-    pub fn build_test_minimal<'a>() -> MachineBuilder<'a, TestPlatform> {
+    pub fn build_test_minimal() -> MachineBuilder<TestPlatform> {
         Self::build(None, ProgramManager::dummy().unwrap())
     }
 

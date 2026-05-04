@@ -271,7 +271,7 @@ impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
 
     fn build_component(
         self,
-        component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
+        component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         let ram_assigned_addresses =
             self.ram_assigned_address..=self.ram_assigned_address.checked_add(0x7f).unwrap();

@@ -418,7 +418,7 @@ impl<P: Platform> ComponentConfig<P> for Mmc1Config {
 
     fn build_component(
         self,
-        mut component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
+        mut component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         if self.params.chr_rom.is_some()
             && (self.params.chr_ram_size != 0 || self.params.chr_nvram_size != 0)

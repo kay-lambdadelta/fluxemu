@@ -1,23 +1,10 @@
-use std::{
-    fmt::Debug,
-    io::{Read, Write},
+use crate::{
+    ComponentPath, component::ComponentRegistry, persistence::ErasedCodec, scheduler::Period,
 };
+use std::collections::HashMap;
 
-use crate::component::Component;
-
-pub trait SaveCodec: Debug {
-    type Component: Component;
-    type Error: std::error::Error;
-
-    fn serialize(
-        &mut self,
-        component: &Self::Component,
-        write: &mut dyn Write,
-    ) -> Result<(), Self::Error>;
-
-    fn deserialize(
-        &mut self,
-        component: &mut Self::Component,
-        read: &mut dyn Read,
-    ) -> Result<(), Self::Error>;
+pub struct SaveManager<'a> {
+    save_codecs: &'a HashMap<ComponentPath, Box<dyn ErasedCodec>>,
+    registry: ComponentRegistry<'a>,
+    now: Period,
 }

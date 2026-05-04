@@ -32,7 +32,7 @@ enum RegionSelection {
 pub struct Atari2600;
 
 impl<P: Platform<GraphicsApi: SupportedGraphicsApiTia>> MachineFactory<P> for Atari2600 {
-    fn construct<'a>(&self, machine: MachineBuilder<'a, P>) -> MachineBuilder<'a, P> {
+    fn construct(&self, machine: MachineBuilder<P>) -> MachineBuilder<P> {
         // Atari 2600 CPU only has 13 address lines
         let (machine, cpu_address_space) = machine.address_space(13);
         // For now, assume all games are ntsc
@@ -83,10 +83,10 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiTia>> MachineFactory<P> for At
     }
 }
 
-fn common<'a, R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>>(
+fn common<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>>(
     cpu_address_space: AddressSpaceId,
-    machine: MachineBuilder<'a, P>,
-) -> MachineBuilder<'a, P> {
+    machine: MachineBuilder<P>,
+) -> MachineBuilder<P> {
     let (machine, joystick) = machine.component("joystick", Atari2600JoystickConfig);
 
     let (machine, cpu) = machine.component(

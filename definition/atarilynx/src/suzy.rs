@@ -179,7 +179,7 @@ impl<P: Platform> ComponentConfig<P> for SuzyConfig {
 
     fn build_component(
         self,
-        component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
+        component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         component_builder.memory_map_component(self.cpu_address_space, SUZY_ADDRESSES);
 

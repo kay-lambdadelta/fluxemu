@@ -1,7 +1,4 @@
-use std::{
-    any::Any, borrow::Cow, collections::HashSet, marker::PhantomData, ops::RangeInclusive,
-    sync::Arc,
-};
+use std::{any::Any, borrow::Cow, marker::PhantomData, ops::RangeInclusive, sync::Arc};
 
 use bytes::Bytes;
 use fluxemu_input::InputId;
@@ -13,8 +10,7 @@ use crate::{
     graphics::GraphicsRequirements,
     input::{LogicalInputDevice, LogicalInputDeviceMetadata},
     machine::builder::{
-        ComponentLateInitializer, MachineBuilder, MachineBuilderCommand, RomRequirement,
-        SchedulerParticipation,
+        ComponentLateInitializer, MachineBuilder, RomRequirement, SchedulerParticipation,
     },
     memory::{Address, AddressSpaceId, MapTarget, MemoryRemappingCommand, Permissions},
     path::{ComponentPath, ResourcePath},
@@ -24,41 +20,39 @@ use crate::{
 };
 
 /// Overall data extracted from components needed for machine initialization
-pub(super) struct ComponentData<'a, P: Platform> {
-    pub audio_outputs: HashSet<ResourcePath>,
+pub(super) struct ComponentData<P: Platform> {
     pub late_initializer: ComponentLateInitializer<P>,
-    pub scheduler_participation: Option<SchedulerParticipation>,
     pub save_version: Option<PersistanceFormatVersion>,
     pub snapshot_version: PersistanceFormatVersion,
-    pub local_commands: Vec<MachineBuilderCommand<'a, P>>,
+    pub graphics_requirements: GraphicsRequirements<P::GraphicsApi>,
+    pub scheduler_participation: Option<SchedulerParticipation>,
 }
 
-impl<P: Platform> ComponentData<'_, P> {
+impl<P: Platform> ComponentData<P> {
     pub fn new<B: ComponentConfig<P>>() -> Self {
         Self {
-            audio_outputs: HashSet::default(),
             late_initializer: Box::new(|component, data| {
                 let component: &mut B::Component =
                     (component as &mut dyn Any).downcast_mut().unwrap();
 
                 B::late_initialize(component, data)
             }),
-            scheduler_participation: None,
             save_version: None,
             snapshot_version: B::CURRENT_SNAPSHOT_VERSION,
-            local_commands: Vec::default(),
+            graphics_requirements: GraphicsRequirements::default(),
+            scheduler_participation: None,
         }
     }
 }
 
-pub struct ComponentBuilder<'a, 'b, P: Platform, C: Component> {
-    pub(super) machine_builder: &'a mut MachineBuilder<'b, P>,
-    pub(super) component_data: &'a mut ComponentData<'b, P>,
+pub struct ComponentBuilder<'a, P: Platform, C: Component> {
+    pub(super) machine_builder: &'a mut MachineBuilder<P>,
+    pub(super) component_data: &'a mut ComponentData<P>,
     pub(super) path: &'a ComponentPath,
     pub(super) _phantom: PhantomData<C>,
 }
 
-impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
+impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
     pub fn path(&self) -> &ComponentPath {
         self.path
     }
@@ -86,13 +80,18 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
         self,
         scheduler_participation: Option<SchedulerParticipation>,
     ) -> Self {
+        if scheduler_participation == Some(SchedulerParticipation::SchedulerDriven) {
+            self.machine_builder
+                .scheduler
+                .register_driven_component(self.path.clone());
+        }
         self.component_data.scheduler_participation = scheduler_participation;
 
         self
     }
 
     /// Insert a component into the machine
-    pub fn component<B: ComponentConfig<P> + 'b>(
+    pub fn component<B: ComponentConfig<P>>(
         self,
         name: impl Into<Cow<'static, str>>,
         config: B,
@@ -100,15 +99,14 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
         let component_path = self.path.clone();
         let component_path = component_path.join(&name.into()).unwrap();
 
-        let command = MachineBuilder::insert_component_with_path(component_path.clone(), config);
-
-        self.component_data.local_commands.push(command);
+        self.machine_builder
+            .insert_component_with_path(component_path.clone(), config);
 
         (self, component_path)
     }
 
     /// Insert a component with a default config
-    pub fn default_component<B: ComponentConfig<P> + Default + 'b>(
+    pub fn default_component<B: ComponentConfig<P> + Default>(
         self,
         name: impl Into<Cow<'static, str>>,
     ) -> (Self, ComponentPath) {
@@ -120,8 +118,8 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
     pub fn audio_channel(self, name: impl Into<Cow<'static, str>>) -> (Self, ResourcePath) {
         let resource_path = self.path.clone().into_resource(name).unwrap();
 
-        self.component_data
-            .audio_outputs
+        self.machine_builder
+            .audio_channels
             .insert(resource_path.clone());
 
         (self, resource_path)
@@ -149,14 +147,14 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
         let resource_path = self.path.clone().into_resource(name).unwrap();
 
         let device = Arc::new(LogicalInputDevice::new(LogicalInputDeviceMetadata {
-            path: resource_path,
+            path: resource_path.clone(),
             present_inputs: present_inputs.into_iter().collect(),
             default_mappings: default_mappings.into_iter().collect(),
         }));
 
-        self.component_data
-            .local_commands
-            .push(MachineBuilderCommand::CreateInputDevice(device.clone()));
+        self.machine_builder
+            .input_devices
+            .insert(resource_path, device.clone());
 
         (self, device)
     }
@@ -167,15 +165,15 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
         address_space: AddressSpaceId,
         range: RangeInclusive<Address>,
     ) -> Self {
-        self.component_data
-            .local_commands
-            .push(MachineBuilderCommand::MemoryMap {
-                address_space,
-                command: MemoryRemappingCommand::Map {
-                    range,
-                    target: MapTarget::Component(self.path.clone()),
-                    permissions: Permissions::READ,
-                },
+        self.machine_builder
+            .address_spaces
+            .get_mut(&address_space)
+            .unwrap()
+            .commands
+            .push(MemoryRemappingCommand::Map {
+                range,
+                target: MapTarget::Component(self.path.clone()),
+                permissions: Permissions::READ,
             });
 
         self
@@ -186,15 +184,15 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
         address_space: AddressSpaceId,
         range: RangeInclusive<Address>,
     ) -> Self {
-        self.component_data
-            .local_commands
-            .push(MachineBuilderCommand::MemoryMap {
-                address_space,
-                command: MemoryRemappingCommand::Map {
-                    range,
-                    target: MapTarget::Component(self.path.clone()),
-                    permissions: Permissions::WRITE,
-                },
+        self.machine_builder
+            .address_spaces
+            .get_mut(&address_space)
+            .unwrap()
+            .commands
+            .push(MemoryRemappingCommand::Map {
+                range,
+                target: MapTarget::Component(self.path.clone()),
+                permissions: Permissions::WRITE,
             });
 
         self
@@ -205,15 +203,15 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
         address_space: AddressSpaceId,
         range: RangeInclusive<Address>,
     ) -> Self {
-        self.component_data
-            .local_commands
-            .push(MachineBuilderCommand::MemoryMap {
-                address_space,
-                command: MemoryRemappingCommand::Map {
-                    range,
-                    target: MapTarget::Component(self.path.clone()),
-                    permissions: Permissions::ALL,
-                },
+        self.machine_builder
+            .address_spaces
+            .get_mut(&address_space)
+            .unwrap()
+            .commands
+            .push(MemoryRemappingCommand::Map {
+                range,
+                target: MapTarget::Component(self.path.clone()),
+                permissions: Permissions::ALL,
             });
 
         self
@@ -225,15 +223,15 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
         source: RangeInclusive<Address>,
         destination: RangeInclusive<Address>,
     ) -> Self {
-        self.component_data
-            .local_commands
-            .push(MachineBuilderCommand::MemoryMap {
-                address_space,
-                command: MemoryRemappingCommand::Map {
-                    range: source,
-                    target: MapTarget::Mirror { destination },
-                    permissions: Permissions::READ,
-                },
+        self.machine_builder
+            .address_spaces
+            .get_mut(&address_space)
+            .unwrap()
+            .commands
+            .push(MemoryRemappingCommand::Map {
+                range: source,
+                target: MapTarget::Mirror { destination },
+                permissions: Permissions::READ,
             });
 
         self
@@ -245,15 +243,15 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
         source: RangeInclusive<Address>,
         destination: RangeInclusive<Address>,
     ) -> Self {
-        self.component_data
-            .local_commands
-            .push(MachineBuilderCommand::MemoryMap {
-                address_space,
-                command: MemoryRemappingCommand::Map {
-                    range: source,
-                    target: MapTarget::Mirror { destination },
-                    permissions: Permissions::WRITE,
-                },
+        self.machine_builder
+            .address_spaces
+            .get_mut(&address_space)
+            .unwrap()
+            .commands
+            .push(MemoryRemappingCommand::Map {
+                range: source,
+                target: MapTarget::Mirror { destination },
+                permissions: Permissions::WRITE,
             });
 
         self
@@ -265,15 +263,15 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
         source: RangeInclusive<Address>,
         destination: RangeInclusive<Address>,
     ) -> Self {
-        self.component_data
-            .local_commands
-            .push(MachineBuilderCommand::MemoryMap {
-                address_space,
-                command: MemoryRemappingCommand::Map {
-                    range: source,
-                    target: MapTarget::Mirror { destination },
-                    permissions: Permissions::ALL,
-                },
+        self.machine_builder
+            .address_spaces
+            .get_mut(&address_space)
+            .unwrap()
+            .commands
+            .push(MemoryRemappingCommand::Map {
+                range: source,
+                target: MapTarget::Mirror { destination },
+                permissions: Permissions::ALL,
             });
 
         self
@@ -285,15 +283,15 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
         range: RangeInclusive<Address>,
         memory: impl Into<Bytes>,
     ) -> Self {
-        self.component_data
-            .local_commands
-            .push(MachineBuilderCommand::MemoryMap {
-                address_space,
-                command: MemoryRemappingCommand::Map {
-                    range,
-                    target: MapTarget::Buffer(memory.into()),
-                    permissions: Permissions::READ,
-                },
+        self.machine_builder
+            .address_spaces
+            .get_mut(&address_space)
+            .unwrap()
+            .commands
+            .push(MemoryRemappingCommand::Map {
+                range,
+                target: MapTarget::Buffer(memory.into()),
+                permissions: Permissions::READ,
             });
 
         self
@@ -306,14 +304,12 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
         requeue_mode: EventMode,
         data: C2::Event,
     ) -> Self {
-        self.component_data
-            .local_commands
-            .push(MachineBuilderCommand::InsertEvent {
-                data: Box::new(data),
-                requeue_mode,
-                time,
-                path: target_path.clone(),
-            });
+        self.machine_builder.scheduler.event_manager.schedule(
+            time,
+            target_path.clone(),
+            requeue_mode,
+            Box::new(data),
+        );
 
         self
     }
@@ -322,9 +318,8 @@ impl<'b, P: Platform, C: Component> ComponentBuilder<'_, 'b, P, C> {
         self,
         requirements: GraphicsRequirements<P::GraphicsApi>,
     ) -> Self {
-        self.component_data
-            .local_commands
-            .push(MachineBuilderCommand::AddGraphicsRequirements { requirements });
+        self.component_data.graphics_requirements =
+            self.component_data.graphics_requirements.clone() | requirements;
 
         self
     }

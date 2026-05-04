@@ -6,8 +6,7 @@ use fluxemu_runtime::{
     platform::Platform,
 };
 
-type MachineConstructor<P> =
-    Box<dyn for<'b> Fn(MachineBuilder<'b, P>) -> MachineBuilder<'b, P> + Send + Sync>;
+type MachineConstructor<P> = Box<dyn Fn(MachineBuilder<P>) -> MachineBuilder<P> + Send + Sync>;
 
 /// Factory storage for frontend machine generation automation
 pub struct MachineFactories<P: Platform>(HashMap<MachineId, MachineConstructor<P>>);
@@ -32,10 +31,10 @@ impl<P: Platform> MachineFactories<P> {
     }
 
     /// Spit out a machine based upon the factories
-    pub fn construct_machine<'a>(
+    pub fn construct_machine(
         &self,
-        machine_builder: MachineBuilder<'a, P>,
-    ) -> Option<MachineBuilder<'a, P>> {
+        machine_builder: MachineBuilder<P>,
+    ) -> Option<MachineBuilder<P>> {
         let system = machine_builder.machine_id()?;
 
         Some(self.0.get(&system)?(machine_builder))

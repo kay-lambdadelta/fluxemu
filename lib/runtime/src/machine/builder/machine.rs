@@ -7,22 +7,22 @@ use std::{
 
 use bytes::Bytes;
 use fluxemu_program::{MachineId, ProgramManager, ProgramSpecification, RomId};
+use rustc_hash::FxBuildHasher;
 
 use crate::{
     ResourcePath,
     component::{ComponentRegistryData, config::ComponentConfig},
     graphics::GraphicsRequirements,
+    input::LogicalInputDevice,
     machine::{
         Machine,
-        builder::{
-            ComponentBuilder, ComponentData, MachineBuilderCommand, RomRequirement,
-            SchedulerParticipation, SealedMachineBuilder,
-        },
+        builder::{ComponentBuilder, ComponentData, RomRequirement, SealedMachineBuilder},
     },
     memory::{
         Address, AddressSpaceData, AddressSpaceId, MapTarget, MemoryRemappingCommand, Permissions,
     },
     path::ComponentPath,
+    persistence::ErasedCodec,
     platform::Platform,
     scheduler::{Period, Scheduler},
 };
@@ -35,26 +35,28 @@ pub enum MachineError {
     ProgramManager(#[from] fluxemu_program::Error),
 }
 
-/// Builder to produce a machine, definition crates will want to use this
-pub struct MachineBuilder<'a, P: Platform>
-where
-    Self: Send,
-{
-    /// Rom manager
-    pub(super) program_manager: Arc<ProgramManager>,
-    /// Command queue
-    pub(super) command_queue: Vec<MachineBuilderCommand<'a, P>>,
-    /// Program we were opened with
-    pub(super) program_specification: Option<ProgramSpecification>,
-    /// Next address space
-    pub(super) next_address_space_id: AddressSpaceId,
-    /// Component registry
-    pub(super) registry_data: ComponentRegistryData,
-
-    pub(super) framebuffers: HashSet<ResourcePath>,
+pub(super) struct AddressSpaceSetupData {
+    pub data: AddressSpaceData,
+    pub commands: Vec<MemoryRemappingCommand>,
 }
 
-impl<'a, P: Platform> MachineBuilder<'a, P> {
+/// Builder to produce a machine, definition crates will want to use this
+pub struct MachineBuilder<P: Platform> {
+    pub(super) program_manager: Arc<ProgramManager>,
+    pub(super) program_specification: Option<ProgramSpecification>,
+    pub(super) next_address_space_id: AddressSpaceId,
+    pub(super) registry_data: ComponentRegistryData,
+    pub(super) address_spaces: HashMap<AddressSpaceId, AddressSpaceSetupData>,
+    pub(super) save_codecs: HashMap<ComponentPath, Box<dyn ErasedCodec>>,
+    pub(super) snapshot_codecs: HashMap<ComponentPath, Box<dyn ErasedCodec>>,
+    pub(super) component_data: HashMap<ComponentPath, ComponentData<P>>,
+    pub(super) input_devices: HashMap<ResourcePath, Arc<LogicalInputDevice>, FxBuildHasher>,
+    pub(super) framebuffers: HashSet<ResourcePath>,
+    pub(super) audio_channels: HashSet<ResourcePath>,
+    pub(super) scheduler: Scheduler,
+}
+
+impl<P: Platform> MachineBuilder<P> {
     pub(crate) fn new(
         program_specification: Option<ProgramSpecification>,
         program_manager: Arc<ProgramManager>,
@@ -63,9 +65,15 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
             program_manager,
             program_specification,
             next_address_space_id: AddressSpaceId(0),
-            command_queue: Vec::new(),
             registry_data: ComponentRegistryData::default(),
+            address_spaces: HashMap::default(),
+            save_codecs: HashMap::default(),
+            snapshot_codecs: HashMap::default(),
+            component_data: HashMap::default(),
+            input_devices: HashMap::default(),
             framebuffers: HashSet::default(),
+            audio_channels: HashSet::default(),
+            scheduler: Scheduler::new(),
         }
     }
 
@@ -121,58 +129,51 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
     }
 
     #[inline]
-    #[must_use]
-    pub(super) fn insert_component_with_path<B: ComponentConfig<P> + 'a>(
+    pub(super) fn insert_component_with_path<B: ComponentConfig<P>>(
+        &mut self,
         path: ComponentPath,
         config: B,
-    ) -> MachineBuilderCommand<'a, P> {
-        MachineBuilderCommand::CreateComponent {
-            path: path.clone(),
-            constructor: Box::new(move |machine_builder| {
-                let mut component_data = ComponentData::new::<B>();
+    ) {
+        let mut component_data = ComponentData::new::<B>();
 
-                let component_builder = ComponentBuilder::<P, B::Component> {
-                    machine_builder,
-                    component_data: &mut component_data,
-                    path: &path,
-                    _phantom: PhantomData,
-                };
+        let component_builder = ComponentBuilder::<P, B::Component> {
+            machine_builder: self,
+            component_data: &mut component_data,
+            path: &path,
+            _phantom: PhantomData,
+        };
 
-                let component = config
-                    .build_component(component_builder)
-                    .expect("Failed to build component");
+        let component = config
+            .build_component(component_builder)
+            .expect("Failed to build component");
 
-                machine_builder.registry_data.insert_component(
-                    path.clone(),
-                    component_data.save_version,
-                    component_data.snapshot_version,
-                    component_data.scheduler_participation.is_some(),
-                    component,
-                );
+        self.registry_data.insert_component(
+            path.clone(),
+            component_data.save_version,
+            component_data.snapshot_version,
+            component_data.scheduler_participation.is_some(),
+            component,
+        );
 
-                component_data
-            }),
-        }
+        self.component_data.insert(path, component_data);
     }
 
     /// Insert a component into the machine
     #[inline]
-    pub fn component<B: ComponentConfig<P> + 'a>(
+    pub fn component<B: ComponentConfig<P>>(
         mut self,
         name: &str,
         config: B,
     ) -> (Self, ComponentPath) {
         let path = ComponentPath::new(name.into()).unwrap();
-        let command = Self::insert_component_with_path(path.clone(), config);
-
-        self.command_queue.push(command);
+        self.insert_component_with_path(path.clone(), config);
 
         (self, path)
     }
 
     /// Insert a component with a default config
     #[inline]
-    pub fn default_component<B: ComponentConfig<P> + Default + 'a>(
+    pub fn default_component<B: ComponentConfig<P> + Default>(
         self,
         name: &str,
     ) -> (Self, ComponentPath) {
@@ -182,11 +183,6 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
 
     /// Insert the required information to construct a address space
     pub fn address_space(mut self, width: u8) -> (Self, AddressSpaceId) {
-        assert!(
-            (width as u32 <= usize::BITS),
-            "This host machine cannot handle an address space of {width} bits"
-        );
-
         let address_space_id = self.next_address_space_id;
         self.next_address_space_id.0 = self
             .next_address_space_id
@@ -194,11 +190,13 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
             .checked_add(1)
             .expect("Too many address spaces");
 
-        self.command_queue
-            .push(MachineBuilderCommand::CreateAddressSpace {
-                id: address_space_id,
-                width,
-            });
+        self.address_spaces.insert(
+            address_space_id,
+            AddressSpaceSetupData {
+                data: AddressSpaceData::new(address_space_id, width),
+                commands: Vec::default(),
+            },
+        );
 
         (self, address_space_id)
     }
@@ -209,14 +207,15 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
         source: RangeInclusive<Address>,
         destination: RangeInclusive<Address>,
     ) -> Self {
-        self.command_queue.push(MachineBuilderCommand::MemoryMap {
-            address_space,
-            command: MemoryRemappingCommand::Map {
+        self.address_spaces
+            .get_mut(&address_space)
+            .unwrap()
+            .commands
+            .push(MemoryRemappingCommand::Map {
                 range: source,
                 target: MapTarget::Mirror { destination },
                 permissions: Permissions::READ,
-            },
-        });
+            });
 
         self
     }
@@ -227,14 +226,15 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
         source: RangeInclusive<Address>,
         destination: RangeInclusive<Address>,
     ) -> Self {
-        self.command_queue.push(MachineBuilderCommand::MemoryMap {
-            address_space,
-            command: MemoryRemappingCommand::Map {
+        self.address_spaces
+            .get_mut(&address_space)
+            .unwrap()
+            .commands
+            .push(MemoryRemappingCommand::Map {
                 range: source,
                 target: MapTarget::Mirror { destination },
                 permissions: Permissions::WRITE,
-            },
-        });
+            });
 
         self
     }
@@ -245,14 +245,15 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
         source: RangeInclusive<Address>,
         destination: RangeInclusive<Address>,
     ) -> Self {
-        self.command_queue.push(MachineBuilderCommand::MemoryMap {
-            address_space,
-            command: MemoryRemappingCommand::Map {
+        self.address_spaces
+            .get_mut(&address_space)
+            .unwrap()
+            .commands
+            .push(MemoryRemappingCommand::Map {
                 range: source,
                 target: MapTarget::Mirror { destination },
                 permissions: Permissions::ALL,
-            },
-        });
+            });
 
         self
     }
@@ -263,14 +264,15 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
         range: RangeInclusive<Address>,
         memory: impl Into<Bytes>,
     ) -> Self {
-        self.command_queue.push(MachineBuilderCommand::MemoryMap {
-            address_space,
-            command: MemoryRemappingCommand::Map {
+        self.address_spaces
+            .get_mut(&address_space)
+            .unwrap()
+            .commands
+            .push(MemoryRemappingCommand::Map {
                 range,
                 target: MapTarget::Buffer(memory.into()),
                 permissions: Permissions::READ,
-            },
-        });
+            });
 
         self
     }
@@ -280,13 +282,14 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
         address_space: AddressSpaceId,
         range: RangeInclusive<Address>,
     ) -> Self {
-        self.command_queue.push(MachineBuilderCommand::MemoryMap {
-            address_space,
-            command: MemoryRemappingCommand::Unmap {
+        self.address_spaces
+            .get_mut(&address_space)
+            .unwrap()
+            .commands
+            .push(MemoryRemappingCommand::Unmap {
                 range,
                 permissions: Permissions::ALL,
-            },
-        });
+            });
 
         self
     }
@@ -296,13 +299,14 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
         address_space: AddressSpaceId,
         range: RangeInclusive<Address>,
     ) -> Self {
-        self.command_queue.push(MachineBuilderCommand::MemoryMap {
-            address_space,
-            command: MemoryRemappingCommand::Unmap {
+        self.address_spaces
+            .get_mut(&address_space)
+            .unwrap()
+            .commands
+            .push(MemoryRemappingCommand::Unmap {
                 range,
                 permissions: Permissions::READ,
-            },
-        });
+            });
 
         self
     }
@@ -312,107 +316,52 @@ impl<'a, P: Platform> MachineBuilder<'a, P> {
         address_space: AddressSpaceId,
         range: RangeInclusive<Address>,
     ) -> Self {
-        self.command_queue.push(MachineBuilderCommand::MemoryMap {
-            address_space,
-            command: MemoryRemappingCommand::Unmap {
+        self.address_spaces
+            .get_mut(&address_space)
+            .unwrap()
+            .commands
+            .push(MemoryRemappingCommand::Unmap {
                 range,
                 permissions: Permissions::WRITE,
-            },
-        });
+            });
 
         self
     }
 
     /// Seal the machine
-    pub fn seal(mut self) -> Result<SealedMachineBuilder<P>, MachineError> {
-        let mut scheduler = Scheduler::new();
-        let mut input_devices = HashMap::default();
-        let mut audio_outputs = HashSet::default();
+    pub fn seal(self) -> Result<SealedMachineBuilder<P>, MachineError> {
         let mut component_late_initializers = HashMap::default();
-        let mut address_spaces = HashMap::default();
-        let mut remapping_commands: HashMap<_, Vec<_>> = HashMap::default();
         let mut graphics_requirements = GraphicsRequirements::default();
+        let mut remapping_commands = HashMap::new();
+        let mut address_spaces = HashMap::default();
 
-        // The machine builder local command queue does not receive any more items from now
-        //
-        // All components push to their local queues which get added to the FRONT of the global queue
-        //
-        // Hence this being logically sound
-        let mut global_command_queue = std::mem::take(&mut self.command_queue);
+        for (path, component_data) in self.component_data {
+            component_late_initializers.insert(path.clone(), component_data.late_initializer);
+            graphics_requirements = component_data.graphics_requirements | graphics_requirements;
+        }
 
-        // Reverse so that we are now popping in the right direction
-        global_command_queue.reverse();
-
-        while let Some(command) = global_command_queue.pop() {
-            match command {
-                MachineBuilderCommand::CreateComponent { path, constructor } => {
-                    let mut component_data = constructor(&mut self);
-
-                    component_late_initializers
-                        .insert(path.clone(), component_data.late_initializer);
-                    audio_outputs.extend(component_data.audio_outputs);
-
-                    if component_data.scheduler_participation
-                        == Some(SchedulerParticipation::SchedulerDriven)
-                    {
-                        scheduler.register_driven_component(path.clone());
-                    }
-
-                    // Append local commands to the start of the global queue
-                    component_data.local_commands.reverse();
-                    global_command_queue.extend(component_data.local_commands);
-                }
-                MachineBuilderCommand::MemoryMap {
-                    address_space,
-                    command,
-                } => {
-                    assert!(address_spaces.contains_key(&address_space), "{:?}", command);
-
-                    remapping_commands
-                        .entry(address_space)
-                        .or_default()
-                        .push(command);
-                }
-                MachineBuilderCommand::CreateAddressSpace { id, width } => {
-                    let address_space = AddressSpaceData::new(id, width);
-
-                    address_spaces.insert(id, address_space);
-                }
-                MachineBuilderCommand::CreateInputDevice(device) => {
-                    input_devices.insert(device.metadata().path.clone(), device);
-                }
-                MachineBuilderCommand::AddGraphicsRequirements { requirements } => {
-                    graphics_requirements = graphics_requirements.clone() | requirements;
-                }
-                MachineBuilderCommand::InsertEvent {
-                    requeue_mode,
-                    time,
-                    path,
-                    data,
-                } => {
-                    scheduler
-                        .event_manager
-                        .schedule(time, path, requeue_mode, data);
-                }
-            }
+        for (id, AddressSpaceSetupData { data, commands }) in self.address_spaces {
+            address_spaces.insert(id, data);
+            remapping_commands.insert(id, commands);
         }
 
         let machine = Arc::new(Machine {
-            scheduler,
+            scheduler: self.scheduler,
             address_spaces,
-            input_devices,
+            input_devices: self.input_devices,
             registry_data: self.registry_data,
             framebuffers: self.framebuffers,
             program_specification: self.program_specification,
-            audio_outputs,
+            audio_channels: self.audio_channels,
+            save_codecs: HashMap::default(),
+            snapshot_codecs: HashMap::default(),
         });
 
         // Initialize address spaces
         let runtime_guard = machine.enter_runtime();
-        for (id, remapping_commands) in remapping_commands {
+        for (id, commands) in remapping_commands {
             let address_space = runtime_guard.address_space(id).unwrap();
-
-            address_space.remap(Period::default(), remapping_commands);
+            address_space.remap(Period::default(), commands);
         }
         drop(runtime_guard);
 

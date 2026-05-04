@@ -85,7 +85,7 @@ impl<P: Platform> ComponentConfig<P> for ApuConfig {
 
     fn build_component(
         self,
-        component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
+        component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         component_builder
             .memory_map_component_write(self.cpu_address_space, PULSE_1)

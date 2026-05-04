@@ -90,7 +90,7 @@ impl<P: Platform> ComponentConfig<P> for MemoryConfig {
 
     fn build_component(
         self,
-        component_builder: ComponentBuilder<'_, '_, P, Self::Component>,
+        component_builder: ComponentBuilder<'_, P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         if self.assigned_range.is_empty() {
             return Err("Memory assigned must be non-empty".into());
