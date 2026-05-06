@@ -1,12 +1,11 @@
 use std::{collections::HashMap, marker::PhantomData};
 
-use fluxemu_graphics::texture::Texture;
+use fluxemu_graphics::api::software::texture::Texture;
 use fluxemu_runtime::{
     component::config::{ComponentConfig, LateContext},
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::AddressSpaceId,
     path::ComponentPath,
-    persistence::PersistanceFormatVersion,
     platform::Platform,
 };
 use nalgebra::Point2;
@@ -31,7 +30,6 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>> ComponentConf
     for TiaConfig<R>
 {
     type Component = Tia<R, P::GraphicsApi>;
-    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn late_initialize(component: &mut Self::Component, data: &LateContext<P>) {
         let backend = <P::GraphicsApi as SupportedGraphicsApiTia>::Backend::new(

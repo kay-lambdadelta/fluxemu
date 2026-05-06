@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::graphics::{GraphicsApi, software::Software};
+use fluxemu_graphics::api::{GraphicsApi, software::Software};
 
 /// A trait abstracting over the various things the platform requires
 pub trait Platform: Clone + Debug + 'static {

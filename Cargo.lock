@@ -1457,6 +1457,7 @@ name = "fluxemu-definition-atarilynx"
 version = "0.1.0"
 dependencies = [
  "fluxemu-definition-mos6502",
+ "fluxemu-graphics",
  "fluxemu-program",
  "fluxemu-runtime",
  "nalgebra",
@@ -1486,7 +1487,6 @@ dependencies = [
  "rand 0.10.1",
  "rangemap",
  "ringbuffer",
- "rmp-serde",
  "serde",
  "strum",
  "tracing",
@@ -1508,7 +1508,6 @@ version = "0.1.0"
 dependencies = [
  "fluxemu-runtime",
  "heapless",
- "rmp-serde",
  "serde",
  "strum",
  "tracing",
@@ -1522,7 +1521,6 @@ dependencies = [
  "fluxemu-range",
  "fluxemu-runtime",
  "rangemap",
- "rmp-serde",
  "serde",
  "serde_with",
  "strum",
@@ -1582,6 +1580,7 @@ dependencies = [
  "egui_material_icons",
  "egui_tracing",
  "fluxemu-environment",
+ "fluxemu-graphics",
  "fluxemu-input",
  "fluxemu-program",
  "fluxemu-range",
@@ -1620,6 +1619,7 @@ dependencies = [
  "rustc-hash 2.1.2",
  "serde",
  "tracing",
+ "wgpu",
 ]
 
 [[package]]
@@ -1691,7 +1691,6 @@ dependencies = [
  "lz4_flex",
  "nalgebra",
  "num",
- "palette",
  "rand 0.10.1",
  "rangemap",
  "redb",
@@ -1706,7 +1705,6 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "versions",
- "wgpu",
 ]
 
 [[package]]

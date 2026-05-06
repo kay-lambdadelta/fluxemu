@@ -1,4 +1,4 @@
-use std::{any::Any, fmt::Debug, ops::BitOr};
+use core::{any::Any, fmt::Debug, ops::BitOr};
 
 /// Software
 pub mod software;

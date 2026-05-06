@@ -1,4 +1,5 @@
-use std::ops::{Bound, Index, IndexMut, RangeBounds, RangeInclusive};
+use alloc::{vec, vec::Vec};
+use core::ops::{Bound, Index, IndexMut, RangeBounds, RangeInclusive};
 
 use fluxemu_range::ContiguousRange;
 use itertools::Itertools;

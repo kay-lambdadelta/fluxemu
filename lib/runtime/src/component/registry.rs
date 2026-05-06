@@ -12,7 +12,6 @@ use crate::{
     RuntimeApi,
     component::{Component, ComponentId},
     path::ComponentPath,
-    persistence::PersistanceFormatVersion,
     scheduler::{Period, SynchronizationContext},
 };
 
@@ -26,8 +25,6 @@ pub(crate) struct ComponentHandle {
 #[derive(Debug)]
 struct GlobalComponentMetadata {
     id: ComponentId,
-    save_version: Option<PersistanceFormatVersion>,
-    snapshot_version: PersistanceFormatVersion,
     type_id: TypeId,
 }
 
@@ -49,8 +46,6 @@ impl ComponentRegistryData {
     pub fn insert_component<C: Component>(
         &mut self,
         path: ComponentPath,
-        save_version: Option<PersistanceFormatVersion>,
-        snapshot_version: PersistanceFormatVersion,
         synchronize: bool,
         component: C,
     ) {
@@ -77,8 +72,6 @@ impl ComponentRegistryData {
             path,
             GlobalComponentMetadata {
                 id,
-                save_version,
-                snapshot_version,
                 type_id: TypeId::of::<C>(),
             },
         );

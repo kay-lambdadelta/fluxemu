@@ -6,7 +6,6 @@ use fluxemu_runtime::{
         Address, AddressSpaceId, MapTarget, MemoryError, MemoryRemappingCommand, Permissions,
     },
     path::ComponentPath,
-    persistence::PersistanceFormatVersion,
     platform::Platform,
 };
 use serde::{Deserialize, Serialize};
@@ -111,7 +110,6 @@ pub struct MapctlConfig {
 
 impl<P: Platform> ComponentConfig<P> for MapctlConfig {
     type Component = Mapctl;
-    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn build_component(
         self,

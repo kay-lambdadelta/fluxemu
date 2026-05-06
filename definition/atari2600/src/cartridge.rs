@@ -4,7 +4,6 @@ use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     machine::builder::{ComponentBuilder, RomRequirement},
     memory::{Address, AddressSpaceId, MemoryError},
-    persistence::PersistanceFormatVersion,
     platform::Platform,
 };
 use serde::{Deserialize, Serialize};
@@ -59,7 +58,6 @@ impl Component for Atari2600Cartridge {
 
 impl<P: Platform> ComponentConfig<P> for Atari2600CartridgeConfig {
     type Component = Atari2600Cartridge;
-    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn build_component(
         self,

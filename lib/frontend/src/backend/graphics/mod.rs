@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use egui::{Context, FullOutput};
-use fluxemu_runtime::{graphics::GraphicsApi, machine::Machine};
+use fluxemu_graphics::api::GraphicsApi;
+use fluxemu_runtime::machine::Machine;
 
 /// Extension trait for graphics apis
 #[allow(async_fn_in_trait)]

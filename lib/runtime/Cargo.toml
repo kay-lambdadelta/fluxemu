@@ -21,7 +21,6 @@ itertools = { workspace = true }
 lz4_flex = "0.13"
 nalgebra = { workspace = true }
 num = { workspace = true }
-palette = { workspace = true }
 rand = { workspace = true }
 rangemap = { workspace = true }
 redb = { workspace = true }
@@ -36,10 +35,9 @@ strum = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 versions = { workspace = true }
-wgpu = { workspace = true, optional = true }
 
 [target.'cfg(any(target_family = "unix", target_os = "windows"))'.dev-dependencies]
 criterion = { workspace = true }
 
 [features]
-webgpu = ["dep:wgpu"]
+std = ["fluxemu-graphics/std"]

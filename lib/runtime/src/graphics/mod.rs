@@ -1,10 +1,8 @@
 //! Main graphics definition things for fluxemu
 
-mod backend;
-
 use std::ops::BitOr;
 
-pub use backend::*;
+use fluxemu_graphics::api::GraphicsApi;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

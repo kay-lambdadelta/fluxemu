@@ -1,3 +1,6 @@
-pub mod egui_software_renderer;
+#![no_std]
+
+extern crate alloc;
+
+pub mod api;
 pub mod rgb565;
-pub mod texture;

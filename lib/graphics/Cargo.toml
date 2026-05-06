@@ -14,3 +14,8 @@ palette = { workspace = true }
 rustc-hash = { workspace = true }
 serde = { workspace = true }
 tracing = { workspace = true }
+wgpu = { workspace = true, optional = true }
+
+[features]
+std = []
+webgpu = ["dep:wgpu"]

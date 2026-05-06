@@ -4,12 +4,15 @@
 //!
 //! This implements a meta graphic api, to provide a universal software rendering implementation
 
-use std::{fmt::Debug, ops::BitOr};
+#[cfg(feature = "std")]
+pub mod egui_renderer;
+pub mod texture;
 
-use fluxemu_graphics::texture::Texture;
+use core::{fmt::Debug, ops::BitOr};
+
 use palette::Srgba;
 
-use crate::graphics::GraphicsApi;
+use crate::api::{GraphicsApi, software::texture::Texture};
 
 /// Marker trait for software rendering
 ///

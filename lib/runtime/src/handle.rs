@@ -20,6 +20,7 @@ use crate::{
     input::LogicalInputDevice,
     machine::{Machine, RUNTIME_CONTEXT},
     memory::{AddressSpace, AddressSpaceId},
+    persistence::SnapshotMetadata,
     scheduler::Period,
 };
 
@@ -138,7 +139,23 @@ impl RuntimeApi {
             .unwrap();
     }
 
-    pub fn load_snapshot<R: Read>(&self, components: impl Iterator<Item = R>) {}
+    pub fn load_snapshot(
+        &self,
+        _metadata: &SnapshotMetadata,
+        mut component_section: impl Read,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let registry = self.registry();
+
+        for (path, codec) in &self.machine.save_codecs {
+            registry
+                .interact_dyn(path, Period::default(), |component| {
+                    codec.deserialize(component, &mut component_section)
+                })
+                .unwrap()?;
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Debug)]

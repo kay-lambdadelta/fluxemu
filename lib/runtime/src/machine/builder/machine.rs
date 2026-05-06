@@ -22,7 +22,6 @@ use crate::{
         Address, AddressSpaceData, AddressSpaceId, MapTarget, MemoryRemappingCommand, Permissions,
     },
     path::ComponentPath,
-    persistence::ErasedCodec,
     platform::Platform,
     scheduler::{Period, Scheduler},
 };
@@ -47,8 +46,6 @@ pub struct MachineBuilder<P: Platform> {
     pub(super) next_address_space_id: AddressSpaceId,
     pub(super) registry_data: ComponentRegistryData,
     pub(super) address_spaces: HashMap<AddressSpaceId, AddressSpaceSetupData>,
-    pub(super) save_codecs: HashMap<ComponentPath, Box<dyn ErasedCodec>>,
-    pub(super) snapshot_codecs: HashMap<ComponentPath, Box<dyn ErasedCodec>>,
     pub(super) component_data: HashMap<ComponentPath, ComponentData<P>>,
     pub(super) input_devices: HashMap<ResourcePath, Arc<LogicalInputDevice>, FxBuildHasher>,
     pub(super) framebuffers: HashSet<ResourcePath>,
@@ -67,8 +64,6 @@ impl<P: Platform> MachineBuilder<P> {
             next_address_space_id: AddressSpaceId(0),
             registry_data: ComponentRegistryData::default(),
             address_spaces: HashMap::default(),
-            save_codecs: HashMap::default(),
-            snapshot_codecs: HashMap::default(),
             component_data: HashMap::default(),
             input_devices: HashMap::default(),
             framebuffers: HashSet::default(),
@@ -149,8 +144,6 @@ impl<P: Platform> MachineBuilder<P> {
 
         self.registry_data.insert_component(
             path.clone(),
-            component_data.save_version,
-            component_data.snapshot_version,
             component_data.scheduler_participation.is_some(),
             component,
         );
@@ -334,10 +327,21 @@ impl<P: Platform> MachineBuilder<P> {
         let mut graphics_requirements = GraphicsRequirements::default();
         let mut remapping_commands = HashMap::new();
         let mut address_spaces = HashMap::default();
+        let mut save_codecs = HashMap::default();
+        let mut snapshot_codecs = HashMap::default();
 
         for (path, component_data) in self.component_data {
             component_late_initializers.insert(path.clone(), component_data.late_initializer);
+
             graphics_requirements = component_data.graphics_requirements | graphics_requirements;
+
+            if let Some(save_codec) = component_data.save_codec {
+                save_codecs.insert(path.clone(), save_codec);
+            }
+
+            if let Some(snapshot_codec) = component_data.snapshot_codec {
+                snapshot_codecs.insert(path, snapshot_codec);
+            }
         }
 
         for (id, AddressSpaceSetupData { data, commands }) in self.address_spaces {
@@ -353,8 +357,8 @@ impl<P: Platform> MachineBuilder<P> {
             framebuffers: self.framebuffers,
             program_specification: self.program_specification,
             audio_channels: self.audio_channels,
-            save_codecs: HashMap::default(),
-            snapshot_codecs: HashMap::default(),
+            save_codecs,
+            snapshot_codecs,
         });
 
         // Initialize address spaces

@@ -1,17 +1,14 @@
 use std::{error::Error, fmt::Debug};
 
-use crate::{
-    Platform, component::Component, graphics::GraphicsApi, machine::builder::ComponentBuilder,
-    persistence::PersistanceFormatVersion,
-};
+use fluxemu_graphics::api::GraphicsApi;
+
+use crate::{Platform, component::Component, machine::builder::ComponentBuilder};
 
 #[allow(unused)]
 /// Factory config to construct a component
 pub trait ComponentConfig<P: Platform>: Debug + Sized + Sync + Send {
     /// The component that this config will create
     type Component: Component;
-
-    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion;
 
     /// Make a new component from the config
     fn build_component(

@@ -1,8 +1,8 @@
-use std::ops::BitOr;
+use core::ops::BitOr;
 
 use wgpu::{Device, Features, Limits, Queue, Texture, TextureUsages};
 
-use crate::graphics::GraphicsApi;
+use crate::api::GraphicsApi;
 
 #[derive(Default, Debug)]
 pub struct Webgpu;

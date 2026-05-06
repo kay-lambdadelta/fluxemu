@@ -4,7 +4,6 @@ use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId, MemoryError},
-    persistence::PersistanceFormatVersion,
     platform::Platform,
 };
 
@@ -175,7 +174,6 @@ pub struct SuzyConfig {
 
 impl<P: Platform> ComponentConfig<P> for SuzyConfig {
     type Component = Suzy;
-    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn build_component(
         self,

@@ -12,7 +12,6 @@ use fluxemu_runtime::{
         Address, AddressSpaceId, MapTarget, MemoryError, MemoryRemappingCommand, Permissions,
         component::{InitialContents, MemoryConfig},
     },
-    persistence::PersistanceFormatVersion,
     platform::Platform,
 };
 use rangemap::RangeInclusiveMap;
@@ -409,7 +408,6 @@ pub struct Mmc1Config {
 
 impl<P: Platform> ComponentConfig<P> for Mmc1Config {
     type Component = Mmc1;
-    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn late_initialize(component: &mut Self::Component, _data: &LateContext<P>) {
         // Force the system to adopt an initial mapping

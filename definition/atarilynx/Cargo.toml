@@ -6,6 +6,7 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 fluxemu-definition-mos6502 = { workspace = true }
+fluxemu-graphics = { workspace = true }
 fluxemu-program = { workspace = true }
 fluxemu-runtime = { workspace = true }
 nalgebra = { workspace = true }
@@ -19,4 +20,4 @@ tracing = { workspace = true }
 wgpu = { workspace = true, optional = true }
 
 [features]
-webgpu = ["dep:wgpu", "fluxemu-runtime/webgpu"]
+webgpu = ["dep:wgpu", "fluxemu-graphics/webgpu"]

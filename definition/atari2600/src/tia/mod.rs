@@ -6,7 +6,7 @@ use std::{
 
 pub(crate) use backend::SupportedGraphicsApiTia;
 use color::TiaColor;
-use fluxemu_graphics::texture::Texture;
+use fluxemu_graphics::api::software::texture::Texture;
 use fluxemu_runtime::{
     ComponentPath,
     component::Component,

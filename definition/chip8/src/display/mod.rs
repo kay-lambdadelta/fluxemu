@@ -1,14 +1,15 @@
 use std::{any::Any, fmt::Debug};
 
-use fluxemu_graphics::texture::{CopyMode, Texture, TextureImpl, TextureImplMut};
+use fluxemu_graphics::api::{
+    GraphicsApi,
+    software::texture::{CopyMode, Texture, TextureImpl, TextureImplMut},
+};
 use fluxemu_runtime::{
     component::{
         Component,
         config::{ComponentConfig, LateContext},
     },
-    graphics::GraphicsApi,
     machine::builder::{ComponentBuilder, SchedulerParticipation},
-    persistence::PersistanceFormatVersion,
     platform::Platform,
     scheduler::{Period, SynchronizationContext},
 };
@@ -204,7 +205,6 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
     for Chip8DisplayConfig
 {
     type Component = Chip8Display<P::GraphicsApi>;
-    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn late_initialize(component: &mut Self::Component, data: &LateContext<P>) {
         let backend = <P::GraphicsApi as SupportedGraphicsApiChip8Display>::Backend::new(

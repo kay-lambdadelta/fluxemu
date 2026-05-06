@@ -1,5 +1,10 @@
-use fluxemu_graphics::texture::{CopyMode, Texture, TextureImpl, TextureImplMut};
-use fluxemu_runtime::graphics::{GraphicsApi, software::Software};
+use fluxemu_graphics::api::{
+    GraphicsApi,
+    software::{
+        Software,
+        texture::{CopyMode, Texture, TextureImpl, TextureImplMut},
+    },
+};
 use palette::{Srgba, named::BLACK};
 
 use super::{Chip8DisplayBackend, SupportedGraphicsApiChip8Display};

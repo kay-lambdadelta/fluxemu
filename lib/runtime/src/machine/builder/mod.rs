@@ -2,7 +2,7 @@ use std::{collections::HashMap, ops::DerefMut, sync::Arc};
 
 use crate::{
     component::{Component, config::LateContext},
-    graphics::{GraphicsApi, GraphicsRequirements},
+    graphics::GraphicsRequirements,
     machine::Machine,
     path::ComponentPath,
     platform::Platform,
@@ -13,6 +13,7 @@ mod component;
 mod machine;
 
 pub use component::*;
+use fluxemu_graphics::api::GraphicsApi;
 pub use machine::*;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]

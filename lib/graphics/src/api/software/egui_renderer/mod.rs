@@ -1,4 +1,7 @@
-use std::{collections::HashMap, ops::RangeInclusive};
+extern crate std;
+
+use core::ops::RangeInclusive;
+use std::collections::HashMap;
 
 use egui::{FullOutput, TextureId};
 use fluxemu_range::ContiguousRange;
@@ -7,8 +10,8 @@ use nalgebra::{Point2, SMatrix, SVector, Vector2, Vector3};
 use palette::{Srgba, blend::Compose, named::BLACK};
 use rustc_hash::FxBuildHasher;
 
-use crate::{
-    egui_software_renderer::{
+use crate::api::software::{
+    egui_renderer::{
         powerof2::PowerOfTwoIter,
         shapes::{Primitive, Triangle, reduce_shapes},
     },

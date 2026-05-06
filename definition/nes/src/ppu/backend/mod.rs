@@ -1,7 +1,9 @@
 use std::fmt::Debug;
 
-use fluxemu_graphics::texture::{Texture, TextureImpl};
-use fluxemu_runtime::graphics::GraphicsApi;
+use fluxemu_graphics::api::{
+    GraphicsApi,
+    software::texture::{Texture, TextureImpl},
+};
 use palette::Srgba;
 
 use crate::ppu::{color::PpuColorIndex, region::Region};

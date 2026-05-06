@@ -28,7 +28,7 @@ fluxemu-graphics = { workspace = true }
 fluxemu-input = { workspace = true }
 # Any platform this crate supports will have memmap or at least won't have compile errors if it doesn't work
 fluxemu-program = { workspace = true, features = ["mmap"] }
-fluxemu-runtime = { workspace = true }
+fluxemu-runtime = { workspace = true, features = ["std"] }
 gilrs = "0.11"
 itertools = { workspace = true }
 nalgebra = { workspace = true }
@@ -54,5 +54,5 @@ webgpu = [
   "fluxemu-definition-atarilynx/webgpu",
   "fluxemu-definition-chip8/webgpu",
   "fluxemu-definition-nes/webgpu",
-  "fluxemu-frontend/webgpu",
+  "fluxemu-graphics/webgpu",
 ]

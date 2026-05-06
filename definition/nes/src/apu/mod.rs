@@ -5,7 +5,6 @@ use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId, MemoryError},
-    persistence::PersistanceFormatVersion,
     platform::Platform,
 };
 
@@ -81,7 +80,6 @@ pub struct ApuConfig {
 
 impl<P: Platform> ComponentConfig<P> for ApuConfig {
     type Component = Apu;
-    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn build_component(
         self,

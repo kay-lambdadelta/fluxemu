@@ -10,7 +10,6 @@ use fluxemu_runtime::{
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::AddressSpaceId,
     path::ComponentPath,
-    persistence::PersistanceFormatVersion,
     platform::Platform,
     scheduler::{Frequency, Period, SynchronizationContext},
 };
@@ -219,7 +218,6 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
     for Chip8ProcessorConfig<P::GraphicsApi>
 {
     type Component = Chip8Processor<P::GraphicsApi>;
-    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn build_component(
         self,

@@ -11,7 +11,7 @@ use crate::{
     component::{Component, config::ComponentConfig},
     machine::builder::{ComponentBuilder, RomRequirement},
     memory::{Address, AddressSpaceId, MemoryError},
-    persistence::{AutoSerializableComponent, PersistanceFormatVersion},
+    persistence::{AutoSerializableComponent, MessagePackCodec, PersistanceFormatVersion},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,7 +32,7 @@ pub struct MemoryConfig {
     pub sram: bool,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct MemoryPersistance<'a> {
     buffer: Cow<'a, [u8]>,
     base: Address,
@@ -85,8 +85,6 @@ impl Component for Memory {
 
 impl<P: Platform> ComponentConfig<P> for MemoryConfig {
     type Component = Memory;
-
-    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn build_component(
         self,
@@ -149,7 +147,7 @@ impl<P: Platform> ComponentConfig<P> for MemoryConfig {
             };
 
         if self.sram {
-            component_builder.save_version(0);
+            component_builder.save_codec(MessagePackCodec::default());
         }
 
         Ok(component)
@@ -159,8 +157,9 @@ impl<P: Platform> ComponentConfig<P> for MemoryConfig {
 impl AutoSerializableComponent for Memory {
     type SaveState<'a> = MemoryPersistance<'a>;
     type SnapshotState<'a> = MemoryPersistance<'a>;
+    const VERSION: PersistanceFormatVersion = 0;
 
-    fn impending_snapshot(&mut self) {
+    fn impending_snapshot_load(&mut self) {
         // Clear memory
         self.buffer = Box::default();
     }

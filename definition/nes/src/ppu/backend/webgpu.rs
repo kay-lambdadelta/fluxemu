@@ -1,6 +1,6 @@
-use fluxemu_graphics::texture::TextureImpl;
-use fluxemu_runtime::graphics::{
+use fluxemu_graphics::api::{
     GraphicsApi,
+    software::texture::TextureImpl,
     webgpu::{InitializationData, Webgpu, suggested_framebuffer_texture_usages},
 };
 use palette::{Srgba, named::BLACK};
@@ -18,7 +18,7 @@ use crate::ppu::{
 #[derive(Debug)]
 pub struct State {
     pub queue: Queue,
-    pub staging_texture: fluxemu_graphics::texture::Texture<Srgba<u8>>,
+    pub staging_texture: fluxemu_graphics::api::software::texture::Texture<Srgba<u8>>,
     pub framebuffer: Texture,
 }
 
@@ -45,7 +45,7 @@ impl<R: Region> PpuDisplayBackend<R> for State {
 
         State {
             queue: initialization_data.queue,
-            staging_texture: fluxemu_graphics::texture::Texture::new(
+            staging_texture: fluxemu_graphics::api::software::texture::Texture::new(
                 VISIBLE_SCANLINE_LENGTH as usize,
                 R::VISIBLE_SCANLINES as usize,
                 BLACK.into(),
@@ -60,7 +60,7 @@ impl<R: Region> PpuDisplayBackend<R> for State {
 
     fn commit_staging_buffer(
         &mut self,
-        staging_buffer: &fluxemu_graphics::texture::Texture<PpuColorIndex>,
+        staging_buffer: &fluxemu_graphics::api::software::texture::Texture<PpuColorIndex>,
     ) {
         convert_paletted_staging_buffer::<R>(staging_buffer, &mut self.staging_texture);
 

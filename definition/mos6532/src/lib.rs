@@ -11,7 +11,6 @@ use fluxemu_runtime::{
         component::{InitialContents, MemoryConfig},
     },
     path::ComponentPath,
-    persistence::PersistanceFormatVersion,
     platform::Platform,
     scheduler::{Frequency, Period, SynchronizationContext},
 };
@@ -267,7 +266,6 @@ impl Component for Mos6532Riot {
 
 impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
     type Component = Mos6532Riot;
-    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn build_component(
         self,

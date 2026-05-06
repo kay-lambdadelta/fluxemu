@@ -2,7 +2,6 @@ use fluxemu_audio::SquareWave;
 use fluxemu_runtime::{
     component::{Component, SampleSource, config::ComponentConfig},
     machine::builder::{ComponentBuilder, SchedulerParticipation},
-    persistence::PersistanceFormatVersion,
     platform::Platform,
     scheduler::{Frequency, Period, SynchronizationContext},
 };
@@ -75,7 +74,6 @@ pub struct Chip8AudioConfig {
 
 impl<P: Platform> ComponentConfig<P> for Chip8AudioConfig {
     type Component = Chip8Audio;
-    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn build_component(
         self,

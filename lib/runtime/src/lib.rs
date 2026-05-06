@@ -2,6 +2,8 @@
 //!
 //! Main runtime crate for the FluxEMU framework
 
+#![cfg_attr(not(feature = "std"), no_std)]
+
 pub mod component;
 pub mod event;
 pub mod graphics;

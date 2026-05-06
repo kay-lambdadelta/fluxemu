@@ -1,4 +1,9 @@
-use std::fmt::Debug;
+#![no_std]
+
+extern crate alloc;
+
+use alloc::{borrow::ToOwned, boxed::Box};
+use core::fmt::Debug;
 
 use fluxemu_runtime::{
     ComponentPath, ComponentRuntimeApi,
@@ -6,7 +11,7 @@ use fluxemu_runtime::{
     event::{Event, downcast_event},
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::{Address, AddressSpaceId},
-    persistence::PersistanceFormatVersion,
+    persistence::{AutoSerializableComponent, MessagePackCodec, PersistanceFormatVersion},
     platform::Platform,
     scheduler::{Frequency, Period, SynchronizationContext},
 };
@@ -111,8 +116,8 @@ pub struct Mos6502Config {
     pub broken_ror: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct State {
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct State {
     a: u8,
     x: u8,
     y: u8,
@@ -218,7 +223,7 @@ impl Component for Mos6502 {
             };
 
             if self.state.rdy || !is_read_cycle {
-                if std::mem::take(&mut self.state.consume_effective_address) {
+                if core::mem::take(&mut self.state.consume_effective_address) {
                     self.state.effective_address.clear();
                 }
 
@@ -244,7 +249,7 @@ impl Component for Mos6502 {
                 if self.config.kind.supports_interrupts() && self.state.cycle_queue.is_empty() {
                     if self.state.nmi.interrupt_required() {
                         self.handle_nmi();
-                    } else if std::mem::take(&mut self.state.irq) {
+                    } else if core::mem::take(&mut self.state.irq) {
                         self.handle_irq();
                     }
                 }
@@ -269,16 +274,38 @@ impl Component for Mos6502 {
     }
 }
 
+impl AutoSerializableComponent for Mos6502 {
+    type SaveState<'a> = ();
+    type SnapshotState<'a> = State;
+    const VERSION: PersistanceFormatVersion = 0;
+
+    fn read_save(&self) -> Self::SaveState<'_> {
+        unreachable!()
+    }
+
+    fn read_snapshot(&self) -> Self::SnapshotState<'_> {
+        self.state.clone()
+    }
+
+    fn write_save(&mut self, _save: <Self::SaveState<'_> as ToOwned>::Owned) {
+        unreachable!()
+    }
+
+    fn write_snapshot(&mut self, snapshot: <Self::SnapshotState<'_> as ToOwned>::Owned) {
+        self.state = snapshot;
+    }
+}
+
 impl<P: Platform> ComponentConfig<P> for Mos6502Config {
     type Component = Mos6502;
-    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn build_component(
         self,
         component_builder: ComponentBuilder<P, Self::Component>,
-    ) -> Result<Self::Component, Box<dyn std::error::Error>> {
+    ) -> Result<Self::Component, Box<dyn core::error::Error>> {
         let component_builder = component_builder
-            .scheduler_participation(Some(SchedulerParticipation::SchedulerDriven));
+            .scheduler_participation(Some(SchedulerParticipation::SchedulerDriven))
+            .snapshot_codec(MessagePackCodec::default());
 
         let mut component = Mos6502 {
             state: State {
@@ -317,27 +344,27 @@ impl<P: Platform> ComponentConfig<P> for Mos6502Config {
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 struct NmiFlag {
     current_state: bool,
-    falling_edge_occured: bool,
+    falling_edge_occurred: bool,
 }
 
 impl Default for NmiFlag {
     fn default() -> Self {
         Self {
             current_state: true,
-            falling_edge_occured: false,
+            falling_edge_occurred: false,
         }
     }
 }
 
 impl NmiFlag {
     pub fn store(&mut self, nmi: bool) {
-        if std::mem::replace(&mut self.current_state, nmi) && !nmi {
-            self.falling_edge_occured = true;
+        if core::mem::replace(&mut self.current_state, nmi) && !nmi {
+            self.falling_edge_occurred = true;
         }
     }
 
     pub fn interrupt_required(&mut self) -> bool {
-        std::mem::take(&mut self.falling_edge_occured)
+        core::mem::take(&mut self.falling_edge_occurred)
     }
 }
 

@@ -6,7 +6,6 @@ use fluxemu_runtime::{
     input::LogicalInputDevice,
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId, MemoryError},
-    persistence::PersistanceFormatVersion,
     platform::Platform,
 };
 
@@ -85,7 +84,6 @@ impl Component for NesController {
 
 impl<P: Platform> ComponentConfig<P> for NesControllerConfig {
     type Component = NesController;
-    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn build_component(
         self,

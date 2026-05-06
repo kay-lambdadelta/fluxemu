@@ -13,6 +13,7 @@ egui_material_icons = { version = "0.6", default-features = false, features = [
 ] }
 egui_tracing = { workspace = true }
 fluxemu-environment = { workspace = true }
+fluxemu-graphics = { workspace = true }
 fluxemu-input = { workspace = true }
 fluxemu-program = { workspace = true }
 fluxemu-range = { workspace = true }
@@ -38,6 +39,3 @@ versions = { workspace = true }
 
 [features]
 external-file-dialog = ["dep:rfd"]
-webgpu = [
-  "fluxemu-runtime/webgpu",
-]

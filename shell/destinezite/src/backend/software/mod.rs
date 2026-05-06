@@ -1,17 +1,15 @@
 use std::sync::Arc;
 
 use fluxemu_frontend::GraphicsRuntime;
-use fluxemu_graphics::{
-    egui_software_renderer::Renderer,
-    texture::{CopyMode, TextureImpl, TextureImplMut, TextureViewMut},
-};
-use fluxemu_runtime::{
-    graphics::{
-        GraphicsApi, GraphicsRequirements,
-        software::{Requirements, Software},
+use fluxemu_graphics::api::{
+    GraphicsApi,
+    software::{
+        Requirements, Software,
+        egui_renderer::Renderer,
+        texture::{CopyMode, TextureImpl, TextureImplMut, TextureViewMut},
     },
-    machine::Machine,
 };
+use fluxemu_runtime::{graphics::GraphicsRequirements, machine::Machine};
 use nalgebra::{Point2, Vector2};
 use palette::{cast::Packed, named::BLACK, rgb::channels::Bgra};
 use softbuffer::{Context, Surface};
@@ -139,12 +137,10 @@ impl GraphicsRuntime for SoftwareGraphicsRuntime {
 
     fn component_initialization_data(
         &self,
-    ) -> <Self::GraphicsApi as fluxemu_runtime::graphics::GraphicsApi>::InitializationData {
+    ) -> <Self::GraphicsApi as GraphicsApi>::InitializationData {
     }
 
-    fn created_requirements(
-        &self,
-    ) -> <Self::GraphicsApi as fluxemu_runtime::graphics::GraphicsApi>::Requirements {
+    fn created_requirements(&self) -> <Self::GraphicsApi as GraphicsApi>::Requirements {
         Requirements
     }
 

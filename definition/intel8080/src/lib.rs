@@ -1,7 +1,6 @@
 use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
-    persistence::PersistanceFormatVersion,
     platform::Platform,
 };
 
@@ -52,7 +51,6 @@ impl Intel8080Config {
 
 impl<P: Platform> ComponentConfig<P> for Intel8080Config {
     type Component = Intel8080;
-    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn build_component(
         self,

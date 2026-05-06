@@ -30,13 +30,13 @@ use egui_material_icons::{
 };
 use egui_tracing::EventCollector;
 use fluxemu_environment::{Environment, input::PhysicalGamepadConfiguration};
+use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_input::{
     InputId, InputState,
     physical::{PhysicalInputDeviceId, hotkey::Hotkey},
 };
 use fluxemu_program::{MachineId, ProgramManager, ProgramSpecification, RomId};
 use fluxemu_runtime::{
-    graphics::GraphicsApi,
     machine::{
         Machine,
         builder::{MachineError, SealedMachineBuilder},

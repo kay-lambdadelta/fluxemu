@@ -1,7 +1,6 @@
 use std::fmt::Debug;
 
-use fluxemu_graphics::texture::Texture;
-use fluxemu_runtime::graphics::GraphicsApi;
+use fluxemu_graphics::api::{GraphicsApi, software::texture::Texture};
 use palette::Srgba;
 
 use crate::tia::region::Region;

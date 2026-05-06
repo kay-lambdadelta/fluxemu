@@ -6,7 +6,6 @@ use fluxemu_runtime::{
     input::LogicalInputDevice,
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId},
-    persistence::PersistanceFormatVersion,
     platform::Platform,
 };
 
@@ -81,7 +80,6 @@ impl Component for Atari2600Joystick {
 
 impl<P: Platform> ComponentConfig<P> for Atari2600JoystickConfig {
     type Component = Atari2600Joystick;
-    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn build_component(
         self,

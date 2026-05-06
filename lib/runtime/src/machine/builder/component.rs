@@ -14,7 +14,7 @@ use crate::{
     },
     memory::{Address, AddressSpaceId, MapTarget, MemoryRemappingCommand, Permissions},
     path::{ComponentPath, ResourcePath},
-    persistence::PersistanceFormatVersion,
+    persistence::{Codec, ErasedCodec, ErasedCodecWrapper},
     platform::Platform,
     scheduler::Period,
 };
@@ -22,8 +22,8 @@ use crate::{
 /// Overall data extracted from components needed for machine initialization
 pub(super) struct ComponentData<P: Platform> {
     pub late_initializer: ComponentLateInitializer<P>,
-    pub save_version: Option<PersistanceFormatVersion>,
-    pub snapshot_version: PersistanceFormatVersion,
+    pub save_codec: Option<Box<dyn ErasedCodec>>,
+    pub snapshot_codec: Option<Box<dyn ErasedCodec>>,
     pub graphics_requirements: GraphicsRequirements<P::GraphicsApi>,
     pub scheduler_participation: Option<SchedulerParticipation>,
 }
@@ -37,8 +37,8 @@ impl<P: Platform> ComponentData<P> {
 
                 B::late_initialize(component, data)
             }),
-            save_version: None,
-            snapshot_version: B::CURRENT_SNAPSHOT_VERSION,
+            save_codec: None,
+            snapshot_codec: None,
             graphics_requirements: GraphicsRequirements::default(),
             scheduler_participation: None,
         }
@@ -67,13 +67,6 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
 
     pub fn program_manager(&self) -> &ProgramManager {
         self.machine_builder.program_manager()
-    }
-
-    /// Register that this component will participate in saves
-    pub fn save_version(self, version: PersistanceFormatVersion) -> Self {
-        self.component_data.save_version = Some(version);
-
-        self
     }
 
     pub fn scheduler_participation(
@@ -320,6 +313,22 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
     ) -> Self {
         self.component_data.graphics_requirements =
             self.component_data.graphics_requirements.clone() | requirements;
+
+        self
+    }
+
+    pub fn save_codec<CO: Codec<Component = C>>(self, codec: CO) -> Self {
+        let erased = ErasedCodecWrapper::new(codec);
+
+        self.component_data.save_codec = Some(Box::new(erased));
+
+        self
+    }
+
+    pub fn snapshot_codec<CO: Codec<Component = C>>(self, codec: CO) -> Self {
+        let erased = ErasedCodecWrapper::new(codec);
+
+        self.component_data.snapshot_codec = Some(Box::new(erased));
 
         self
     }

@@ -1,7 +1,6 @@
 use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     machine::builder::{ComponentBuilder, SchedulerParticipation},
-    persistence::PersistanceFormatVersion,
     platform::Platform,
     scheduler::{Period, SynchronizationContext},
 };
@@ -41,7 +40,6 @@ pub struct Chip8TimerConfig;
 
 impl<P: Platform> ComponentConfig<P> for Chip8TimerConfig {
     type Component = Chip8Timer;
-    const CURRENT_SNAPSHOT_VERSION: PersistanceFormatVersion = 0;
 
     fn build_component(
         self,

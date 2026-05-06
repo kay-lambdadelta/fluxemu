@@ -22,4 +22,4 @@ tracing = { workspace = true }
 wgpu = { workspace = true, optional = true }
 
 [features]
-webgpu = ["dep:wgpu", "fluxemu-runtime/webgpu"]
+webgpu = ["dep:wgpu", "fluxemu-graphics/webgpu"]

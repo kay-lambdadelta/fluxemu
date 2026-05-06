@@ -40,7 +40,6 @@ impl FromStr for RomId {
 
 impl Value for RomId {
     type SelfType<'a> = Self;
-
     type AsBytes<'a> = Vec<u8>;
 
     fn fixed_width() -> Option<usize> {

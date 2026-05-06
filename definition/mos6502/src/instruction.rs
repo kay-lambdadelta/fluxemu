@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use core::fmt::Display;
 
 use serde::{Deserialize, Serialize};
 
@@ -160,7 +160,7 @@ pub enum Opcode {
 }
 
 impl Display for Opcode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Opcode::Mos6502(opcode) => write!(f, "{opcode}"),
             Opcode::Wdc65C02(opcode) => write!(f, "{opcode}"),
@@ -1365,7 +1365,7 @@ impl Mos6502 {
             Cycle::new(
                 BusMode::Write,
                 None,
-                steps.into_iter().chain(std::iter::once(Phi2::Move {
+                steps.into_iter().chain(core::iter::once(Phi2::Move {
                     source: MoveSource::Operand,
                     destination: MoveDestination::Data,
                 })),

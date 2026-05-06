@@ -4,13 +4,11 @@ use bytemuck::{Pod, Zeroable};
 use egui::{Context, FullOutput};
 use egui_wgpu::{Renderer, RendererOptions, ScreenDescriptor};
 use fluxemu_frontend::GraphicsRuntime;
-use fluxemu_runtime::{
-    graphics::{
-        GraphicsApi, GraphicsRequirements,
-        webgpu::{InitializationData, Requirements, Webgpu},
-    },
-    machine::Machine,
+use fluxemu_graphics::api::{
+    GraphicsApi,
+    webgpu::{InitializationData, Requirements, Webgpu},
 };
+use fluxemu_runtime::{graphics::GraphicsRequirements, machine::Machine};
 use nalgebra::Vector2;
 use pollster::FutureExt;
 use wgpu::{
