@@ -121,7 +121,7 @@ impl<'a> ComponentRegistry<'a> {
         };
 
         let mut guard = self.runtime.local_component_store().borrow_mut();
-        let handle = self.fetch_or_acquire_component(id, &mut guard);
+        let mut handle = self.fetch_or_acquire_component(id, &mut guard);
 
         if !handle.synchronize {
             // Just simply update the timestamp
@@ -135,9 +135,9 @@ impl<'a> ComponentRegistry<'a> {
 
             // Reacquire guard
             guard = self.runtime.local_component_store().borrow_mut();
+            handle = guard.get_slot(id).as_mut().unwrap();
         }
 
-        let handle = guard.get_slot(id).as_mut().unwrap();
         let mut component = handle.component.take().unwrap();
 
         // Drop guard for callback
@@ -146,8 +146,8 @@ impl<'a> ComponentRegistry<'a> {
         let item = callback(component.deref_mut());
 
         // Put component back
-        let mut guard = self.runtime.local_component_store().borrow_mut();
-        let handle = guard.get_slot(id).as_mut().unwrap();
+        guard = self.runtime.local_component_store().borrow_mut();
+        handle = guard.get_slot(id).as_mut().unwrap();
 
         // There is nothing to drop, we own the component, so forget the `None` for better codegen
         std::mem::forget(handle.component.replace(component));
