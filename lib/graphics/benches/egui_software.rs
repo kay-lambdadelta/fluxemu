@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-
-use criterion::{Criterion, criterion_group, criterion_main};
+use divan::Bencher;
 use egui::{Context, RawInput, Rect, ViewportId, ViewportInfo};
 use fluxemu_graphics::api::software::{
     egui_renderer::Renderer,
@@ -12,32 +10,10 @@ use palette::{
     named::BLACK,
     rgb::channels::{Bgra, Rgba},
 };
+use std::collections::HashMap;
 
-fn criterion_benchmark(c: &mut Criterion) {
-    let mut renderer = Renderer::default();
-    let context = Context::default();
-
-    c.bench_function("egui_software_1280x720_rgba", |b| {
-        b.iter(|| {
-            render::<1280, 720, Packed<Rgba, [u8; 4]>>(&mut renderer, &context);
-        })
-    });
-    c.bench_function("egui_software_1280x720_bgra", |b| {
-        b.iter(|| {
-            render::<1280, 720, Packed<Bgra, [u8; 4]>>(&mut renderer, &context);
-        })
-    });
-
-    c.bench_function("egui_software_1920x1080_rgba", |b| {
-        b.iter(|| {
-            render::<1920, 1080, Packed<Rgba, [u8; 4]>>(&mut renderer, &context);
-        })
-    });
-    c.bench_function("egui_software_1920x1080_bgra", |b| {
-        b.iter(|| {
-            render::<1920, 1080, Packed<Bgra, [u8; 4]>>(&mut renderer, &context);
-        })
-    });
+fn main() {
+    divan::main();
 }
 
 fn render<const W: usize, const H: usize, P: From<Srgba<u8>> + Into<Srgba<u8>> + Copy + 'static>(
@@ -45,7 +21,6 @@ fn render<const W: usize, const H: usize, P: From<Srgba<u8>> + Into<Srgba<u8>> +
     context: &Context,
 ) {
     let mut texture = Texture::new(W, H, BLACK.with_alpha(u8::MAX).into());
-
     let full_output = context.run_ui(
         RawInput {
             viewport_id: ViewportId::ROOT,
@@ -79,9 +54,45 @@ fn render<const W: usize, const H: usize, P: From<Srgba<u8>> + Into<Srgba<u8>> +
             }
         },
     );
-
     renderer.render::<P>(context, full_output.clone(), texture.as_view_mut());
 }
 
-criterion_group!(benches, criterion_benchmark);
-criterion_main!(benches);
+#[divan::bench]
+fn egui_software_1280x720_rgba(bencher: Bencher) {
+    let mut renderer = Renderer::default();
+    let context = Context::default();
+
+    bencher.bench_local(|| {
+        render::<1280, 720, Packed<Rgba, [u8; 4]>>(&mut renderer, &context);
+    });
+}
+
+#[divan::bench]
+fn egui_software_1280x720_bgra(bencher: Bencher) {
+    let mut renderer = Renderer::default();
+    let context = Context::default();
+
+    bencher.bench_local(|| {
+        render::<1280, 720, Packed<Bgra, [u8; 4]>>(&mut renderer, &context);
+    });
+}
+
+#[divan::bench]
+fn egui_software_1920x1080_rgba(bencher: Bencher) {
+    let mut renderer = Renderer::default();
+    let context = Context::default();
+
+    bencher.bench_local(|| {
+        render::<1920, 1080, Packed<Rgba, [u8; 4]>>(&mut renderer, &context);
+    });
+}
+
+#[divan::bench]
+fn egui_software_1920x1080_bgra(bencher: Bencher) {
+    let mut renderer = Renderer::default();
+    let context = Context::default();
+
+    bencher.bench_local(|| {
+        render::<1920, 1080, Packed<Bgra, [u8; 4]>>(&mut renderer, &context);
+    });
+}
