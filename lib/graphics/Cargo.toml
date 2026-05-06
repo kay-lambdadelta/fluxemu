@@ -3,6 +3,10 @@ name = "fluxemu-graphics"
 version = "0.1.0"
 edition = "2024"
 
+[[bench]]
+harness = false
+name = "egui_software"
+
 [dependencies]
 egui = { workspace = true }
 fluxemu-range = { workspace = true }
@@ -16,6 +20,10 @@ serde = { workspace = true }
 tracing = { workspace = true }
 wgpu = { workspace = true, optional = true }
 
+[target.'cfg(any(target_family = "unix", target_os = "windows"))'.dev-dependencies]
+criterion = { workspace = true }
+
 [features]
+default = ["std"]
 std = []
 webgpu = ["dep:wgpu"]

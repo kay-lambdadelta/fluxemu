@@ -1609,6 +1609,7 @@ dependencies = [
 name = "fluxemu-graphics"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "egui",
  "fluxemu-range",
  "heapless",
