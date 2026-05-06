@@ -322,7 +322,7 @@ impl<P: Platform> MachineBuilder<P> {
     }
 
     /// Seal the machine
-    pub fn seal(self) -> Result<SealedMachineBuilder<P>, MachineError> {
+    pub fn seal(self) -> SealedMachineBuilder<P> {
         let mut component_late_initializers = HashMap::default();
         let mut graphics_requirements = GraphicsRequirements::default();
         let mut remapping_commands = HashMap::new();
@@ -369,10 +369,10 @@ impl<P: Platform> MachineBuilder<P> {
         }
         drop(runtime_guard);
 
-        Ok(SealedMachineBuilder {
+        SealedMachineBuilder {
             machine,
             component_late_initializers,
             graphics_requirements,
-        })
+        }
     }
 }

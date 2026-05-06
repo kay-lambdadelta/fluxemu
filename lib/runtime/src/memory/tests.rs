@@ -22,7 +22,7 @@ fn read() {
         },
     );
 
-    let machine = machine.seal().unwrap().build(());
+    let machine = machine.seal().build(());
     let runtime_guard = machine.enter_runtime();
 
     let mut address_space = runtime_guard.address_space(address_space).unwrap();
@@ -51,7 +51,7 @@ fn write() {
         },
     );
 
-    let machine = machine.seal().unwrap().build(());
+    let machine = machine.seal().build(());
     let runtime_guard = machine.enter_runtime();
 
     let mut address_space = runtime_guard.address_space(address_space).unwrap();
@@ -77,7 +77,7 @@ fn read_write() {
         },
     );
 
-    let machine = machine.seal().unwrap().build(());
+    let machine = machine.seal().build(());
     let runtime_guard = machine.enter_runtime();
 
     let mut address_space = runtime_guard.address_space(address_space).unwrap();
@@ -111,7 +111,7 @@ fn wraparound() {
         },
     );
 
-    let machine = machine.seal().unwrap().build(());
+    let machine = machine.seal().build(());
     let runtime_guard = machine.enter_runtime();
 
     let mut address_space = runtime_guard.address_space(address_space).unwrap();
@@ -145,7 +145,7 @@ fn mirror() {
     );
     let machine = machine.memory_map_mirror(address_space, 0x02..=0x02, 0x00..=0x00);
 
-    let machine = machine.seal().unwrap().build(());
+    let machine = machine.seal().build(());
     let runtime_guard = machine.enter_runtime();
 
     let mut address_space = runtime_guard.address_space(address_space).unwrap();

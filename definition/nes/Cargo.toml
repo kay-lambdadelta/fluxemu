@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 
+[[bench]]
+harness = false
+name = "emulation"
+
 [dependencies]
 bitstream-io = "4.10"
 bytemuck = { workspace = true }
@@ -27,6 +31,12 @@ strum = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 wgpu = { workspace = true, optional = true }
+
+[target.'cfg(any(target_family = "unix", target_os = "windows"))'.dev-dependencies]
+divan = { workspace = true }
+fluxemu-environment = { workspace = true }
+redb = { workspace = true }
+ron = { workspace = true }
 
 [features]
 webgpu = ["dep:wgpu", "fluxemu-graphics/webgpu"]

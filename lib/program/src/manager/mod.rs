@@ -54,7 +54,10 @@ pub struct ProgramManager {
 
 impl ProgramManager {
     /// Opens and loads the default database
-    pub fn new(database: Database) -> Result<Arc<Self>, Error> {
+    pub fn new(
+        database: Database,
+        rom_stores: impl IntoIterator<Item = PathBuf>,
+    ) -> Result<Arc<Self>, Error> {
         let mut database_transaction = database.begin_write()?;
         database_transaction.set_quick_repair(true);
         database_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
@@ -67,7 +70,7 @@ impl ProgramManager {
             database,
             external_roms: scc::HashMap::default(),
             rom_cache: scc::HashCache::with_capacity(0, 16),
-            rom_stores: Vec::default(),
+            rom_stores: rom_stores.into_iter().collect(),
         }))
     }
 
@@ -133,7 +136,7 @@ impl ProgramManager {
             .create_with_backend(InMemoryBackend::default())
             .unwrap();
 
-        Self::new(database)
+        Self::new(database, [])
     }
 
     /// Attempts to identify a program from its program ids
@@ -183,22 +186,23 @@ impl ProgramManager {
             return Ok(None);
         };
 
-        let Some((file_name, name)) = external_path.into_iter().find_map(|path| {
-            let file_name = path.file_name().unwrap().to_string_lossy().to_string();
-            let name = file_name
-                .split('.')
-                .next()
-                .unwrap_or(&file_name)
-                .to_string();
+        let (file_name, name) = external_path
+            .into_iter()
+            .find_map(|path| {
+                let file_name = path.file_name().unwrap().to_string_lossy().to_string();
+                let name = file_name
+                    .split('.')
+                    .next()
+                    .unwrap_or(&file_name)
+                    .to_string();
 
-            if name.is_empty() {
-                return None;
-            }
+                if name.is_empty() {
+                    return None;
+                }
 
-            Some((file_name, name))
-        }) else {
-            return Ok(None);
-        };
+                Some((file_name, name))
+            })
+            .unwrap_or_else(|| (rom_id.to_string(), rom_id.to_string()));
 
         let program_id = ProgramId {
             machine,

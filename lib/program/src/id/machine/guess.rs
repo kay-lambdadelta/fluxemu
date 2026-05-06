@@ -4,6 +4,7 @@ use fluxemu_range::ContiguousRange;
 
 use super::{AtariSystem, MachineId, NintendoSystem, OtherSystem, SegaSystem};
 
+#[derive(Debug)]
 struct MagicTableEntry {
     bytes: &'static [u8],
     offset: usize,
@@ -82,7 +83,7 @@ pub fn guess(path: Option<&Path>, data: Option<&[u8]>) -> Option<MachineId> {
         {
             let range = RangeInclusive::from_start_and_length(entry.offset, entry.bytes.len());
 
-            if !range.contains(&data.len()) {
+            if *range.end() >= data.len() {
                 continue;
             }
 

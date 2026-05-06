@@ -1,3 +1,5 @@
+use std::{hint::black_box, sync::Arc};
+
 use divan::Bencher;
 use fluxemu_runtime::{
     machine::Machine,
@@ -8,7 +10,6 @@ use fluxemu_runtime::{
     scheduler::Period,
 };
 use rangemap::RangeInclusiveMap;
-use std::{hint::black_box, sync::Arc};
 
 fn main() {
     divan::main();
@@ -34,7 +35,6 @@ fn build_machine() -> (Arc<Machine>, AddressSpaceId) {
     let machine = machine
         .memory_map_buffer_read(address_space_id, 0x1000..=0x1fff, vec![0u8; 0x1000])
         .seal()
-        .unwrap()
         .build(());
 
     (machine, address_space_id)

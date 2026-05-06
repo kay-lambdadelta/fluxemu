@@ -107,7 +107,7 @@ enum MachineInitializationStep<P: Platform> {
     },
     /// Step 3: Create and seal a machine builder given the specification
     BuildingMachineBuilder {
-        job: JoinHandle<Result<SealedMachineBuilder<P>, MachineError>>,
+        job: JoinHandle<SealedMachineBuilder<P>>,
     },
 }
 
@@ -574,10 +574,8 @@ impl<P: FrontendPlatform> Frontend<P> {
                 }
             }
             MachineInitializationStep::BuildingMachineBuilder { job } if job.is_finished() => {
-                match job.join().unwrap() {
-                    Ok(sealed) => self.pending_machine = Some(sealed),
-                    Err(err) => tracing::error!("Failed to build machine_builder: {}", err),
-                }
+                let sealed = job.join().unwrap();
+                self.pending_machine = Some(sealed);
             }
             unfinished => self.machine_initialization_step = Some(unfinished),
         }

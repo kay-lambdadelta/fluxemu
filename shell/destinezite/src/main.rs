@@ -106,7 +106,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("FluxEMU v{}", env!("CARGO_PKG_VERSION"));
 
     let database = Database::create(&environment.database_location)?;
-    let program_manager = ProgramManager::new(database)?;
+    let program_manager = ProgramManager::new(database, [environment.rom_store.clone()])?;
 
     let cli = Cli::parse();
 

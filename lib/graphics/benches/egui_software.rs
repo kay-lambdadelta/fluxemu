@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use divan::Bencher;
 use egui::{Context, RawInput, Rect, ViewportId, ViewportInfo};
 use fluxemu_graphics::api::software::{
@@ -10,7 +12,6 @@ use palette::{
     named::BLACK,
     rgb::channels::{Bgra, Rgba},
 };
-use std::collections::HashMap;
 
 fn main() {
     divan::main();
