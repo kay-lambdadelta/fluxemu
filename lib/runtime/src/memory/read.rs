@@ -6,7 +6,10 @@ use num::traits::{FromBytes, ops::bytes::NumBytes};
 use super::AddressSpace;
 use crate::{
     component::Component,
-    memory::{Address, MemoryError, MemoryErrorType, PageEntry, PageTarget, component::Memory},
+    memory::{
+        Address, AddressSpaceId, MemoryError, MemoryErrorType, PageEntry, PageTarget,
+        component::Memory,
+    },
     scheduler::Period,
 };
 
@@ -57,25 +60,14 @@ impl<'a> AddressSpace<'a> {
                             time,
                             #[inline]
                             |component| {
-                                if *is_standard_memory {
-                                    let component = unsafe {
-                                        &mut *(std::ptr::from_mut(component) as *mut Memory)
-                                    };
-
-                                    component.memory_read(
-                                        destination_start + offset,
-                                        self.data.id,
-                                        avoid_side_effects,
-                                        buffer,
-                                    )
-                                } else {
-                                    component.memory_read(
-                                        destination_start + offset,
-                                        self.data.id,
-                                        avoid_side_effects,
-                                        buffer,
-                                    )
-                                }
+                                perform_component_read(
+                                    component,
+                                    *is_standard_memory,
+                                    destination_start + offset,
+                                    self.data.id,
+                                    avoid_side_effects,
+                                    buffer,
+                                )
                             },
                         )
                         .unwrap()?;
@@ -127,25 +119,14 @@ impl<'a> AddressSpace<'a> {
                                 time,
                                 #[inline]
                                 |component| {
-                                    if *is_standard_memory {
-                                        let component = unsafe {
-                                            &mut *(std::ptr::from_mut(component) as *mut Memory)
-                                        };
-
-                                        component.memory_read(
-                                            destination_start + offset,
-                                            self.data.id,
-                                            avoid_side_effects,
-                                            adjusted_buffer,
-                                        )
-                                    } else {
-                                        component.memory_read(
-                                            destination_start + offset,
-                                            self.data.id,
-                                            avoid_side_effects,
-                                            adjusted_buffer,
-                                        )
-                                    }
+                                    perform_component_read(
+                                        component,
+                                        *is_standard_memory,
+                                        destination_start + offset,
+                                        self.data.id,
+                                        avoid_side_effects,
+                                        adjusted_buffer,
+                                    )
                                 },
                             )
                             .unwrap()?;
@@ -266,5 +247,23 @@ impl<'a> AddressSpace<'a> {
         let mut buffer = T::Bytes::default();
         self.read_internal(address, current_timestamp, true, &mut buffer)?;
         Ok(T::from_be_bytes(&buffer))
+    }
+}
+
+#[inline]
+fn perform_component_read(
+    component: &mut dyn Component,
+    is_standard_memory: bool,
+    destination: Address,
+    address_space_id: AddressSpaceId,
+    avoid_side_effects: bool,
+    buffer: &mut [u8],
+) -> Result<(), MemoryError> {
+    if is_standard_memory {
+        let component = unsafe { &mut *(std::ptr::from_mut(component) as *mut Memory) };
+
+        component.memory_read(destination, address_space_id, avoid_side_effects, buffer)
+    } else {
+        component.memory_read(destination, address_space_id, avoid_side_effects, buffer)
     }
 }

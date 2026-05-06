@@ -73,19 +73,17 @@ impl MemoryMappingTable {
                                 .start()
                                 .checked_sub(*source_base)
                                 .expect("mirror source_range.start must be >= source_base");
-                            let source_length = source_range.len();
 
                             let destination_start = destination_base + offset;
-
                             let assigned_destination_range = RangeInclusive::from_start_and_length(
                                 destination_start,
-                                source_length,
+                                source_range.len(),
                             );
 
                             let mut entries: Vec<PageEntry> = self
                                 .master
                                 .overlapping(assigned_destination_range.clone())
-                                .map(|(destination_range, dest_entry)| {
+                                .map(|(destination_range, destination_entry)| {
                                     let destination_overlap =
                                         assigned_destination_range.intersection(destination_range);
 
@@ -99,7 +97,7 @@ impl MemoryMappingTable {
                                         + shrink_left)
                                         ..=(source_range.end() - shrink_right);
 
-                                    match dest_entry {
+                                    match destination_entry {
                                         MappingEntry::Component(path) => PageEntry {
                                             range: calculated_source_range,
                                             target: PageTarget::Component {

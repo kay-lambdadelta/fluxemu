@@ -6,7 +6,10 @@ use num::traits::{ToBytes, ops::bytes::NumBytes};
 use super::AddressSpace;
 use crate::{
     component::Component,
-    memory::{Address, MemoryError, MemoryErrorType, PageEntry, PageTarget, component::Memory},
+    memory::{
+        Address, AddressSpaceId, MemoryError, MemoryErrorType, PageEntry, PageTarget,
+        component::Memory,
+    },
     scheduler::Period,
 };
 
@@ -21,7 +24,7 @@ impl<'a> AddressSpace<'a> {
         let members = self.members_cache.load();
         let buffer = buffer.as_ref();
 
-        // Take a special path for single byte reads
+        // Take a special path for single byte writes
         if buffer.len() == 1 {
             let address_masked = address & self.data.width_mask;
 
@@ -51,23 +54,13 @@ impl<'a> AddressSpace<'a> {
                             time,
                             #[inline]
                             |component| {
-                                if *is_standard_memory {
-                                    let component = unsafe {
-                                        &mut *(std::ptr::from_mut(component) as *mut Memory)
-                                    };
-
-                                    component.memory_write(
-                                        destination_start + offset,
-                                        self.data.id,
-                                        buffer,
-                                    )
-                                } else {
-                                    component.memory_write(
-                                        destination_start + offset,
-                                        self.data.id,
-                                        buffer,
-                                    )
-                                }
+                                perform_component_write(
+                                    component,
+                                    *is_standard_memory,
+                                    destination_start + offset,
+                                    self.data.id,
+                                    buffer,
+                                )
                             },
                         )
                         .unwrap()?;
@@ -122,23 +115,13 @@ impl<'a> AddressSpace<'a> {
                                 time,
                                 #[inline]
                                 |component| {
-                                    if *is_standard_memory {
-                                        let component = unsafe {
-                                            &mut *(std::ptr::from_mut(component) as *mut Memory)
-                                        };
-
-                                        component.memory_write(
-                                            destination_start + offset,
-                                            self.data.id,
-                                            adjusted_buffer,
-                                        )
-                                    } else {
-                                        component.memory_write(
-                                            destination_start + offset,
-                                            self.data.id,
-                                            adjusted_buffer,
-                                        )
-                                    }
+                                    perform_component_write(
+                                        component,
+                                        *is_standard_memory,
+                                        destination_start + offset,
+                                        self.data.id,
+                                        adjusted_buffer,
+                                    )
                                 },
                             )
                             .unwrap()?;
@@ -198,5 +181,22 @@ impl<'a> AddressSpace<'a> {
         value: T,
     ) -> Result<(), MemoryError> {
         self.write_internal(address, current_timestamp, &value.to_be_bytes())
+    }
+}
+
+#[inline]
+fn perform_component_write(
+    component: &mut dyn Component,
+    is_standard_memory: bool,
+    destination: Address,
+    address_space_id: AddressSpaceId,
+    buffer: &[u8],
+) -> Result<(), MemoryError> {
+    if is_standard_memory {
+        let component = unsafe { &mut *(std::ptr::from_mut(component) as *mut Memory) };
+
+        component.memory_write(destination, address_space_id, buffer)
+    } else {
+        component.memory_write(destination, address_space_id, buffer)
     }
 }

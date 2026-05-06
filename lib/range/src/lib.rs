@@ -5,6 +5,7 @@ mod range_inclusive_set;
 
 pub trait RangeBase<Idx> {
     fn is_empty(&self) -> bool;
+    fn contains(&self, index: &Idx) -> bool;
 }
 
 pub trait ContiguousRange<Idx>: RangeBase<Idx> {

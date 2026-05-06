@@ -1,6 +1,6 @@
 use std::ops::RangeInclusive;
 
-use fluxemu_range::RangeIntersection;
+use fluxemu_range::{RangeBase, RangeIntersection};
 
 use crate::memory::{Address, MemoryMappingTable, PAGE_SIZE, Page, PageEntry};
 
@@ -32,13 +32,13 @@ impl MemoryMappingTable {
 
         match self.computed_table[page].as_ref()? {
             Page::Single(entry) => {
-                if entry.range.contains(&address) {
+                if RangeBase::contains(&entry.range, &address) {
                     return Some(entry);
                 }
             }
             Page::Multi(entries) => {
                 for entry in entries {
-                    if entry.range.contains(&address) {
+                    if RangeBase::contains(&entry.range, &address) {
                         return Some(entry);
                     }
                 }

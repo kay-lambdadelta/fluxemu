@@ -6,8 +6,15 @@ use rangemap::{RangeInclusiveSet, StepLite};
 use crate::{ContiguousRange, RangeBase, RangeDifference, RangeIntersection};
 
 impl<Idx: Integer + Clone> RangeBase<Idx> for RangeInclusive<Idx> {
+    #[inline]
     fn is_empty(&self) -> bool {
         self.is_empty()
+    }
+
+    #[inline]
+    fn contains(&self, index: &Idx) -> bool {
+        // Slightly faster than the std implementation because it does not care about the exhausted check
+        index >= self.start() && index <= self.end()
     }
 }
 

@@ -98,7 +98,7 @@ impl PartialEq for MappingEntry {
 
 impl Eq for MappingEntry {}
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum PageTarget {
     Memory(Bytes),
     Component {
@@ -106,24 +106,6 @@ enum PageTarget {
         component: ComponentId,
         is_standard_memory: bool,
     },
-}
-
-impl Debug for PageTarget {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            PageTarget::Component {
-                destination_start,
-                component,
-                is_standard_memory,
-            } => f
-                .debug_struct("Component")
-                .field("destination_start", destination_start)
-                .field("component", component)
-                .field("is_standard_memory", is_standard_memory)
-                .finish(),
-            PageTarget::Memory(_) => f.debug_tuple("Memory").finish(),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
