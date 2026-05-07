@@ -31,7 +31,6 @@ pub const IRQ_VECTOR: u16 = 0xfffe;
 pub const NMI_VECTOR: u16 = 0xfffa;
 pub const PAGE_SIZE: usize = 256;
 pub const STACK_BASE_ADDRESS: u16 = 0x0100;
-pub const INTERRUPT_VECTOR: u16 = 0xfffe;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Bus {
