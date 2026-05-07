@@ -20,4 +20,4 @@ Feature specific dependencies (all features are enabled by default)
 
 | Distro | Feature | Development Package Name |
 | ------ | ------- | ------------------------ |
-| Debian | `wgpu`  | libvulkan-dev libgl-dev  |
+| Debian | `webgpu`  | libvulkan-dev libgl-dev  |
