@@ -1,5 +1,6 @@
 use std::{
     any::{Any, TypeId},
+    cell::RefMut,
     collections::HashMap,
     fmt::Debug,
     ops::DerefMut,
@@ -127,14 +128,8 @@ impl<'a> ComponentRegistry<'a> {
             // Just simply update the timestamp
             handle.current_timestamp = target_timestamp;
         } else {
-            // Drop guard for synchronization
-            drop(guard);
-
             // Synchronize the component
-            self.synchronize_component(id, target_timestamp);
-
-            // Reacquire guard
-            guard = self.runtime.local_component_store().borrow_mut();
+            guard = self.synchronize_component(id, target_timestamp, guard);
             handle = guard.get_slot(id).as_mut().unwrap();
         }
 
@@ -156,12 +151,16 @@ impl<'a> ComponentRegistry<'a> {
     }
 
     #[cold]
-    fn synchronize_component(&self, id: ComponentId, target_timestamp: Period) {
-        let mut guard = self.runtime.local_component_store().borrow_mut();
-        let handle = guard.get_slot(id).as_mut().unwrap();
+    fn synchronize_component<'b>(
+        &'b self,
+        id: ComponentId,
+        target_timestamp: Period,
+        mut guard: RefMut<'b, LocalComponentStore>,
+    ) -> RefMut<'b, LocalComponentStore> {
+        let mut handle = guard.get_slot(id).as_mut().unwrap();
 
         let Some(mut delta) = target_timestamp.checked_sub(handle.current_timestamp) else {
-            return;
+            return guard;
         };
 
         let mut current_timestamp = handle.current_timestamp;
@@ -169,9 +168,8 @@ impl<'a> ComponentRegistry<'a> {
 
         if delta == Period::ZERO || !component.needs_work(&current_timestamp, &delta) {
             handle.component = Some(component);
-            return;
+            return guard;
         }
-        drop(guard);
 
         loop {
             let mut last_attempted_allocation = Period::ZERO;
@@ -181,7 +179,12 @@ impl<'a> ComponentRegistry<'a> {
                 target_timestamp,
                 last_attempted_allocation: &mut last_attempted_allocation,
             };
+
+            drop(guard);
+
             component.synchronize(context);
+            guard = self.runtime.local_component_store().borrow_mut();
+            handle = guard.get_slot(id).as_mut().unwrap();
 
             assert_ne!(
                 last_attempted_allocation,
@@ -192,14 +195,12 @@ impl<'a> ComponentRegistry<'a> {
             delta = target_timestamp - current_timestamp;
             let needs_work = component.needs_work(&current_timestamp, &delta);
 
-            let mut guard = self.runtime.local_component_store().borrow_mut();
-            let handle = guard.get_slot(id).as_mut().unwrap();
-
             handle.component = Some(component);
             handle.current_timestamp = current_timestamp;
 
             if needs_work {
                 let hazard_timestamp = handle.current_timestamp + last_attempted_allocation;
+
                 drop(guard);
 
                 self.runtime
@@ -210,12 +211,12 @@ impl<'a> ComponentRegistry<'a> {
 
                 // Re-acquire
                 guard = self.runtime.local_component_store().borrow_mut();
-                let handle = self.fetch_or_acquire_component(id, &mut guard);
+                handle = self.fetch_or_acquire_component(id, &mut guard);
 
                 component = handle.component.take().unwrap();
                 current_timestamp = handle.current_timestamp;
             } else {
-                return;
+                return guard;
             }
         }
     }
