@@ -18,6 +18,6 @@ This is a prototype of a multisystem hardware emulator
 
 Feature specific dependencies (all features are enabled by default)
 
-| Distro | Feature  | Development Package Name |
-| ------ | -------- | ------------------------ |
-| Debian | `vulkan` | libvulkan-dev            |
+| Distro | Feature | Development Package Name |
+| ------ | ------- | ------------------------ |
+| Debian | `wgpu`  | libvulkan-dev libgl-dev  |
