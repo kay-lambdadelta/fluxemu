@@ -1613,7 +1613,6 @@ dependencies = [
 name = "fluxemu-runtime"
 version = "0.1.0"
 dependencies = [
- "arc-swap",
  "bytes",
  "divan",
  "dyn-clone",
@@ -1633,6 +1632,7 @@ dependencies = [
  "rmp-serde",
  "rustc-hash 2.1.2",
  "scc",
+ "sdd",
  "sealed",
  "serde",
  "serde_with",

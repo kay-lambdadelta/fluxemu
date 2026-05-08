@@ -1,9 +1,14 @@
-use std::{fmt::Debug, hash::Hash, ops::RangeInclusive, sync::Arc};
+use std::{
+    fmt::Debug,
+    hash::Hash,
+    ops::RangeInclusive,
+    sync::{Mutex, atomic::Ordering},
+};
 
-use arc_swap::{ArcSwap, Cache};
 use bytes::Bytes;
 use fluxemu_range::RangeIntersection;
 use rangemap::{RangeInclusiveMap, RangeInclusiveSet};
+use sdd::{AtomicOwned, Guard, Owned, Tag};
 use thiserror::Error;
 
 use crate::{
@@ -25,11 +30,11 @@ pub type Address = usize;
 const PAGE_SIZE: Address = 0x1000;
 
 /// The main structure representing the devices memory address spaces
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct AddressSpace<'a> {
     registry: ComponentRegistry<'a>,
     data: &'a AddressSpaceData,
-    members_cache: Cache<Arc<ArcSwap<Members>>, Arc<Members>>,
+    guard: Guard,
 }
 
 impl<'a> AddressSpace<'a> {
@@ -37,7 +42,7 @@ impl<'a> AddressSpace<'a> {
         Self {
             registry: runtime.registry(),
             data,
-            members_cache: Cache::new(data.members.clone()),
+            guard: Guard::new(),
         }
     }
 
@@ -181,7 +186,8 @@ pub(crate) struct AddressSpaceData {
     width_mask: Address,
     address_space_width: u8,
     id: AddressSpaceId,
-    members: Arc<ArcSwap<Members>>,
+    members: AtomicOwned<Members>,
+    write_lock: Mutex<()>,
 }
 
 impl AddressSpaceData {
@@ -197,10 +203,11 @@ impl AddressSpaceData {
             id,
             width_mask,
             address_space_width: width,
-            members: Arc::new(ArcSwap::new(Arc::new(Members {
+            members: AtomicOwned::new(Members {
                 read: MemoryMappingTable::new(width),
                 write: MemoryMappingTable::new(width),
-            }))),
+            }),
+            write_lock: Mutex::default(),
         }
     }
 
@@ -217,116 +224,121 @@ impl AddressSpaceData {
         let mut dirty_read = RangeInclusiveSet::new();
         let mut dirty_write = RangeInclusiveSet::new();
 
-        self.members.rcu(|members| {
-            let mut members = Members::clone(members);
+        let load_guard = Guard::new();
+        let _write_lock_guard = self.write_lock.lock().unwrap();
 
-            for command in commands.clone() {
-                match command {
-                    MemoryRemappingCommand::Map {
-                        range,
-                        target,
-                        permissions,
-                    } => {
-                        assert!(
-                            !valid_range.disjoint(&range),
-                            "Range {range:#04x?} is invalid for a address space that ends at \
+        let current = self.members.load(Ordering::Acquire, &load_guard);
+        let mut members = Members::clone(current.as_ref().unwrap());
+        drop(load_guard);
+
+        for command in commands.clone() {
+            match command {
+                MemoryRemappingCommand::Map {
+                    range,
+                    target,
+                    permissions,
+                } => {
+                    assert!(
+                        !valid_range.disjoint(&range),
+                        "Range {range:#04x?} is invalid for a address space that ends at \
                              {max:04x?}"
-                        );
+                    );
 
-                        if permissions.read {
-                            dirty_read.insert(range.clone());
-                        }
+                    if permissions.read {
+                        dirty_read.insert(range.clone());
+                    }
 
-                        if permissions.write {
-                            dirty_write.insert(range.clone());
-                        }
+                    if permissions.write {
+                        dirty_write.insert(range.clone());
+                    }
 
-                        match target {
-                            MapTarget::Component(component_path) => {
-                                if permissions.read {
-                                    members.read.master.insert(
-                                        range.clone(),
-                                        MappingEntry::Component(component_path.clone()),
-                                    );
-                                }
-
-                                if permissions.write {
-                                    members.write.master.insert(
-                                        range.clone(),
-                                        MappingEntry::Component(component_path),
-                                    );
-                                }
-                            }
-                            MapTarget::Buffer(bytes) => {
-                                if permissions.read {
-                                    members
-                                        .read
-                                        .master
-                                        .insert(range.clone(), MappingEntry::Buffer(bytes.clone()));
-                                }
-
-                                if permissions.write {
-                                    members
-                                        .write
-                                        .master
-                                        .insert(range.clone(), MappingEntry::Buffer(bytes));
-                                }
-                            }
-                            MapTarget::Mirror { destination } => {
-                                assert!(
-                                    !valid_range.disjoint(&destination),
-                                    "Range {destination:#04x?} is invalid for a address space \
-                                     that ends at {max:04x?}"
+                    match target {
+                        MapTarget::Component(component_path) => {
+                            if permissions.read {
+                                members.read.master.insert(
+                                    range.clone(),
+                                    MappingEntry::Component(component_path.clone()),
                                 );
+                            }
 
-                                if permissions.read {
-                                    members.read.master.insert(
-                                        range.clone(),
-                                        MappingEntry::Mirror {
-                                            source_base: *range.start(),
-                                            destination_base: *destination.start(),
-                                        },
-                                    );
-                                }
-
-                                if permissions.write {
-                                    members.write.master.insert(
-                                        range.clone(),
-                                        MappingEntry::Mirror {
-                                            source_base: *range.start(),
-                                            destination_base: *destination.start(),
-                                        },
-                                    );
-                                }
+                            if permissions.write {
+                                members
+                                    .write
+                                    .master
+                                    .insert(range.clone(), MappingEntry::Component(component_path));
                             }
                         }
-                    }
-                    MemoryRemappingCommand::Unmap { range, permissions } => {
-                        if permissions.read {
-                            members.read.master.remove(range.clone());
-                            dirty_read.insert(range.clone());
-                        }
+                        MapTarget::Buffer(bytes) => {
+                            if permissions.read {
+                                members
+                                    .read
+                                    .master
+                                    .insert(range.clone(), MappingEntry::Buffer(bytes.clone()));
+                            }
 
-                        if permissions.write {
-                            members.write.master.remove(range.clone());
-                            dirty_write.insert(range.clone());
+                            if permissions.write {
+                                members
+                                    .write
+                                    .master
+                                    .insert(range.clone(), MappingEntry::Buffer(bytes));
+                            }
                         }
-                    }
-                    MemoryRemappingCommand::RebaseComponent { component, base } => {
-                        registry.interact_dyn(&component, timestamp, |component| {
-                            component.memory_rebase(base);
-                        });
+                        MapTarget::Mirror { destination } => {
+                            assert!(
+                                !valid_range.disjoint(&destination),
+                                "Range {destination:#04x?} is invalid for a address space \
+                                     that ends at {max:04x?}"
+                            );
+
+                            if permissions.read {
+                                members.read.master.insert(
+                                    range.clone(),
+                                    MappingEntry::Mirror {
+                                        source_base: *range.start(),
+                                        destination_base: *destination.start(),
+                                    },
+                                );
+                            }
+
+                            if permissions.write {
+                                members.write.master.insert(
+                                    range.clone(),
+                                    MappingEntry::Mirror {
+                                        source_base: *range.start(),
+                                        destination_base: *destination.start(),
+                                    },
+                                );
+                            }
+                        }
                     }
                 }
+                MemoryRemappingCommand::Unmap { range, permissions } => {
+                    if permissions.read {
+                        members.read.master.remove(range.clone());
+                        dirty_read.insert(range.clone());
+                    }
+
+                    if permissions.write {
+                        members.write.master.remove(range.clone());
+                        dirty_write.insert(range.clone());
+                    }
+                }
+                MemoryRemappingCommand::RebaseComponent { component, base } => {
+                    registry.interact_dyn(&component, timestamp, |component| {
+                        component.memory_rebase(base);
+                    });
+                }
             }
+        }
 
-            members.read.mirror_dirtying_pass(&mut dirty_read);
-            members.read.commit(&dirty_read, registry);
-            members.write.mirror_dirtying_pass(&mut dirty_write);
-            members.write.commit(&dirty_write, registry);
+        members.read.mirror_dirtying_pass(&mut dirty_read);
+        members.read.commit(&dirty_read, registry);
+        members.write.mirror_dirtying_pass(&mut dirty_write);
+        members.write.commit(&dirty_write, registry);
 
-            members
-        });
+        let _old = self
+            .members
+            .swap((Some(Owned::new(members)), Tag::None), Ordering::AcqRel);
     }
 }
 

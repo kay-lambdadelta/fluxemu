@@ -1,4 +1,4 @@
-use std::ops::RangeInclusive;
+use std::{ops::RangeInclusive, sync::atomic::Ordering};
 
 use fluxemu_range::{ContiguousRange, RangeIntersection};
 use num::traits::{ToBytes, ops::bytes::NumBytes};
@@ -21,7 +21,13 @@ impl<'a> AddressSpace<'a> {
         time: Period,
         buffer: &B,
     ) -> Result<(), MemoryError> {
-        let members = self.members_cache.load();
+        let members = self
+            .data
+            .members
+            .load(Ordering::Relaxed, &self.guard)
+            .as_ref()
+            .unwrap();
+
         let buffer = buffer.as_ref();
 
         // Take a special path for single byte writes

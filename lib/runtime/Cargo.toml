@@ -9,7 +9,6 @@ harness = false
 name = "memory"
 
 [dependencies]
-arc-swap = { workspace = true }
 bytes = { workspace = true }
 dyn-clone = "1.0"
 fixed = { workspace = true }
@@ -28,6 +27,7 @@ ringbuffer = { workspace = true }
 rmp-serde = { workspace = true }
 rustc-hash = { workspace = true }
 scc = { workspace = true }
+sdd = { version = "4.8" }
 sealed = { workspace = true }
 serde = { workspace = true }
 serde_with = { workspace = true }
