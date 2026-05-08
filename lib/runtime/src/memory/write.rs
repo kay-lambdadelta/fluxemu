@@ -24,7 +24,7 @@ impl<'a> AddressSpace<'a> {
         let members = self
             .data
             .members
-            .load(Ordering::Relaxed, &self.guard)
+            .load(Ordering::Acquire, &self.guard)
             .as_ref()
             .unwrap();
 
