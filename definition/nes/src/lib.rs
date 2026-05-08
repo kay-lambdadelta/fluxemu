@@ -21,7 +21,7 @@ use crate::{
         ines::{INesVersion, NametableMirroring, expansion_device::DefaultExpansionDevice},
         mapper::{mmc1::Mmc1Config, nrom::NRomConfig},
     },
-    gamepad::controller::NesControllerConfig,
+    gamepad::standard_controllers::NesControllerConfig,
     ppu::{
         BACKGROUND_PALETTE_BASE_ADDRESS, NAMETABLE_ADDRESSES,
         backend::SupportedGraphicsApiPpu,
@@ -169,22 +169,9 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> MachineFactory<P>
         let machine = match default_expansion_device {
             DefaultExpansionDevice::StandardControllers { .. } => {
                 let (machine, _) = machine.component(
-                    "standard-nes-controller-0",
-                    NesControllerConfig {
-                        cpu_address_space,
-                        controller_index: 0,
-                    },
+                    "standard-nes-controllers",
+                    NesControllerConfig { cpu_address_space },
                 );
-
-                /*
-                let (machine, _) = machine.insert_component(
-                    "standard-nes-controller-1",
-                    NesControllerConfig {
-                        cpu_address_space,
-                        controller_index: 1,
-                    },
-                );
-                */
 
                 machine
             }

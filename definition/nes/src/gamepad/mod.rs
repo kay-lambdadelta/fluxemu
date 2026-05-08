@@ -1,1 +1,1 @@
-pub mod controller;
+pub mod standard_controllers;
