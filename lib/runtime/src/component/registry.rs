@@ -133,7 +133,10 @@ impl<'a> ComponentRegistry<'a> {
             handle = guard.get_slot(id).as_mut().unwrap();
         }
 
-        let mut component = handle.component.take().unwrap();
+        let mut component = handle
+            .component
+            .take()
+            .expect("Component is reentrant on itself");
 
         // Drop guard for callback
         drop(guard);

@@ -228,8 +228,8 @@ impl AddressSpaceData {
         let _write_lock_guard = self.write_lock.lock().unwrap();
 
         let current = self.members.load(Ordering::Acquire, &load_guard);
-        let mut members = Members::clone(current.as_ref().unwrap());
-        drop(load_guard);
+        let current_members = current.as_ref().unwrap();
+        let mut new_members = current_members.clone();
 
         for command in commands.clone() {
             match command {
@@ -255,14 +255,14 @@ impl AddressSpaceData {
                     match target {
                         MapTarget::Component(component_path) => {
                             if permissions.read {
-                                members.read.master.insert(
+                                new_members.read.master.insert(
                                     range.clone(),
                                     MappingEntry::Component(component_path.clone()),
                                 );
                             }
 
                             if permissions.write {
-                                members
+                                new_members
                                     .write
                                     .master
                                     .insert(range.clone(), MappingEntry::Component(component_path));
@@ -270,14 +270,14 @@ impl AddressSpaceData {
                         }
                         MapTarget::Buffer(bytes) => {
                             if permissions.read {
-                                members
+                                new_members
                                     .read
                                     .master
                                     .insert(range.clone(), MappingEntry::Buffer(bytes.clone()));
                             }
 
                             if permissions.write {
-                                members
+                                new_members
                                     .write
                                     .master
                                     .insert(range.clone(), MappingEntry::Buffer(bytes));
@@ -291,7 +291,7 @@ impl AddressSpaceData {
                             );
 
                             if permissions.read {
-                                members.read.master.insert(
+                                new_members.read.master.insert(
                                     range.clone(),
                                     MappingEntry::Mirror {
                                         source_base: *range.start(),
@@ -301,7 +301,7 @@ impl AddressSpaceData {
                             }
 
                             if permissions.write {
-                                members.write.master.insert(
+                                new_members.write.master.insert(
                                     range.clone(),
                                     MappingEntry::Mirror {
                                         source_base: *range.start(),
@@ -314,12 +314,12 @@ impl AddressSpaceData {
                 }
                 MemoryRemappingCommand::Unmap { range, permissions } => {
                     if permissions.read {
-                        members.read.master.remove(range.clone());
+                        new_members.read.master.remove(range.clone());
                         dirty_read.insert(range.clone());
                     }
 
                     if permissions.write {
-                        members.write.master.remove(range.clone());
+                        new_members.write.master.remove(range.clone());
                         dirty_write.insert(range.clone());
                     }
                 }
@@ -331,14 +331,40 @@ impl AddressSpaceData {
             }
         }
 
-        members.read.mirror_dirtying_pass(&mut dirty_read);
-        members.read.commit(&dirty_read, registry);
-        members.write.mirror_dirtying_pass(&mut dirty_write);
-        members.write.commit(&dirty_write, registry);
+        new_members.read.mirror_dirtying_pass(&mut dirty_read);
+        new_members.read.commit(&dirty_read, registry);
+        new_members.write.mirror_dirtying_pass(&mut dirty_write);
+        new_members.write.commit(&dirty_write, registry);
 
-        let _old = self
+        // Make sure owning components in the old map get synchronized to this timestamp before the remapping is actually applied
+        //
+        // This is a "fence"
+        for (dirty, table) in [
+            (dirty_read, &current_members.read),
+            (dirty_write, &current_members.write),
+        ] {
+            for dirty_entry in dirty {
+                for component_path in
+                    table
+                        .master
+                        .overlapping(dirty_entry)
+                        .filter_map(|(_, mapping_entry)| match mapping_entry {
+                            MappingEntry::Component(path) => Some(path),
+                            _ => None,
+                        })
+                {
+                    registry
+                        .interact_dyn(component_path, timestamp, |_| {})
+                        .unwrap();
+                }
+            }
+        }
+
+        drop(load_guard);
+
+        let _ = self
             .members
-            .swap((Some(Owned::new(members)), Tag::None), Ordering::AcqRel);
+            .swap((Some(Owned::new(new_members)), Tag::None), Ordering::AcqRel);
     }
 }
 
