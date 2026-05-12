@@ -1,13 +1,25 @@
-use std::{cmp::Ordering, fmt::Display, str::FromStr};
+use std::{cmp::Ordering, fmt::Display, io::Read, str::FromStr};
 
 use data_encoding::HEXLOWER_PERMISSIVE;
+use digest_io::IoWrapper;
 use redb::{Key, TypeName, Value};
 use serde::{Deserialize, Serialize};
+use sha1::{Digest, Sha1};
 use thiserror::Error;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Hash of a ROM, serves as its identification within emulator (this is a sha1 hash)
 pub struct RomId(pub [u8; 20]);
+
+impl RomId {
+    pub fn new_sha1(mut read: impl Read) -> Result<Self, std::io::Error> {
+        let mut hasher = IoWrapper(Sha1::default());
+        std::io::copy(&mut read, &mut hasher)?;
+        let hash = hasher.0.finalize();
+
+        Ok(Self(hash.into()))
+    }
+}
 
 impl Display for RomId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

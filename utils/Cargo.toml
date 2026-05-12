@@ -1,0 +1,31 @@
+[package]
+name = "fluxemu-utils"
+version = "0.1.0"
+edition = "2024"
+description = "A command line utility interface for FluxEMU, but has tools generically useful for rom organization"
+license = "GPL-3.0-or-later"
+
+[package.metadata.deb]
+maintainer = "Kay <lambdadeltakay@proton.me>"
+
+[dependencies]
+clap = { workspace = true }
+fluxemu-environment = { workspace = true }
+fluxemu-locale = { workspace = true }
+fluxemu-program = { workspace = true }
+quick-xml = { version = "0.40", features = ["serialize"] }
+rayon = { workspace = true }
+redb = { workspace = true }
+ron = { workspace = true }
+rustc-hash = { workspace = true }
+scc = { workspace = true }
+serde = { workspace = true }
+serde_with = { workspace = true }
+sevenz-rust2 = "0.21"
+strum = { workspace = true }
+tempfile = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+ureq = "3.3"
+walkdir = "2.5"
+zip = "8.6"

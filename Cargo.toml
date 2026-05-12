@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["definition/*", "lib/*", "shell/*"]
+members = ["definition/*", "lib/*", "shell/*", "utils/"]
 
 [workspace.dependencies]
 arc-swap = "1.9"
@@ -41,6 +41,7 @@ palette = { version = "0.7", features = ["bytemuck", "named", "serializing"] }
 pollster = "0.4"
 rand = "0.10"
 rangemap = { version = "1.7", features = ["serde1"] }
+rayon = "1.12"
 redb = { version = "4.1", features = ["logging"] }
 regex = "1.12"
 ringbuffer = "0.16"
@@ -51,7 +52,7 @@ scc = "3.7"
 sealed = "0.6"
 serde = { version = "1.0", features = ["derive"] }
 serde-inline-default = "1.0"
-serde_with = "3.19"
+serde_with = "3.20"
 strum = { version = "0.28", features = ["derive"] }
 tempfile = "3.27"
 thiserror = "2.0"
