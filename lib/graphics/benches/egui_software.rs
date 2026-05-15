@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use divan::Bencher;
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use egui::{Context, RawInput, Rect, ViewportId, ViewportInfo};
 use fluxemu_graphics::api::software::{
     egui_renderer::Renderer,
@@ -13,15 +13,13 @@ use palette::{
     rgb::channels::{Bgra, Rgba},
 };
 
-fn main() {
-    divan::main();
-}
-
 fn render<const W: usize, const H: usize, P: From<Srgba<u8>> + Into<Srgba<u8>> + Copy + 'static>(
     renderer: &mut Renderer,
     context: &Context,
+    texture: &mut Texture<P>,
 ) {
-    let mut texture = Texture::new(W, H, BLACK.with_alpha(u8::MAX).into());
+    texture.fill(BLACK.with_alpha(u8::MAX).into());
+
     let full_output = context.run_ui(
         RawInput {
             viewport_id: ViewportId::ROOT,
@@ -55,45 +53,63 @@ fn render<const W: usize, const H: usize, P: From<Srgba<u8>> + Into<Srgba<u8>> +
             }
         },
     );
-    renderer.render::<P>(context, full_output.clone(), texture.as_view_mut());
+
+    renderer.render::<P>(context, full_output, texture.as_view_mut());
 }
 
-#[divan::bench]
-fn egui_software_1280x720_rgba(bencher: Bencher) {
-    let mut renderer = Renderer::default();
-    let context = Context::default();
+fn bench_egui_software(c: &mut Criterion) {
+    let mut group = c.benchmark_group(format!("{}/egui_software", env!("CARGO_PKG_NAME")));
 
-    bencher.bench_local(|| {
-        render::<1280, 720, Packed<Rgba, [u8; 4]>>(&mut renderer, &context);
-    });
+    {
+        let mut renderer = Renderer::default();
+        let context = Context::default();
+        let mut texture = Texture::new(1280, 720, BLACK.with_alpha(u8::MAX).into());
+
+        group.bench_function(BenchmarkId::new("1280x720", "rgba"), |b| {
+            b.iter(|| {
+                render::<1280, 720, Packed<Rgba, [u8; 4]>>(&mut renderer, &context, &mut texture)
+            });
+        });
+    }
+
+    {
+        let mut renderer = Renderer::default();
+        let context = Context::default();
+        let mut texture = Texture::new(1280, 720, BLACK.with_alpha(u8::MAX).into());
+
+        group.bench_function(BenchmarkId::new("1280x720", "bgra"), |b| {
+            b.iter(|| {
+                render::<1280, 720, Packed<Bgra, [u8; 4]>>(&mut renderer, &context, &mut texture)
+            });
+        });
+    }
+
+    {
+        let mut renderer = Renderer::default();
+        let context = Context::default();
+        let mut texture = Texture::new(1920, 1080, BLACK.with_alpha(u8::MAX).into());
+
+        group.bench_function(BenchmarkId::new("1920x1080", "rgba"), |b| {
+            b.iter(|| {
+                render::<1920, 1080, Packed<Rgba, [u8; 4]>>(&mut renderer, &context, &mut texture)
+            });
+        });
+    }
+
+    {
+        let mut renderer = Renderer::default();
+        let context = Context::default();
+        let mut texture = Texture::new(1920, 1080, BLACK.with_alpha(u8::MAX).into());
+
+        group.bench_function(BenchmarkId::new("1920x1080", "bgra"), |b| {
+            b.iter(|| {
+                render::<1920, 1080, Packed<Bgra, [u8; 4]>>(&mut renderer, &context, &mut texture)
+            });
+        });
+    }
+
+    group.finish();
 }
 
-#[divan::bench]
-fn egui_software_1280x720_bgra(bencher: Bencher) {
-    let mut renderer = Renderer::default();
-    let context = Context::default();
-
-    bencher.bench_local(|| {
-        render::<1280, 720, Packed<Bgra, [u8; 4]>>(&mut renderer, &context);
-    });
-}
-
-#[divan::bench]
-fn egui_software_1920x1080_rgba(bencher: Bencher) {
-    let mut renderer = Renderer::default();
-    let context = Context::default();
-
-    bencher.bench_local(|| {
-        render::<1920, 1080, Packed<Rgba, [u8; 4]>>(&mut renderer, &context);
-    });
-}
-
-#[divan::bench]
-fn egui_software_1920x1080_bgra(bencher: Bencher) {
-    let mut renderer = Renderer::default();
-    let context = Context::default();
-
-    bencher.bench_local(|| {
-        render::<1920, 1080, Packed<Bgra, [u8; 4]>>(&mut renderer, &context);
-    });
-}
+criterion_group!(benches, bench_egui_software);
+criterion_main!(benches);

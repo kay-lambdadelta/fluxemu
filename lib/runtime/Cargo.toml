@@ -37,7 +37,7 @@ tracing = { workspace = true }
 versions = { workspace = true }
 
 [target.'cfg(any(target_family = "unix", target_os = "windows"))'.dev-dependencies]
-divan = { workspace = true }
+criterion = { workspace = true }
 
 [features]
 default = ["std"]

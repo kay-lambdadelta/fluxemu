@@ -33,7 +33,7 @@ tracing = { workspace = true }
 wgpu = { workspace = true, optional = true }
 
 [target.'cfg(any(target_family = "unix", target_os = "windows"))'.dev-dependencies]
-divan = { workspace = true }
+criterion = { workspace = true }
 fluxemu-environment = { workspace = true }
 redb = { workspace = true }
 ron = { workspace = true }
