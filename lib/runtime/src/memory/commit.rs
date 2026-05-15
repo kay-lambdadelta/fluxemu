@@ -58,7 +58,7 @@ impl MemoryMappingTable {
                             vec![PageEntry {
                                 target: PageTarget::Component {
                                     destination_start: *source_range.start(),
-                                    component: registry.path_to_id(path).unwrap(),
+                                    component_id: registry.path_to_id(path).unwrap(),
                                     is_standard_memory: registry.typeid(path).unwrap()
                                         == TypeId::of::<Memory>(),
                                 },
@@ -102,7 +102,7 @@ impl MemoryMappingTable {
                                             range: calculated_source_range,
                                             target: PageTarget::Component {
                                                 destination_start: *destination_overlap.start(),
-                                                component: registry.path_to_id(path).unwrap(),
+                                                component_id: registry.path_to_id(path).unwrap(),
                                                 is_standard_memory: registry.typeid(path).unwrap()
                                                     == TypeId::of::<Memory>(),
                                             },
@@ -183,12 +183,12 @@ fn merge_and_dedup_mirror_entries(left: &mut PageEntry, right: &mut PageEntry) -
         (
             PageTarget::Component {
                 destination_start: destination_start_left,
-                component: component_left,
+                component_id: component_left,
                 is_standard_memory: _,
             },
             PageTarget::Component {
                 destination_start: destination_start_right,
-                component: component_right,
+                component_id: component_right,
                 is_standard_memory: _,
             },
         ) if component_left == component_right

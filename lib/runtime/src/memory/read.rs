@@ -6,10 +6,7 @@ use num::traits::{FromBytes, ops::bytes::NumBytes};
 use super::AddressSpace;
 use crate::{
     component::Component,
-    memory::{
-        Address, AddressSpaceId, MemoryError, MemoryErrorType, PageEntry, PageTarget,
-        component::Memory,
-    },
+    memory::{Address, MemoryError, MemoryErrorType, PageEntry, PageTarget, component::Memory},
     scheduler::Period,
 };
 
@@ -18,7 +15,7 @@ impl<'a> AddressSpace<'a> {
     pub(super) fn read_internal<B: NumBytes + ?Sized>(
         &mut self,
         mut address: Address,
-        time: Period,
+        timestamp: Period,
         avoid_side_effects: bool,
         buffer: &mut B,
     ) -> Result<(), MemoryError> {
@@ -55,28 +52,49 @@ impl<'a> AddressSpace<'a> {
                 }
                 PageTarget::Component {
                     destination_start,
-                    component,
+                    component_id,
                     is_standard_memory,
                 } => {
                     let offset = address_masked - entry_assigned_range.start();
+                    let destination = destination_start + offset;
 
-                    self.registry
-                        .interact_dyn(
-                            *component,
-                            time,
-                            #[inline]
-                            |component| {
-                                perform_component_read(
-                                    component,
-                                    *is_standard_memory,
-                                    destination_start + offset,
-                                    self.data.id,
-                                    avoid_side_effects,
-                                    buffer,
-                                )
-                            },
-                        )
-                        .unwrap()?;
+                    if *is_standard_memory {
+                        self.registry
+                            .interact_dyn(
+                                *component_id,
+                                timestamp,
+                                #[inline]
+                                |component| {
+                                    let component = unsafe {
+                                        &mut *(std::ptr::from_mut(component) as *mut Memory)
+                                    };
+
+                                    component.memory_read(
+                                        destination,
+                                        self.data.id,
+                                        avoid_side_effects,
+                                        buffer,
+                                    )
+                                },
+                            )
+                            .unwrap()?;
+                    } else {
+                        self.registry
+                            .interact_dyn(
+                                *component_id,
+                                timestamp,
+                                #[inline]
+                                |component| {
+                                    component.memory_read(
+                                        destination,
+                                        self.data.id,
+                                        avoid_side_effects,
+                                        buffer,
+                                    )
+                                },
+                            )
+                            .unwrap()?;
+                    }
                 }
             }
 
@@ -109,7 +127,7 @@ impl<'a> AddressSpace<'a> {
                 match target {
                     PageTarget::Component {
                         destination_start,
-                        component,
+                        component_id,
                         is_standard_memory,
                     } => {
                         let component_access_range =
@@ -119,23 +137,45 @@ impl<'a> AddressSpace<'a> {
                             ..=(component_access_range.end() - access_range.start());
                         let adjusted_buffer = &mut remaining_buffer[buffer_range];
 
-                        self.registry
-                            .interact_dyn(
-                                *component,
-                                time,
-                                #[inline]
-                                |component| {
-                                    perform_component_read(
-                                        component,
-                                        *is_standard_memory,
-                                        destination_start + offset,
-                                        self.data.id,
-                                        avoid_side_effects,
-                                        adjusted_buffer,
-                                    )
-                                },
-                            )
-                            .unwrap()?;
+                        let destination = destination_start + offset;
+
+                        if *is_standard_memory {
+                            self.registry
+                                .interact_dyn(
+                                    *component_id,
+                                    timestamp,
+                                    #[inline]
+                                    |component| {
+                                        let component = unsafe {
+                                            &mut *(std::ptr::from_mut(component) as *mut Memory)
+                                        };
+
+                                        component.memory_read(
+                                            destination,
+                                            self.data.id,
+                                            avoid_side_effects,
+                                            adjusted_buffer,
+                                        )
+                                    },
+                                )
+                                .unwrap()?;
+                        } else {
+                            self.registry
+                                .interact_dyn(
+                                    *component_id,
+                                    timestamp,
+                                    #[inline]
+                                    |component| {
+                                        component.memory_read(
+                                            destination,
+                                            self.data.id,
+                                            avoid_side_effects,
+                                            adjusted_buffer,
+                                        )
+                                    },
+                                )
+                                .unwrap()?;
+                        }
                     }
                     PageTarget::Memory(bytes) => {
                         let memory_access_range = entry_assigned_range.intersection(&access_range);
@@ -253,23 +293,5 @@ impl<'a> AddressSpace<'a> {
         let mut buffer = T::Bytes::default();
         self.read_internal(address, current_timestamp, true, &mut buffer)?;
         Ok(T::from_be_bytes(&buffer))
-    }
-}
-
-#[inline]
-fn perform_component_read(
-    component: &mut dyn Component,
-    is_standard_memory: bool,
-    destination: Address,
-    address_space_id: AddressSpaceId,
-    avoid_side_effects: bool,
-    buffer: &mut [u8],
-) -> Result<(), MemoryError> {
-    if is_standard_memory {
-        let component = unsafe { &mut *(std::ptr::from_mut(component) as *mut Memory) };
-
-        component.memory_read(destination, address_space_id, avoid_side_effects, buffer)
-    } else {
-        component.memory_read(destination, address_space_id, avoid_side_effects, buffer)
     }
 }

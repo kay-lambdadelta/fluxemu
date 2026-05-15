@@ -108,7 +108,7 @@ enum PageTarget {
     Memory(Bytes),
     Component {
         destination_start: Address,
-        component: ComponentId,
+        component_id: ComponentId,
         is_standard_memory: bool,
     },
 }
@@ -241,7 +241,7 @@ impl AddressSpaceData {
                     assert!(
                         !valid_range.disjoint(&range),
                         "Range {range:#04x?} is invalid for a address space that ends at \
-                             {max:04x?}"
+                         {max:04x?}"
                     );
 
                     if permissions.read {
@@ -286,8 +286,8 @@ impl AddressSpaceData {
                         MapTarget::Mirror { destination } => {
                             assert!(
                                 !valid_range.disjoint(&destination),
-                                "Range {destination:#04x?} is invalid for a address space \
-                                     that ends at {max:04x?}"
+                                "Range {destination:#04x?} is invalid for a address space that \
+                                 ends at {max:04x?}"
                             );
 
                             if permissions.read {

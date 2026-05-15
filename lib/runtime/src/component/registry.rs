@@ -145,7 +145,11 @@ impl<'a> ComponentRegistry<'a> {
 
         // Put component back
         guard = self.runtime.local_component_store().borrow_mut();
-        handle = guard.get_slot(id).as_mut().unwrap();
+
+        // SAFETY:
+        //  This is safe because while we have the component moved out of the handle
+        //  the handle can never be moved out of the local store
+        handle = unsafe { guard.get_slot(id).as_mut().unwrap_unchecked() };
 
         // There is nothing to drop, we own the component, so forget the `None` for better codegen
         std::mem::forget(handle.component.replace(component));
@@ -363,7 +367,10 @@ impl LocalComponentStore {
 
     #[inline]
     fn get_slot(&mut self, id: ComponentId) -> &mut Option<ComponentHandle> {
-        &mut self.0[id.0 as usize]
+        // SAFETY
+        //  required_local_store_size sets the number of components this machine has
+        //  machines cannot remove or add components at runtime
+        unsafe { self.0.get_unchecked_mut(id.0 as usize) }
     }
 
     #[inline]
