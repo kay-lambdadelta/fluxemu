@@ -7,8 +7,8 @@ use rangemap::RangeInclusiveSet;
 use crate::{
     component::ComponentRegistry,
     memory::{
-        Address, MappingEntry, MemoryMappingTable, PAGE_SIZE, Page, PageEntry, PageTarget,
-        Permissions, component::Memory,
+        Address, MappingEntry, MemoryMappingTable, PAGE_SIZE, PageEntry, PageTarget, Permissions,
+        component::Memory,
     },
 };
 
@@ -49,7 +49,7 @@ impl MemoryMappingTable {
                     RangeInclusive::from_start_and_length(page_index * PAGE_SIZE, PAGE_SIZE);
 
                 // Pull out all relevant entries from the overlapping page range in the master table
-                let mut page_entries: Vec<PageEntry> = self
+                *page = self
                     .master
                     .overlapping(page_address_range.clone())
                     .map(|(range, component)| (range.clone(), component))
@@ -141,12 +141,6 @@ impl MemoryMappingTable {
                     })
                     .sorted_by_key(|entry| *entry.range.start())
                     .collect();
-
-                *page = match page_entries.len() {
-                    0 => None,
-                    1 => Some(Page::Single(page_entries.remove(0))),
-                    _ => Some(Page::Multi(page_entries.into())),
-                };
             }
         }
     }

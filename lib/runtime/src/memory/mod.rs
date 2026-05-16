@@ -9,6 +9,7 @@ use bytes::Bytes;
 use fluxemu_range::RangeIntersection;
 use rangemap::{RangeInclusiveMap, RangeInclusiveSet};
 use sdd::{AtomicOwned, Guard, Owned, Tag};
+use smallvec::SmallVec;
 use thiserror::Error;
 
 use crate::{
@@ -121,15 +122,9 @@ struct PageEntry {
 }
 
 #[derive(Debug, Clone)]
-enum Page {
-    Single(PageEntry),
-    Multi(Box<[PageEntry]>),
-}
-
-#[derive(Debug, Clone)]
 struct MemoryMappingTable {
     master: RangeInclusiveMap<Address, MappingEntry>,
-    computed_table: Vec<Option<Page>>,
+    computed_table: Vec<SmallVec<PageEntry, 1>>,
 }
 
 impl MemoryMappingTable {
