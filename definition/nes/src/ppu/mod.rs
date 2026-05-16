@@ -581,7 +581,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
             && self.state.background.rendering_enabled
         {
             self.state
-                .drive_background_pipeline::<R>(ppu_address_space, timestamp);
+                .drive_background_pipeline(ppu_address_space, timestamp);
         }
     }
 }

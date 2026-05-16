@@ -41,195 +41,198 @@ impl State {
         ppu_address_space: &mut AddressSpace<'_>,
         timestamp: Period,
     ) {
-        if !self.oam.awaiting_memory_access {
-            let currently_relevant_sprite_index = (self.cycle_counter.x - 257) / 8;
-            let currently_relevant_sprite = self
-                .oam
-                .secondary_data
-                .get(usize::from(currently_relevant_sprite_index));
-
-            match self.sprite_pipeline_state {
-                SpritePipelineState::FetchingNametableGarbage0 => {
-                    self.sprite_pipeline_state = SpritePipelineState::FetchingNametableGarbage1;
-                }
-                SpritePipelineState::FetchingNametableGarbage1 => {
-                    self.sprite_pipeline_state = SpritePipelineState::FetchingPatternTableLow;
-                }
-                SpritePipelineState::FetchingPatternTableLow => {
-                    if let Some(currently_relevant_sprite) = currently_relevant_sprite {
-                        let address = self.oam.calculate_sprite_pattern_address(
-                            currently_relevant_sprite,
-                            self.cycle_counter.y,
-                            false,
-                        );
-
-                        let pattern_table_low = ppu_address_space
-                            .read_le_value(address as usize, timestamp)
-                            .unwrap();
-
-                        self.sprite_pipeline_state =
-                            SpritePipelineState::FetchingPatternTableHigh { pattern_table_low };
-                    } else {
-                        self.sprite_pipeline_state =
-                            SpritePipelineState::FetchingPatternTableHigh {
-                                // This is a garbage value, it isn't used
-                                pattern_table_low: 0x00,
-                            };
-                    }
-                }
-                SpritePipelineState::FetchingPatternTableHigh { pattern_table_low } => {
-                    if let Some(currently_relevant_sprite) = currently_relevant_sprite {
-                        let address = self.oam.calculate_sprite_pattern_address(
-                            currently_relevant_sprite,
-                            self.cycle_counter.y,
-                            true,
-                        );
-
-                        let pattern_table_high = ppu_address_space
-                            .read_le_value(address as usize, timestamp)
-                            .unwrap();
-
-                        self.oam
-                            .currently_rendering_sprites
-                            .push(CurrentlyRenderingSprite {
-                                oam: *currently_relevant_sprite,
-                                pattern_table_high,
-                                pattern_table_low,
-                                is_sprite_zero: currently_relevant_sprite_index == 0
-                                    && self.oam.sprite_zero_in_secondary,
-                            })
-                            .unwrap();
-                    }
-
-                    self.sprite_pipeline_state = SpritePipelineState::FetchingNametableGarbage0;
-                }
-            }
+        let awaiting_memory_access = self.oam.awaiting_memory_access;
+        self.oam.awaiting_memory_access = !self.oam.awaiting_memory_access;
+        if awaiting_memory_access {
+            return;
         }
 
-        self.oam.awaiting_memory_access = !self.oam.awaiting_memory_access;
-    }
+        let currently_relevant_sprite_index = (self.cycle_counter.x - 257) / 8;
+        let currently_relevant_sprite = self
+            .oam
+            .secondary_data
+            .get(usize::from(currently_relevant_sprite_index));
 
-    #[inline]
-    pub(crate) fn drive_background_pipeline<R: Region>(
-        &mut self,
-        ppu_address_space: &mut AddressSpace<'_>,
-        timestamp: Period,
-    ) {
-        // Steps wait a cycle inbetween for memory access realism
-        if !self.background.awaiting_memory_access {
-            let mut vram_address_pointer_contents =
-                VramAddressPointerContents::from(self.vram_address_pointer);
-
-            match self.background_pipeline_state {
-                BackgroundPipelineState::FetchingNametable => {
-                    let nametable_index = (vram_address_pointer_contents.nametable.y as usize) * 2
-                        + (vram_address_pointer_contents.nametable.x as usize);
-
-                    let nametable_base = NAMETABLE_BASE_ADDRESS + (nametable_index * 0x400);
-
-                    let address = nametable_base
-                        + (usize::from(vram_address_pointer_contents.coarse.y) * 32)
-                        + usize::from(vram_address_pointer_contents.coarse.x);
-
-                    let nametable = ppu_address_space.read_le_value(address, timestamp).unwrap();
-
-                    self.background_pipeline_state =
-                        BackgroundPipelineState::FetchingAttribute { nametable };
-                }
-                BackgroundPipelineState::FetchingAttribute { nametable } => {
-                    let coarse = vram_address_pointer_contents.coarse.cast::<usize>();
-                    let nametable_index = (vram_address_pointer_contents.nametable.y as usize) * 2
-                        + (vram_address_pointer_contents.nametable.x as usize);
-
-                    // Attribute table is every 4x4 tiles
-                    let address = ATTRIBUTE_BASE_ADDRESS
-                        + (nametable_index * 0x400)
-                        + (coarse.y / 4) * 8
-                        + (coarse.x / 4);
-
-                    let attribute: u8 =
-                        ppu_address_space.read_le_value(address, timestamp).unwrap();
-
-                    let attribute_quadrant = Point2::new(coarse.x % 4, coarse.y % 4) / 2;
-                    let shift = (attribute_quadrant.y * 2 + attribute_quadrant.x) * 2;
-                    let attribute = (attribute >> shift) & 0b11;
-
-                    self.background_pipeline_state =
-                        BackgroundPipelineState::FetchingPatternTableLow {
-                            nametable,
-                            attribute,
-                        };
-                }
-                BackgroundPipelineState::FetchingPatternTableLow {
-                    nametable,
-                    attribute,
-                } => {
-                    let pattern_table_base =
-                        u16::from(self.background.pattern_table_index) * 0x1000;
-
-                    let address = pattern_table_base
-                        + (u16::from(nametable) * 16)
-                        + u16::from(vram_address_pointer_contents.fine_y);
+        match self.sprite_pipeline_state {
+            SpritePipelineState::FetchingNametableGarbage0 => {
+                self.sprite_pipeline_state = SpritePipelineState::FetchingNametableGarbage1;
+            }
+            SpritePipelineState::FetchingNametableGarbage1 => {
+                self.sprite_pipeline_state = SpritePipelineState::FetchingPatternTableLow;
+            }
+            SpritePipelineState::FetchingPatternTableLow => {
+                if let Some(currently_relevant_sprite) = currently_relevant_sprite {
+                    let address = self.oam.calculate_sprite_pattern_address(
+                        currently_relevant_sprite,
+                        self.cycle_counter.y,
+                        false,
+                    );
 
                     let pattern_table_low = ppu_address_space
                         .read_le_value(address as usize, timestamp)
                         .unwrap();
 
-                    self.background_pipeline_state =
-                        BackgroundPipelineState::FetchingPatternTableHigh {
-                            nametable,
-                            attribute,
-                            pattern_table_low,
-                        };
+                    self.sprite_pipeline_state =
+                        SpritePipelineState::FetchingPatternTableHigh { pattern_table_low };
+                } else {
+                    self.sprite_pipeline_state = SpritePipelineState::FetchingPatternTableHigh {
+                        // This is a garbage value, it isn't used
+                        pattern_table_low: 0x00,
+                    };
                 }
-                BackgroundPipelineState::FetchingPatternTableHigh {
-                    nametable,
-                    attribute,
-                    pattern_table_low,
-                } => {
-                    let pattern_table_base =
-                        u16::from(self.background.pattern_table_index) * 0x1000;
+            }
+            SpritePipelineState::FetchingPatternTableHigh { pattern_table_low } => {
+                if let Some(currently_relevant_sprite) = currently_relevant_sprite {
+                    let address = self.oam.calculate_sprite_pattern_address(
+                        currently_relevant_sprite,
+                        self.cycle_counter.y,
+                        true,
+                    );
 
-                    let address = pattern_table_base
-                        + (u16::from(nametable) * 16)
-                        + u16::from(vram_address_pointer_contents.fine_y)
-                        + 8;
-
-                    let pattern_table_high: u8 = ppu_address_space
+                    let pattern_table_high = ppu_address_space
                         .read_le_value(address as usize, timestamp)
                         .unwrap();
 
-                    self.background.pattern_low_shift <<= 8;
-                    self.background.pattern_high_shift <<= 8;
-                    self.background.attribute_shift <<= 16;
-
-                    self.background.pattern_low_shift |= u16::from(pattern_table_low);
-                    self.background.pattern_high_shift |= u16::from(pattern_table_high);
-                    self.background.attribute_shift |= u32::from(attribute) * 0x5555;
-
-                    self.background.tile_pixel = 0;
-
-                    if self.background.rendering_enabled {
-                        if vram_address_pointer_contents.coarse.x == 31 {
-                            vram_address_pointer_contents.coarse.x = 0;
-                            vram_address_pointer_contents.nametable.x =
-                                !vram_address_pointer_contents.nametable.x;
-                        } else {
-                            vram_address_pointer_contents.coarse.x += 1;
-                        }
-
-                        self.vram_address_pointer = vram_address_pointer_contents.into();
-                    }
-
-                    self.background_pipeline_state = BackgroundPipelineState::FetchingNametable;
+                    self.oam
+                        .currently_rendering_sprites
+                        .push(CurrentlyRenderingSprite {
+                            oam: *currently_relevant_sprite,
+                            pattern_table_high,
+                            pattern_table_low,
+                            is_sprite_zero: currently_relevant_sprite_index == 0
+                                && self.oam.sprite_zero_in_secondary,
+                        })
+                        .unwrap();
                 }
+
+                self.sprite_pipeline_state = SpritePipelineState::FetchingNametableGarbage0;
             }
+        }
+    }
+
+    #[inline]
+    pub(crate) fn drive_background_pipeline(
+        &mut self,
+        ppu_address_space: &mut AddressSpace<'_>,
+        timestamp: Period,
+    ) {
+        if !self.background.awaiting_memory_access {
+            self.drive_background_pipeline_inner(ppu_address_space, timestamp);
         }
 
         self.background.awaiting_memory_access = !self.background.awaiting_memory_access;
     }
 
-    // This function uses manual bit math because absolute speed is critical here
+    #[inline]
+    fn drive_background_pipeline_inner(
+        &mut self,
+        ppu_address_space: &mut AddressSpace<'_>,
+        timestamp: Period,
+    ) {
+        let mut vram_address_pointer_contents =
+            VramAddressPointerContents::from(self.vram_address_pointer);
+
+        match self.background_pipeline_state {
+            BackgroundPipelineState::FetchingNametable => {
+                let nametable_index = (vram_address_pointer_contents.nametable.y as usize) * 2
+                    + (vram_address_pointer_contents.nametable.x as usize);
+
+                let nametable_base = NAMETABLE_BASE_ADDRESS + (nametable_index * 0x400);
+
+                let address = nametable_base
+                    + (usize::from(vram_address_pointer_contents.coarse.y) * 32)
+                    + usize::from(vram_address_pointer_contents.coarse.x);
+
+                let nametable = ppu_address_space.read_le_value(address, timestamp).unwrap();
+
+                self.background_pipeline_state =
+                    BackgroundPipelineState::FetchingAttribute { nametable };
+            }
+            BackgroundPipelineState::FetchingAttribute { nametable } => {
+                let coarse = vram_address_pointer_contents.coarse.cast::<usize>();
+                let nametable_index = (vram_address_pointer_contents.nametable.y as usize) * 2
+                    + (vram_address_pointer_contents.nametable.x as usize);
+
+                // Attribute table is every 4x4 tiles
+                let address = ATTRIBUTE_BASE_ADDRESS
+                    + (nametable_index * 0x400)
+                    + (coarse.y / 4) * 8
+                    + (coarse.x / 4);
+
+                let attribute: u8 = ppu_address_space.read_le_value(address, timestamp).unwrap();
+
+                let attribute_quadrant = Point2::new(coarse.x % 4, coarse.y % 4) / 2;
+                let shift = (attribute_quadrant.y * 2 + attribute_quadrant.x) * 2;
+                let attribute = (attribute >> shift) & 0b11;
+
+                self.background_pipeline_state = BackgroundPipelineState::FetchingPatternTableLow {
+                    nametable,
+                    attribute,
+                };
+            }
+            BackgroundPipelineState::FetchingPatternTableLow {
+                nametable,
+                attribute,
+            } => {
+                let pattern_table_base = u16::from(self.background.pattern_table_index) * 0x1000;
+
+                let address = pattern_table_base
+                    + (u16::from(nametable) * 16)
+                    + u16::from(vram_address_pointer_contents.fine_y);
+
+                let pattern_table_low = ppu_address_space
+                    .read_le_value(address as usize, timestamp)
+                    .unwrap();
+
+                self.background_pipeline_state =
+                    BackgroundPipelineState::FetchingPatternTableHigh {
+                        nametable,
+                        attribute,
+                        pattern_table_low,
+                    };
+            }
+            BackgroundPipelineState::FetchingPatternTableHigh {
+                nametable,
+                attribute,
+                pattern_table_low,
+            } => {
+                let pattern_table_base = u16::from(self.background.pattern_table_index) * 0x1000;
+
+                let address = pattern_table_base
+                    + (u16::from(nametable) * 16)
+                    + u16::from(vram_address_pointer_contents.fine_y)
+                    + 8;
+
+                let pattern_table_high: u8 = ppu_address_space
+                    .read_le_value(address as usize, timestamp)
+                    .unwrap();
+
+                self.background.pattern_low_shift <<= 8;
+                self.background.pattern_high_shift <<= 8;
+                self.background.attribute_shift <<= 16;
+
+                self.background.pattern_low_shift |= u16::from(pattern_table_low);
+                self.background.pattern_high_shift |= u16::from(pattern_table_high);
+                self.background.attribute_shift |= u32::from(attribute) * 0x5555;
+
+                self.background.tile_pixel = 0;
+
+                if self.background.rendering_enabled {
+                    if vram_address_pointer_contents.coarse.x == 31 {
+                        vram_address_pointer_contents.coarse.x = 0;
+                        vram_address_pointer_contents.nametable.x =
+                            !vram_address_pointer_contents.nametable.x;
+                    } else {
+                        vram_address_pointer_contents.coarse.x += 1;
+                    }
+
+                    self.vram_address_pointer = vram_address_pointer_contents.into();
+                }
+
+                self.background_pipeline_state = BackgroundPipelineState::FetchingNametable;
+            }
+        }
+    }
 
     #[inline]
     pub fn calculate_background_color<R: Region>(

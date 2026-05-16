@@ -98,7 +98,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
 
             self.sprite_zero_check(scanline_position_x, is_background_opaque);
             self.state
-                .drive_background_pipeline::<R>(ppu_address_space, timestamp);
+                .drive_background_pipeline(ppu_address_space, timestamp);
         }
 
         if let 65..=256 = self.state.cycle_counter.x {
@@ -196,7 +196,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
 
         if let 321..=336 = self.state.cycle_counter.x {
             self.state
-                .drive_background_pipeline::<R>(ppu_address_space, timestamp);
+                .drive_background_pipeline(ppu_address_space, timestamp);
         }
     }
 
