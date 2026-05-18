@@ -56,7 +56,7 @@ impl Scheduler {
 
         // Set the new time, marking that the machine has officially advanced to this time
         let mut safe_advance_timestamp_guard = self.safe_advance_timestamp.lock().unwrap();
-        *safe_advance_timestamp_guard = safe_advance_timestamp;
+        *safe_advance_timestamp_guard = (*safe_advance_timestamp_guard).max(safe_advance_timestamp);
     }
 
     /// The preemption signal causes at least one [QuantaIterator] to stop active work and service events
