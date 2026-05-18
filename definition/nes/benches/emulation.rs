@@ -25,7 +25,7 @@ fn emulation_performance(c: &mut Criterion) {
         Environment::default()
     };
 
-    let database = Database::open(environment.database_location).unwrap();
+    let database = Database::create(environment.database_location).unwrap();
     let program_manager = ProgramManager::new(database, [environment.rom_store]).unwrap();
 
     let mut group = c.benchmark_group(format!("{}/emulation_performance", env!("CARGO_PKG_NAME")));
