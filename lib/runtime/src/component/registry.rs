@@ -1,6 +1,5 @@
 use std::{
     any::{Any, TypeId},
-    cell::RefMut,
     collections::HashMap,
     fmt::Debug,
     ops::DerefMut,
@@ -116,66 +115,100 @@ impl<'a> ComponentRegistry<'a> {
         target_timestamp: Period,
         callback: impl FnOnce(&mut dyn Component) -> T,
     ) -> Option<T> {
-        let id = match id.into() {
-            ComponentIdentifier::Id(id) => id,
-            ComponentIdentifier::Path(path) => self.data.metadata.get(path)?.id,
+        let id = self.convert_identifier(id)?;
+        let cell = self.runtime.local_component_store();
+
+        // Move the component handle to our thread and check if it needs synchronization
+        let needs_sync = {
+            // SAFETY: No active borrows
+            let store = unsafe { &mut *cell.get() };
+            let handle = self.fetch_or_acquire_component(id, store);
+
+            if !handle.synchronize {
+                handle.current_timestamp = target_timestamp;
+            }
+
+            handle.synchronize
         };
 
-        let mut guard = self.runtime.local_component_store().borrow_mut();
-        let mut handle = self.fetch_or_acquire_component(id, &mut guard);
-
-        if !handle.synchronize {
-            // Just simply update the timestamp
-            handle.current_timestamp = target_timestamp;
-        } else {
-            // Synchronize the component
-            guard = self.synchronize_component(id, target_timestamp, guard);
-            handle = guard.get_slot(id).as_mut().unwrap();
+        // Synchronize if required
+        if needs_sync {
+            self.synchronize_component(id, target_timestamp);
         }
 
-        let mut component = handle
-            .component
-            .take()
-            .expect("Component is reentrant on itself");
+        // Extract the component
+        let mut component = {
+            // SAFETY: No active borrows
+            let store = unsafe { &mut *cell.get() };
+            let handle = store.get_slot(id).as_mut().unwrap();
 
-        // Drop guard for callback
-        drop(guard);
+            handle
+                .component
+                .take()
+                .expect("Component is reentrant on itself")
+        };
 
+        // Do the callback and get the return
         let item = callback(component.deref_mut());
 
-        // Put component back
-        guard = self.runtime.local_component_store().borrow_mut();
+        // Clean up
+        {
+            // SAFETY:
+            //  The first operation is sound because there are currently no overlapping borrows
+            //  The second is sound because nothing could have been moved out of that slot, due to us owning the component
+            //  The third operation is not unsafe, but it is logically sound to forget the `None` in the slot and save some instructions
 
-        // SAFETY:
-        //  This is safe because while we have the component moved out of the handle
-        //  the handle can never be moved out of the local store
-        handle = unsafe { guard.get_slot(id).as_mut().unwrap_unchecked() };
-
-        // There is nothing to drop, we own the component, so forget the `None` for better codegen
-        std::mem::forget(handle.component.replace(component));
+            let store = unsafe { &mut *cell.get() };
+            let handle = unsafe { store.get_slot(id).as_mut().unwrap_unchecked() };
+            std::mem::forget(handle.component.replace(component));
+        }
 
         Some(item)
     }
 
-    #[cold]
-    fn synchronize_component<'b>(
-        &'b self,
-        id: ComponentId,
-        target_timestamp: Period,
-        mut guard: RefMut<'b, LocalComponentStore>,
-    ) -> RefMut<'b, LocalComponentStore> {
-        let mut handle = guard.get_slot(id).as_mut().unwrap();
+    #[inline]
+    fn convert_identifier<'b>(
+        &'a self,
+        id: impl Into<ComponentIdentifier<'b>>,
+    ) -> Option<ComponentId> {
+        let id = match id.into() {
+            ComponentIdentifier::Id(id) => {
+                assert!(
+                    (id.0 as usize) < self.data.required_local_store_size(),
+                    "Component ID is out of bounds, it likely did not originate from this machine"
+                );
 
-        let Some(mut delta) = target_timestamp.checked_sub(handle.current_timestamp) else {
-            return guard;
+                id
+            }
+            ComponentIdentifier::Path(path) => self.data.metadata.get(path)?.id,
         };
 
-        let mut current_timestamp = handle.current_timestamp;
-        let mut component = handle.component.take().unwrap();
+        Some(id)
+    }
+
+    #[cold]
+    fn synchronize_component(&self, id: ComponentId, target_timestamp: Period) {
+        let cell = self.runtime.local_component_store();
+
+        let mut current_timestamp;
+
+        let (delta, mut component) = {
+            let store = unsafe { &mut *cell.get() };
+            let handle = store.get_slot(id).as_mut().unwrap();
+
+            let Some(delta) = target_timestamp.checked_sub(handle.current_timestamp) else {
+                return;
+            };
+            current_timestamp = handle.current_timestamp;
+
+            (delta, handle.component.take().unwrap())
+        };
 
         if delta == Period::ZERO || !component.needs_work(&current_timestamp, &delta) {
-            handle.component = Some(component);
-            return guard;
+            let store = unsafe { &mut *cell.get() };
+            store.get_slot(id).as_mut().unwrap().component = Some(component);
+
+            return;
         }
 
         loop {
@@ -187,11 +220,10 @@ impl<'a> ComponentRegistry<'a> {
                 last_attempted_allocation: &mut last_attempted_allocation,
             };
 
-            drop(guard);
-
             component.synchronize(context);
-            guard = self.runtime.local_component_store().borrow_mut();
-            handle = guard.get_slot(id).as_mut().unwrap();
+
+            let delta = target_timestamp - current_timestamp;
+            let needs_work = component.needs_work(&current_timestamp, &delta);
 
             assert_ne!(
                 last_attempted_allocation,
@@ -199,31 +231,32 @@ impl<'a> ComponentRegistry<'a> {
                 "Synchronization attempt for component did not attempt to allocate time"
             );
 
-            delta = target_timestamp - current_timestamp;
-            let needs_work = component.needs_work(&current_timestamp, &delta);
+            let hazard_timestamp = {
+                let store = unsafe { &mut *cell.get() };
+                let handle = store.get_slot(id).as_mut().unwrap();
 
-            handle.component = Some(component);
-            handle.current_timestamp = current_timestamp;
+                handle.component = Some(component);
+                handle.current_timestamp = current_timestamp;
 
-            if needs_work {
-                let hazard_timestamp = handle.current_timestamp + last_attempted_allocation;
+                handle.current_timestamp + last_attempted_allocation
+            };
 
-                drop(guard);
+            if !needs_work {
+                return;
+            }
 
-                self.runtime
-                    .machine()
-                    .scheduler
-                    .event_manager
-                    .consume(*self, hazard_timestamp);
+            self.runtime
+                .machine()
+                .scheduler
+                .event_manager
+                .consume(*self, hazard_timestamp);
 
-                // Re-acquire
-                guard = self.runtime.local_component_store().borrow_mut();
-                handle = self.fetch_or_acquire_component(id, &mut guard);
+            {
+                let store = unsafe { &mut *cell.get() };
+                let handle = self.fetch_or_acquire_component(id, store);
 
                 component = handle.component.take().unwrap();
                 current_timestamp = handle.current_timestamp;
-            } else {
-                return guard;
             }
         }
     }
@@ -322,15 +355,14 @@ impl<'a> ComponentRegistry<'a> {
         &'b self,
         id: impl Into<ComponentIdentifier<'b>>,
     ) -> Option<Period> {
-        let id = match id.into() {
-            ComponentIdentifier::Id(id) => id,
-            ComponentIdentifier::Path(path) => self.data.metadata.get(path)?.id,
+        let id = self.convert_identifier(id)?;
+
+        let timestamp = {
+            let store = unsafe { &mut *self.runtime.local_component_store().get() };
+            self.fetch_or_acquire_component(id, store).current_timestamp
         };
 
-        let mut local_component_store_guard = self.runtime.local_component_store().borrow_mut();
-        let handle = self.fetch_or_acquire_component(id, &mut local_component_store_guard);
-
-        Some(handle.current_timestamp)
+        Some(timestamp)
     }
 
     pub(crate) fn typeid(&self, path: &ComponentPath) -> Option<TypeId> {
@@ -367,9 +399,9 @@ impl LocalComponentStore {
 
     #[inline]
     fn get_slot(&mut self, id: ComponentId) -> &mut Option<ComponentHandle> {
-        // SAFETY
-        //  required_local_store_size sets the number of components this machine has
-        //  machines cannot remove or add components at runtime
+        // SAFETY:
+        //  All ids are validated against required_local_store_size in convert_identifier before this function
+        //  Component store has a static size
         unsafe { self.0.get_unchecked_mut(id.0 as usize) }
     }
 

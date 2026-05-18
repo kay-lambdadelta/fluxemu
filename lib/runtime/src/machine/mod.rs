@@ -118,8 +118,11 @@ impl<'a> Drop for RuntimeGuard<'a> {
             // Clear the local context
             if let Some(context) = runtime_context {
                 // Release all components
-                self.registry()
-                    .release_all_components(&mut context.local_component_store().borrow_mut());
+                //
+                // SAFETY: This is in the drop impl of a !Send !Sync struct, we have exclusive ownership
+                context
+                    .registry()
+                    .release_all_components(unsafe { &mut *context.local_component_store().get() });
             } else {
                 unreachable!("Runtime exited without entering");
             }

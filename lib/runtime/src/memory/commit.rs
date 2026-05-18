@@ -116,7 +116,11 @@ impl MemoryMappingTable {
                                                 ..=(destination_overlap.end()
                                                     - destination_range.start());
 
-                                            let memory = memory.slice(buffer_subrange);
+                                            let memory = memory.slice(buffer_subrange.clone());
+
+                                            // Validate the buffer subrange matches the range its being put into
+                                            assert_eq!(memory.len(), buffer_subrange.len());
+
                                             PageEntry {
                                                 range: calculated_source_range,
                                                 target: PageTarget::Memory(memory),
@@ -131,6 +135,7 @@ impl MemoryMappingTable {
                             entries
                         }
                         MappingEntry::Buffer(memory) => {
+                            // Validate the buffer subrange matches the range its being put into
                             assert_eq!(memory.len(), source_range.len());
 
                             vec![PageEntry {

@@ -63,9 +63,6 @@ uuid = { version = "1.23", features = ["serde", "v4"] }
 versions = "7.0"
 wgpu = "29.0"
 
-[profile.bench]
-debug = true
-
 [profile.release]
 debug = true
 panic = "abort"

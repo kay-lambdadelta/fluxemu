@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    cell::RefCell,
+    cell::UnsafeCell,
     collections::{HashMap, HashSet},
     io::Read,
     rc::Rc,
@@ -27,13 +27,13 @@ use crate::{
 #[derive(Debug)]
 pub struct RuntimeApi {
     machine: Arc<Machine>,
-    local_component_store: Rc<RefCell<LocalComponentStore>>,
+    local_component_store: Rc<UnsafeCell<LocalComponentStore>>,
 }
 
 impl RuntimeApi {
     pub(crate) fn new(machine: Arc<Machine>) -> Self {
         RuntimeApi {
-            local_component_store: Rc::new(RefCell::new(LocalComponentStore::new(
+            local_component_store: Rc::new(UnsafeCell::new(LocalComponentStore::new(
                 &machine.registry_data,
             ))),
             machine,
@@ -51,7 +51,7 @@ impl RuntimeApi {
         &self.machine
     }
 
-    pub(crate) fn local_component_store(&self) -> &RefCell<LocalComponentStore> {
+    pub(crate) fn local_component_store(&self) -> &UnsafeCell<LocalComponentStore> {
         &self.local_component_store
     }
 

@@ -6,7 +6,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use fluxemu_range::RangeIntersection;
+use fluxemu_range::ContiguousRange;
 use rangemap::{RangeInclusiveMap, RangeInclusiveSet};
 use sdd::{AtomicOwned, Guard, Owned, Tag};
 use smallvec::SmallVec;
@@ -226,7 +226,7 @@ impl AddressSpaceData {
         let current_members = current.as_ref().unwrap();
         let mut new_members = current_members.clone();
 
-        for command in commands.clone() {
+        for command in commands {
             match command {
                 MemoryRemappingCommand::Map {
                     range,
@@ -234,7 +234,7 @@ impl AddressSpaceData {
                     permissions,
                 } => {
                     assert!(
-                        !valid_range.disjoint(&range),
+                        valid_range.contains(range.start()) && valid_range.contains(range.end()),
                         "Range {range:#04x?} is invalid for a address space that ends at \
                          {max:04x?}"
                     );
@@ -280,9 +280,16 @@ impl AddressSpaceData {
                         }
                         MapTarget::Mirror { destination } => {
                             assert!(
-                                !valid_range.disjoint(&destination),
+                                valid_range.contains(range.start())
+                                    && valid_range.contains(range.end()),
                                 "Range {destination:#04x?} is invalid for a address space that \
                                  ends at {max:04x?}"
+                            );
+
+                            assert_eq!(
+                                range.len(),
+                                destination.len(),
+                                "Mirror source and destination ranges must have the same length"
                             );
 
                             if permissions.read {
