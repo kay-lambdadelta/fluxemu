@@ -10,13 +10,12 @@ use std::{
 
 use clap::Parser;
 use cli::{Cli, CliAction};
-use egui_tracing::EventCollector;
 use fluxemu_environment::{ENVIRONMENT_LOCATION, Environment, STORAGE_DIRECTORY};
 use fluxemu_input::physical::hotkey::default_hotkeys;
 use fluxemu_program::ProgramManager;
 use redb::Database;
 use ron::ser::PrettyConfig;
-use tracing::{Level, level_filters::LevelFilter};
+use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{
     EnvFilter, Layer,
     layer::{Filter, SubscriberExt},
@@ -67,23 +66,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let tracing_event_collector = EventCollector::new().with_max_level(
-        filter
-            .max_level_hint()
-            .and_then(|level_filter| level_filter.into_level())
-            .unwrap_or(Level::INFO),
-    );
     let stderr_layer = tracing_subscriber::fmt::layer()
         .with_writer(std::io::stderr)
         .with_ansi(true)
         .with_thread_names(true);
 
     let subscriber_builder = tracing_subscriber::registry()
-        .with(
-            tracing_event_collector
-                .clone()
-                .with_filter(filter.clone() as Arc<dyn Filter<_> + Send + Sync>),
-        )
         .with(stderr_layer.with_filter(filter.clone() as Arc<dyn Filter<_> + Send + Sync>));
 
     if let Ok(file) = File::create(&environment.log_location) {
@@ -130,7 +118,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         fluxemu_environment::graphics::GraphicsApi::Software => {
             DesktopEventLoop::<SoftwareGraphicsRuntime>::run(
                 environment,
-                tracing_event_collector,
                 program_manager.clone(),
                 build_machine::get_software_factories(),
                 initial_program,
@@ -142,7 +129,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             DesktopEventLoop::<WebgpuGraphicsRuntime>::run(
                 environment,
-                tracing_event_collector,
                 program_manager.clone(),
                 build_machine::get_webgpu_factories(),
                 initial_program,

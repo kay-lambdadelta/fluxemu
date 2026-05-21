@@ -28,7 +28,6 @@ use egui_material_icons::{
         ICON_ARTICLE, ICON_FOLDER, ICON_GAMEPAD, ICON_INFO, ICON_SETTINGS, ICON_VIDEO_LIBRARY,
     },
 };
-use egui_tracing::EventCollector;
 use fluxemu_environment::{Environment, input::PhysicalGamepadConfiguration};
 use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_input::{
@@ -37,10 +36,7 @@ use fluxemu_input::{
 };
 use fluxemu_program::{MachineId, ProgramManager, ProgramSpecification, RomId};
 use fluxemu_runtime::{
-    machine::{
-        Machine,
-        builder::{MachineError, SealedMachineBuilder},
-    },
+    machine::{Machine, builder::SealedMachineBuilder},
     path::ResourcePath,
     platform::Platform,
 };
@@ -128,7 +124,6 @@ pub struct Frontend<P: FrontendPlatform> {
     egui_context: Context,
     file_browser: FileBrowserState,
     machine_initialization_step: Option<MachineInitializationStep<P>>,
-    tracing_collector: EventCollector,
 
     #[cfg(feature = "external-file-dialog")]
     native_file_picker_dialog_job: Option<JoinHandle<Option<rfd::FileHandle>>>,
@@ -137,7 +132,6 @@ pub struct Frontend<P: FrontendPlatform> {
 impl<P: FrontendPlatform> Frontend<P> {
     pub fn new(
         environment: Environment,
-        tracing_collector: EventCollector,
         machine_factories: MachineFactories<P>,
         program_manager: Arc<ProgramManager>,
         audio_runtime: P::AudioRuntime,
@@ -169,7 +163,6 @@ impl<P: FrontendPlatform> Frontend<P> {
             #[cfg(feature = "external-file-dialog")]
             native_file_picker_dialog_job: None,
             machine_initialization_step: initial_program_initialization_step,
-            tracing_collector,
         }
     }
 
@@ -520,9 +513,7 @@ impl<P: FrontendPlatform> Frontend<P> {
                             TabId::Settings => {
                                 self.handle_settings(ui);
                             }
-                            TabId::Log => {
-                                ui.add(egui_tracing::Logs::new(self.tracing_collector.clone()));
-                            }
+                            TabId::Log => {}
                             TabId::Controller => {}
                             TabId::About => {}
                         });
