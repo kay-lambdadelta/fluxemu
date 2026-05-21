@@ -5,9 +5,9 @@ use num::traits::{FromBytes, ops::bytes::NumBytes};
 
 use super::AddressSpace;
 use crate::{
-    component::Component,
+    component::{Component, ComponentId, ComponentRegistry},
     memory::{
-        Address, AddressSpaceId, MemoryError, MemoryErrorType, PageEntry, PageTarget,
+        Address, AddressSpaceId, MemoryError, MemoryErrorType, PAGE_SIZE, PageEntry, PageTarget,
         component::Memory,
     },
     scheduler::Period,
@@ -29,85 +29,57 @@ impl<'a> AddressSpace<'a> {
             .as_ref()
             .unwrap();
 
-        let buffer = buffer.as_mut();
-
-        // Take a special path for single byte reads
-        if buffer.len() == 1 {
-            let address_masked = address & self.data.width_mask;
-
-            // SAFETY: We just masked the address to fit within the table
-            let PageEntry {
-                range: entry_assigned_range,
-                target,
-            } = unsafe { members.read.get(address_masked) }.ok_or_else(
-                #[cold]
-                || {
-                    let access_range = RangeInclusive::from_start_and_length(address_masked, 1);
-
-                    MemoryError(std::iter::once((access_range, MemoryErrorType::Denied)).collect())
-                },
-            )?;
-
-            match target {
-                PageTarget::Memory(bytes) => {
-                    let memory_offset = address_masked - entry_assigned_range.start();
-
-                    // SAFETY: In `commit` buffers are validated to be the same length as their ranges
-                    buffer[0] = *unsafe { bytes.get_unchecked(memory_offset) };
-                }
-                PageTarget::Component {
-                    destination_start,
-                    component_id,
-                    is_standard_memory,
-                } => {
-                    let offset = address_masked - entry_assigned_range.start();
-                    let destination = destination_start + offset;
-
-                    self.registry
-                        .interact_dyn(
-                            *component_id,
-                            timestamp,
-                            #[inline]
-                            |component| {
-                                perform_read(
-                                    destination,
-                                    self.data.id,
-                                    avoid_side_effects,
-                                    buffer,
-                                    *is_standard_memory,
-                                    component,
-                                )
-                            },
-                        )
-                        .unwrap()?;
-                }
-            }
-
-            return Ok(());
-        }
-
-        let mut remaining_buffer = buffer;
+        address &= self.data.width_mask;
+        let mut remaining_buffer = buffer.as_mut();
 
         while !remaining_buffer.is_empty() {
-            let address_masked = address & self.data.width_mask;
-            let end_address = address_masked + remaining_buffer.len() - 1;
+            let mut handled = false;
 
-            let chunk_len = if end_address > self.data.width_mask {
-                // Wraparound
-                self.data.width_mask - address_masked + 1
-            } else {
+            let max_to_width_boundary = self.data.width_mask - address;
+            let chunk_len = if remaining_buffer.len() - 1 <= max_to_width_boundary {
                 remaining_buffer.len()
+            } else {
+                max_to_width_boundary + 1
             };
 
-            let access_range = RangeInclusive::from_start_and_length(address_masked, chunk_len);
-            let mut handled = false;
+            let (chunk_buffer, next_buffer) = remaining_buffer.split_at_mut(chunk_len);
+            remaining_buffer = next_buffer;
+
+            let access_range = RangeInclusive::from_start_and_length(address, chunk_len);
+
+            let start_page = access_range.start() / PAGE_SIZE;
+            let end_page = access_range.end() / PAGE_SIZE;
+
+            // SAFETY: The start and end pages are bounded by the width mask, they fall into the table constructed by `commit`
+            let page_slice = unsafe {
+                members
+                    .read
+                    .computed_table
+                    .get_unchecked(start_page..=end_page)
+            };
 
             for PageEntry {
                 range: entry_assigned_range,
                 target,
-            } in members.read.overlapping(access_range.clone())
+            } in page_slice.iter().flatten()
             {
+                if *entry_assigned_range.end() < *access_range.start() {
+                    continue;
+                }
+
+                if *entry_assigned_range.start() > *access_range.end() {
+                    break;
+                }
+
                 handled = true;
+
+                let entry_access_range = entry_assigned_range.intersection(&access_range);
+                let offset = entry_access_range.start() - entry_assigned_range.start();
+
+                let buffer_range = (entry_access_range.start() - access_range.start())
+                    ..=(entry_access_range.end() - access_range.start());
+
+                let adjusted_buffer = &mut chunk_buffer[buffer_range];
 
                 match target {
                     PageTarget::Component {
@@ -115,49 +87,59 @@ impl<'a> AddressSpace<'a> {
                         component_id,
                         is_standard_memory,
                     } => {
-                        let component_access_range =
-                            entry_assigned_range.intersection(&access_range);
-                        let offset = component_access_range.start() - entry_assigned_range.start();
-                        let buffer_range = (component_access_range.start() - access_range.start())
-                            ..=(component_access_range.end() - access_range.start());
-                        let adjusted_buffer = &mut remaining_buffer[buffer_range];
-
                         let destination = destination_start + offset;
 
-                        self.registry
-                            .interact_dyn(
+                        if *is_standard_memory {
+                            // We perform a manual devirtualization here because it can often prevent a indirect call
+                            // and speaking to the internals to the standard memory component specifically, a memcpy call
+
+                            self.registry
+                                .interact_dyn(
+                                    *component_id,
+                                    timestamp,
+                                    #[inline]
+                                    |component| {
+                                        // SAFETY: In `commit` is_standard_memory is set based upon the typeid of the component
+                                        //
+                                        // This is basically doing a stable `downcast_unchecked`
+                                        let component = unsafe {
+                                            &mut *(std::ptr::from_mut(component) as *mut Memory)
+                                        };
+
+                                        component.memory_read(
+                                            destination,
+                                            self.data.id,
+                                            avoid_side_effects,
+                                            adjusted_buffer,
+                                        )
+                                    },
+                                )
+                                .unwrap()?;
+                        } else {
+                            virtual_memory_read(
                                 *component_id,
                                 timestamp,
-                                #[inline]
-                                |component| {
-                                    perform_read(
-                                        destination,
-                                        self.data.id,
-                                        avoid_side_effects,
-                                        adjusted_buffer,
-                                        *is_standard_memory,
-                                        component,
-                                    )
-                                },
-                            )
-                            .unwrap()?;
+                                self.registry,
+                                destination,
+                                self.data.id,
+                                avoid_side_effects,
+                                adjusted_buffer,
+                            )?;
+                        }
                     }
                     PageTarget::Memory(bytes) => {
-                        let memory_access_range = entry_assigned_range.intersection(&access_range);
+                        let memory_range =
+                            RangeInclusive::from_start_and_length(offset, adjusted_buffer.len());
 
-                        let memory_offset =
-                            memory_access_range.start() - entry_assigned_range.start();
-                        let buffer_range = (memory_access_range.start() - access_range.start())
-                            ..=(memory_access_range.end() - access_range.start());
+                        // SAFETY: `commit` ensures memory byte entries are the same size as the range they are assigned to
+                        let bytes = unsafe { bytes.get_unchecked(memory_range) };
 
-                        let adjusted_buffer = &mut remaining_buffer[buffer_range];
-                        let memory_range = RangeInclusive::from_start_and_length(
-                            memory_offset,
-                            adjusted_buffer.len(),
-                        );
-
-                        adjusted_buffer.copy_from_slice(&bytes[memory_range]);
+                        adjusted_buffer.copy_from_slice(bytes);
                     }
+                }
+
+                if entry_access_range.end() == access_range.end() {
+                    break;
                 }
             }
 
@@ -167,9 +149,7 @@ impl<'a> AddressSpace<'a> {
                 ));
             }
 
-            // Move forward in the buffer
-            remaining_buffer = &mut remaining_buffer[chunk_len..];
-            address = (address_masked + chunk_len) & self.data.width_mask;
+            address = (address + chunk_len) & self.data.width_mask;
         }
 
         Ok(())
@@ -261,26 +241,24 @@ impl<'a> AddressSpace<'a> {
     }
 }
 
-#[inline]
-fn perform_read(
+#[cold]
+fn virtual_memory_read(
+    component_id: ComponentId,
+    timestamp: Period,
+    registry: ComponentRegistry<'_>,
     destination: usize,
     address_space_id: AddressSpaceId,
     avoid_side_effects: bool,
     buffer: &mut [u8],
-    is_standard_memory: bool,
-    component: &mut dyn Component,
 ) -> Result<(), MemoryError> {
-    // We perform a manual devirtualization here because it can often prevent a indirect call
-    // and speaking to the internals to the standard memory component specifically, a memcpy call
-
-    if is_standard_memory {
-        // SAFETY: In `commit` is_standard_memory is set based upon the typeid of the component
-        //
-        // This is basically doing a stable `downcast_unchecked`
-        let component = unsafe { &mut *(std::ptr::from_mut(component) as *mut Memory) };
-
-        component.memory_read(destination, address_space_id, avoid_side_effects, buffer)
-    } else {
-        component.memory_read(destination, address_space_id, avoid_side_effects, buffer)
-    }
+    registry
+        .interact_dyn(
+            component_id,
+            timestamp,
+            #[inline]
+            |component| {
+                component.memory_read(destination, address_space_id, avoid_side_effects, buffer)
+            },
+        )
+        .unwrap()
 }
