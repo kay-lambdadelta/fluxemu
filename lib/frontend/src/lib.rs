@@ -2,6 +2,7 @@
 
 mod backend;
 
+mod audio_mixer;
 mod file_browser;
 mod input;
 mod machine_factories;
@@ -16,6 +17,7 @@ use std::{
     thread::JoinHandle,
 };
 
+pub use audio_mixer::AudioMixer;
 pub use backend::*;
 use egui::{
     CentralPanel, Color32, ComboBox, Context, FontFamily, Frame, FullOutput, Id, Modal, Panel,
@@ -124,6 +126,7 @@ pub struct Frontend<P: FrontendPlatform> {
     egui_context: Context,
     file_browser: FileBrowserState,
     machine_initialization_step: Option<MachineInitializationStep<P>>,
+    audio_mixer: Arc<AudioMixer>,
 
     #[cfg(feature = "external-file-dialog")]
     native_file_picker_dialog_job: Option<JoinHandle<Option<rfd::FileHandle>>>,
@@ -134,7 +137,7 @@ impl<P: FrontendPlatform> Frontend<P> {
         environment: Environment,
         machine_factories: MachineFactories<P>,
         program_manager: Arc<ProgramManager>,
-        audio_runtime: P::AudioRuntime,
+        mut audio_runtime: P::AudioRuntime,
         initial_program: Option<Vec<RomId>>,
     ) -> Self {
         let initial_program_initialization_step = initial_program.map(|roms| {
@@ -145,6 +148,10 @@ impl<P: FrontendPlatform> Frontend<P> {
                 job: std::thread::spawn(move || program_manager.identify_program(&roms)),
             }
         });
+
+        let sample_rate = audio_runtime.sample_rate();
+        let audio_mixer = Arc::new(AudioMixer::new(sample_rate));
+        audio_runtime.set_audio_mixer(audio_mixer.clone());
 
         Self {
             file_browser: FileBrowserState::new(environment.file_browser_home_directory.clone()),
@@ -160,6 +167,7 @@ impl<P: FrontendPlatform> Frontend<P> {
             current_tab: TabId::Library,
             physical_input_devices: HashMap::default(),
             egui_context: setup_egui_context(),
+            audio_mixer,
             #[cfg(feature = "external-file-dialog")]
             native_file_picker_dialog_job: None,
             machine_initialization_step: initial_program_initialization_step,
@@ -440,11 +448,13 @@ impl<P: FrontendPlatform> Frontend<P> {
                 .name("machine-simulation".into())
                 .spawn({
                     let machine = machine.clone();
+                    let audio_mixer = self.audio_mixer.clone();
 
                     || {
                         machine_thread(MachineThreadContext {
                             message_receiver: offload_communication_receiver,
                             machine,
+                            audio_mixer,
                         });
                     }
                 })

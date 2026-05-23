@@ -1,23 +1,21 @@
-use std::{fmt::Debug, sync::Arc};
+use std::{
+    fmt::Debug,
+    sync::{Arc, OnceLock},
+};
 
-use arc_swap::ArcSwapOption;
+use bytemuck::Pod;
 use cpal::{
-    Device, Host, Stream,
+    Device, Stream, SupportedStreamConfig,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
-use fluxemu_audio::{FrameIterator, Linear, SampleFormat};
-use fluxemu_frontend::AudioRuntime;
-use fluxemu_runtime::{machine::Machine, scheduler::Period};
+use fluxemu_audio::{FromSample, SampleFormat};
+use fluxemu_frontend::{AudioMixer, AudioRuntime};
 use nalgebra::SVector;
-use ringbuffer::RingBuffer;
 
 pub struct CpalAudioRuntime {
-    #[allow(unused)]
-    host: Host,
-    #[allow(unused)]
-    device: Device,
     stream: Stream,
-    machine: Arc<ArcSwapOption<Machine>>,
+    config: SupportedStreamConfig,
+    mixer: Arc<OnceLock<Arc<AudioMixer>>>,
 }
 
 impl Debug for CpalAudioRuntime {
@@ -26,8 +24,8 @@ impl Debug for CpalAudioRuntime {
     }
 }
 
-impl AudioRuntime for CpalAudioRuntime {
-    fn new() -> Result<Self, Box<dyn std::error::Error>> {
+impl CpalAudioRuntime {
+    pub fn new() -> Result<Self, ()> {
         let host = cpal::default_host();
         tracing::info!("Selecting audio api {:?}", host.id());
 
@@ -52,77 +50,25 @@ impl AudioRuntime for CpalAudioRuntime {
                         .contains(&default_output_config.sample_rate())
             })
             .unwrap();
-        let config = config_range.with_sample_rate(default_output_config.sample_rate());
 
+        let config = config_range.with_sample_rate(default_output_config.sample_rate());
         tracing::info!("Selected audio device with config: {:#?}", config);
 
-        let sample_rate = config.sample_rate() as f32;
+        let mixer: Arc<OnceLock<_>> = Arc::default();
 
-        let machine: Arc<ArcSwapOption<Machine>> = Arc::default();
-
-        let stream = device
-            .build_output_stream::<f32, _, _>(
-                &config.config(),
-                {
-                    let machine = machine.clone();
-
-                    move |buffer, _info| {
-                        let machine = machine.load();
-
-                        if let Some(machine) = machine.as_ref() {
-                            let runtime_guard = machine.enter_runtime();
-                            let buffer: &mut [SVector<f32, _>] = bytemuck::cast_slice_mut(buffer);
-                            buffer.fill(SVector::from_element(f32::equilibrium()));
-
-                            let _representing_time =
-                                Period::from_num(buffer.len() as f32 / sample_rate);
-
-                            for audio_stream in runtime_guard.audio_outputs() {
-                                runtime_guard
-                                    .registry()
-                                    .interact_dyn(
-                                        audio_stream.parent().unwrap(),
-                                        runtime_guard.safe_advance_timestamp(),
-                                        |component| {
-                                            let audio_source =
-                                                component.get_audio_channel(audio_stream.name());
-
-                                            let audio_generator = audio_source
-                                                .source
-                                                .drain()
-                                                .pad()
-                                                .resample::<f32>(
-                                                    audio_source.sample_rate,
-                                                    sample_rate,
-                                                    Linear,
-                                                )
-                                                .remix::<2>();
-
-                                            for (destination, source) in
-                                                buffer.iter_mut().zip(audio_generator)
-                                            {
-                                                *destination = source;
-                                            }
-                                        },
-                                    )
-                                    .unwrap()
-                            }
-                        }
-                    }
-                },
-                |e| {
-                    tracing::error!("{}", e);
-                },
-                None,
-            )
-            .unwrap();
+        let stream = create_stream::<f32, 2>(&device, config.clone(), mixer.clone());
 
         Ok(Self {
-            host,
-            device,
             stream,
-            machine,
+            config,
+            mixer,
         })
+    }
+}
+
+impl AudioRuntime for CpalAudioRuntime {
+    fn sample_rate(&mut self) -> f32 {
+        self.config.sample_rate() as f32
     }
 
     fn pause(&mut self) {
@@ -133,7 +79,35 @@ impl AudioRuntime for CpalAudioRuntime {
         self.stream.play().unwrap();
     }
 
-    fn set_machine(&mut self, machine: Option<Arc<Machine>>) {
-        self.machine.store(machine);
+    fn set_audio_mixer(&mut self, audio_mixer: Arc<AudioMixer>) {
+        self.mixer.set(audio_mixer).unwrap();
     }
+}
+
+fn create_stream<
+    S: SampleFormat + FromSample<f32> + cpal::SizedSample + Pod,
+    const CHANNELS: usize,
+>(
+    device: &Device,
+    config: cpal::SupportedStreamConfig,
+    mixer: Arc<OnceLock<Arc<AudioMixer>>>,
+) -> Stream {
+    device
+        .build_output_stream::<S, _, _>(
+            &config.config(),
+            move |buffer, _info| {
+                if let Some(mixer) = mixer.get() {
+                    let buffer: &mut [SVector<S, CHANNELS>] = bytemuck::cast_slice_mut(buffer);
+
+                    mixer.write_buffer(buffer);
+                } else {
+                    buffer.fill(S::equilibrium());
+                }
+            },
+            |e| {
+                tracing::error!("{}", e);
+            },
+            None,
+        )
+        .unwrap()
 }

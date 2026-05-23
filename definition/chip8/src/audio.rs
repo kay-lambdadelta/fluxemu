@@ -1,4 +1,4 @@
-use fluxemu_audio::SquareWave;
+use fluxemu_audio::{SampleFormat, SquareWave};
 use fluxemu_runtime::{
     component::{Component, SampleSource, config::ComponentConfig},
     machine::builder::{ComponentBuilder, SchedulerParticipation},
@@ -9,7 +9,7 @@ use nalgebra::SVector;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 
 /// Imaginary chip8 hardware sample rate
-const INTERNAL_SAMPLE_RATE: f32 = 8000.0;
+const INTERNAL_SAMPLE_RATE: f32 = 1760.0;
 
 #[derive(Debug)]
 pub struct Chip8Audio {
@@ -33,7 +33,7 @@ impl Component for Chip8Audio {
 
     fn get_audio_channel(&mut self, _name: &str) -> SampleSource<'_> {
         SampleSource {
-            source: &mut self.buffer,
+            audio_ring: &mut self.buffer,
             sample_rate: INTERNAL_SAMPLE_RATE,
         }
     }
@@ -46,15 +46,20 @@ impl Component for Chip8Audio {
             self.audio_accumulator += samples_per_tick;
 
             while self.audio_accumulator >= 1.0 {
-                if self.timer > 0 {
-                    let sample = self.wave_generator.next().unwrap();
-                    let _ = self.buffer.enqueue(sample);
+                let generated_sample = self.wave_generator.next().unwrap();
+                let sample = if self.timer > 0 {
+                    generated_sample
+                } else {
+                    SVector::from_element(f32::equilibrium())
                 };
+
+                let _ = self.buffer.enqueue(sample);
 
                 self.audio_accumulator -= 1.0;
             }
 
             self.timer_accumulator += self.processor_frequency.recip();
+
             while self.timer_accumulator >= timer_period {
                 self.timer = self.timer.saturating_sub(1);
                 self.timer_accumulator -= timer_period;
@@ -85,7 +90,7 @@ impl<P: Platform> ComponentConfig<P> for Chip8AudioConfig {
 
         Ok(Chip8Audio {
             timer: 0,
-            buffer: AllocRingBuffer::new((INTERNAL_SAMPLE_RATE * 10.0) as _),
+            buffer: AllocRingBuffer::new(INTERNAL_SAMPLE_RATE as _),
             wave_generator: SquareWave::new(440.0, INTERNAL_SAMPLE_RATE, 0.5),
             processor_frequency: self.processor_frequency,
             timer_accumulator: Period::ZERO,

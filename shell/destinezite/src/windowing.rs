@@ -3,7 +3,7 @@ use std::{borrow::Cow, collections::HashMap, ops::Deref, sync::Arc, time::Instan
 use egui::{Context, ViewportId};
 use fluxemu_environment::{ENVIRONMENT_LOCATION, Environment};
 use fluxemu_frontend::{
-    AudioRuntime, Frontend, GraphicsRuntime, MachineFactories, PhysicalInputDeviceMetadata,
+    Frontend, GraphicsRuntime, MachineFactories, PhysicalInputDeviceMetadata,
 };
 use fluxemu_input::{InputId, InputState, KeyboardInputId, physical::PhysicalInputDeviceId};
 use fluxemu_program::{ProgramManager, RomId};

@@ -11,6 +11,8 @@ use fluxemu_runtime::machine::Machine;
 use ringbuffer::{ConstGenericRingBuffer, RingBuffer};
 use time::Duration;
 
+use crate::audio_mixer::AudioMixer;
+
 const ALPHA: f32 = 0.1;
 const SMOOTHING_WINDOW: usize = 4;
 const OUTLIER_MULTIPLE: f32 = 10.0;
@@ -23,12 +25,14 @@ pub enum Message {
 pub struct MachineThreadContext {
     pub message_receiver: mpsc::Receiver<Message>,
     pub machine: Arc<Machine>,
+    pub audio_mixer: Arc<AudioMixer>,
 }
 
 pub fn machine_thread(
     MachineThreadContext {
         message_receiver,
         machine,
+        audio_mixer,
     }: MachineThreadContext,
 ) {
     let min_timeslice = Duration::milliseconds(4);
@@ -53,9 +57,14 @@ pub fn machine_thread(
 
         let start = Instant::now();
 
-        machine
-            .enter_runtime()
-            .run_duration(execution_timeslice.try_into().unwrap());
+        // Enter runtime
+        let runtime_guard = machine.enter_runtime();
+        // Run simulation
+        runtime_guard.run_duration(execution_timeslice.try_into().unwrap());
+        // Extract audio samples
+        audio_mixer.extract_machine_samples(&runtime_guard);
+        // Exit runtime and release whatever components we touched
+        drop(runtime_guard);
 
         let execution_time: Duration = start.elapsed().try_into().unwrap();
 

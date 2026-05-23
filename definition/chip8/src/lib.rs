@@ -53,7 +53,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> MachineFactory<
                 timer,
                 audio,
                 display,
-                frequency: Frequency::from_num(1000),
+                frequency: Frequency::from_num(700),
                 force_mode: None,
                 always_shr_in_place: false,
                 stall_on_draw_until_vsync: false,

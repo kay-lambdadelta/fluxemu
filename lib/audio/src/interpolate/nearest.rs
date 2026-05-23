@@ -7,9 +7,8 @@ use ringbuffer::{ConstGenericRingBuffer, RingBuffer};
 use super::Interpolator;
 use crate::{FrameIterator, FromSample, SampleFormat};
 
-/// Linear interpolation
-#[derive(Debug)]
-pub struct Linear<S: SampleFormat, const CHANNELS: usize, F: Float + SampleFormat = f32> {
+#[derive(Default, Debug)]
+pub struct Nearest<S: SampleFormat, const CHANNELS: usize, F: Float + SampleFormat = f32> {
     step: F,
     phase: F,
     held_samples: ConstGenericRingBuffer<SVector<F, CHANNELS>, 2>,
@@ -18,7 +17,7 @@ pub struct Linear<S: SampleFormat, const CHANNELS: usize, F: Float + SampleForma
     _phantom: PhantomData<S>,
 }
 
-impl<S: SampleFormat, const CHANNELS: usize, F: Float + SampleFormat> Linear<S, CHANNELS, F> {
+impl<S: SampleFormat, const CHANNELS: usize, F: Float + SampleFormat> Nearest<S, CHANNELS, F> {
     pub fn new(source_rate: f32, target_rate: f32) -> Self {
         let step = F::from_f32(source_rate / target_rate).unwrap();
 
@@ -42,7 +41,7 @@ impl<S: SampleFormat, const CHANNELS: usize, F: Float + SampleFormat> Linear<S, 
 }
 
 impl<S: SampleFormat, const CHANNELS: usize, F: Float + SampleFormat> Interpolator<S, CHANNELS, F>
-    for Linear<S, CHANNELS, F>
+    for Nearest<S, CHANNELS, F>
 where
     F: FromSample<S>,
     S: FromSample<F>,
@@ -64,7 +63,7 @@ where
             }
         }
 
-        LinearIterator {
+        NearestIterator {
             state: self,
             input,
             input_exhausted,
@@ -73,14 +72,14 @@ where
     }
 }
 
-struct LinearIterator<
+struct NearestIterator<
     'a,
     S: SampleFormat,
     const CHANNELS: usize,
     F: Float + SampleFormat,
     I: Iterator<Item = SVector<F, CHANNELS>>,
 > {
-    state: &'a mut Linear<S, CHANNELS, F>,
+    state: &'a mut Nearest<S, CHANNELS, F>,
     input: I,
     input_exhausted: bool,
 }
@@ -91,7 +90,7 @@ impl<
     const CHANNELS: usize,
     F: Float + SampleFormat,
     I: Iterator<Item = SVector<F, CHANNELS>>,
-> Iterator for LinearIterator<'a, S, CHANNELS, F, I>
+> Iterator for NearestIterator<'a, S, CHANNELS, F, I>
 {
     type Item = SVector<F, CHANNELS>;
 
@@ -110,11 +109,14 @@ impl<
             return None;
         }
 
-        let interpolated_sample =
-            self.state.held_samples[0].lerp(&self.state.held_samples[1], self.state.phase);
+        let nearest_sample = if self.state.phase < F::from_f32(0.5).unwrap() {
+            self.state.held_samples[0]
+        } else {
+            self.state.held_samples[1]
+        };
 
         self.state.phase += self.state.step;
 
-        Some(interpolated_sample)
+        Some(nearest_sample)
     }
 }

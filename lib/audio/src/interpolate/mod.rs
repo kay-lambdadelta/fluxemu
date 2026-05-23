@@ -5,17 +5,19 @@ use crate::SampleFormat;
 
 mod cubic;
 mod linear;
+mod nearest;
 
 pub use cubic::Cubic;
 pub use linear::Linear;
+pub use nearest::Nearest;
 
 /// Trait for interpolators, generic over frame size and sample format
-pub trait Interpolator<S: SampleFormat, const CHANNELS: usize, INTERMEDIATE: Float + SampleFormat> {
+pub trait Interpolator<S: SampleFormat, const CHANNELS: usize, INTERMEDIATE: Float + SampleFormat>:
+    'static
+{
     /// Interpolates a sequence of samples from a source rate to a target rate given an interpolator
     fn interpolate(
-        self,
-        source_rate: f32,
-        target_rate: f32,
+        &mut self,
         input: impl IntoIterator<Item = SVector<S, CHANNELS>>,
     ) -> impl Iterator<Item = SVector<S, CHANNELS>>;
 }

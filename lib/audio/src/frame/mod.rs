@@ -15,9 +15,7 @@ pub trait FrameIterator<S: SampleFormat, const CHANNELS: usize>:
     /// Use the specified [Interpolator] to resample the iterator
     fn resample<F: Float + SampleFormat>(
         self,
-        source_rate: f32,
-        target_rate: f32,
-        interpolator: impl Interpolator<S, CHANNELS, F>,
+        interpolater: &mut impl Interpolator<S, CHANNELS, F>,
     ) -> impl FrameIterator<S, CHANNELS>;
 
     /// Mix the channels of the iterator into a different number of channels
@@ -43,8 +41,6 @@ pub trait FrameIterator<S: SampleFormat, const CHANNELS: usize>:
 
 impl<S: SampleFormat, const CHANNELS: usize, SourceIterator: Iterator<Item = SVector<S, CHANNELS>>>
     FrameIterator<S, CHANNELS> for SourceIterator
-where
-    Self: Sized,
 {
     fn rescale<S2: SampleFormat + FromSample<S>>(self) -> impl FrameIterator<S2, CHANNELS> {
         self.map(|s| s.map(|s| s.into_sample()))
@@ -52,11 +48,9 @@ where
 
     fn resample<F: Float + SampleFormat>(
         self,
-        source_rate: f32,
-        target_rate: f32,
-        interpolator: impl Interpolator<S, CHANNELS, F>,
+        interpolater: &mut impl Interpolator<S, CHANNELS, F>,
     ) -> impl FrameIterator<S, CHANNELS> {
-        interpolator.interpolate(source_rate, target_rate, self)
+        interpolater.interpolate(self)
     }
 
     fn remix<const CHANNELS2: usize>(self) -> impl FrameIterator<S, CHANNELS2> {

@@ -1,15 +1,15 @@
 use std::{fmt::Debug, sync::Arc};
 
-use fluxemu_runtime::machine::Machine;
+use crate::audio_mixer::AudioMixer;
 
 /// Audio runtime to provide the frontend
 pub trait AudioRuntime: Sized + Debug {
-    /// Create a new audio runtime
-    fn new() -> Result<Self, Box<dyn std::error::Error>>;
+    /// Retrieve the sample rate
+    fn sample_rate(&mut self) -> f32;
+    /// Set the audio mixer
+    fn set_audio_mixer(&mut self, audio_mixer: Arc<AudioMixer>);
     /// Pause audio playback
     fn pause(&mut self);
     /// Play audio
     fn play(&mut self);
-    /// Set current machine
-    fn set_machine(&mut self, machine: Option<Arc<Machine>>);
 }

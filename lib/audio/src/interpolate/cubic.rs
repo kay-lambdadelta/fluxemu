@@ -1,3 +1,5 @@
+use core::marker::PhantomData;
+
 use nalgebra::SVector;
 use num::Float;
 use ringbuffer::{ConstGenericRingBuffer, RingBuffer};
@@ -5,130 +7,118 @@ use ringbuffer::{ConstGenericRingBuffer, RingBuffer};
 use super::Interpolator;
 use crate::{FrameIterator, FromSample, SampleFormat};
 
-#[derive(Default)]
 /// Cubic interpolation
-pub struct Cubic;
-
-impl<S: SampleFormat, const CHANNELS: usize, F: Float + SampleFormat> Interpolator<S, CHANNELS, F>
-    for Cubic
-where
-    F: FromSample<S>,
-    S: FromSample<F>,
-{
-    fn interpolate(
-        self,
-        source_rate: f32,
-        target_rate: f32,
-        input: impl IntoIterator<Item = SVector<S, CHANNELS>>,
-    ) -> impl Iterator<Item = SVector<S, CHANNELS>> {
-        interpolate_internal(source_rate, target_rate, input)
-    }
-}
-
-impl<S: SampleFormat, const CHANNELS: usize, F: Float + SampleFormat> Interpolator<S, CHANNELS, F>
-    for &Cubic
-where
-    F: FromSample<S>,
-    S: FromSample<F>,
-{
-    fn interpolate(
-        self,
-        source_rate: f32,
-        target_rate: f32,
-        input: impl IntoIterator<Item = SVector<S, CHANNELS>>,
-    ) -> impl Iterator<Item = SVector<S, CHANNELS>> {
-        interpolate_internal(source_rate, target_rate, input)
-    }
-}
-
-#[inline]
-fn interpolate_internal<
-    S: SampleFormat + FromSample<F>,
-    const CHANNELS: usize,
-    F: Float + SampleFormat + FromSample<S>,
->(
+#[derive(Debug)]
+pub struct Cubic<S: SampleFormat, const CHANNELS: usize, F: Float + SampleFormat = f32> {
+    step: F,
+    phase: F,
+    held_samples: ConstGenericRingBuffer<SVector<F, CHANNELS>, 4>,
     source_rate: f32,
     target_rate: f32,
-    input: impl IntoIterator<Item = SVector<S, CHANNELS>>,
-) -> impl FrameIterator<S, CHANNELS> {
-    let mut input = input.into_iter().rescale::<F>();
-    let mut input_exhausted = false;
+    _phantom: PhantomData<S>,
+}
 
-    // Initialize the ring buffer with four samples
-    let mut held_samples = ConstGenericRingBuffer::new();
-    for _ in 0..4 {
-        if let Some(sample) = input.next() {
-            held_samples.enqueue(sample);
-        } else {
-            input_exhausted = true;
-            break;
+impl<S: SampleFormat, const CHANNELS: usize, F: Float + SampleFormat> Cubic<S, CHANNELS, F> {
+    pub fn new(source_rate: f32, target_rate: f32) -> Self {
+        let step = F::from_f32(source_rate / target_rate).unwrap();
+
+        Self {
+            step,
+            phase: F::zero(),
+            held_samples: ConstGenericRingBuffer::default(),
+            source_rate,
+            target_rate,
+            _phantom: PhantomData,
         }
     }
 
-    for _ in 0..(4 - held_samples.len()) {
-        held_samples.enqueue(SVector::from_element(F::equilibrium()));
+    pub fn source_rate(&self) -> f32 {
+        self.source_rate
     }
 
-    CubicIterator::<F, CHANNELS, _> {
-        resampling_ratio: F::from_f32(target_rate / source_rate).unwrap(),
-        index: F::zero(),
-        input_index: F::zero(),
-        held_samples,
-        input,
-        input_exhausted,
+    pub fn target_rate(&self) -> f32 {
+        self.target_rate
     }
-    .rescale::<S>()
+}
+
+impl<S: SampleFormat, const CHANNELS: usize, F: Float + SampleFormat> Interpolator<S, CHANNELS, F>
+    for Cubic<S, CHANNELS, F>
+where
+    F: FromSample<S>,
+    S: FromSample<F>,
+{
+    fn interpolate(
+        &mut self,
+        input: impl IntoIterator<Item = SVector<S, CHANNELS>>,
+    ) -> impl Iterator<Item = SVector<S, CHANNELS>> {
+        let mut input = input.into_iter().rescale::<F>();
+        let mut input_exhausted = false;
+
+        for _ in self.held_samples.len()..4 {
+            if let Some(sample) = input.next() {
+                self.held_samples.enqueue(sample);
+            } else {
+                self.held_samples
+                    .enqueue(SVector::from_element(F::equilibrium()));
+                input_exhausted = true;
+            }
+        }
+
+        CubicIterator {
+            state: self,
+            input,
+            input_exhausted,
+        }
+        .rescale::<S>()
+    }
 }
 
 struct CubicIterator<
-    F: Float + SampleFormat,
+    'a,
+    S: SampleFormat,
     const CHANNELS: usize,
+    F: Float + SampleFormat,
     I: Iterator<Item = SVector<F, CHANNELS>>,
 > {
-    resampling_ratio: F,
-    index: F,
-    input_index: F,
-    held_samples: ConstGenericRingBuffer<SVector<F, CHANNELS>, 4>,
+    state: &'a mut Cubic<S, CHANNELS, F>,
     input: I,
     input_exhausted: bool,
 }
 
-impl<F: Float + SampleFormat, const CHANNELS: usize, I: Iterator<Item = SVector<F, CHANNELS>>>
-    Iterator for CubicIterator<F, CHANNELS, I>
+impl<
+    'a,
+    S: SampleFormat,
+    const CHANNELS: usize,
+    F: Float + SampleFormat,
+    I: Iterator<Item = SVector<F, CHANNELS>>,
+> Iterator for CubicIterator<'a, S, CHANNELS, F, I>
 {
     type Item = SVector<F, CHANNELS>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let input_target_index = self.index / self.resampling_ratio;
-
-        while self.input_index < input_target_index {
+        while self.state.phase >= F::one() {
             if let Some(sample) = self.input.next() {
-                self.held_samples.enqueue(sample);
+                self.state.held_samples.enqueue(sample);
+                self.state.phase -= F::one();
             } else {
                 self.input_exhausted = true;
                 break;
             }
-
-            self.input_index += F::one();
         }
 
-        if (self.input_exhausted && self.input_index <= input_target_index)
-            || self.held_samples.len() < 4
-        {
+        if self.input_exhausted && self.state.phase >= F::one() {
             return None;
         }
 
-        let fractional_part =
-            (input_target_index - (self.input_index - F::one())).clamp(F::zero(), F::one());
-
         let interpolated_sample = cubic_interpolate(
-            &self.held_samples[0],
-            &self.held_samples[1],
-            &self.held_samples[2],
-            &self.held_samples[3],
-            fractional_part,
+            &self.state.held_samples[0],
+            &self.state.held_samples[1],
+            &self.state.held_samples[2],
+            &self.state.held_samples[3],
+            self.state.phase,
         );
-        self.index += F::one();
+
+        self.state.phase += self.state.step;
 
         Some(interpolated_sample)
     }

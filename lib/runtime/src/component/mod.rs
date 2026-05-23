@@ -91,7 +91,7 @@ pub trait Component: Send + Sync + Debug + Any {
 }
 
 pub struct SampleSource<'a> {
-    pub source: &'a mut AllocRingBuffer<SVector<f32, 1>>,
+    pub audio_ring: &'a mut AllocRingBuffer<SVector<f32, 1>>,
     pub sample_rate: f32,
 }
 

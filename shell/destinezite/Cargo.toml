@@ -9,7 +9,6 @@ license = "GPL-3.0-or-later"
 maintainer = "Kay <lambdadeltakay@proton.me>"
 
 [dependencies]
-arc-swap = { workspace = true }
 bytemuck = { workspace = true }
 clap = { workspace = true }
 cpal = "0.17"

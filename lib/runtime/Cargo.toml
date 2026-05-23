@@ -27,7 +27,7 @@ ringbuffer = { workspace = true }
 rmp-serde = { workspace = true }
 rustc-hash = { workspace = true }
 scc = { workspace = true }
-sdd = { version = "4.8" }
+sdd = { workspace = true }
 sealed = { workspace = true }
 serde = { workspace = true }
 serde_with = { workspace = true }
