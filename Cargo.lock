@@ -1696,7 +1696,6 @@ name = "fluxemu-locale"
 version = "0.1.0"
 dependencies = [
  "csv",
- "prettyplease",
  "proc-macro2",
  "quote",
  "serde",

@@ -208,12 +208,9 @@ pub fn generate_3166() {
         }
     };
 
-    // Convert AST to formatted Rust code using prettyplease
-    let code = prettyplease::unparse(&syn::parse2(file).unwrap());
-
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR not set"));
     let dest_path = out_dir.join("iso3166.rs");
-    std::fs::write(dest_path, code).expect("Failed to write generated Rust file");
+    std::fs::write(dest_path, file.to_string()).expect("Failed to write generated Rust file");
 }
 
 pub fn generate_639() {
@@ -409,9 +406,7 @@ pub fn generate_639() {
         }
     };
 
-    let code = prettyplease::unparse(&syn::parse2(file).unwrap());
-
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR not set"));
     let dest_path = out_dir.join("iso639.rs");
-    std::fs::write(dest_path, code).expect("Failed to write generated Rust file");
+    std::fs::write(dest_path, file.to_string()).expect("Failed to write generated Rust file");
 }
