@@ -117,6 +117,7 @@ struct State {
     high_playfield_ball_priority: bool,
     background_color: TiaColor,
     staging_buffer: Texture<Srgba<u8>>,
+    hmove_pending: bool,
 }
 
 #[derive(Debug)]
@@ -196,6 +197,28 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
                 );
 
                 self.state.staging_buffer[point] = color.into();
+            }
+
+            if self.state.hmove_pending && self.state.electron_beam.x == 0 {
+                self.state.hmove_pending = false;
+
+                for player in &mut self.state.players {
+                    player.position = player
+                        .position
+                        .wrapping_add_signed(i16::from(player.motion));
+                }
+
+                for missile in &mut self.state.missiles {
+                    missile.position = missile
+                        .position
+                        .wrapping_add_signed(i16::from(missile.motion));
+                }
+
+                self.state.ball.position = self
+                    .state
+                    .ball
+                    .position
+                    .wrapping_add_signed(i16::from(self.state.ball.motion));
             }
 
             self.state.electron_beam.x += 1;
@@ -314,7 +337,7 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
     fn get_missile_color(&self, index: usize) -> bool {
         let missile = &self.state.missiles[index];
 
-        if missile.locked {
+        if missile.locked || !missile.enabled {
             return false;
         }
 
@@ -323,7 +346,12 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
 
     #[inline]
     fn get_ball_color(&self) -> bool {
-        self.state.electron_beam.x == self.state.ball.position
+        if !self.state.ball.enabled {
+            return false;
+        }
+
+        self.state.electron_beam.x >= self.state.ball.position
+            && self.state.electron_beam.x < self.state.ball.position + self.state.ball.size as u16
     }
 
     #[inline]

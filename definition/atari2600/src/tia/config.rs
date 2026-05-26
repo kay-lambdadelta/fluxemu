@@ -82,6 +82,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>> ComponentConf
                 high_playfield_ball_priority: false,
                 background_color: Default::default(),
                 staging_buffer,
+                hmove_pending: false,
             },
             path: component_builder.path().clone(),
         })

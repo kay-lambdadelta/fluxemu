@@ -52,9 +52,8 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
                 let runtime = ComponentRuntimeApi::current(&self.path);
                 let timestamp = runtime.current_timestamp();
 
-                // The TIA runs 3 times as fast as the cpu
-                let until = Period::from_num(SCANLINE_LENGTH - self.state.electron_beam.x)
-                    / (R::frequency() / 3);
+                let until =
+                    Period::from_num(SCANLINE_LENGTH - self.state.electron_beam.x) / R::frequency();
 
                 runtime.schedule_event::<Mos6502>(
                     &self.cpu_path,
@@ -117,18 +116,18 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
                 self.state.players[1].mirror = data & 0b0000_1000 != 0;
             }
             WriteRegisters::Pf0 => {
-                for i in 0..4 {
-                    self.state.playfield.data[i] = data & (1 << i) != 0;
+                for index in 0..4 {
+                    self.state.playfield.data[index] = data & (1 << (index + 4)) != 0;
                 }
             }
             WriteRegisters::Pf1 => {
-                for i in 0..8 {
-                    self.state.playfield.data[4 + (7 - i)] = data & (1 << i) != 0;
+                for index in 0..8 {
+                    self.state.playfield.data[4 + (7 - index)] = data & (1 << index) != 0;
                 }
             }
             WriteRegisters::Pf2 => {
-                for i in 0..8 {
-                    self.state.playfield.data[12 + i] = data & (1 << i) != 0;
+                for index in 0..8 {
+                    self.state.playfield.data[12 + index] = data & (1 << index) != 0;
                 }
             }
             WriteRegisters::Resp0 => {
@@ -274,23 +273,7 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
                 self.state.missiles[1].locked = data & 0b000_0010 != 0;
             }
             WriteRegisters::Hmove => {
-                for player in &mut self.state.players {
-                    player.position = player
-                        .position
-                        .wrapping_add_signed(i16::from(player.motion));
-                }
-
-                for missile in &mut self.state.missiles {
-                    missile.position = missile
-                        .position
-                        .wrapping_add_signed(i16::from(missile.motion));
-                }
-
-                self.state.ball.position = self
-                    .state
-                    .ball
-                    .position
-                    .wrapping_add_signed(i16::from(self.state.ball.motion));
+                self.state.hmove_pending = true;
             }
             WriteRegisters::Hmclr => {
                 self.state.players[0].motion = 0;

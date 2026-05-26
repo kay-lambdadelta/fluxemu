@@ -137,7 +137,7 @@ impl Component for Mos6532Riot {
                     if let Some(swacnt) = &self.config.swcha {
                         let address = self.swcha_address();
 
-                        let permissions = if self.state.swbcnt {
+                        let permissions = if self.state.swacnt {
                             Permissions {
                                 read: true,
                                 write: false,

@@ -43,7 +43,7 @@ impl Component for Atari2600Joystick {
             .get_state(InputId::Gamepad(GamepadInputId::LeftStickRight))
             .as_digital(None);
 
-        buffer[0] = (up as u8) | (down as u8) << 1 | (left as u8) << 2 | (right as u8) << 3;
+        buffer[0] = !((up as u8) | (down as u8) << 1 | (left as u8) << 2 | (right as u8) << 3);
 
         // Player 2
         let up = self
@@ -63,7 +63,8 @@ impl Component for Atari2600Joystick {
             .get_state(InputId::Gamepad(GamepadInputId::LeftStickRight))
             .as_digital(None);
 
-        buffer[0] |= (up as u8) << 4 | (down as u8) << 5 | (left as u8) << 6 | (right as u8) << 7;
+        buffer[0] |=
+            !((up as u8) << 4 | (down as u8) << 5 | (left as u8) << 6 | (right as u8) << 7);
 
         Ok(())
     }
