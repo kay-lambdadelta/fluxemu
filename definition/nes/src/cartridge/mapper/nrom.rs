@@ -36,7 +36,7 @@ impl<P: Platform> ComponentConfig<P> for NRomConfig {
                     self.config.prg_rom,
                 );
 
-                component_builder.memory_mirror_map_read(
+                component_builder.memory_map_mirror_read(
                     self.config.cpu_address_space,
                     0xc000..=0xffff,
                     0x8000..=0xbfff,

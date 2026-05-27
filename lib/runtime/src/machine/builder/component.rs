@@ -210,7 +210,7 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
         self
     }
 
-    pub fn memory_mirror_map_read(
+    pub fn memory_map_mirror_read(
         self,
         address_space: AddressSpaceId,
         source: RangeInclusive<Address>,
@@ -230,7 +230,7 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
         self
     }
 
-    pub fn memory_mirror_map_write(
+    pub fn memory_map_mirror_write(
         self,
         address_space: AddressSpaceId,
         source: RangeInclusive<Address>,
@@ -250,7 +250,7 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
         self
     }
 
-    pub fn memory_mirror_map(
+    pub fn memory_map_mirror(
         self,
         address_space: AddressSpaceId,
         source: RangeInclusive<Address>,

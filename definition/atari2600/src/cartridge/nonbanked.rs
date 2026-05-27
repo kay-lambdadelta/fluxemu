@@ -44,7 +44,7 @@ impl<P: Platform> ComponentConfig<P> for NonbankedCartConfig {
 
                 component_builder
                     .memory_map_buffer_read(self.cpu_address_space, low.clone(), self.rom)
-                    .memory_mirror_map_read(self.cpu_address_space, high, low);
+                    .memory_map_mirror_read(self.cpu_address_space, high, low);
             }
             CartType::Raw4k => {
                 component_builder.memory_map_buffer_read(
