@@ -207,20 +207,26 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
                 for player in &mut self.state.players {
                     player.position = player
                         .position
-                        .wrapping_add_signed(i16::from(player.motion));
+                        .wrapping_add_signed(-i16::from(player.motion));
+
+                    player.position %= SCANLINE_LENGTH;
                 }
 
                 for missile in &mut self.state.missiles {
                     missile.position = missile
                         .position
-                        .wrapping_add_signed(i16::from(missile.motion));
+                        .wrapping_add_signed(-i16::from(missile.motion));
+
+                    missile.position %= SCANLINE_LENGTH;
                 }
 
                 self.state.ball.position = self
                     .state
                     .ball
                     .position
-                    .wrapping_add_signed(i16::from(self.state.ball.motion));
+                    .wrapping_add_signed(-i16::from(self.state.ball.motion));
+
+                self.state.ball.position %= SCANLINE_LENGTH;
             }
 
             self.state.electron_beam.x += 1;
