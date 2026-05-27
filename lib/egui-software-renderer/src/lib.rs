@@ -4,19 +4,16 @@ use core::ops::RangeInclusive;
 use std::collections::HashMap;
 
 use egui::{FullOutput, TextureId};
+use fluxemu_graphics::api::software::texture::{
+    CopyMode, Texture, TextureImpl, TextureImplMut, TextureViewMut,
+};
 use fluxemu_range::ContiguousRange;
 use multiversion::inherit_target;
 use nalgebra::{Point2, SMatrix, SVector, Vector2, Vector3};
 use palette::{Srgba, blend::Compose, named::BLACK};
 use rustc_hash::FxBuildHasher;
 
-use crate::api::software::{
-    egui_renderer::{
-        powerof2::PowerOfTwoIter,
-        shapes::{Primitive, Triangle, reduce_shapes},
-    },
-    texture::{CopyMode, Texture, TextureImpl, TextureImplMut, TextureViewMut},
-};
+use crate::shapes::{Primitive, Triangle, reduce_shapes};
 
 mod powerof2;
 mod shapes;
@@ -226,6 +223,8 @@ impl Renderer {
 
                         for y in triangle_bounding_min.y as usize..=triangle_bounding_max.y as usize
                         {
+                            use crate::powerof2::PowerOfTwoIter;
+
                             let x_enter = (0..3)
                                 .map(|index| {
                                     (if step_x[index] > 0.0 {

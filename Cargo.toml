@@ -19,6 +19,7 @@ fluxemu-definition-intel8080 = { path = "definition/intel8080" }
 fluxemu-definition-mos6502 = { path = "definition/mos6502" }
 fluxemu-definition-mos6532 = { path = "definition/mos6532" }
 fluxemu-definition-nes = { path = "definition/nes" }
+fluxemu-egui-software-renderer = { path = "lib/egui-software-renderer" }
 fluxemu-environment = { path = "lib/environment" }
 fluxemu-frontend = { path = "lib/frontend" }
 fluxemu-graphics = { path = "lib/graphics" }

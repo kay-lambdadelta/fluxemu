@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
+use fluxemu_egui_software_renderer::Renderer;
 use fluxemu_frontend::GraphicsRuntime;
 use fluxemu_graphics::api::{
     GraphicsApi,
     software::{
         Requirements, Software,
-        egui_renderer::Renderer,
         texture::{CopyMode, TextureImpl, TextureImplMut, TextureViewMut},
     },
 };

@@ -4,8 +4,6 @@
 //!
 //! This implements a meta graphic api, to provide a universal software rendering implementation
 
-#[cfg(feature = "std")]
-pub mod egui_renderer;
 pub mod texture;
 
 use core::{fmt::Debug, ops::BitOr};

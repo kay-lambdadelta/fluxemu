@@ -2,10 +2,8 @@ use std::collections::HashMap;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use egui::{Context, RawInput, Rect, ViewportId, ViewportInfo};
-use fluxemu_graphics::api::software::{
-    egui_renderer::Renderer,
-    texture::{Texture, TextureImplMut},
-};
+use fluxemu_egui_software_renderer::Renderer;
+use fluxemu_graphics::api::software::texture::{Texture, TextureImplMut};
 use palette::{
     Srgba, WithAlpha,
     cast::Packed,

@@ -1615,6 +1615,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "fluxemu-egui-software-renderer"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "egui",
+ "fluxemu-graphics",
+ "fluxemu-range",
+ "heapless",
+ "itertools 0.14.0",
+ "multiversion",
+ "nalgebra",
+ "palette",
+ "rustc-hash 2.1.2",
+ "tracing",
+]
+
+[[package]]
 name = "fluxemu-environment"
 version = "0.1.0"
 dependencies = [
@@ -1669,12 +1686,9 @@ dependencies = [
 name = "fluxemu-graphics"
 version = "0.1.0"
 dependencies = [
- "criterion",
- "egui",
  "fluxemu-range",
  "heapless",
  "itertools 0.14.0",
- "multiversion",
  "nalgebra",
  "palette",
  "rustc-hash 2.1.2",
@@ -1784,6 +1798,7 @@ dependencies = [
  "fluxemu-definition-atarilynx",
  "fluxemu-definition-chip8",
  "fluxemu-definition-nes",
+ "fluxemu-egui-software-renderer",
  "fluxemu-environment",
  "fluxemu-frontend",
  "fluxemu-graphics",

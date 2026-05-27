@@ -1,5 +1,3 @@
-use alloc::vec::Vec;
-
 use egui::{Context, TextureId, epaint::ClippedShape};
 use itertools::Itertools;
 use nalgebra::{Point2, Vector2};
