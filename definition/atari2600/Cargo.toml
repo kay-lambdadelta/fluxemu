@@ -14,6 +14,7 @@ fluxemu-input = { workspace = true }
 fluxemu-program = { workspace = true }
 fluxemu-range = { workspace = true }
 fluxemu-runtime = { workspace = true }
+itertools = { workspace = true }
 nalgebra = { workspace = true }
 palette = { workspace = true }
 serde = { workspace = true }

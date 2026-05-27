@@ -13,6 +13,7 @@ use fluxemu_runtime::{
     memory::{Address, AddressSpaceId, MemoryError},
     scheduler::{Period, SynchronizationContext},
 };
+use itertools::Itertools;
 use nalgebra::Point2;
 use palette::Srgba;
 use region::Region;
@@ -197,6 +198,7 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
                 );
 
                 self.state.staging_buffer[point] = color.into();
+                self.update_collision();
             }
 
             if self.state.hmove_pending && self.state.electron_beam.x == 0 {
@@ -244,6 +246,48 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
 }
 
 impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
+    fn update_collision(&mut self) {
+        let mut active_objects: Vec<ObjectId> = Vec::new();
+
+        if self.get_ball_color() {
+            active_objects.push(ObjectId::Ball);
+        }
+
+        if self.get_missile_color(0) {
+            active_objects.push(ObjectId::Missile0);
+        }
+
+        if self.get_missile_color(1) {
+            active_objects.push(ObjectId::Missile1);
+        }
+
+        if self.get_player_color(0).is_some() {
+            active_objects.push(ObjectId::Player0);
+        }
+
+        if self.get_player_color(1).is_some() {
+            active_objects.push(ObjectId::Player1);
+        }
+
+        if self.get_playfield_color().is_some() {
+            active_objects.push(ObjectId::Playfield);
+        }
+
+        for (object_0, object_1) in active_objects.iter().tuple_combinations() {
+            self.state
+                .collision_matrix
+                .entry(*object_0)
+                .or_default()
+                .insert(*object_1);
+
+            self.state
+                .collision_matrix
+                .entry(*object_1)
+                .or_default()
+                .insert(*object_0);
+        }
+    }
+
     fn get_rendered_color(&self) -> TiaColor {
         if self.state.high_playfield_ball_priority {
             // Check if in the bounds of ball

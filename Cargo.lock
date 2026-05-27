@@ -1499,6 +1499,7 @@ dependencies = [
  "fluxemu-program",
  "fluxemu-range",
  "fluxemu-runtime",
+ "itertools 0.14.0",
  "nalgebra",
  "palette",
  "serde",
