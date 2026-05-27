@@ -108,7 +108,7 @@ struct Player {
 struct State {
     collision_matrix: HashMap<ObjectId, HashSet<ObjectId>>,
     vblank_active: bool,
-    cycles_waiting_for_vsync: Option<u16>,
+    in_vsync: bool,
     input_control: [InputControl; 6],
     electron_beam: Point2<u16>,
     missiles: [Missile; 2],
@@ -173,20 +173,7 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
         for _ in context.allocate_continuous(R::frequency().recip()) {
-            if let Some(cycles) = self.state.cycles_waiting_for_vsync {
-                self.state.cycles_waiting_for_vsync = Some(cycles.saturating_sub(1));
-
-                if self.state.cycles_waiting_for_vsync == Some(0) {
-                    self.backend
-                        .as_mut()
-                        .unwrap()
-                        .commit_staging_buffer(&self.state.staging_buffer);
-
-                    self.state.cycles_waiting_for_vsync = None;
-                }
-            }
-
-            if !(self.state.cycles_waiting_for_vsync.is_some() || self.state.vblank_active)
+            if !(self.state.in_vsync || self.state.vblank_active)
                 && (HBLANK_LENGTH..(VISIBLE_SCANLINE_LENGTH + HBLANK_LENGTH))
                     .contains(&self.state.electron_beam.x)
             {

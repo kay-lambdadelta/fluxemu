@@ -5,7 +5,7 @@ use nalgebra::Point2;
 use super::WriteRegisters;
 use crate::tia::{
     DelayChangeGraphicPlayer, DelayEnableChangeBall, InputControl, SCANLINE_LENGTH,
-    SupportedGraphicsApiTia, Tia, color::TiaColor, region::Region,
+    SupportedGraphicsApiTia, Tia, backend::TiaDisplayBackend, color::TiaColor, region::Region,
 };
 
 impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
@@ -13,16 +13,17 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
         match address {
             WriteRegisters::Vsync => {
                 if data & 0b0000_0010 != 0 {
-                    self.state.electron_beam = Point2::new(0, 0);
-                    self.state.cycles_waiting_for_vsync = Some(SCANLINE_LENGTH * 3);
-                } else {
-                    if let Some(cycles) = self.state.cycles_waiting_for_vsync
-                        && cycles != 0
-                    {
-                        tracing::warn!("Vsync exited early");
-                    }
+                    self.state.in_vsync = true;
 
-                    self.state.cycles_waiting_for_vsync = None;
+                    self.state.electron_beam = Point2::new(0, 0);
+                } else if self.state.in_vsync {
+                    self.state.in_vsync = false;
+
+                    // Commit frame
+                    self.backend
+                        .as_mut()
+                        .unwrap()
+                        .commit_staging_buffer(&self.state.staging_buffer);
                 }
             }
             WriteRegisters::Vblank => {

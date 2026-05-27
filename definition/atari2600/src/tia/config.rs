@@ -72,7 +72,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>> ComponentConf
             state: State {
                 collision_matrix: HashMap::default(),
                 vblank_active: false,
-                cycles_waiting_for_vsync: None,
+                in_vsync: false,
                 input_control: [InputControl::default(); 6],
                 electron_beam: Point2::default(),
                 missiles: Default::default(),
