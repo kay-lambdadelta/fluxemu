@@ -1,10 +1,9 @@
 use std::{marker::PhantomData, ops::RangeInclusive};
 
-use cartridge::Atari2600CartridgeConfig;
 use fluxemu_definition_mos6502::{Mos6502Config, Mos6502Kind};
 use fluxemu_definition_mos6532::Mos6532RiotConfig;
 use fluxemu_runtime::{
-    machine::builder::{MachineBuilder, MachineFactory},
+    machine::builder::{MachineBuilder, MachineFactory, RomRequirement},
     memory::{Address, AddressSpaceId},
     platform::Platform,
 };
@@ -15,7 +14,10 @@ use tia::{
     region::{Region, ntsc::Ntsc, pal::Pal, secam::Secam},
 };
 
-use crate::tia::SupportedGraphicsApiTia;
+use crate::{
+    cartridge::{CartType, banked::BankedCartConfig, nonbanked::NonbankedCartConfig},
+    tia::SupportedGraphicsApiTia,
+};
 
 mod cartridge;
 mod gamepad;
@@ -53,14 +55,33 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiTia>> MachineFactory<P> for At
             .copied()
             .unwrap();
 
-        let (mut machine, _) = machine.component(
-            "cartridge",
-            Atari2600CartridgeConfig {
-                rom: rom_id,
-                cpu_address_space,
-                force_cart_type: None,
-            },
-        );
+        let rom = machine
+            .open_rom(rom_id, RomRequirement::Required)
+            .unwrap()
+            .unwrap();
+
+        let cart_type = CartType::detect(&rom);
+
+        tracing::info!("Cart type {:?}", cart_type);
+
+        let (mut machine, _) = match cart_type {
+            CartType::Raw2k | CartType::Raw4k => machine.component(
+                "cartridge",
+                NonbankedCartConfig {
+                    rom,
+                    cpu_address_space,
+                    cart_type,
+                },
+            ),
+            CartType::F6 | CartType::F8 => machine.component(
+                "cartridge",
+                BankedCartConfig {
+                    rom,
+                    cpu_address_space,
+                    cart_type,
+                },
+            ),
+        };
 
         for source_addresses in tia_register_mirror_ranges() {
             machine =
@@ -90,7 +111,7 @@ fn common<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>>(
     let (machine, joystick) = machine.component("joystick", Atari2600JoystickConfig);
 
     let (machine, cpu) = machine.component(
-        "mos_6502",
+        "mos6502",
         Mos6502Config {
             frequency: R::frequency() / 3,
             kind: Mos6502Kind::Mos6507,
