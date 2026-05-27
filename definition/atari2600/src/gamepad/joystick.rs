@@ -1,6 +1,6 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
-use fluxemu_input::{GamepadInputId, InputId, InputState, KeyboardInputId};
+use fluxemu_input::{GamepadInputId, InputId, KeyboardInputId};
 use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     input::LogicalInputDevice,
@@ -10,12 +10,12 @@ use fluxemu_runtime::{
 };
 
 #[derive(Debug)]
-pub struct Atari2600Joystick {
+pub struct Joystick {
     player1: Arc<LogicalInputDevice>,
     player2: Arc<LogicalInputDevice>,
 }
 
-impl Component for Atari2600Joystick {
+impl Component for Joystick {
     type Event = ();
 
     fn memory_read(
@@ -79,8 +79,8 @@ impl Component for Atari2600Joystick {
     }
 }
 
-impl<P: Platform> ComponentConfig<P> for Atari2600JoystickConfig {
-    type Component = Atari2600Joystick;
+impl<P: Platform> ComponentConfig<P> for JoystickConfig {
+    type Component = Joystick;
 
     fn build_component(
         self,
@@ -90,17 +90,12 @@ impl<P: Platform> ComponentConfig<P> for Atari2600JoystickConfig {
             component_builder.input("player-1", PRESENT_INPUTS, DEFAULT_MAPPINGS);
         let (_, player2) = component_builder.input("player-2", PRESENT_INPUTS, DEFAULT_MAPPINGS);
 
-        Ok(Atari2600Joystick { player1, player2 })
+        Ok(Joystick { player1, player2 })
     }
 }
 
 #[derive(Debug)]
-pub struct Atari2600JoystickConfig;
-
-#[derive(Debug)]
-pub struct JoystickSwchaCallback {
-    gamepads: [HashMap<InputId, InputState>; 2],
-}
+pub struct JoystickConfig;
 
 const PRESENT_INPUTS: [InputId; 5] = [
     InputId::Gamepad(GamepadInputId::LeftStickUp),

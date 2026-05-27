@@ -56,6 +56,7 @@ pub struct Mos6532Riot {
     state: State,
     config: Mos6532RiotConfig,
     path: ComponentPath,
+    period: Period,
 }
 
 impl Mos6532Riot {
@@ -195,28 +196,28 @@ impl Component for Mos6532Riot {
                     self.state.timer_configuration = Some(TimerConfiguration {
                         timer: *buffer_section,
                         divider: 1,
-                        next_timestamp: timestamp + self.config.frequency.recip(),
+                        next_timestamp: timestamp + self.period,
                     });
                 }
                 Register::Tim8t => {
                     self.state.timer_configuration = Some(TimerConfiguration {
                         timer: *buffer_section,
                         divider: 8,
-                        next_timestamp: timestamp + self.config.frequency.recip() * 8,
+                        next_timestamp: timestamp + self.period * 8,
                     });
                 }
                 Register::Tim64t => {
                     self.state.timer_configuration = Some(TimerConfiguration {
                         timer: *buffer_section,
                         divider: 64,
-                        next_timestamp: timestamp + self.config.frequency.recip() * 64,
+                        next_timestamp: timestamp + self.period * 64,
                     });
                 }
                 Register::T1024t => {
                     self.state.timer_configuration = Some(TimerConfiguration {
                         timer: *buffer_section,
                         divider: 1024,
-                        next_timestamp: timestamp + self.config.frequency.recip() * 1024,
+                        next_timestamp: timestamp + self.period * 1024,
                     });
                 }
                 Register::Instat => todo!(),
@@ -227,17 +228,17 @@ impl Component for Mos6532Riot {
     }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
-        for timestamp in context.allocate_continuous(self.config.frequency.recip()) {
+        for timestamp in context.allocate_continuous(self.period) {
             if let Some(config) = &mut self.state.timer_configuration
                 && timestamp == config.next_timestamp
             {
                 let (new_timer, underflowed) = config.timer.overflowing_sub(1);
 
                 if !underflowed {
-                    config.next_timestamp += self.config.frequency.recip() * config.divider as u128;
+                    config.next_timestamp += self.period * config.divider as u128;
                 } else {
                     config.divider = 1;
-                    config.next_timestamp += self.config.frequency.recip();
+                    config.next_timestamp += self.period;
                     self.state.instat |= 0b1000_0000;
                 }
 
@@ -340,6 +341,7 @@ impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
                 instat: 0,
                 timer_configuration: None,
             },
+            period: self.frequency.recip(),
             config: self,
             path,
         })

@@ -56,6 +56,7 @@ pub struct Ntsc;
 impl Region for Ntsc {
     const TOTAL_SCANLINES: u16 = 262;
 
+    #[inline]
     fn frequency() -> Frequency {
         Frequency::from_num(3579545)
     }

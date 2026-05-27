@@ -395,36 +395,30 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
     fn get_playfield_color(&self) -> Option<TiaColor> {
         let playfield_position = ((self.state.electron_beam.x - HBLANK_LENGTH) / 4) as usize;
 
-        match playfield_position {
-            0..20 => {
-                if self.state.playfield.data[playfield_position] {
-                    if self.state.playfield.score_mode {
-                        Some(self.state.players[0].color)
-                    } else {
-                        Some(self.state.playfield.color)
-                    }
-                } else {
-                    None
-                }
-            }
+        let (data_index, player_index) = match playfield_position {
+            0..20 => (playfield_position, 0),
             20..40 => {
-                let mut data = self.state.playfield.data;
+                let offset = playfield_position - 20;
 
-                if self.state.playfield.mirror {
-                    data.reverse();
-                }
-
-                if data[playfield_position - 20] {
-                    if self.state.playfield.score_mode {
-                        Some(self.state.players[1].color)
-                    } else {
-                        Some(self.state.playfield.color)
-                    }
+                let data_index = if self.state.playfield.mirror {
+                    19 - offset
                 } else {
-                    None
-                }
+                    offset
+                };
+
+                (data_index, 1)
             }
             _ => unreachable!(),
+        };
+
+        if self.state.playfield.data[data_index] {
+            if self.state.playfield.score_mode {
+                Some(self.state.players[player_index].color)
+            } else {
+                Some(self.state.playfield.color)
+            }
+        } else {
+            None
         }
     }
 }

@@ -7,7 +7,7 @@ use fluxemu_runtime::{
     memory::{Address, AddressSpaceId},
     platform::Platform,
 };
-use gamepad::joystick::Atari2600JoystickConfig;
+use gamepad::joystick::JoystickConfig;
 use strum::Display;
 use tia::{
     config::TiaConfig,
@@ -108,7 +108,7 @@ fn common<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>>(
     cpu_address_space: AddressSpaceId,
     machine: MachineBuilder<P>,
 ) -> MachineBuilder<P> {
-    let (machine, joystick) = machine.component("joystick", Atari2600JoystickConfig);
+    let (machine, joystick) = machine.component("joystick", JoystickConfig);
 
     let (machine, cpu) = machine.component(
         "mos6502",
