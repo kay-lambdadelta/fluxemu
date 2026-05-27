@@ -3,7 +3,10 @@ use std::{fmt::Debug, ops::RangeInclusive};
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
     ComponentRuntimeApi,
-    component::{Component, config::ComponentConfig},
+    component::{
+        Component,
+        config::{ComponentConfig, LateContext},
+    },
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::{
         Address, AddressSpaceId, MapTarget, MemoryError, MemoryErrorType, MemoryRemappingCommand,
@@ -138,15 +141,9 @@ impl Component for Mos6532Riot {
                         let address = self.swcha_address();
 
                         let permissions = if self.state.swacnt {
-                            Permissions {
-                                read: true,
-                                write: false,
-                            }
+                            Permissions::WRITE
                         } else {
-                            Permissions {
-                                read: false,
-                                write: true,
-                            }
+                            Permissions::READ
                         };
 
                         runtime
@@ -172,15 +169,9 @@ impl Component for Mos6532Riot {
                         let address = self.swchb_address();
 
                         let permissions = if self.state.swbcnt {
-                            Permissions {
-                                read: true,
-                                write: false,
-                            }
+                            Permissions::WRITE
                         } else {
-                            Permissions {
-                                read: false,
-                                write: true,
-                            }
+                            Permissions::READ
                         };
 
                         runtime
@@ -266,6 +257,37 @@ impl Component for Mos6532Riot {
 
 impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
     type Component = Mos6532Riot;
+
+    fn late_initialize(component: &mut Self::Component, _data: &LateContext<P>) {
+        let swcha_address =
+            (Register::Swcha as Address) + component.config.registers_assigned_address;
+        let swchb_address =
+            (Register::Swchb as Address) + component.config.registers_assigned_address;
+
+        let runtime = ComponentRuntimeApi::current(&component.path);
+        let mut mapping_commands = Vec::default();
+
+        if let Some(swcha) = &component.config.swcha {
+            mapping_commands.push(MemoryRemappingCommand::Map {
+                range: swcha_address..=swcha_address,
+                target: MapTarget::Component(swcha.clone()),
+                permissions: Permissions::READ,
+            });
+        }
+
+        if let Some(swchb) = &component.config.swchb {
+            mapping_commands.push(MemoryRemappingCommand::Map {
+                range: swchb_address..=swchb_address,
+                target: MapTarget::Component(swchb.clone()),
+                permissions: Permissions::READ,
+            });
+        }
+
+        runtime
+            .address_space(component.config.assigned_address_space)
+            .unwrap()
+            .remap(Period::ZERO, mapping_commands);
+    }
 
     fn build_component(
         self,
