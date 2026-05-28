@@ -165,6 +165,7 @@ impl Iterator for QuantaIterator<'_, '_> {
 }
 
 impl<'b, 'a> QuantaIterator<'b, 'a> {
+    #[cold]
     fn rebudget(&mut self) {
         let mut stop_time = self.context.target_timestamp;
 
