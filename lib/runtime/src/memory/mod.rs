@@ -205,6 +205,17 @@ impl AddressSpaceData {
         }
     }
 
+    #[inline]
+    fn get_members<'a>(&'a self, guard: &'a Guard) -> &'a Members {
+        // SAFETY: We never set an null members mapping, and we don't set any tag bits
+        unsafe {
+            self.members
+                .load(Ordering::Acquire, guard)
+                .as_ref_unchecked()
+                .unwrap_unchecked()
+        }
+    }
+
     pub fn remap(
         &self,
         timestamp: Period,
@@ -405,4 +416,9 @@ pub enum MemoryRemappingCommand {
 pub struct Permissions {
     pub read: bool,
     pub write: bool,
+}
+
+#[inline]
+fn form_error(access_range: RangeInclusive<usize>) -> MemoryError {
+    MemoryError(std::iter::once((access_range, MemoryErrorType::Denied)).collect())
 }

@@ -1,4 +1,4 @@
-use std::{ops::RangeInclusive, sync::atomic::Ordering};
+use std::ops::RangeInclusive;
 
 use fluxemu_range::{ContiguousRange, RangeIntersection};
 use num::traits::{FromBytes, ops::bytes::NumBytes};
@@ -7,8 +7,8 @@ use super::AddressSpace;
 use crate::{
     component::{Component, ComponentId, ComponentRegistry},
     memory::{
-        Address, AddressSpaceId, MemoryError, MemoryErrorType, PAGE_SIZE, PageEntry, PageTarget,
-        component::Memory,
+        Address, AddressSpaceId, MemoryError, PAGE_SIZE, PageEntry, PageTarget, component::Memory,
+        form_error,
     },
     scheduler::Period,
 };
@@ -22,12 +22,7 @@ impl<'a> AddressSpace<'a> {
         avoid_side_effects: bool,
         buffer: &mut B,
     ) -> Result<(), MemoryError> {
-        let members = self
-            .data
-            .members
-            .load(Ordering::Acquire, &self.guard)
-            .as_ref()
-            .unwrap();
+        let members = self.data.get_members(&self.guard);
 
         address &= self.data.width_mask;
         let mut remaining_buffer = buffer.as_mut();
@@ -144,9 +139,7 @@ impl<'a> AddressSpace<'a> {
             }
 
             if !handled {
-                return Err(MemoryError(
-                    std::iter::once((access_range, MemoryErrorType::Denied)).collect(),
-                ));
+                return Err(form_error(access_range));
             }
 
             address = (address + chunk_len) & self.data.width_mask;
@@ -194,7 +187,7 @@ impl<'a> AddressSpace<'a> {
     }
 
     /// Read a little endian value from an address, informing the component that this should not induce state change as a direct result of a read.
-    /// Synchronization will still occur.    
+    /// Synchronization will still occur.
     #[inline]
     pub fn read_le_value_pure<T: FromBytes>(
         &mut self,

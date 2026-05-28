@@ -1,4 +1,4 @@
-use std::{ops::RangeInclusive, sync::atomic::Ordering};
+use std::ops::RangeInclusive;
 
 use fluxemu_range::{ContiguousRange, RangeIntersection};
 use num::traits::{ToBytes, ops::bytes::NumBytes};
@@ -7,8 +7,8 @@ use super::AddressSpace;
 use crate::{
     component::{Component, ComponentId, ComponentRegistry},
     memory::{
-        Address, AddressSpaceId, MemoryError, MemoryErrorType, PAGE_SIZE, PageEntry, PageTarget,
-        component::Memory,
+        Address, AddressSpaceId, MemoryError, PAGE_SIZE, PageEntry, PageTarget, component::Memory,
+        form_error,
     },
     scheduler::Period,
 };
@@ -21,12 +21,7 @@ impl<'a> AddressSpace<'a> {
         timestamp: Period,
         buffer: &B,
     ) -> Result<(), MemoryError> {
-        let members = self
-            .data
-            .members
-            .load(Ordering::Acquire, &self.guard)
-            .as_ref()
-            .unwrap();
+        let members = self.data.get_members(&self.guard);
 
         address &= self.data.width_mask;
         let mut remaining_buffer = buffer.as_ref();
@@ -135,9 +130,7 @@ impl<'a> AddressSpace<'a> {
             }
 
             if !handled {
-                return Err(MemoryError(
-                    std::iter::once((access_range, MemoryErrorType::Denied)).collect(),
-                ));
+                return Err(form_error(access_range));
             }
 
             address = (address + chunk_len) & self.data.width_mask;
@@ -172,7 +165,7 @@ impl<'a> AddressSpace<'a> {
 
     /// Write a big endian value to an address
     ///
-    /// This is generally faster than [Self::write], especially for single byte operations    
+    /// This is generally faster than [Self::write], especially for single byte operations
     #[inline]
     pub fn write_be_value<T: ToBytes>(
         &mut self,
