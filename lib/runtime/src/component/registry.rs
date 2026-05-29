@@ -35,7 +35,7 @@ pub(crate) struct ComponentRegistryData {
     threads_awaiting_component: scc::HashMap<ComponentId, HashMap<ThreadId, Thread>, FxBuildHasher>,
 
     metadata: HashMap<ComponentPath, GlobalComponentMetadata, FxBuildHasher>,
-    next_component_id: u32,
+    next_component_id: u16,
 }
 
 impl ComponentRegistryData {
@@ -410,6 +410,6 @@ impl LocalComponentStore {
         self.0
             .iter_mut()
             .enumerate()
-            .map(|(id, component_handle)| (ComponentId(id as u32), component_handle))
+            .map(|(id, component_handle)| (ComponentId(id as u16), component_handle))
     }
 }

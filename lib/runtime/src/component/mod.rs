@@ -107,4 +107,4 @@ fn denied_range(address: Address, len: usize) -> MemoryError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ComponentId(pub(crate) u32);
+pub struct ComponentId(pub(crate) u16);
