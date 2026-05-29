@@ -1,4 +1,4 @@
-use std::ops::RangeInclusive;
+use std::range::RangeInclusive;
 
 use fluxemu_range::{ContiguousRange, RangeIntersection};
 use num::traits::{FromBytes, ops::bytes::NumBytes};
@@ -42,8 +42,8 @@ impl<'a> AddressSpace<'a> {
 
             let access_range = RangeInclusive::from_start_and_length(address, chunk_len);
 
-            let start_page = access_range.start() / PAGE_SIZE;
-            let end_page = access_range.end() / PAGE_SIZE;
+            let start_page = access_range.start / PAGE_SIZE;
+            let end_page = access_range.last / PAGE_SIZE;
 
             // SAFETY: The start and end pages are bounded by the width mask, they fall into the table constructed by `commit`
             let page_slice = unsafe {
@@ -58,21 +58,21 @@ impl<'a> AddressSpace<'a> {
                 target,
             } in page_slice.iter().flatten()
             {
-                if *entry_assigned_range.end() < *access_range.start() {
+                if entry_assigned_range.last < access_range.start {
                     continue;
                 }
 
-                if *entry_assigned_range.start() > *access_range.end() {
+                if entry_assigned_range.start > access_range.last {
                     break;
                 }
 
                 handled = true;
 
                 let entry_access_range = entry_assigned_range.intersection(&access_range);
-                let offset = entry_access_range.start() - entry_assigned_range.start();
+                let offset = entry_access_range.start - entry_assigned_range.start;
 
-                let buffer_range = (entry_access_range.start() - access_range.start())
-                    ..=(entry_access_range.end() - access_range.start());
+                let buffer_range = (entry_access_range.start - access_range.start)
+                    ..=(entry_access_range.last - access_range.start);
 
                 let adjusted_buffer = &mut chunk_buffer[buffer_range];
 
@@ -133,13 +133,13 @@ impl<'a> AddressSpace<'a> {
                     }
                 }
 
-                if entry_access_range.end() == access_range.end() {
+                if entry_access_range.last == access_range.last {
                     break;
                 }
             }
 
             if !handled {
-                return Err(form_error(access_range));
+                return Err(form_error(access_range.into()));
             }
 
             address = (address + chunk_len) & self.data.width_mask;

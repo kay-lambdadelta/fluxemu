@@ -116,7 +116,7 @@ enum PageTarget {
 #[derive(Debug, Clone)]
 struct PageEntry {
     /// Full, uncropped relevant range
-    pub range: RangeInclusive<Address>,
+    pub range: std::range::RangeInclusive<Address>,
     pub target: PageTarget,
 }
 

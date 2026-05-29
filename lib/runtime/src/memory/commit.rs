@@ -62,7 +62,7 @@ impl MemoryMappingTable {
                                     is_standard_memory: registry.typeid(path).unwrap()
                                         == TypeId::of::<Memory>(),
                                 },
-                                range: source_range,
+                                range: source_range.into(),
                             }]
                         }
                         MappingEntry::Mirror {
@@ -99,7 +99,7 @@ impl MemoryMappingTable {
 
                                     match destination_entry {
                                         MappingEntry::Component(path) => PageEntry {
-                                            range: calculated_source_range,
+                                            range: calculated_source_range.into(),
                                             target: PageTarget::Component {
                                                 destination_start: *destination_overlap.start(),
                                                 component_id: registry.path_to_id(path).unwrap(),
@@ -122,7 +122,7 @@ impl MemoryMappingTable {
                                             assert_eq!(memory.len(), buffer_subrange.len());
 
                                             PageEntry {
-                                                range: calculated_source_range,
+                                                range: calculated_source_range.into(),
                                                 target: PageTarget::Memory(memory),
                                             }
                                         }
@@ -139,12 +139,12 @@ impl MemoryMappingTable {
                             assert_eq!(memory.len(), source_range.len());
 
                             vec![PageEntry {
-                                range: source_range,
+                                range: source_range.into(),
                                 target: PageTarget::Memory(memory.clone()),
                             }]
                         }
                     })
-                    .sorted_by_key(|entry| *entry.range.start())
+                    .sorted_by_key(|entry| entry.range.start)
                     .collect();
             }
         }
@@ -192,9 +192,12 @@ fn merge_and_dedup_mirror_entries(left: &mut PageEntry, right: &mut PageEntry) -
             },
         ) if component_left == component_right
             && *destination_start_right
-                == *destination_start_left + (right.range.start() - left.range.start()) =>
+                == *destination_start_left + (right.range.start - left.range.start) =>
         {
-            left.range = *left.range.start()..=*right.range.end();
+            left.range = std::range::RangeInclusive {
+                start: left.range.start,
+                last: right.range.last,
+            };
 
             true
         }
