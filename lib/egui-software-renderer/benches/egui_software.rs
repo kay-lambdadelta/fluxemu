@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, hint::black_box};
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use egui::{Context, RawInput, Rect, ViewportId, ViewportInfo};
@@ -36,7 +36,7 @@ fn render<const W: usize, const H: usize, P: From<Srgba<u8>> + Into<Srgba<u8>> +
             ..Default::default()
         },
         |ui| {
-            for _ in 0..10 {
+            for _ in 0..100 {
                 ui.vertical_centered(|ui| {
                     let _ = ui.button(
                         "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod \
@@ -65,7 +65,11 @@ fn bench_egui_software(c: &mut Criterion) {
 
         group.bench_function(BenchmarkId::new("1280x720", "rgba"), |b| {
             b.iter(|| {
-                render::<1280, 720, Packed<Rgba, [u8; 4]>>(&mut renderer, &context, &mut texture)
+                render::<1280, 720, Packed<Rgba, [u8; 4]>>(
+                    &mut renderer,
+                    &context,
+                    black_box(&mut texture),
+                )
             });
         });
     }
@@ -77,7 +81,11 @@ fn bench_egui_software(c: &mut Criterion) {
 
         group.bench_function(BenchmarkId::new("1280x720", "bgra"), |b| {
             b.iter(|| {
-                render::<1280, 720, Packed<Bgra, [u8; 4]>>(&mut renderer, &context, &mut texture)
+                render::<1280, 720, Packed<Bgra, [u8; 4]>>(
+                    &mut renderer,
+                    &context,
+                    black_box(&mut texture),
+                )
             });
         });
     }
@@ -89,7 +97,11 @@ fn bench_egui_software(c: &mut Criterion) {
 
         group.bench_function(BenchmarkId::new("1920x1080", "rgba"), |b| {
             b.iter(|| {
-                render::<1920, 1080, Packed<Rgba, [u8; 4]>>(&mut renderer, &context, &mut texture)
+                render::<1920, 1080, Packed<Rgba, [u8; 4]>>(
+                    &mut renderer,
+                    &context,
+                    black_box(&mut texture),
+                )
             });
         });
     }
@@ -101,7 +113,11 @@ fn bench_egui_software(c: &mut Criterion) {
 
         group.bench_function(BenchmarkId::new("1920x1080", "bgra"), |b| {
             b.iter(|| {
-                render::<1920, 1080, Packed<Bgra, [u8; 4]>>(&mut renderer, &context, &mut texture)
+                render::<1920, 1080, Packed<Bgra, [u8; 4]>>(
+                    &mut renderer,
+                    &context,
+                    black_box(&mut texture),
+                )
             });
         });
     }

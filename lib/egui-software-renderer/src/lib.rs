@@ -9,7 +9,8 @@ use fluxemu_graphics::api::software::texture::{
 };
 use fluxemu_range::ContiguousRange;
 use multiversion::inherit_target;
-use nalgebra::{Point2, SMatrix, SVector, Vector2, Vector3};
+use nalgebra::Vector4;
+use nalgebra::{Point2, SMatrix, Vector2, Vector3};
 use palette::{Srgba, blend::Compose, named::BLACK};
 use rustc_hash::FxBuildHasher;
 
@@ -278,8 +279,8 @@ impl Renderer {
                                             target_pixel_row,
                                             texture,
                                             texture_dimensions,
-                                            &mut current_uv,
-                                            &mut current_color,
+                                            current_uv,
+                                            current_color,
                                             step_uv,
                                             step_color,
                                         );
@@ -289,8 +290,8 @@ impl Renderer {
                                             target_pixel_row,
                                             texture,
                                             texture_dimensions,
-                                            &mut current_uv,
-                                            &mut current_color,
+                                            current_uv,
+                                            current_color,
                                             step_uv,
                                             step_color,
                                         );
@@ -300,8 +301,8 @@ impl Renderer {
                                             target_pixel_row,
                                             texture,
                                             texture_dimensions,
-                                            &mut current_uv,
-                                            &mut current_color,
+                                            current_uv,
+                                            current_color,
                                             step_uv,
                                             step_color,
                                         );
@@ -311,8 +312,8 @@ impl Renderer {
                                             target_pixel_row,
                                             texture,
                                             texture_dimensions,
-                                            &mut current_uv,
-                                            &mut current_color,
+                                            current_uv,
+                                            current_color,
                                             step_uv,
                                             step_color,
                                         );
@@ -322,8 +323,8 @@ impl Renderer {
                                             target_pixel_row,
                                             texture,
                                             texture_dimensions,
-                                            &mut current_uv,
-                                            &mut current_color,
+                                            current_uv,
+                                            current_color,
                                             step_uv,
                                             step_color,
                                         );
@@ -335,6 +336,8 @@ impl Renderer {
 
                                 x += len;
                                 barycentric_coordinates += step_x * len as f32;
+                                current_uv += step_uv * len as f32;
+                                current_color += step_color * len as f32;
                             }
 
                             row_start_barycentric_coordinates += step_y;
@@ -355,8 +358,8 @@ impl Renderer {
             mut target_pixel_row: TextureViewMut<P>,
             texture: &Texture<Srgba<u8>>,
             texture_dimensions: Vector2<f32>,
-            current_uv: &mut Vector2<f32>,
-            current_color: &mut Srgba<f32>,
+            current_uv: Vector2<f32>,
+            current_color: Srgba<f32>,
             step_uv: Vector2<f32>,
             step_color: Srgba<f32>,
         ) {
@@ -367,10 +370,9 @@ impl Renderer {
             // Calculate UVs
             let mut interpolated_uvs = SMatrix::<f32, 2, C>::from_element(0.0);
             for index in 0..C {
-                let uv = *current_uv + (step_uv * index as f32);
+                let uv = current_uv + (step_uv * index as f32);
                 interpolated_uvs.column_mut(index).copy_from(&uv);
             }
-            *current_uv += step_uv * C as f32;
 
             // Calculate positions within the texture
             let mut texture_positions = SMatrix::<u32, 2, C>::from_element(0);
@@ -392,92 +394,57 @@ impl Renderer {
             }
 
             // Gather fetch
-            let mut texture_pixels_red = SVector::<_, C>::from_element(0.0);
-            let mut texture_pixels_green = SVector::<_, C>::from_element(0.0);
-            let mut texture_pixels_blue = SVector::<_, C>::from_element(0.0);
-            let mut texture_pixels_alpha = SVector::<_, C>::from_element(0.0);
+            let mut texture_pixels = SMatrix::<f32, 4, C>::from_element(0.0);
             for index in 0..C {
                 let texture_position = texture_positions.column(index).into_owned();
                 let texture_pixel =
                     unsafe { texture.get_unchecked(texture_position.cast()) }.into_format();
+                let texture_pixel = Vector4::from_row_slice(texture_pixel.as_ref());
 
-                texture_pixels_red[index] = texture_pixel.red;
-                texture_pixels_green[index] = texture_pixel.green;
-                texture_pixels_blue[index] = texture_pixel.blue;
-                texture_pixels_alpha[index] = texture_pixel.alpha;
+                texture_pixels.set_column(index, &texture_pixel);
             }
 
             // Calculate colors
-            let mut interpolated_colors =
-                SVector::<Srgba<f32>, C>::from_element(Default::default());
+            let mut interpolated_colors = SMatrix::<f32, 4, C>::from_element(0.0);
             for index in 0..C {
-                let color = *current_color + (step_color * index as f32);
-                interpolated_colors[index] = color;
-            }
-            *current_color += step_color * C as f32;
+                let color = current_color + (step_color * index as f32);
+                let color = Vector4::from_row_slice(color.as_ref());
 
-            // Read source pixels and tint by texture pixels
-            let mut source_pixels_red = SVector::<_, C>::from_element(0.0);
-            let mut source_pixels_green = SVector::<_, C>::from_element(0.0);
-            let mut source_pixels_blue = SVector::<_, C>::from_element(0.0);
-            let mut source_pixels_alpha = SVector::<_, C>::from_element(0.0);
-            for index in 0..C {
-                let color = interpolated_colors[index];
-
-                source_pixels_red[index] = color.red * texture_pixels_red[index];
-                source_pixels_green[index] = color.green * texture_pixels_green[index];
-                source_pixels_blue[index] = color.blue * texture_pixels_blue[index];
-                source_pixels_alpha[index] = color.alpha * texture_pixels_alpha[index];
+                interpolated_colors.set_column(index, &color);
             }
 
-            // Read destination pixels
-            let mut destination_pixels_red = SVector::<_, C>::from_element(0.0);
-            let mut destination_pixels_green = SVector::<_, C>::from_element(0.0);
-            let mut destination_pixels_blue = SVector::<_, C>::from_element(0.0);
-            let mut destination_pixels_alpha = SVector::<_, C>::from_element(0.0);
+            let source_pixels = texture_pixels
+                .zip_map(&interpolated_colors, |texture_pixel, interpolated_color| {
+                    texture_pixel * interpolated_color
+                });
+
+            let mut destination_pixels = SMatrix::<f32, 4, C>::from_element(0.0);
             for index in 0..C {
                 let pixel = target_pixel_row[Point2::new(index, 0)].into().into_format();
+                let pixel = Vector4::from_row_slice(pixel.as_ref());
 
-                destination_pixels_red[index] = pixel.red;
-                destination_pixels_green[index] = pixel.green;
-                destination_pixels_blue[index] = pixel.blue;
-                destination_pixels_alpha[index] = pixel.alpha;
+                texture_pixels.set_column(index, &pixel);
             }
 
             // Over composite
             for index in 0..C {
-                let source = Srgba::new(
-                    source_pixels_red[index],
-                    source_pixels_green[index],
-                    source_pixels_blue[index],
-                    source_pixels_alpha[index],
-                );
+                let source = source_pixels.column(index);
+                let source: Srgba<f32> = Srgba::from(<[_; 4]>::from(source));
 
-                let destination = Srgba::new(
-                    destination_pixels_red[index],
-                    destination_pixels_green[index],
-                    destination_pixels_blue[index],
-                    destination_pixels_alpha[index],
-                );
+                let destination = destination_pixels.column(index);
+                let destination: Srgba<f32> = Srgba::from(<[_; 4]>::from(destination));
 
                 let output = source.over(destination);
 
-                destination_pixels_red[index] = output.red;
-                destination_pixels_green[index] = output.green;
-                destination_pixels_blue[index] = output.blue;
-                destination_pixels_alpha[index] = output.alpha;
+                let output = Vector4::from_row_slice(output.as_ref());
+                destination_pixels.set_column(index, &output);
             }
 
-            // Write and pack back
             for index in 0..C {
-                target_pixel_row[Point2::new(index, 0)] = Srgba::new(
-                    destination_pixels_red[index],
-                    destination_pixels_green[index],
-                    destination_pixels_blue[index],
-                    destination_pixels_alpha[index],
-                )
-                .into_format()
-                .into();
+                let destination = destination_pixels.column(index);
+                let destination: Srgba<f32> = Srgba::from(<[_; 4]>::from(destination));
+
+                target_pixel_row[Point2::new(index, 0)] = destination.into_format().into()
             }
         }
     }
