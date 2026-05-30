@@ -266,7 +266,7 @@ impl Renderer {
                             let x_range = x_enter..=x_exit;
                             let mut x = *x_range.start();
 
-                            for len in PowerOfTwoIter::<16>::new(x_range.len()) {
+                            for len in PowerOfTwoIter::<32>::new(x_range.len()) {
                                 let target_pixel_row = target_texture
                                     .view_mut(RangeInclusive::from_start_and_length(x, len), y..=y);
 
@@ -274,6 +274,17 @@ impl Renderer {
                                 // that are already guarded against by multiversion
 
                                 match len {
+                                    32 => unsafe {
+                                        pixel_rounds::<32, P>(
+                                            target_pixel_row,
+                                            texture,
+                                            texture_dimensions,
+                                            current_uv,
+                                            current_color,
+                                            step_uv,
+                                            step_color,
+                                        );
+                                    },
                                     16 => unsafe {
                                         pixel_rounds::<16, P>(
                                             target_pixel_row,
@@ -368,19 +379,19 @@ impl Renderer {
             assert_eq!(target_pixel_row.height(), 1);
 
             // Calculate UVs
-            let mut interpolated_uvs = SMatrix::<f32, 2, C>::from_element(0.0);
+            let mut interpolated_uvs = SMatrix::<f32, C, 2>::from_element(0.0);
             for index in 0..C {
                 let uv = current_uv + (step_uv * index as f32);
-                interpolated_uvs.column_mut(index).copy_from(&uv);
+                interpolated_uvs.row_mut(index).copy_from(&uv.transpose());
             }
 
             // Calculate positions within the texture
-            let mut texture_positions = SMatrix::<u32, 2, C>::from_element(0);
+            let mut texture_positions = SMatrix::<u32, C, 2>::from_element(0);
             for index in 0..C {
-                let uv = interpolated_uvs.column(index);
+                let uv = interpolated_uvs.row(index);
 
                 let texture_position = texture_dimensions
-                    .component_mul(&uv)
+                    .component_mul(&uv.transpose())
                     .zip_map(&Vector2::from_element(0.0), |a, b| a.max(b));
 
                 let pixel_coords =
@@ -390,59 +401,66 @@ impl Renderer {
                             |a, b| a.min(b),
                         );
 
-                texture_positions.column_mut(index).copy_from(&pixel_coords);
+                texture_positions
+                    .row_mut(index)
+                    .copy_from(&pixel_coords.transpose());
             }
 
             // Gather fetch
-            let mut texture_pixels = SMatrix::<f32, 4, C>::from_element(0.0);
+            let mut texture_pixels = SMatrix::<f32, C, 4>::from_element(0.0);
             for index in 0..C {
-                let texture_position = texture_positions.column(index).into_owned();
+                let texture_position = texture_positions.row(index).transpose();
+
                 let texture_pixel =
                     unsafe { texture.get_unchecked(texture_position.cast()) }.into_format();
                 let texture_pixel = Vector4::from_row_slice(texture_pixel.as_ref());
 
-                texture_pixels.set_column(index, &texture_pixel);
+                texture_pixels.set_row(index, &texture_pixel.transpose());
             }
 
             // Calculate colors
-            let mut interpolated_colors = SMatrix::<f32, 4, C>::from_element(0.0);
+            let mut interpolated_colors = SMatrix::<f32, C, 4>::from_element(0.0);
             for index in 0..C {
                 let color = current_color + (step_color * index as f32);
                 let color = Vector4::from_row_slice(color.as_ref());
 
-                interpolated_colors.set_column(index, &color);
+                interpolated_colors.set_row(index, &color.transpose());
             }
 
-            let source_pixels = texture_pixels
-                .zip_map(&interpolated_colors, |texture_pixel, interpolated_color| {
-                    texture_pixel * interpolated_color
-                });
+            let mut source_pixels = SMatrix::<f32, C, 4>::from_element(0.0);
+            for index in 0..C {
+                let row = texture_pixels
+                    .row(index)
+                    .component_mul(&interpolated_colors.row(index));
 
-            let mut destination_pixels = SMatrix::<f32, 4, C>::from_element(0.0);
+                source_pixels.set_row(index, &row);
+            }
+
+            let mut destination_pixels = SMatrix::<f32, C, 4>::from_element(0.0);
             for index in 0..C {
                 let pixel = target_pixel_row[Point2::new(index, 0)].into().into_format();
-                let pixel = Vector4::from_row_slice(pixel.as_ref());
+                let pixel = Vector4::from_column_slice(pixel.as_ref());
 
-                destination_pixels.set_column(index, &pixel);
+                destination_pixels.set_row(index, &pixel.transpose());
             }
 
             // Over composite
             for index in 0..C {
-                let source = source_pixels.column(index);
-                let source: Srgba<f32> = Srgba::from(<[_; 4]>::from(source));
+                let source = source_pixels.row(index);
+                let source: Srgba<f32> = Srgba::from(<[_; 4]>::from(source.transpose()));
 
-                let destination = destination_pixels.column(index);
-                let destination: Srgba<f32> = Srgba::from(<[_; 4]>::from(destination));
+                let destination = destination_pixels.row(index);
+                let destination: Srgba<f32> = Srgba::from(<[_; 4]>::from(destination.transpose()));
 
                 let output = source.over(destination);
 
                 let output = Vector4::from_row_slice(output.as_ref());
-                destination_pixels.set_column(index, &output);
+                destination_pixels.set_row(index, &output.transpose());
             }
 
             for index in 0..C {
-                let destination = destination_pixels.column(index);
-                let destination: Srgba<f32> = Srgba::from(<[_; 4]>::from(destination));
+                let destination = destination_pixels.row(index);
+                let destination: Srgba<f32> = Srgba::from(<[_; 4]>::from(destination.transpose()));
 
                 target_pixel_row[Point2::new(index, 0)] = destination.into_format().into()
             }

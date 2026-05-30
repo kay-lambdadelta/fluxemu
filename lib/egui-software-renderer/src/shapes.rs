@@ -13,6 +13,7 @@ pub struct Vertex {
 }
 
 impl From<egui::epaint::Vertex> for Vertex {
+    #[inline]
     fn from(vertex: egui::epaint::Vertex) -> Self {
         Vertex {
             position: Point2::new(vertex.pos.x, vertex.pos.y),
@@ -73,7 +74,7 @@ pub struct SolidQuad {
 }
 
 impl SolidQuad {
-    #[inline(always)]
+    #[inline]
     pub fn new_if_eligible([triangle_a, triangle_b]: [[Vertex; 3]; 2]) -> Option<Self> {
         // Ensure this shape has a solid coloring
         let potential_color = triangle_a[0].color;
@@ -102,17 +103,24 @@ impl SolidQuad {
             triangle_b[1].position,
             triangle_b[2].position,
         ];
-        points.sort_unstable_by(|point_a, point_b| {
-            point_a
-                .x
-                .total_cmp(&point_b.x)
-                .then(point_a.y.total_cmp(&point_b.y))
-        });
+        points.sort_unstable_by(
+            #[inline]
+            |point_a, point_b| {
+                point_a
+                    .x
+                    .total_cmp(&point_b.x)
+                    .then(point_a.y.total_cmp(&point_b.y))
+            },
+        );
         let unique_positions: heapless::Vec<_, 6> = points
             .into_iter()
-            .dedup_by(|point_a, point_b| {
-                point_a.x.total_cmp(&point_b.x).is_eq() && point_a.y.total_cmp(&point_b.y).is_eq()
-            })
+            .dedup_by(
+                #[inline]
+                |point_a, point_b| {
+                    point_a.x.total_cmp(&point_b.x).is_eq()
+                        && point_a.y.total_cmp(&point_b.y).is_eq()
+                },
+            )
             .collect();
         if unique_positions.len() != 4 {
             // Objectively not a quad
@@ -120,24 +128,27 @@ impl SolidQuad {
         }
 
         // Ensure this is actually a rectangle
-        let (min_x, max_x): (f32, f32) = unique_positions
-            .iter()
-            .fold((f32::INFINITY, f32::NEG_INFINITY), |(min, max), point| {
-                (min.min(point.x), max.max(point.x))
-            });
-        let (min_y, max_y): (f32, f32) = unique_positions
-            .iter()
-            .fold((f32::INFINITY, f32::NEG_INFINITY), |(min, max), point| {
-                (min.min(point.y), max.max(point.y))
-            });
+        let (min_x, max_x): (f32, f32) = unique_positions.iter().fold(
+            (f32::INFINITY, f32::NEG_INFINITY),
+            #[inline]
+            |(min, max), point| (min.min(point.x), max.max(point.x)),
+        );
+        let (min_y, max_y): (f32, f32) = unique_positions.iter().fold(
+            (f32::INFINITY, f32::NEG_INFINITY),
+            #[inline]
+            |(min, max), point| (min.min(point.y), max.max(point.y)),
+        );
 
         let min = Point2::new(min_x, min_y);
         let max = Point2::new(max_x, max_y);
 
         // A rectangle has exactly 2 unique x and 2 unique y values
-        let points_match_rectangle = unique_positions.iter().all(|point| {
-            (point.x == min.x || point.x == max.x) && (point.y == min.y || point.y == max.y)
-        });
+        let points_match_rectangle = unique_positions.iter().all(
+            #[inline]
+            |point| {
+                (point.x == min.x || point.x == max.x) && (point.y == min.y || point.y == max.y)
+            },
+        );
 
         if !points_match_rectangle {
             // Not rectangle
@@ -166,7 +177,7 @@ pub enum Primitive {
     SolidQuad(SolidQuad),
 }
 
-#[inline(always)]
+#[inline]
 pub fn reduce_shapes(
     context: &Context,
     input_shapes: Vec<ClippedShape>,
