@@ -6,7 +6,7 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 byte-unit = "5.2"
-egui = { workspace = true }
+egui = { workspace = true, features = ["rayon"] }
 egui_extras = "0.34"
 egui_material_icons = {
   version = "0.6",
