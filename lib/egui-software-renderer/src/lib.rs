@@ -423,7 +423,7 @@ impl Renderer {
                 let pixel = target_pixel_row[Point2::new(index, 0)].into().into_format();
                 let pixel = Vector4::from_row_slice(pixel.as_ref());
 
-                texture_pixels.set_column(index, &pixel);
+                destination_pixels.set_column(index, &pixel);
             }
 
             // Over composite
