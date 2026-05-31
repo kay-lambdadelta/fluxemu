@@ -97,6 +97,43 @@ impl MemoryMappingTable {
 
                 // Make sure what we put in is sorted
                 page.sort_by_key(|entry| entry.range.start);
+
+                // Deduplicate
+                page.dedup_by(|a, b| match (&a.target, &b.target) {
+                    (
+                        PageTarget::Component {
+                            destination_start: destination_start_a,
+                            component_id: component_id_a,
+                            ..
+                        },
+                        PageTarget::Component {
+                            destination_start: destination_start_b,
+                            component_id: component_id_b,
+                            ..
+                        },
+                    ) => {
+                        // Same component check
+                        if component_id_a != component_id_b {
+                            return false;
+                        }
+
+                        // Virtual contiguous check
+                        if !a.range.is_adjacent(&b.range) {
+                            return false;
+                        }
+
+                        // Physical contiguous check
+                        if *destination_start_a != destination_start_b + b.range.len() {
+                            return false;
+                        }
+
+                        // Merge them
+                        b.range = (b.range.start..=a.range.last).into();
+
+                        true
+                    }
+                    _ => false,
+                });
             } else {
                 *page = previous_table.computed_table[page_index].clone();
             }
