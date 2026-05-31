@@ -81,8 +81,7 @@ impl SolidQuad {
 
         // Egui uses the white uv to indicate that something should be colored exclusively by its vertex color
         //
-        // Also reject anything if it isn't opaque
-
+        // This is an indicator that this triangle is solidly colored (if the alpha is 1.0)
         let is_color_and_uv_eligible = potential_color.alpha == 1.0
             && triangle_a
                 .into_iter()
@@ -94,7 +93,8 @@ impl SolidQuad {
             return None;
         }
 
-        // Ensure this shape is actually a quad
+        // If this shape is a quad, it will have exactly 4 unique positions from the contributed vertexes
+
         let mut points = [
             triangle_a[0].position,
             triangle_a[1].position,
@@ -103,6 +103,8 @@ impl SolidQuad {
             triangle_b[1].position,
             triangle_b[2].position,
         ];
+
+        // Ensure they are sorted so deduplication works correctly
         points.sort_unstable_by(
             #[inline]
             |point_a, point_b| {
@@ -112,6 +114,7 @@ impl SolidQuad {
                     .then(point_a.y.total_cmp(&point_b.y))
             },
         );
+
         let unique_positions: heapless::Vec<_, 6> = points
             .into_iter()
             .dedup_by(
@@ -122,12 +125,13 @@ impl SolidQuad {
                 },
             )
             .collect();
+
         if unique_positions.len() != 4 {
             // Objectively not a quad
             return None;
         }
 
-        // Ensure this is actually a rectangle
+        // A rectangle will have 2 unique x values and 2 unique y values for its position
         let (min_x, max_x): (f32, f32) = unique_positions.iter().fold(
             (f32::INFINITY, f32::NEG_INFINITY),
             #[inline]
@@ -142,7 +146,6 @@ impl SolidQuad {
         let min = Point2::new(min_x, min_y);
         let max = Point2::new(max_x, max_y);
 
-        // A rectangle has exactly 2 unique x and 2 unique y values
         let points_match_rectangle = unique_positions.iter().all(
             #[inline]
             |point| {
@@ -151,7 +154,7 @@ impl SolidQuad {
         );
 
         if !points_match_rectangle {
-            // Not rectangle
+            // Not axis aligned
             return None;
         }
 

@@ -18,9 +18,9 @@ pub use keyboard::*;
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Enum covering all possible input types
 pub enum InputId {
-    /// Input is for a gamepadish device
+    /// Input is for a gamepad device
     Gamepad(GamepadInputId),
-    /// Input is for a keyboardish device
+    /// Input is for a keyboard device
     Keyboard(KeyboardInputId),
 }
 

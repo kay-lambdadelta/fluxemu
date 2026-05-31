@@ -40,7 +40,7 @@ impl Scheduler {
 
     /// Register a new component that is directly driven by the scheduler
     ///
-    /// Ment for machine builder purposes
+    /// For machine builder purposes
     pub fn register_driven_component(&mut self, path: ComponentPath) {
         self.driven.push(path);
     }
@@ -88,7 +88,7 @@ impl<'a> SynchronizationContext<'a> {
         budget > 0
     }
 
-    /// Create an iterator that continously allocates an amount of time represented by period until either the target timestamp is reached
+    /// Create an iterator that continuously allocates an amount of time represented by period until either the target timestamp is reached
     /// or the runtime preempts the task
     #[inline]
     pub fn allocate_continuous<'b>(&'b mut self, period: Period) -> QuantaIterator<'b, 'a> {
@@ -125,7 +125,7 @@ impl<'a> SynchronizationContext<'a> {
     }
 }
 
-/// Helper iterator to continously allocate a period until the time budget is exhausted
+/// Helper iterator to continuously allocate a period until the time budget is exhausted
 pub struct QuantaIterator<'b, 'a> {
     period: Period,
     budget: u64,

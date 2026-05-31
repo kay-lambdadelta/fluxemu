@@ -1,12 +1,11 @@
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
+/// Inputs that a gamepad could have
 #[non_exhaustive]
 #[derive(
     Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIter,
 )]
-/// Inputs that a gamepad could give
-#[allow(missing_docs)]
 pub enum GamepadInputId {
     FPadUp,
     FPadDown,

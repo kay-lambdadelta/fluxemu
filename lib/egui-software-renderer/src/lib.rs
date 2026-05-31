@@ -3,6 +3,7 @@ extern crate std;
 use core::ops::RangeInclusive;
 use std::collections::HashMap;
 
+use crate::powerof2::PowerOfTwoIter;
 use egui::{FullOutput, TextureId};
 use fluxemu_graphics::api::software::texture::{
     CopyMode, Texture, TextureImpl, TextureImplMut, TextureViewMut,
@@ -29,7 +30,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    /// Render to a surface given the pixel order
+    /// Render to a surface
     #[inline]
     pub fn render<P: From<Srgba<u8>> + Into<Srgba<u8>> + Copy>(
         &mut self,
@@ -79,6 +80,8 @@ impl Renderer {
 
         Self::render_inner(&mut self.textures, context, full_output, target_texture);
     }
+
+    // TODO: Enable neon on arm and v on riscv when such things are stable to query at runtime
 
     #[inline]
     #[multiversion::multiversion(targets(
@@ -141,11 +144,11 @@ impl Renderer {
                         )
                         .max();
 
-                        let clip_x_max =
-                            Vector2::new(target_texture_width - 1.0, shape.max.x).min();
-                        let clip_y_max =
-                            Vector2::new(target_texture_height - 1.0, shape.max.y).min();
+                        // Clip the clipping box by the target texture size
+                        let clip_x_max = shape.max.x.min(target_texture_width - 1.0);
+                        let clip_y_max = shape.max.y.min(target_texture_height - 1.0);
 
+                        // Clip the triangle
                         let triangle_bounding_max = Point2::new(
                             vertex_x_max.min(clip_x_max).floor(),
                             vertex_y_max.min(clip_y_max).floor(),
@@ -164,19 +167,24 @@ impl Renderer {
                         )
                         .min();
 
-                        let clip_x_min = Vector2::new(0.0, shape.min.x).max();
-                        let clip_y_min = Vector2::new(0.0, shape.min.y).max();
+                        // Ensure negative clip values do not exist
+                        let clip_x_min = shape.min.x.max(0.0);
+                        let clip_y_min = shape.min.y.max(0.0);
 
+                        // Clip the triangle again
                         let triangle_bounding_min = Point2::new(
                             vertex_x_min.max(clip_x_min).ceil(),
                             vertex_y_min.max(clip_y_min).ceil(),
                         );
 
                         let mut barycentric_coordinates = barycentric_coordinates(
+                            // Offset to the center of the pixel
                             triangle_bounding_min + Vector2::from_element(0.5),
                             &triangle,
                         );
                         let mut row_start_barycentric_coordinates = barycentric_coordinates;
+
+                        // Units of which the pixel iteration machine will be advanced incrementally
 
                         let step_x =
                             Vector3::new(triangle.edge1.y, triangle.edge2.y, triangle.edge0.y)
@@ -224,7 +232,8 @@ impl Renderer {
 
                         for y in triangle_bounding_min.y as usize..=triangle_bounding_max.y as usize
                         {
-                            use crate::powerof2::PowerOfTwoIter;
+                            // This calculates the enter and exit point of which this particular scanline will be relevant
+                            // to the triangle we are drawing
 
                             let x_enter = (0..3)
                                 .map(|index| {
@@ -252,6 +261,7 @@ impl Renderer {
                                 .fold(triangle_bounding_max.x, f32::min)
                                 .floor() as usize;
 
+                            // Advance coordinates
                             barycentric_coordinates = row_start_barycentric_coordinates
                                 + step_x * (x_enter as f32 - triangle_bounding_min.x);
 
@@ -265,6 +275,8 @@ impl Renderer {
 
                             let x_range = x_enter..=x_exit;
                             let mut x = *x_range.start();
+
+                            // This power of two iterator forcing constant run lengths makes very efficient simd code
 
                             for len in PowerOfTwoIter::<32>::new(x_range.len()) {
                                 let target_pixel_row = target_texture
@@ -345,6 +357,7 @@ impl Renderer {
                                     }
                                 }
 
+                                // Advance everything
                                 x += len;
                                 barycentric_coordinates += step_x * len as f32;
                                 current_uv += step_uv * len as f32;
@@ -363,9 +376,13 @@ impl Renderer {
             textures.remove(&remove_texture_id);
         }
 
+        // This is written in a way to be very obvious to autovectorizers
+        //
+        // Currently as it stands, it has very good through output via automatic simd generation
+
         #[inline]
         #[inherit_target]
-        pub unsafe fn pixel_rounds<const C: usize, P: From<Srgba<u8>> + Into<Srgba<u8>> + Copy>(
+        unsafe fn pixel_rounds<const C: usize, P: From<Srgba<u8>> + Into<Srgba<u8>> + Copy>(
             mut target_pixel_row: TextureViewMut<P>,
             texture: &Texture<Srgba<u8>>,
             texture_dimensions: Vector2<f32>,
@@ -374,7 +391,7 @@ impl Renderer {
             step_uv: Vector2<f32>,
             step_color: Srgba<f32>,
         ) {
-            // Const assert these dimensions so the compiler doesn't forget
+            // Assert these dimensions so the compiler doesn't forget
             assert_eq!(target_pixel_row.width(), C);
             assert_eq!(target_pixel_row.height(), 1);
 
@@ -427,6 +444,7 @@ impl Renderer {
                 interpolated_colors.set_row(index, &color.transpose());
             }
 
+            // Blend texture pixels and the colors
             let mut source_pixels = SMatrix::<f32, C, 4>::from_element(0.0);
             for index in 0..C {
                 let row = texture_pixels
@@ -436,6 +454,7 @@ impl Renderer {
                 source_pixels.set_row(index, &row);
             }
 
+            // Extract the pixels from the destination textures
             let mut destination_pixels = SMatrix::<f32, C, 4>::from_element(0.0);
             for index in 0..C {
                 let pixel = target_pixel_row[Point2::new(index, 0)].into().into_format();
@@ -458,6 +477,7 @@ impl Renderer {
                 destination_pixels.set_row(index, &output.transpose());
             }
 
+            // Write back pixels
             for index in 0..C {
                 let destination = destination_pixels.row(index);
                 let destination: Srgba<f32> = Srgba::from(<[_; 4]>::from(destination.transpose()));

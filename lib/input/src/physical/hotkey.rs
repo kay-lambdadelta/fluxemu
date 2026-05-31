@@ -5,9 +5,8 @@ use strum::EnumIter;
 
 use crate::{GamepadInputId, InputId, KeyboardInputId};
 
-#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash, EnumIter)]
 /// Possible hotkeys this emulator could use
-#[allow(missing_docs)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash, EnumIter)]
 pub enum Hotkey {
     ToggleMenu,
     FastForward,

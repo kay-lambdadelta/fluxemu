@@ -121,6 +121,8 @@ fn process_entry<'a>(
         && let Some(extension) = extension.to_str()
         && ["gcz", "wia", "rvz"].contains(&extension)
     {
+        // FIXME: Actually do this conversion for the user
+
         tracing::warn!("This ROM probably needs to be converted to be recognized");
     }
 

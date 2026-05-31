@@ -2,7 +2,7 @@
 name = "fluxemu-shell-destinezite"
 version = "0.1.0"
 edition = "2024"
-description = "A multi system emulator"
+description = "Port of the FluxEMU framework to desktopish platforms"
 license = "GPL-3.0-or-later"
 
 [package.metadata.deb]

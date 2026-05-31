@@ -1,12 +1,11 @@
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
+/// Inputs that a keyboard could have
 #[non_exhaustive]
 #[derive(
     Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIter,
 )]
-/// Inputs that a keyboard could give
-#[allow(missing_docs)]
 pub enum KeyboardInputId {
     Backquote,
     Backslash,
