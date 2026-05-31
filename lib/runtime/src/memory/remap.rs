@@ -1,15 +1,16 @@
 use std::{any::TypeId, ops::RangeInclusive, sync::atomic::Ordering};
 
 use fluxemu_range::{ContiguousRange, RangeIntersection};
-use itertools::Itertools;
-use rangemap::RangeInclusiveSet;
+use rangemap::{RangeInclusiveMap, RangeInclusiveSet};
 use sdd::{Guard, Owned, Tag};
+use smallvec::SmallVec;
 
 use crate::{
     component::ComponentRegistry,
     memory::{
-        Address, AddressSpaceData, MapTarget, MappingEntry, Members, MemoryMappingTable,
-        MemoryRemappingCommand, PAGE_SIZE, PageEntry, PageTarget, Permissions, component::Memory,
+        Address, AddressSpaceData, MAX_MIRROR_DEPTH, MapTarget, MappingEntry, Members,
+        MemoryMappingTable, MemoryRemappingCommand, PAGE_SIZE, PageEntry, PageTarget, Permissions,
+        component::Memory,
     },
     scheduler::Period,
 };
@@ -32,46 +33,31 @@ impl Permissions {
 }
 
 impl MemoryMappingTable {
-    /// This function flattens and splits the memory map for faster lookups
-    pub(super) fn commit(
+    #[inline]
+    fn commit(
         &mut self,
         previous_table: &Self,
         dirty: &RangeInclusiveSet<Address>,
         registry: ComponentRegistry<'_>,
     ) {
-        let mut clean = vec![true; self.computed_table.len()];
+        for (page_index, page) in self.computed_table.iter_mut().enumerate() {
+            let page_address_range =
+                RangeInclusive::from_start_and_length(page_index * PAGE_SIZE, PAGE_SIZE);
 
-        for region in dirty.iter() {
-            let region_page_range = region.start() / PAGE_SIZE..=region.end() / PAGE_SIZE;
-
-            // Remove clean tag
-            clean[region_page_range.clone()].fill(false);
-
-            // Touch the pages in the region that are dirty
-            for (page_index, page) in self.computed_table[region_page_range.clone()]
-                .iter_mut()
-                .enumerate()
-            {
-                let page_index = page_index + region_page_range.start();
-                let page_address_range =
-                    RangeInclusive::from_start_and_length(page_index * PAGE_SIZE, PAGE_SIZE);
-
-                // Pull out all relevant entries from the overlapping page range in the master table
-                *page = self
-                    .master
-                    .overlapping(page_address_range.clone())
-                    .map(|(range, component)| (range.clone(), component))
-                    .flat_map(|(source_range, entry)| match entry {
+            if dirty.overlaps(&page_address_range) {
+                // Compile master table entries into this page
+                for (source_range, entry) in self.master.overlapping(page_address_range.clone()) {
+                    match entry {
                         MappingEntry::Component(path) => {
-                            vec![PageEntry {
+                            page.push(PageEntry {
                                 target: PageTarget::Component {
                                     destination_start: *source_range.start(),
                                     component_id: registry.path_to_id(path).unwrap(),
                                     is_standard_memory: registry.typeid(path).unwrap()
                                         == TypeId::of::<Memory>(),
                                 },
-                                range: source_range.into(),
-                            }]
+                                range: source_range.clone().into(),
+                            });
                         }
                         MappingEntry::Mirror {
                             source_base,
@@ -88,114 +74,158 @@ impl MemoryMappingTable {
                                 source_range.len(),
                             );
 
-                            let mut entries: Vec<PageEntry> = self
-                                .master
-                                .overlapping(assigned_destination_range.clone())
-                                .map(|(destination_range, destination_entry)| {
-                                    let destination_overlap =
-                                        assigned_destination_range.intersection(destination_range);
-
-                                    let shrink_left = destination_overlap.start()
-                                        - assigned_destination_range.start();
-
-                                    let shrink_right = assigned_destination_range.end()
-                                        - destination_overlap.end();
-
-                                    let calculated_source_range = (source_range.start()
-                                        + shrink_left)
-                                        ..=(source_range.end() - shrink_right);
-
-                                    match destination_entry {
-                                        MappingEntry::Component(path) => PageEntry {
-                                            range: calculated_source_range.into(),
-                                            target: PageTarget::Component {
-                                                destination_start: *destination_overlap.start(),
-                                                component_id: registry.path_to_id(path).unwrap(),
-                                                is_standard_memory: registry.typeid(path).unwrap()
-                                                    == TypeId::of::<Memory>(),
-                                            },
-                                        },
-                                        MappingEntry::Mirror { .. } => {
-                                            panic!("Recursive mirrors are not allowed");
-                                        }
-                                        MappingEntry::Buffer(memory) => {
-                                            let buffer_subrange = (destination_overlap.start()
-                                                - destination_range.start())
-                                                ..=(destination_overlap.end()
-                                                    - destination_range.start());
-
-                                            let memory = memory.slice(buffer_subrange.clone());
-
-                                            // Validate the buffer subrange matches the range its being put into
-                                            assert_eq!(memory.len(), buffer_subrange.len());
-
-                                            PageEntry {
-                                                range: calculated_source_range.into(),
-                                                target: PageTarget::Memory(memory),
-                                            }
-                                        }
-                                    }
-                                })
-                                .collect();
-
-                            entries.dedup_by(merge_and_dedup_mirror_entries);
-
-                            entries
+                            Self::resolve_mirror_target(
+                                &self.master,
+                                registry,
+                                source_range.clone(),
+                                assigned_destination_range,
+                                page,
+                                0,
+                            );
                         }
                         MappingEntry::Buffer(memory) => {
                             // Validate the buffer subrange matches the range its being put into
                             assert_eq!(memory.len(), source_range.len());
 
-                            vec![PageEntry {
-                                range: source_range.into(),
+                            page.push(PageEntry {
+                                range: source_range.clone().into(),
                                 target: PageTarget::Memory(memory.clone()),
-                            }]
+                            });
                         }
-                    })
-                    .sorted_by_key(|entry| entry.range.start)
-                    .collect();
-            }
-        }
+                    }
+                }
 
-        // Copy in the entries that are marked clean
-        for (_, (previous, current)) in previous_table
-            .computed_table
-            .iter()
-            .zip(self.computed_table.iter_mut())
-            .enumerate()
-            .filter(|(index, _)| clean[*index])
-        {
-            *current = previous.clone();
+                // Make sure what we put in is sorted
+                page.sort_by_key(|entry| entry.range.start);
+            } else {
+                *page = previous_table.computed_table[page_index].clone();
+            }
         }
     }
 
     #[inline]
-    pub fn mirror_dirtying_pass(&mut self, dirty: &mut RangeInclusiveSet<usize>) {
-        for (master_region, mapping_entry) in self.master.iter() {
-            if let MappingEntry::Mirror {
-                source_base,
-                destination_base,
-            } = mapping_entry
-            {
-                let destination_range =
-                    RangeInclusive::from_start_and_length(*destination_base, master_region.len());
+    fn resolve_mirror_target(
+        master: &RangeInclusiveMap<Address, MappingEntry>,
+        registry: ComponentRegistry<'_>,
+        source_range: RangeInclusive<Address>,
+        target_range: RangeInclusive<Address>,
+        page: &mut SmallVec<PageEntry, 1>,
+        depth: usize,
+    ) {
+        if depth > MAX_MIRROR_DEPTH {
+            panic!(
+                "Max mirror depth hit at {} with source range {:?} and target range {:?}",
+                depth, source_range, target_range
+            );
+        }
 
-                if dirty.overlaps(&destination_range) {
-                    let source_range =
-                        RangeInclusive::from_start_and_length(*source_base, master_region.len());
+        for (destination_range, destination_entry) in master.overlapping(target_range.clone()) {
+            let destination_overlap = target_range.intersection(destination_range);
 
-                    dirty.insert(source_range);
+            let shrink_left = destination_overlap.start() - target_range.start();
+            let shrink_right = target_range.end() - destination_overlap.end();
+
+            let calculated_source_range =
+                (source_range.start() + shrink_left)..=(source_range.end() - shrink_right);
+
+            match destination_entry {
+                MappingEntry::Component(path) => {
+                    page.push(PageEntry {
+                        range: calculated_source_range.into(),
+                        target: PageTarget::Component {
+                            destination_start: *destination_overlap.start(),
+                            component_id: registry.path_to_id(path).unwrap(),
+                            is_standard_memory: registry.typeid(path).unwrap()
+                                == TypeId::of::<Memory>(),
+                        },
+                    });
                 }
+                MappingEntry::Buffer(memory) => {
+                    let buffer_subrange = (destination_overlap.start() - destination_range.start())
+                        ..=(destination_overlap.end() - destination_range.start());
+
+                    let memory = memory.slice(buffer_subrange.clone());
+
+                    assert_eq!(
+                        memory.len(),
+                        buffer_subrange.len(),
+                        "Buffers has to be the same length as the range they are being mapped into"
+                    );
+
+                    page.push(PageEntry {
+                        range: calculated_source_range.into(),
+                        target: PageTarget::Memory(memory),
+                    });
+                }
+                MappingEntry::Mirror {
+                    source_base,
+                    destination_base,
+                } => {
+                    let offset = destination_overlap
+                        .start()
+                        .checked_sub(*source_base)
+                        .expect("mirror destination_overlap.start must be >= source_base");
+
+                    let next_destination_start = destination_base + offset;
+                    let next_target_range = RangeInclusive::from_start_and_length(
+                        next_destination_start,
+                        destination_overlap.len(),
+                    );
+
+                    Self::resolve_mirror_target(
+                        master,
+                        registry,
+                        calculated_source_range,
+                        next_target_range,
+                        page,
+                        depth + 1,
+                    );
+                }
+            }
+        }
+    }
+
+    #[inline]
+    fn mirror_dirtying_pass(&mut self, dirty: &mut RangeInclusiveSet<usize>) {
+        loop {
+            let old_dirty = dirty.clone();
+
+            for (master_region, mapping_entry) in self.master.iter() {
+                if let MappingEntry::Mirror {
+                    source_base,
+                    destination_base,
+                } = mapping_entry
+                {
+                    let destination_range = RangeInclusive::from_start_and_length(
+                        *destination_base,
+                        master_region.len(),
+                    );
+
+                    if dirty.overlaps(&destination_range) {
+                        let source_range = RangeInclusive::from_start_and_length(
+                            *source_base,
+                            master_region.len(),
+                        );
+
+                        dirty.insert(source_range);
+                    }
+                }
+            }
+
+            if *dirty == old_dirty {
+                break;
             }
         }
     }
 }
 
 impl AddressSpaceData {
+    #[inline]
     pub fn remap(
         &self,
         timestamp: Period,
         registry: ComponentRegistry<'_>,
+        guard: &Guard,
         commands: impl IntoIterator<Item = MemoryRemappingCommand>,
     ) {
         let max = 2usize.pow(u32::from(self.address_space_width)) - 1;
@@ -206,20 +236,19 @@ impl AddressSpaceData {
         let mut dirty_write = RangeInclusiveSet::new();
 
         let _write_lock_guard = self.write_lock.lock().unwrap();
-        let load_guard = Guard::new();
 
-        let current = self.members.load(Ordering::Acquire, &load_guard);
+        let current = self.members.load(Ordering::Acquire, guard);
         let current_members = current.as_ref().unwrap();
 
         let mut read_table = MemoryMappingTable {
             master: current_members.read.master.clone(),
-            computed_table: vec![Default::default(); current_members.read.computed_table.len()]
+            computed_table: vec![SmallVec::new(); current_members.read.computed_table.len()]
                 .into_boxed_slice(),
         };
 
         let mut write_table = MemoryMappingTable {
             master: current_members.write.master.clone(),
-            computed_table: vec![Default::default(); current_members.write.computed_table.len()]
+            computed_table: vec![SmallVec::new(); current_members.write.computed_table.len()]
                 .into_boxed_slice(),
         };
 
@@ -360,44 +389,8 @@ impl AddressSpaceData {
             write: write_table,
         };
 
-        // Drop the guard and potentially get rid of the old mappings
-        drop(load_guard);
-
         let _ = self
             .members
             .swap((Some(Owned::new(members)), Tag::None), Ordering::AcqRel);
-    }
-}
-
-#[inline]
-fn merge_and_dedup_mirror_entries(left: &mut PageEntry, right: &mut PageEntry) -> bool {
-    if !left.range.is_adjacent(&right.range) {
-        return false;
-    }
-
-    match (&mut left.target, &right.target) {
-        (
-            PageTarget::Component {
-                destination_start: destination_start_left,
-                component_id: component_left,
-                is_standard_memory: _,
-            },
-            PageTarget::Component {
-                destination_start: destination_start_right,
-                component_id: component_right,
-                is_standard_memory: _,
-            },
-        ) if component_left == component_right
-            && *destination_start_right
-                == *destination_start_left + (right.range.start - left.range.start) =>
-        {
-            left.range = std::range::RangeInclusive {
-                start: left.range.start,
-                last: right.range.last,
-            };
-
-            true
-        }
-        _ => false,
     }
 }

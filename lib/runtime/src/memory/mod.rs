@@ -27,6 +27,7 @@ mod write;
 
 pub type Address = usize;
 const PAGE_SIZE: Address = 0x1000;
+const MAX_MIRROR_DEPTH: usize = 4;
 
 /// The main structure representing the devices memory address spaces
 #[derive(Debug)]
@@ -53,13 +54,21 @@ impl<'a> AddressSpace<'a> {
     /// - Within a given command set this is an atomic operation, however it does not block accesses to address space methods while it
     ///   is completing
     /// - If two remappings from different threads are done at the same time, its unspecified which one "wins"
-    /// - As of the current implementation, remapping is rather expensive. Use sparingly or improve the committing code
+    /// - As of the current implementation, remapping is somewhat expensive. Much of the overhead is from the overhead of the remap setup itself.
+    ///   Group together commands into as large of lists as you can.
+    #[inline]
     pub fn remap(
         &self,
         timestamp: Period,
         commands: impl IntoIterator<Item = MemoryRemappingCommand>,
     ) {
-        self.data.remap(timestamp, self.registry, commands);
+        // Some programs who do extremely frequent remappings will inflate ram with old copies of the mapping table
+        //
+        // This informs `sdd` that cleanup should happen sooner rather than later
+        self.guard.accelerate();
+
+        self.data
+            .remap(timestamp, self.registry, &self.guard, commands);
     }
 }
 
