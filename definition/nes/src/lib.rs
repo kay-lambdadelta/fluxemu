@@ -1,8 +1,9 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, ops::RangeInclusive};
 
 pub use cartridge::ines::INes;
 use cartridge::{CartParams, ines::TimingMode};
 use fluxemu_definition_mos6502::{Mos6502Config, Mos6502Kind};
+use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
     ComponentPath,
     machine::builder::{MachineBuilder, MachineFactory, RomRequirement},
@@ -23,7 +24,7 @@ use crate::{
     },
     gamepad::standard_controllers::NesControllerConfig,
     ppu::{
-        BACKGROUND_PALETTE_BASE_ADDRESS, NAMETABLE_ADDRESSES,
+        BACKGROUND_PALETTE_BASE_ADDRESS, NAMETABLE_ADDRESSES, NAMETABLE_BASE_ADDRESS,
         backend::SupportedGraphicsApiPpu,
         region::{Region, ntsc::Ntsc},
     },
@@ -89,19 +90,30 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> MachineFactory<P>
                 },
             )
             .0
+            // work ram mirrors
             .memory_map_mirror(cpu_address_space, 0x0800..=0x0fff, 0x0000..=0x07ff)
             .memory_map_mirror(cpu_address_space, 0x1000..=0x17ff, 0x0000..=0x07ff)
             .memory_map_mirror(cpu_address_space, 0x1800..=0x1fff, 0x0000..=0x07ff)
+            // palette mirror for background colors
             .memory_map_mirror(ppu_address_space, 0x3f10..=0x3f10, 0x3f00..=0x3f00)
             .memory_map_mirror(ppu_address_space, 0x3f14..=0x3f14, 0x3f04..=0x3f04)
             .memory_map_mirror(ppu_address_space, 0x3f18..=0x3f18, 0x3f08..=0x3f08)
             .memory_map_mirror(ppu_address_space, 0x3f1c..=0x3f1c, 0x3f0c..=0x3f0c);
 
+        // full palette mirror blocks
+        for address in (0x3f20..=0x3fff).step_by(0x20) {
+            machine = machine.memory_map_mirror(
+                ppu_address_space,
+                RangeInclusive::from_start_and_length(address, 0x20),
+                RangeInclusive::from_start_and_length(BACKGROUND_PALETTE_BASE_ADDRESS, 0x20),
+            );
+        }
+
         for address in (0x2000..=0x3fff).step_by(8).skip(1) {
             machine = machine.memory_map_mirror(
                 cpu_address_space,
-                address..=address + 7,
-                0x2000..=0x2007,
+                RangeInclusive::from_start_and_length(address, 8),
+                RangeInclusive::from_start_and_length(NAMETABLE_BASE_ADDRESS, 8),
             );
         }
 

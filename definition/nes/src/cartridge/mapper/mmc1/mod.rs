@@ -72,7 +72,6 @@ impl Mmc1 {
         let timestamp = runtime.current_timestamp();
 
         let mut cpu_commands = Vec::new();
-        let mut ppu_commands = Vec::new();
 
         let (prg_low_bank, prg_high_bank) = match self.prg_rom_bank_mode {
             PrgRomBankMode::Unified32k => {
@@ -104,7 +103,14 @@ impl Mmc1 {
             permissions: Permissions::READ,
         });
 
+        runtime
+            .address_space(self.config.params.cpu_address_space)
+            .unwrap()
+            .remap(timestamp, cpu_commands);
+
         if let Some(chr_rom) = self.config.params.chr_rom.as_ref() {
+            let mut ppu_commands = Vec::new();
+
             match self.chr_rom_bank_mode {
                 ChrRomBankMode::Unified8k => {
                     let bank = (self.chr_rom_bank_indexes[0] & !1) as usize;
@@ -146,17 +152,12 @@ impl Mmc1 {
                     }
                 }
             }
+
+            runtime
+                .address_space(self.config.params.ppu_address_space)
+                .unwrap()
+                .remap(timestamp, ppu_commands);
         }
-
-        runtime
-            .address_space(self.config.params.cpu_address_space)
-            .unwrap()
-            .remap(timestamp, cpu_commands);
-
-        runtime
-            .address_space(self.config.params.ppu_address_space)
-            .unwrap()
-            .remap(timestamp, ppu_commands);
     }
 
     fn update_nametables(&mut self) {
