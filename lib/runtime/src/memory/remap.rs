@@ -1,15 +1,17 @@
-use std::{any::TypeId, ops::RangeInclusive};
+use std::{any::TypeId, ops::RangeInclusive, sync::atomic::Ordering};
 
 use fluxemu_range::{ContiguousRange, RangeIntersection};
 use itertools::Itertools;
 use rangemap::RangeInclusiveSet;
+use sdd::{Guard, Owned, Tag};
 
 use crate::{
     component::ComponentRegistry,
     memory::{
-        Address, MappingEntry, MemoryMappingTable, PAGE_SIZE, PageEntry, PageTarget, Permissions,
-        component::Memory,
+        Address, AddressSpaceData, MapTarget, MappingEntry, Members, MemoryMappingTable,
+        MemoryRemappingCommand, PAGE_SIZE, PageEntry, PageTarget, Permissions, component::Memory,
     },
+    scheduler::Period,
 };
 
 impl Permissions {
@@ -33,11 +35,17 @@ impl MemoryMappingTable {
     /// This function flattens and splits the memory map for faster lookups
     pub(super) fn commit(
         &mut self,
+        previous_table: &Self,
         dirty: &RangeInclusiveSet<Address>,
         registry: ComponentRegistry<'_>,
     ) {
+        let mut clean = vec![true; self.computed_table.len()];
+
         for region in dirty.iter() {
             let region_page_range = region.start() / PAGE_SIZE..=region.end() / PAGE_SIZE;
+
+            // Remove clean tag
+            clean[region_page_range.clone()].fill(false);
 
             // Touch the pages in the region that are dirty
             for (page_index, page) in self.computed_table[region_page_range.clone()]
@@ -148,6 +156,17 @@ impl MemoryMappingTable {
                     .collect();
             }
         }
+
+        // Copy in the entries that are marked clean
+        for (_, (previous, current)) in previous_table
+            .computed_table
+            .iter()
+            .zip(self.computed_table.iter_mut())
+            .enumerate()
+            .filter(|(index, _)| clean[*index])
+        {
+            *current = previous.clone();
+        }
     }
 
     #[inline]
@@ -169,6 +188,184 @@ impl MemoryMappingTable {
                 }
             }
         }
+    }
+}
+
+impl AddressSpaceData {
+    pub fn remap(
+        &self,
+        timestamp: Period,
+        registry: ComponentRegistry<'_>,
+        commands: impl IntoIterator<Item = MemoryRemappingCommand>,
+    ) {
+        let max = 2usize.pow(u32::from(self.address_space_width)) - 1;
+        let valid_range = 0..=max;
+        let commands: Vec<_> = commands.into_iter().collect();
+
+        let mut dirty_read = RangeInclusiveSet::new();
+        let mut dirty_write = RangeInclusiveSet::new();
+
+        let _write_lock_guard = self.write_lock.lock().unwrap();
+        let load_guard = Guard::new();
+
+        let current = self.members.load(Ordering::Acquire, &load_guard);
+        let current_members = current.as_ref().unwrap();
+
+        let mut read_table = MemoryMappingTable {
+            master: current_members.read.master.clone(),
+            computed_table: vec![Default::default(); current_members.read.computed_table.len()]
+                .into_boxed_slice(),
+        };
+
+        let mut write_table = MemoryMappingTable {
+            master: current_members.write.master.clone(),
+            computed_table: vec![Default::default(); current_members.write.computed_table.len()]
+                .into_boxed_slice(),
+        };
+
+        for command in commands {
+            match command {
+                MemoryRemappingCommand::Map {
+                    range,
+                    target,
+                    permissions,
+                } => {
+                    assert!(
+                        valid_range.contains(range.start()) && valid_range.contains(range.end()),
+                        "Range {range:#04x?} is invalid for a address space that ends at \
+                         {max:04x?}"
+                    );
+
+                    if permissions.read {
+                        dirty_read.insert(range.clone());
+                    }
+
+                    if permissions.write {
+                        dirty_write.insert(range.clone());
+                    }
+
+                    match target {
+                        MapTarget::Component(component_path) => {
+                            if permissions.read {
+                                read_table.master.insert(
+                                    range.clone(),
+                                    MappingEntry::Component(component_path.clone()),
+                                );
+                            }
+
+                            if permissions.write {
+                                write_table
+                                    .master
+                                    .insert(range.clone(), MappingEntry::Component(component_path));
+                            }
+                        }
+                        MapTarget::Buffer(bytes) => {
+                            if permissions.read {
+                                read_table
+                                    .master
+                                    .insert(range.clone(), MappingEntry::Buffer(bytes.clone()));
+                            }
+
+                            if permissions.write {
+                                unreachable!("Buffers are read only");
+                            }
+                        }
+                        MapTarget::Mirror { destination } => {
+                            assert!(
+                                valid_range.contains(range.start())
+                                    && valid_range.contains(range.end()),
+                                "Range {destination:#04x?} is invalid for a address space that \
+                                 ends at {max:04x?}"
+                            );
+
+                            assert_eq!(
+                                range.len(),
+                                destination.len(),
+                                "Mirror source and destination ranges must have the same length"
+                            );
+
+                            if permissions.read {
+                                read_table.master.insert(
+                                    range.clone(),
+                                    MappingEntry::Mirror {
+                                        source_base: *range.start(),
+                                        destination_base: *destination.start(),
+                                    },
+                                );
+                            }
+
+                            if permissions.write {
+                                write_table.master.insert(
+                                    range.clone(),
+                                    MappingEntry::Mirror {
+                                        source_base: *range.start(),
+                                        destination_base: *destination.start(),
+                                    },
+                                );
+                            }
+                        }
+                    }
+                }
+                MemoryRemappingCommand::Unmap { range, permissions } => {
+                    if permissions.read {
+                        read_table.master.remove(range.clone());
+                        dirty_read.insert(range.clone());
+                    }
+
+                    if permissions.write {
+                        write_table.master.remove(range.clone());
+                        dirty_write.insert(range.clone());
+                    }
+                }
+                MemoryRemappingCommand::RebaseComponent { component, base } => {
+                    registry.interact_dyn(&component, timestamp, |component| {
+                        component.memory_rebase(base);
+                    });
+                }
+            }
+        }
+
+        read_table.mirror_dirtying_pass(&mut dirty_read);
+        write_table.mirror_dirtying_pass(&mut dirty_write);
+
+        read_table.commit(&current_members.read, &dirty_read, registry);
+        write_table.commit(&current_members.write, &dirty_write, registry);
+
+        // Make sure owning components in the old map get synchronized to this timestamp before the remapping is actually applied
+        //
+        // This is a "fence"
+        for (dirty, table) in [
+            (dirty_read, &current_members.read),
+            (dirty_write, &current_members.write),
+        ] {
+            for dirty_entry in dirty {
+                for component_path in
+                    table
+                        .master
+                        .overlapping(dirty_entry)
+                        .filter_map(|(_, mapping_entry)| match mapping_entry {
+                            MappingEntry::Component(path) => Some(path),
+                            _ => None,
+                        })
+                {
+                    registry
+                        .interact_dyn(component_path, timestamp, |_| {})
+                        .unwrap();
+                }
+            }
+        }
+
+        let members = Members {
+            read: read_table,
+            write: write_table,
+        };
+
+        // Drop the guard and potentially get rid of the old mappings
+        drop(load_guard);
+
+        let _ = self
+            .members
+            .swap((Some(Owned::new(members)), Tag::None), Ordering::AcqRel);
     }
 }
 

@@ -6,9 +6,8 @@ use std::{
 };
 
 use bytes::Bytes;
-use fluxemu_range::ContiguousRange;
-use rangemap::{RangeInclusiveMap, RangeInclusiveSet};
-use sdd::{AtomicOwned, Guard, Owned, Tag};
+use rangemap::RangeInclusiveMap;
+use sdd::{AtomicOwned, Guard};
 use smallvec::SmallVec;
 use thiserror::Error;
 
@@ -19,9 +18,9 @@ use crate::{
     scheduler::Period,
 };
 
-mod commit;
 pub mod component;
 mod read;
+mod remap;
 #[cfg(test)]
 mod tests;
 mod write;
@@ -120,10 +119,10 @@ struct PageEntry {
     pub target: PageTarget,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct MemoryMappingTable {
     master: RangeInclusiveMap<Address, MappingEntry>,
-    computed_table: Vec<SmallVec<PageEntry, 1>>,
+    computed_table: Box<[SmallVec<PageEntry, 1>]>,
 }
 
 impl MemoryMappingTable {
@@ -133,7 +132,7 @@ impl MemoryMappingTable {
 
         Self {
             master: RangeInclusiveMap::new(),
-            computed_table: vec![Default::default(); total_pages],
+            computed_table: vec![Default::default(); total_pages].into_boxed_slice(),
         }
     }
 }
@@ -142,7 +141,7 @@ impl MemoryMappingTable {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct AddressSpaceId(pub(crate) u16);
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct Members {
     pub read: MemoryMappingTable,
     pub write: MemoryMappingTable,
@@ -214,169 +213,6 @@ impl AddressSpaceData {
                 .as_ref_unchecked()
                 .unwrap_unchecked()
         }
-    }
-
-    pub fn remap(
-        &self,
-        timestamp: Period,
-        registry: ComponentRegistry<'_>,
-        commands: impl IntoIterator<Item = MemoryRemappingCommand>,
-    ) {
-        let max = 2usize.pow(u32::from(self.address_space_width)) - 1;
-        let valid_range = 0..=max;
-        let commands: Vec<_> = commands.into_iter().collect();
-
-        let mut dirty_read = RangeInclusiveSet::new();
-        let mut dirty_write = RangeInclusiveSet::new();
-
-        let load_guard = Guard::new();
-        let _write_lock_guard = self.write_lock.lock().unwrap();
-
-        let current = self.members.load(Ordering::Acquire, &load_guard);
-        let current_members = current.as_ref().unwrap();
-        let mut new_members = current_members.clone();
-
-        for command in commands {
-            match command {
-                MemoryRemappingCommand::Map {
-                    range,
-                    target,
-                    permissions,
-                } => {
-                    assert!(
-                        valid_range.contains(range.start()) && valid_range.contains(range.end()),
-                        "Range {range:#04x?} is invalid for a address space that ends at \
-                         {max:04x?}"
-                    );
-
-                    if permissions.read {
-                        dirty_read.insert(range.clone());
-                    }
-
-                    if permissions.write {
-                        dirty_write.insert(range.clone());
-                    }
-
-                    match target {
-                        MapTarget::Component(component_path) => {
-                            if permissions.read {
-                                new_members.read.master.insert(
-                                    range.clone(),
-                                    MappingEntry::Component(component_path.clone()),
-                                );
-                            }
-
-                            if permissions.write {
-                                new_members
-                                    .write
-                                    .master
-                                    .insert(range.clone(), MappingEntry::Component(component_path));
-                            }
-                        }
-                        MapTarget::Buffer(bytes) => {
-                            if permissions.read {
-                                new_members
-                                    .read
-                                    .master
-                                    .insert(range.clone(), MappingEntry::Buffer(bytes.clone()));
-                            }
-
-                            if permissions.write {
-                                new_members
-                                    .write
-                                    .master
-                                    .insert(range.clone(), MappingEntry::Buffer(bytes));
-                            }
-                        }
-                        MapTarget::Mirror { destination } => {
-                            assert!(
-                                valid_range.contains(range.start())
-                                    && valid_range.contains(range.end()),
-                                "Range {destination:#04x?} is invalid for a address space that \
-                                 ends at {max:04x?}"
-                            );
-
-                            assert_eq!(
-                                range.len(),
-                                destination.len(),
-                                "Mirror source and destination ranges must have the same length"
-                            );
-
-                            if permissions.read {
-                                new_members.read.master.insert(
-                                    range.clone(),
-                                    MappingEntry::Mirror {
-                                        source_base: *range.start(),
-                                        destination_base: *destination.start(),
-                                    },
-                                );
-                            }
-
-                            if permissions.write {
-                                new_members.write.master.insert(
-                                    range.clone(),
-                                    MappingEntry::Mirror {
-                                        source_base: *range.start(),
-                                        destination_base: *destination.start(),
-                                    },
-                                );
-                            }
-                        }
-                    }
-                }
-                MemoryRemappingCommand::Unmap { range, permissions } => {
-                    if permissions.read {
-                        new_members.read.master.remove(range.clone());
-                        dirty_read.insert(range.clone());
-                    }
-
-                    if permissions.write {
-                        new_members.write.master.remove(range.clone());
-                        dirty_write.insert(range.clone());
-                    }
-                }
-                MemoryRemappingCommand::RebaseComponent { component, base } => {
-                    registry.interact_dyn(&component, timestamp, |component| {
-                        component.memory_rebase(base);
-                    });
-                }
-            }
-        }
-
-        new_members.read.mirror_dirtying_pass(&mut dirty_read);
-        new_members.read.commit(&dirty_read, registry);
-        new_members.write.mirror_dirtying_pass(&mut dirty_write);
-        new_members.write.commit(&dirty_write, registry);
-
-        // Make sure owning components in the old map get synchronized to this timestamp before the remapping is actually applied
-        //
-        // This is a "fence"
-        for (dirty, table) in [
-            (dirty_read, &current_members.read),
-            (dirty_write, &current_members.write),
-        ] {
-            for dirty_entry in dirty {
-                for component_path in
-                    table
-                        .master
-                        .overlapping(dirty_entry)
-                        .filter_map(|(_, mapping_entry)| match mapping_entry {
-                            MappingEntry::Component(path) => Some(path),
-                            _ => None,
-                        })
-                {
-                    registry
-                        .interact_dyn(component_path, timestamp, |_| {})
-                        .unwrap();
-                }
-            }
-        }
-
-        drop(load_guard);
-
-        let _ = self
-            .members
-            .swap((Some(Owned::new(new_members)), Tag::None), Ordering::AcqRel);
     }
 }
 
