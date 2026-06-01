@@ -12,6 +12,7 @@ use fluxemu_input::{InputId, InputState};
 use fluxemu_program::ProgramSpecification;
 use num::FromPrimitive;
 use rustc_hash::FxBuildHasher;
+use tracing::Level;
 
 use crate::{
     ComponentPath, ResourcePath,
@@ -79,6 +80,7 @@ impl RuntimeApi {
     /// Helper function to advance the scheduler forward by a [Duration]
     ///
     /// Internally converts to the closest representable period
+    #[tracing::instrument(skip(self), level = Level::TRACE)]
     pub fn run_duration(&self, allocated_time: Duration) {
         let allocated_time = Period::from_f32(allocated_time.as_secs_f32()).unwrap_or_default();
 

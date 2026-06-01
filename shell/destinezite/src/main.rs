@@ -18,6 +18,7 @@ use ron::ser::PrettyConfig;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{
     EnvFilter, Layer,
+    fmt::format::FmtSpan,
     layer::{Filter, SubscriberExt},
     util::SubscriberInitExt,
 };
@@ -69,6 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let stderr_layer = tracing_subscriber::fmt::layer()
         .with_writer(std::io::stderr)
         .with_ansi(true)
+        .with_span_events(FmtSpan::CLOSE)
         .with_thread_names(true);
 
     let subscriber_builder = tracing_subscriber::registry()
