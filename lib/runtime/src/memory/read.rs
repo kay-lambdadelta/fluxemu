@@ -7,8 +7,8 @@ use super::AddressSpace;
 use crate::{
     component::{Component, ComponentId, ComponentRegistry},
     memory::{
-        Address, AddressSpaceId, MemoryError, PAGE_SIZE, PageEntry, PageTarget, component::Memory,
-        form_error,
+        Address, AddressSpaceId, MemoryError, PAGE_SIZE, PageTableEntry, PageTableTarget,
+        component::Memory, form_error,
     },
     scheduler::Period,
 };
@@ -46,14 +46,9 @@ impl<'a> AddressSpace<'a> {
             let end_page = access_range.last / PAGE_SIZE;
 
             // SAFETY: The start and end pages are bounded by the width mask, they fall into the table constructed by `commit`
-            let page_slice = unsafe {
-                members
-                    .read
-                    .computed_table
-                    .get_unchecked(start_page..=end_page)
-            };
+            let page_slice = unsafe { members.read.0.get_unchecked(start_page..=end_page) };
 
-            for PageEntry {
+            for PageTableEntry {
                 range: entry_assigned_range,
                 target,
             } in page_slice.iter().flatten()
@@ -77,7 +72,7 @@ impl<'a> AddressSpace<'a> {
                 let adjusted_buffer = &mut chunk_buffer[buffer_range];
 
                 match target {
-                    PageTarget::Component {
+                    PageTableTarget::Component {
                         destination_start,
                         component_id,
                         is_standard_memory,
@@ -122,7 +117,7 @@ impl<'a> AddressSpace<'a> {
                             )?;
                         }
                     }
-                    PageTarget::Memory(bytes) => {
+                    PageTableTarget::Memory(bytes) => {
                         let memory_range =
                             RangeInclusive::from_start_and_length(offset, adjusted_buffer.len());
 

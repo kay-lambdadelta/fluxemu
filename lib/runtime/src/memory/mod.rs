@@ -78,41 +78,8 @@ impl<'a> AddressSpace<'a> {
     }
 }
 
-#[derive(Debug, Clone)]
-enum MappingEntry {
-    Component(ComponentPath),
-    Mirror {
-        source_base: Address,
-        destination_base: Address,
-    },
-    Buffer(Bytes),
-}
-
-impl PartialEq for MappingEntry {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Component(a), Self::Component(b)) => a == b,
-            (
-                Self::Mirror {
-                    source_base: source_base_a,
-                    destination_base: destination_base_a,
-                },
-                Self::Mirror {
-                    source_base: source_base_b,
-                    destination_base: destination_base_b,
-                },
-            ) => source_base_a == source_base_b && destination_base_a == destination_base_b,
-            // Never coalesce buffer entries
-            (Self::Buffer(_), Self::Buffer(_)) => false,
-            _ => false,
-        }
-    }
-}
-
-impl Eq for MappingEntry {}
-
 #[derive(Clone, Debug)]
-enum PageTarget {
+enum PageTableTarget {
     Memory(Bytes),
     Component {
         destination_start: Address,
@@ -122,27 +89,21 @@ enum PageTarget {
 }
 
 #[derive(Debug, Clone)]
-struct PageEntry {
+struct PageTableEntry {
     /// Full, uncropped relevant range
     pub range: std::range::RangeInclusive<Address>,
-    pub target: PageTarget,
+    pub target: PageTableTarget,
 }
 
 #[derive(Debug)]
-struct MemoryMappingTable {
-    master: RangeInclusiveMap<Address, MappingEntry>,
-    computed_table: Box<[SmallVec<PageEntry, 1>]>,
-}
+struct PageTable(Box<[SmallVec<PageTableEntry, 1>]>);
 
-impl MemoryMappingTable {
+impl PageTable {
     pub fn new(address_space_width: u8) -> Self {
         let addr_space_size = 2usize.pow(u32::from(address_space_width));
         let total_pages = addr_space_size.div_ceil(PAGE_SIZE);
 
-        Self {
-            master: RangeInclusiveMap::new(),
-            computed_table: vec![Default::default(); total_pages].into_boxed_slice(),
-        }
+        Self(vec![Default::default(); total_pages].into_boxed_slice())
     }
 }
 
@@ -152,8 +113,8 @@ pub struct AddressSpaceId(pub(crate) u16);
 
 #[derive(Debug)]
 struct Members {
-    pub read: MemoryMappingTable,
-    pub write: MemoryMappingTable,
+    pub read: PageTable,
+    pub write: PageTable,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -183,13 +144,52 @@ impl Debug for MemoryError {
     }
 }
 
+#[derive(Debug, Default)]
+struct MasterTables {
+    read: RangeInclusiveMap<Address, MasterTableEntry>,
+    write: RangeInclusiveMap<Address, MasterTableEntry>,
+}
+
+#[derive(Debug, Clone)]
+enum MasterTableEntry {
+    Component(ComponentPath),
+    Mirror {
+        source_base: Address,
+        destination_base: Address,
+    },
+    Buffer(Bytes),
+}
+
+impl PartialEq for MasterTableEntry {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Component(a), Self::Component(b)) => a == b,
+            (
+                Self::Mirror {
+                    source_base: source_base_a,
+                    destination_base: destination_base_a,
+                },
+                Self::Mirror {
+                    source_base: source_base_b,
+                    destination_base: destination_base_b,
+                },
+            ) => source_base_a == source_base_b && destination_base_a == destination_base_b,
+            // Never coalesce buffer entries
+            (Self::Buffer(_), Self::Buffer(_)) => false,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for MasterTableEntry {}
+
 #[derive(Debug)]
 pub(crate) struct AddressSpaceData {
     width_mask: Address,
     address_space_width: u8,
     id: AddressSpaceId,
     members: AtomicOwned<Members>,
-    write_lock: Mutex<()>,
+    master: Mutex<MasterTables>,
 }
 
 impl AddressSpaceData {
@@ -206,10 +206,10 @@ impl AddressSpaceData {
             width_mask,
             address_space_width: width,
             members: AtomicOwned::new(Members {
-                read: MemoryMappingTable::new(width),
-                write: MemoryMappingTable::new(width),
+                read: PageTable::new(width),
+                write: PageTable::new(width),
             }),
-            write_lock: Mutex::default(),
+            master: Mutex::default(),
         }
     }
 

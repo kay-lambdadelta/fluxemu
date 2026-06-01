@@ -8,9 +8,9 @@ use smallvec::SmallVec;
 use crate::{
     component::ComponentRegistry,
     memory::{
-        Address, AddressSpaceData, MAX_MIRROR_DEPTH, MapTarget, MappingEntry, Members,
-        MemoryMappingTable, MemoryRemappingCommand, PAGE_SIZE, PageEntry, PageTarget, Permissions,
-        component::Memory,
+        Address, AddressSpaceData, MAX_MIRROR_DEPTH, MapTarget, MasterTableEntry, MasterTables,
+        Members, MemoryRemappingCommand, PAGE_SIZE, PageTable, PageTableEntry, PageTableTarget,
+        Permissions, component::Memory,
     },
     scheduler::Period,
 };
@@ -32,25 +32,26 @@ impl Permissions {
     };
 }
 
-impl MemoryMappingTable {
+impl PageTable {
     #[inline]
     fn commit(
         &mut self,
         previous_table: &Self,
+        master: &RangeInclusiveMap<Address, MasterTableEntry>,
         dirty: &RangeInclusiveSet<Address>,
         registry: ComponentRegistry<'_>,
     ) {
-        for (page_index, page) in self.computed_table.iter_mut().enumerate() {
+        for (page_index, page) in self.0.iter_mut().enumerate() {
             let page_address_range =
                 RangeInclusive::from_start_and_length(page_index * PAGE_SIZE, PAGE_SIZE);
 
             if dirty.overlaps(&page_address_range) {
                 // Compile master table entries into this page
-                for (source_range, entry) in self.master.overlapping(page_address_range.clone()) {
+                for (source_range, entry) in master.overlapping(page_address_range.clone()) {
                     match entry {
-                        MappingEntry::Component(path) => {
-                            page.push(PageEntry {
-                                target: PageTarget::Component {
+                        MasterTableEntry::Component(path) => {
+                            page.push(PageTableEntry {
+                                target: PageTableTarget::Component {
                                     destination_start: *source_range.start(),
                                     component_id: registry.path_to_id(path).unwrap(),
                                     is_standard_memory: registry.typeid(path).unwrap()
@@ -59,7 +60,7 @@ impl MemoryMappingTable {
                                 range: source_range.clone().into(),
                             });
                         }
-                        MappingEntry::Mirror {
+                        MasterTableEntry::Mirror {
                             source_base,
                             destination_base,
                         } => {
@@ -75,7 +76,7 @@ impl MemoryMappingTable {
                             );
 
                             Self::resolve_mirror_target(
-                                &self.master,
+                                master,
                                 registry,
                                 source_range.clone(),
                                 assigned_destination_range,
@@ -83,13 +84,13 @@ impl MemoryMappingTable {
                                 0,
                             );
                         }
-                        MappingEntry::Buffer(memory) => {
+                        MasterTableEntry::Buffer(memory) => {
                             // Validate the buffer subrange matches the range its being put into
                             assert_eq!(memory.len(), source_range.len());
 
-                            page.push(PageEntry {
+                            page.push(PageTableEntry {
                                 range: source_range.clone().into(),
-                                target: PageTarget::Memory(memory.clone()),
+                                target: PageTableTarget::Memory(memory.clone()),
                             });
                         }
                     }
@@ -101,12 +102,12 @@ impl MemoryMappingTable {
                 // Deduplicate
                 page.dedup_by(|a, b| match (&a.target, &b.target) {
                     (
-                        PageTarget::Component {
+                        PageTableTarget::Component {
                             destination_start: destination_start_a,
                             component_id: component_id_a,
                             ..
                         },
-                        PageTarget::Component {
+                        PageTableTarget::Component {
                             destination_start: destination_start_b,
                             component_id: component_id_b,
                             ..
@@ -135,18 +136,18 @@ impl MemoryMappingTable {
                     _ => false,
                 });
             } else {
-                *page = previous_table.computed_table[page_index].clone();
+                *page = previous_table.0[page_index].clone();
             }
         }
     }
 
     #[inline]
     fn resolve_mirror_target(
-        master: &RangeInclusiveMap<Address, MappingEntry>,
+        master: &RangeInclusiveMap<Address, MasterTableEntry>,
         registry: ComponentRegistry<'_>,
         source_range: RangeInclusive<Address>,
         target_range: RangeInclusive<Address>,
-        page: &mut SmallVec<PageEntry, 1>,
+        page: &mut SmallVec<PageTableEntry, 1>,
         depth: usize,
     ) {
         if depth > MAX_MIRROR_DEPTH {
@@ -166,10 +167,10 @@ impl MemoryMappingTable {
                 (source_range.start() + shrink_left)..=(source_range.end() - shrink_right);
 
             match destination_entry {
-                MappingEntry::Component(path) => {
-                    page.push(PageEntry {
+                MasterTableEntry::Component(path) => {
+                    page.push(PageTableEntry {
                         range: calculated_source_range.into(),
-                        target: PageTarget::Component {
+                        target: PageTableTarget::Component {
                             destination_start: *destination_overlap.start(),
                             component_id: registry.path_to_id(path).unwrap(),
                             is_standard_memory: registry.typeid(path).unwrap()
@@ -177,7 +178,7 @@ impl MemoryMappingTable {
                         },
                     });
                 }
-                MappingEntry::Buffer(memory) => {
+                MasterTableEntry::Buffer(memory) => {
                     let buffer_subrange = (destination_overlap.start() - destination_range.start())
                         ..=(destination_overlap.end() - destination_range.start());
 
@@ -189,12 +190,12 @@ impl MemoryMappingTable {
                         "Buffers has to be the same length as the range they are being mapped into"
                     );
 
-                    page.push(PageEntry {
+                    page.push(PageTableEntry {
                         range: calculated_source_range.into(),
-                        target: PageTarget::Memory(memory),
+                        target: PageTableTarget::Memory(memory),
                     });
                 }
-                MappingEntry::Mirror {
+                MasterTableEntry::Mirror {
                     source_base,
                     destination_base,
                 } => {
@@ -223,12 +224,16 @@ impl MemoryMappingTable {
     }
 
     #[inline]
-    fn mirror_dirtying_pass(&mut self, dirty: &mut RangeInclusiveSet<usize>) {
+    fn mirror_dirtying_pass(
+        &mut self,
+        master: &RangeInclusiveMap<Address, MasterTableEntry>,
+        dirty: &mut RangeInclusiveSet<usize>,
+    ) {
         loop {
             let old_dirty = dirty.clone();
 
-            for (master_region, mapping_entry) in self.master.iter() {
-                if let MappingEntry::Mirror {
+            for (master_region, mapping_entry) in master.iter() {
+                if let MasterTableEntry::Mirror {
                     source_base,
                     destination_base,
                 } = mapping_entry
@@ -272,22 +277,20 @@ impl AddressSpaceData {
         let mut dirty_read = RangeInclusiveSet::new();
         let mut dirty_write = RangeInclusiveSet::new();
 
-        let _write_lock_guard = self.write_lock.lock().unwrap();
+        // We are also using this as a write serializer
+        let mut master_tables_guard = self.master.lock().unwrap();
+        let MasterTables {
+            read: master_read,
+            write: master_write,
+        } = &mut *master_tables_guard;
 
         let current = self.members.load(Ordering::Acquire, guard);
         let current_members = current.as_ref().unwrap();
 
-        let mut read_table = MemoryMappingTable {
-            master: current_members.read.master.clone(),
-            computed_table: vec![SmallVec::new(); current_members.read.computed_table.len()]
-                .into_boxed_slice(),
-        };
-
-        let mut write_table = MemoryMappingTable {
-            master: current_members.write.master.clone(),
-            computed_table: vec![SmallVec::new(); current_members.write.computed_table.len()]
-                .into_boxed_slice(),
-        };
+        let mut read_table =
+            PageTable(vec![SmallVec::new(); current_members.read.0.len()].into_boxed_slice());
+        let mut write_table =
+            PageTable(vec![SmallVec::new(); current_members.write.0.len()].into_boxed_slice());
 
         for command in commands {
             match command {
@@ -313,23 +316,23 @@ impl AddressSpaceData {
                     match target {
                         MapTarget::Component(component_path) => {
                             if permissions.read {
-                                read_table.master.insert(
+                                master_read.insert(
                                     range.clone(),
-                                    MappingEntry::Component(component_path.clone()),
+                                    MasterTableEntry::Component(component_path.clone()),
                                 );
                             }
 
                             if permissions.write {
-                                write_table
-                                    .master
-                                    .insert(range.clone(), MappingEntry::Component(component_path));
+                                master_write.insert(
+                                    range.clone(),
+                                    MasterTableEntry::Component(component_path),
+                                );
                             }
                         }
                         MapTarget::Buffer(bytes) => {
                             if permissions.read {
-                                read_table
-                                    .master
-                                    .insert(range.clone(), MappingEntry::Buffer(bytes.clone()));
+                                master_read
+                                    .insert(range.clone(), MasterTableEntry::Buffer(bytes.clone()));
                             }
 
                             if permissions.write {
@@ -351,9 +354,9 @@ impl AddressSpaceData {
                             );
 
                             if permissions.read {
-                                read_table.master.insert(
+                                master_read.insert(
                                     range.clone(),
-                                    MappingEntry::Mirror {
+                                    MasterTableEntry::Mirror {
                                         source_base: *range.start(),
                                         destination_base: *destination.start(),
                                     },
@@ -361,9 +364,9 @@ impl AddressSpaceData {
                             }
 
                             if permissions.write {
-                                write_table.master.insert(
+                                master_write.insert(
                                     range.clone(),
-                                    MappingEntry::Mirror {
+                                    MasterTableEntry::Mirror {
                                         source_base: *range.start(),
                                         destination_base: *destination.start(),
                                     },
@@ -374,12 +377,12 @@ impl AddressSpaceData {
                 }
                 MemoryRemappingCommand::Unmap { range, permissions } => {
                     if permissions.read {
-                        read_table.master.remove(range.clone());
+                        master_read.remove(range.clone());
                         dirty_read.insert(range.clone());
                     }
 
                     if permissions.write {
-                        write_table.master.remove(range.clone());
+                        master_write.remove(range.clone());
                         dirty_write.insert(range.clone());
                     }
                 }
@@ -391,26 +394,22 @@ impl AddressSpaceData {
             }
         }
 
-        read_table.mirror_dirtying_pass(&mut dirty_read);
-        write_table.mirror_dirtying_pass(&mut dirty_write);
+        read_table.mirror_dirtying_pass(master_read, &mut dirty_read);
+        write_table.mirror_dirtying_pass(master_write, &mut dirty_write);
 
-        read_table.commit(&current_members.read, &dirty_read, registry);
-        write_table.commit(&current_members.write, &dirty_write, registry);
+        read_table.commit(&current_members.read, master_read, &dirty_read, registry);
+        write_table.commit(&current_members.write, master_write, &dirty_write, registry);
 
         // Make sure owning components in the old map get synchronized to this timestamp before the remapping is actually applied
         //
         // This is a "fence"
-        for (dirty, table) in [
-            (dirty_read, &current_members.read),
-            (dirty_write, &current_members.write),
-        ] {
+        for (dirty, master) in [(dirty_read, &master_read), (dirty_write, &master_write)] {
             for dirty_entry in dirty {
                 for component_path in
-                    table
-                        .master
+                    master
                         .overlapping(dirty_entry)
                         .filter_map(|(_, mapping_entry)| match mapping_entry {
-                            MappingEntry::Component(path) => Some(path),
+                            MasterTableEntry::Component(path) => Some(path),
                             _ => None,
                         })
                 {
