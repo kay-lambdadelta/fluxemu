@@ -1677,7 +1677,6 @@ dependencies = [
  "serde",
  "strum",
  "sysinfo",
- "time",
  "tracing",
  "uuid",
  "versions",
