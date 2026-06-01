@@ -15,8 +15,9 @@ use crate::audio_mixer::AudioMixer;
 const ALPHA: f32 = 0.1;
 const SMOOTHING_WINDOW: usize = 8;
 const OUTLIER_MULTIPLE: f32 = 10.0;
-const GROWTH_DIVISOR: f32 = 4.0;
+const GROWTH_DIVISOR: f32 = 8.0;
 const SHRINK_DIVISOR: f32 = 16.0;
+const TRACE_INTERVAL: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -42,6 +43,7 @@ pub fn machine_thread(
     let mut error = 0.0;
     let mut average_sleep_overshoot = 0.0;
     let mut paused = false;
+    let mut last_trace = Instant::now();
 
     // Ring buffers for smoothing
     let mut execution_time_buffer = ConstGenericRingBuffer::<f32, SMOOTHING_WINDOW>::new();
@@ -82,8 +84,8 @@ pub fn machine_thread(
         if is_outlier {
             error = 0.0;
 
-            // Still try to grow but do not poison the smoother
             execution_timeslice += (execution_timeslice / GROWTH_DIVISOR).max(f32::EPSILON);
+            execution_time_buffer.clear();
         } else {
             // Add to buffer and compute smoothed value
             execution_time_buffer.enqueue(execution_time);
@@ -148,6 +150,24 @@ pub fn machine_thread(
                 execution_timeslice += growth_step;
             } else {
                 execution_timeslice = (execution_timeslice - shrink_step).max(f32::EPSILON);
+            }
+
+            if last_trace.elapsed() >= TRACE_INTERVAL {
+                // Helpful debug logs
+
+                tracing::debug!(
+                    execution_timeslice = ?Duration::from_secs_f32(execution_timeslice),
+                    smoothed_exec = ?Duration::from_secs_f32(smoothed_exec_time),
+                    actual_exec = ?Duration::from_secs_f32(execution_time),
+                    error = ?Duration::from_secs_f32(error.abs()),
+                    sleep_threshold = ?Duration::from_secs_f32(sleep_threshold),
+                    average_sleep_overshoot = ?Duration::from_secs_f32(average_sleep_overshoot.abs()),
+                    jitter_ratio,
+                    stability,
+                    "controller state"
+                );
+
+                last_trace = Instant::now();
             }
         }
 

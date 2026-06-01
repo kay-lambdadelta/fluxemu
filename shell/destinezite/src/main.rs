@@ -42,8 +42,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_regex(true)
             .with_default_directive(LevelFilter::INFO.into())
             .from_env_lossy()
-            // Creates a bunch of spam presumably relating to benchmarking itself
-            .add_directive("cosmic_text=info".parse().unwrap()),
+            .add_directive("cosmic_text=info".parse().unwrap())
+            .add_directive("winit=info".parse().unwrap()),
     );
 
     let mut environment = if let Ok(environment_string) =
