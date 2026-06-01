@@ -2,13 +2,12 @@ use std::{
     fmt::Debug,
     hash::Hash,
     ops::RangeInclusive,
-    sync::{Mutex, atomic::Ordering},
+    sync::{Arc, Mutex, atomic::Ordering},
 };
 
 use bytes::Bytes;
 use rangemap::RangeInclusiveMap;
 use sdd::{AtomicOwned, Guard};
-use smallvec::SmallVec;
 use thiserror::Error;
 
 use crate::{
@@ -96,7 +95,7 @@ struct PageTableEntry {
 }
 
 #[derive(Debug)]
-struct PageTable(Box<[SmallVec<PageTableEntry, 1>]>);
+struct PageTable(Box<[Arc<[PageTableEntry]>]>);
 
 impl PageTable {
     pub fn new(address_space_width: u8) -> Self {

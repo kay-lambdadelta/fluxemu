@@ -51,7 +51,7 @@ impl<'a> AddressSpace<'a> {
             for PageTableEntry {
                 range: entry_assigned_range,
                 target,
-            } in page_slice.iter().flatten()
+            } in page_slice.iter().flat_map(|page| page.iter())
             {
                 if entry_assigned_range.last < access_range.start {
                     continue;

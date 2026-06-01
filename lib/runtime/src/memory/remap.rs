@@ -1,9 +1,12 @@
-use std::{any::TypeId, ops::RangeInclusive, sync::atomic::Ordering};
+use std::{
+    any::TypeId,
+    ops::RangeInclusive,
+    sync::{Arc, atomic::Ordering},
+};
 
 use fluxemu_range::{ContiguousRange, RangeIntersection};
 use rangemap::{RangeInclusiveMap, RangeInclusiveSet};
 use sdd::{Guard, Owned, Tag};
-use smallvec::SmallVec;
 
 use crate::{
     component::ComponentRegistry,
@@ -46,11 +49,13 @@ impl PageTable {
                 RangeInclusive::from_start_and_length(page_index * PAGE_SIZE, PAGE_SIZE);
 
             if dirty.overlaps(&page_address_range) {
+                let mut page_contents = Vec::default();
+
                 // Compile master table entries into this page
                 for (source_range, entry) in master.overlapping(page_address_range.clone()) {
                     match entry {
                         MasterTableEntry::Component(path) => {
-                            page.push(PageTableEntry {
+                            page_contents.push(PageTableEntry {
                                 target: PageTableTarget::Component {
                                     destination_start: *source_range.start(),
                                     component_id: registry.path_to_id(path).unwrap(),
@@ -80,7 +85,7 @@ impl PageTable {
                                 registry,
                                 source_range.clone(),
                                 assigned_destination_range,
-                                page,
+                                &mut page_contents,
                                 0,
                             );
                         }
@@ -88,7 +93,7 @@ impl PageTable {
                             // Validate the buffer subrange matches the range its being put into
                             assert_eq!(memory.len(), source_range.len());
 
-                            page.push(PageTableEntry {
+                            page_contents.push(PageTableEntry {
                                 range: source_range.clone().into(),
                                 target: PageTableTarget::Memory(memory.clone()),
                             });
@@ -97,10 +102,10 @@ impl PageTable {
                 }
 
                 // Make sure what we put in is sorted
-                page.sort_by_key(|entry| entry.range.start);
+                page_contents.sort_by_key(|entry| entry.range.start);
 
                 // Deduplicate
-                page.dedup_by(|a, b| match (&a.target, &b.target) {
+                page_contents.dedup_by(|a, b| match (&a.target, &b.target) {
                     (
                         PageTableTarget::Component {
                             destination_start: destination_start_a,
@@ -135,6 +140,8 @@ impl PageTable {
                     }
                     _ => false,
                 });
+
+                *page = Arc::from(page_contents);
             } else {
                 *page = previous_table.0[page_index].clone();
             }
@@ -147,7 +154,7 @@ impl PageTable {
         registry: ComponentRegistry<'_>,
         source_range: RangeInclusive<Address>,
         target_range: RangeInclusive<Address>,
-        page: &mut SmallVec<PageTableEntry, 1>,
+        page: &mut Vec<PageTableEntry>,
         depth: usize,
     ) {
         if depth > MAX_MIRROR_DEPTH {
@@ -288,9 +295,9 @@ impl AddressSpaceData {
         let current_members = current.as_ref().unwrap();
 
         let mut read_table =
-            PageTable(vec![SmallVec::new(); current_members.read.0.len()].into_boxed_slice());
+            PageTable(vec![Default::default(); current_members.read.0.len()].into_boxed_slice());
         let mut write_table =
-            PageTable(vec![SmallVec::new(); current_members.write.0.len()].into_boxed_slice());
+            PageTable(vec![Default::default(); current_members.write.0.len()].into_boxed_slice());
 
         for command in commands {
             match command {

@@ -31,7 +31,6 @@ sdd = { workspace = true }
 sealed = { workspace = true }
 serde = { workspace = true }
 serde_with = { workspace = true }
-smallvec = { version = "2.0.0-alpha.12" }
 strum = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
