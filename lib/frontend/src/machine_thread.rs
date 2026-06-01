@@ -89,37 +89,25 @@ pub fn machine_thread(
         } else {
             // Add to buffer and compute smoothed value
             execution_time_buffer.enqueue(execution_time);
-            let smoothed_exec_time = {
+            let smoothed_execution_time = {
                 let sum = execution_time_buffer.iter().copied().sum::<f32>();
 
                 sum / (execution_time_buffer.len() as f32)
             };
 
-            let frame_delta = smoothed_exec_time - execution_timeslice;
+            let execution_delta = smoothed_execution_time - execution_timeslice;
+            error += execution_delta;
 
             // Jitter smoothing
-            jitter_buffer.enqueue(frame_delta.abs());
+            jitter_buffer.enqueue(execution_delta.abs());
             let average_jitter = {
                 let sum = jitter_buffer.iter().copied().sum::<f32>();
 
                 sum / (jitter_buffer.len() as f32)
             };
-            let jitter_ratio = if execution_timeslice > 0.0 {
-                (average_jitter / execution_timeslice).clamp(0.0, 1.0)
-            } else {
-                0.0
-            };
 
+            let jitter_ratio = (average_jitter / execution_timeslice).clamp(0.0, 1.0);
             let stability = 1.0 - jitter_ratio;
-            error += smoothed_exec_time - execution_timeslice;
-
-            // Avoid windup
-            let max_error = execution_timeslice * 4.0;
-            if error > max_error {
-                error = max_error;
-            } else if error < -max_error {
-                error = -max_error;
-            }
 
             // Sleep correction
             if error < -sleep_threshold {
@@ -140,11 +128,10 @@ pub fn machine_thread(
             // Be more aggressive about growing rather than shrinking execution time
             //
             // As its worse to be behind than lock components more than we technically have to for efficiency
-
             let growth_step = (execution_timeslice / GROWTH_DIVISOR) * stability.max(0.1);
             let shrink_step = (execution_timeslice / SHRINK_DIVISOR) * stability.max(0.1);
 
-            let required_timeslice = smoothed_exec_time + average_sleep_overshoot;
+            let required_timeslice = smoothed_execution_time + average_sleep_overshoot;
 
             if required_timeslice > execution_timeslice {
                 execution_timeslice += growth_step;
@@ -157,7 +144,7 @@ pub fn machine_thread(
 
                 tracing::debug!(
                     execution_timeslice = ?Duration::from_secs_f32(execution_timeslice),
-                    smoothed_exec = ?Duration::from_secs_f32(smoothed_exec_time),
+                    smoothed_exec = ?Duration::from_secs_f32(smoothed_execution_time),
                     actual_exec = ?Duration::from_secs_f32(execution_time),
                     error = ?Duration::from_secs_f32(error.abs()),
                     sleep_threshold = ?Duration::from_secs_f32(sleep_threshold),
