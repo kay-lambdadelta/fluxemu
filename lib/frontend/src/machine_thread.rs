@@ -13,9 +13,10 @@ use ringbuffer::{ConstGenericRingBuffer, RingBuffer};
 use crate::audio_mixer::AudioMixer;
 
 const ALPHA: f32 = 0.1;
-const SMOOTHING_WINDOW: usize = 4;
+const SMOOTHING_WINDOW: usize = 8;
 const OUTLIER_MULTIPLE: f32 = 10.0;
-const MIN_TIMESLICE: f32 = Duration::from_millis(4).as_secs_f32();
+const GROWTH_DIVISOR: f32 = 4.0;
+const SHRINK_DIVISOR: f32 = 16.0;
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -35,8 +36,9 @@ pub fn machine_thread(
         audio_mixer,
     }: MachineThreadContext,
 ) {
-    let mut execution_timeslice = MIN_TIMESLICE;
-    let mut sleep_threshold = Duration::from_millis(4).as_secs_f32();
+    let initial_time = Duration::from_millis(4).as_secs_f32();
+    let mut execution_timeslice = initial_time;
+    let mut sleep_threshold = initial_time;
     let mut error = 0.0;
     let mut average_sleep_overshoot = 0.0;
     let mut paused = false;
@@ -79,6 +81,9 @@ pub fn machine_thread(
 
         if is_outlier {
             error = 0.0;
+
+            // Still try to grow but do not poison the smoother
+            execution_timeslice += (execution_timeslice / GROWTH_DIVISOR).max(f32::EPSILON);
         } else {
             // Add to buffer and compute smoothed value
             execution_time_buffer.enqueue(execution_time);
@@ -130,18 +135,19 @@ pub fn machine_thread(
                 sleep_threshold = average_sleep_overshoot.max(0.0) * 2.0;
             }
 
-            let growth_step = execution_timeslice / 16.0;
-            let shrink_step = execution_timeslice / 8.0;
+            // Be more aggressive about growing rather than shrinking execution time
+            //
+            // As its worse to be behind than lock components more than we technically have to for efficiency
 
-            let growth_step = growth_step * stability.max(0.1);
-            let shrink_step = shrink_step * stability.max(0.1);
+            let growth_step = (execution_timeslice / GROWTH_DIVISOR) * stability.max(0.1);
+            let shrink_step = (execution_timeslice / SHRINK_DIVISOR) * stability.max(0.1);
 
             let required_timeslice = smoothed_exec_time + average_sleep_overshoot;
 
             if required_timeslice > execution_timeslice {
                 execution_timeslice += growth_step;
-            } else if execution_timeslice > MIN_TIMESLICE + shrink_step {
-                execution_timeslice = (execution_timeslice - shrink_step).max(MIN_TIMESLICE);
+            } else {
+                execution_timeslice = (execution_timeslice - shrink_step).max(f32::EPSILON);
             }
         }
 
