@@ -237,7 +237,7 @@ impl PageTable {
         dirty: &mut RangeInclusiveSet<usize>,
     ) {
         loop {
-            let old_dirty = dirty.clone();
+            let mut changed = false;
 
             for (master_region, mapping_entry) in master.iter() {
                 if let MasterTableEntry::Mirror {
@@ -250,18 +250,17 @@ impl PageTable {
                         master_region.len(),
                     );
 
-                    if dirty.overlaps(&destination_range) {
-                        let source_range = RangeInclusive::from_start_and_length(
-                            *source_base,
-                            master_region.len(),
-                        );
+                    let source_range =
+                        RangeInclusive::from_start_and_length(*source_base, master_region.len());
 
+                    if dirty.overlaps(&destination_range) && !dirty.overlaps(&source_range) {
                         dirty.insert(source_range);
+                        changed = true;
                     }
                 }
             }
 
-            if *dirty == old_dirty {
+            if !changed {
                 break;
             }
         }
