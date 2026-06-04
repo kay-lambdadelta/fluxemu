@@ -85,14 +85,15 @@ impl Renderer {
 
     #[inline]
     #[multiversion::multiversion(targets(
-        "x86_64+avx512f+avx512dq+fma",
+        "x86_64+avx512f+avx512dq+avx512bw+avx512vl+fma",
         "x86_64+avx2+fma",
-        "x86_64+avx+fma",
-        "x86_64+sse4.2",
+        "x86_64+sse4.1",
+        "x86_64+ssse3",
         "x86+sse2",
         "x86+sse",
-        "aarch64+sve2",
+        "aarch64+neon",
         "aarch64+sve",
+        "aarch64+sve2",
     ))]
     fn render_inner<P: From<Srgba<u8>> + Into<Srgba<u8>> + Copy>(
         textures: &mut HashMap<TextureId, Texture<Srgba<u8>>, FxBuildHasher>,
