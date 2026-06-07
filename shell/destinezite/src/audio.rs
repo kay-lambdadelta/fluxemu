@@ -94,7 +94,7 @@ fn create_stream<
 ) -> Stream {
     device
         .build_output_stream::<S, _, _>(
-            &config.config(),
+            config.config(),
             move |buffer, _info| {
                 if let Some(mixer) = mixer.get() {
                     let buffer: &mut [SVector<S, CHANNELS>] = bytemuck::cast_slice_mut(buffer);
