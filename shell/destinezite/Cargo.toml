@@ -11,7 +11,7 @@ maintainer = "Kay <lambdadeltakay@proton.me>"
 [dependencies]
 bytemuck = { workspace = true }
 clap = { workspace = true }
-cpal = "0.17"
+cpal = "0.18"
 egui = { workspace = true }
 egui-wgpu = { version = "0.34", optional = true }
 egui-winit = "0.34"
