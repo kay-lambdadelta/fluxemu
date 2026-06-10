@@ -2,74 +2,43 @@ use std::{
     ffi::OsString,
     fs::{File, read_dir},
     path::{Path, PathBuf},
-    thread::JoinHandle,
+    sync::Arc,
     time::SystemTime,
 };
 
-use egui::{Align, Button, ComboBox, Frame, Layout, ScrollArea, Stroke, TextEdit, TextWrapMode};
+use egui::{
+    Align, Button, ComboBox, Frame, Layout, Response, ScrollArea, Sense, Stroke, TextEdit,
+    TextWrapMode, Widget,
+};
 use egui_material_icons::icons::{
     ICON_ARROW_DOWNWARD, ICON_ARROW_UPWARD, ICON_DIRECTORY_SYNC, ICON_EDIT, ICON_FOLDER_OPEN,
     ICON_LOCK, ICON_VISIBILITY,
 };
+use fluxemu_program::ProgramManager;
 use indexmap::IndexMap;
 use palette::{
     WithAlpha,
     named::{GREEN, RED},
 };
-use strum::{AsRefStr, EnumIter};
 
-use crate::{Frontend, FrontendPlatform, MachineInitializationStep, to_egui_color};
+use crate::{
+    FrontendPlatform, MachineInitializationStep,
+    file_browser::state::{DirectoryEntry, FileBrowserState, PathBarState, SortingMethod},
+    to_egui_color,
+    toast::ToastManager,
+};
 
-#[derive(Clone, Debug)]
-pub struct DirectoryEntry {
-    pub readable: bool,
-    pub modified: SystemTime,
-    pub is_hidden: bool,
-    pub is_directory: bool,
+pub mod state;
+
+pub struct FileBrowser<'a, P: FrontendPlatform> {
+    pub state: &'a mut FileBrowserState,
+    pub machine_initialization_step: &'a mut Option<MachineInitializationStep<P>>,
+    pub program_manager: &'a Arc<ProgramManager>,
+    pub toast_manager: &'a mut ToastManager,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, EnumIter, AsRefStr)]
-pub enum SortingMethod {
-    Name,
-    Modified,
-}
-
-#[derive(Debug, Clone)]
-pub enum PathBarState {
-    Normal(PathBuf),
-    Editing(String),
-}
-
-#[derive(Debug)]
-pub struct FileBrowserState {
-    pathbar_state: PathBarState,
-    current_directory: PathBuf,
-    current_directory_contents: IndexMap<OsString, DirectoryEntry>,
-    sorting_method: SortingMethod,
-    reverse_sorting: bool,
-    show_hidden: bool,
-    directory_to_navigate_to: Option<PathBuf>,
-    refresh_directory_results:
-        Option<JoinHandle<Result<IndexMap<OsString, DirectoryEntry>, std::io::Error>>>,
-}
-
-impl FileBrowserState {
-    pub fn new(home_directory: PathBuf) -> Self {
-        Self {
-            pathbar_state: PathBarState::Normal(home_directory.clone()),
-            current_directory: home_directory.clone(),
-            sorting_method: SortingMethod::Name,
-            reverse_sorting: false,
-            show_hidden: false,
-            current_directory_contents: IndexMap::default(),
-            refresh_directory_results: None,
-            directory_to_navigate_to: Some(home_directory),
-        }
-    }
-}
-
-impl<P: FrontendPlatform> Frontend<P> {
-    pub(super) fn handle_file_browser(&mut self, ui: &mut egui::Ui) {
+impl<P: FrontendPlatform> Widget for FileBrowser<'_, P> {
+    fn ui(mut self, ui: &mut egui::Ui) -> Response {
         let FileBrowserState {
             pathbar_state,
             sorting_method,
@@ -79,7 +48,8 @@ impl<P: FrontendPlatform> Frontend<P> {
             current_directory_contents,
             refresh_directory_results,
             directory_to_navigate_to,
-        } = &mut self.file_browser;
+            native_file_picker_dialog_job,
+        } = &mut self.state;
 
         ui.horizontal_top(|ui| {
             #[cfg(feature = "external-file-dialog")]
@@ -87,7 +57,7 @@ impl<P: FrontendPlatform> Frontend<P> {
                 .button(egui_material_icons::icons::ICON_OPEN_IN_NEW)
                 .on_hover_text("Open native file picker")
                 .clicked()
-                && self.native_file_picker_dialog_job.is_none()
+                && native_file_picker_dialog_job.is_none()
             {
                 let handle = std::thread::spawn(|| {
                     use pollster::FutureExt;
@@ -95,7 +65,7 @@ impl<P: FrontendPlatform> Frontend<P> {
                     rfd::AsyncFileDialog::new().pick_file().block_on()
                 });
 
-                self.native_file_picker_dialog_job = Some(handle);
+                *native_file_picker_dialog_job = Some(handle);
             }
 
             match pathbar_state {
@@ -125,11 +95,11 @@ impl<P: FrontendPlatform> Frontend<P> {
                 PathBarState::Editing(pathbar_contents) => {
                     let pathbuf = PathBuf::from(pathbar_contents.trim());
 
-                    let is_real_dir = pathbuf.is_dir() && pathbuf.read_dir().is_ok();
+                    let is_accesible_dir = pathbuf.is_dir() && pathbuf.read_dir().is_ok();
 
                     // Check if the path the user entered is real and we can read it
                     let edit_box_frame_color =
-                        if is_real_dir { GREEN } else { RED }.with_alpha(u8::MAX / 2);
+                        if is_accesible_dir { GREEN } else { RED }.with_alpha(u8::MAX / 2);
 
                     Frame::NONE
                         .stroke(Stroke::new(4.0, to_egui_color(edit_box_frame_color)))
@@ -140,8 +110,15 @@ impl<P: FrontendPlatform> Frontend<P> {
                             edit = edit.desired_width(ui.available_width());
 
                             // Note that [TextEdit] loses focus when you press enter
-                            if ui.add(edit).lost_focus() && is_real_dir {
-                                *directory_to_navigate_to = Some(pathbuf);
+                            if ui.add(edit).lost_focus() {
+                                if is_accesible_dir {
+                                    *directory_to_navigate_to = Some(pathbuf);
+                                } else {
+                                    self.toast_manager.error(
+                                        "Not a filesystem entry that can entered, check the type \
+                                         or permissions of this item",
+                                    );
+                                }
                             }
                         });
                 }
@@ -195,11 +172,18 @@ impl<P: FrontendPlatform> Frontend<P> {
             {
                 let job = refresh_directory_results.take().unwrap();
 
-                if let Ok(new_contents) = job.join().unwrap() {
-                    *current_directory_contents = new_contents;
+                match job.join().unwrap() {
+                    Ok(new_contents) => {
+                        *current_directory_contents = new_contents;
+                    }
+                    Err(err) => {
+                        self.toast_manager
+                            .error(format!("Could not refresh directory: {}", err));
+                    }
                 }
             }
         });
+
         ScrollArea::vertical().show(ui, |ui| {
             ui.with_layout(
                 Layout::top_down(Align::LEFT).with_cross_justify(true),
@@ -242,7 +226,7 @@ impl<P: FrontendPlatform> Frontend<P> {
                             } else {
                                 let program_manager = self.program_manager.clone();
 
-                                self.machine_initialization_step =
+                                *self.machine_initialization_step =
                                     Some(MachineInitializationStep::CalculatingRomIds {
                                         job: std::thread::spawn(move || {
                                             let rom_id = program_manager.register_external(path)?;
@@ -259,6 +243,7 @@ impl<P: FrontendPlatform> Frontend<P> {
 
         if let Some(directory_to_navigate_to) = directory_to_navigate_to.take() {
             current_directory_contents.clear();
+
             *pathbar_state = PathBarState::Normal(directory_to_navigate_to.clone());
             *current_directory = directory_to_navigate_to.clone();
 
@@ -271,6 +256,8 @@ impl<P: FrontendPlatform> Frontend<P> {
 
             *refresh_directory_results = Some(handle);
         }
+
+        ui.allocate_rect(ui.min_rect(), Sense::empty())
     }
 }
 

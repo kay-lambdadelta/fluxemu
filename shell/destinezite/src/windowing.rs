@@ -3,7 +3,7 @@ use std::{borrow::Cow, collections::HashMap, ops::Deref, sync::Arc, time::Instan
 use egui::{Context, ViewportId};
 use fluxemu_environment::{ENVIRONMENT_LOCATION, Environment};
 use fluxemu_frontend::{
-    Frontend, GraphicsRuntime, MachineFactories, PhysicalInputDeviceMetadata,
+    Frontend, PhysicalInputDeviceMetadata, graphics::GraphicsRuntime, machine::FactoryManager,
 };
 use fluxemu_input::{InputId, InputState, KeyboardInputId, physical::PhysicalInputDeviceId};
 use fluxemu_program::{ProgramManager, RomId};
@@ -46,7 +46,7 @@ impl<R: WinitCompatibleGraphicsRuntime> DesktopEventLoop<R> {
     pub fn run(
         environment: Environment,
         program_manager: Arc<ProgramManager>,
-        machine_factories: MachineFactories<DesktopPlatform<R>>,
+        machine_factories: FactoryManager<DesktopPlatform<R>>,
         initial_program: Option<Vec<RomId>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let event_loop = EventLoop::with_user_event().build()?;
@@ -181,7 +181,7 @@ impl<R: WinitCompatibleGraphicsRuntime> ApplicationHandler<Message> for DesktopE
                     && !event.repeat
                     && let Some(key) = winit2key(event.physical_key)
                 {
-                    self.frontend.change_input_state(
+                    self.frontend.insert_input(
                         PhysicalInputDeviceId::PLATFORM_RESERVED,
                         InputId::Keyboard(key),
                         if event.state == ElementState::Pressed {

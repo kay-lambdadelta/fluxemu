@@ -1,0 +1,25 @@
+_version = 2
+
+[simulation_controller.execution_timeslice]
+en = "Execution Timeslice"
+
+[simulation_controller.sleep_threshold]
+en = "Sleep Threshold"
+
+[simulation_controller.error]
+en = "Accumulated Error"
+
+[simulation_controller.average_sleep_overshoot]
+en = "Average Sleep Overshoot"
+
+[simulation_controller.jitter_ratio]
+en = "Jitter Ratio"
+
+[simulation_controller.average_execution_time]
+en = "Average Execution Time"
+
+[simulation_controller.average_jitter]
+en = "Average Jitter"
+
+[simulation_controller.realtime_percentage]
+en = "Realtime Percentage"

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use fluxemu_egui_software_renderer::Renderer;
-use fluxemu_frontend::GraphicsRuntime;
+use fluxemu_frontend::graphics::GraphicsRuntime;
 use fluxemu_graphics::api::{
     GraphicsApi,
     software::{

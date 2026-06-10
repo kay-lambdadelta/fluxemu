@@ -13,6 +13,7 @@ egui_material_icons = {
   default-features = false,
   features = ["filled"]
 }
+egui-toast = "0.20"
 fluxemu-audio = { workspace = true }
 fluxemu-environment = { workspace = true }
 fluxemu-graphics = { workspace = true }
@@ -29,6 +30,7 @@ pollster = { workspace = true }
 rfd = { version = "0.17", optional = true }
 ringbuffer = { workspace = true }
 ron = { workspace = true }
+rust-i18n = { workspace = true }
 rustc-hash = { workspace = true }
 scc = { workspace = true }
 serde = { workspace = true }

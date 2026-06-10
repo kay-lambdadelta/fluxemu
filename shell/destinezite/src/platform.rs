@@ -1,6 +1,6 @@
 use std::{fmt::Debug, marker::PhantomData};
 
-use fluxemu_frontend::{FrontendPlatform, GraphicsRuntime};
+use fluxemu_frontend::{FrontendPlatform, graphics::GraphicsRuntime};
 use fluxemu_runtime::platform::Platform;
 
 use crate::audio::CpalAudioRuntime;

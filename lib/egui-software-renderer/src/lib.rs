@@ -3,19 +3,20 @@ extern crate std;
 use core::ops::RangeInclusive;
 use std::collections::HashMap;
 
-use crate::powerof2::PowerOfTwoIter;
 use egui::{FullOutput, TextureId};
 use fluxemu_graphics::api::software::texture::{
     CopyMode, Texture, TextureImpl, TextureImplMut, TextureViewMut,
 };
 use fluxemu_range::ContiguousRange;
 use multiversion::inherit_target;
-use nalgebra::Vector4;
-use nalgebra::{Point2, SMatrix, Vector2, Vector3};
+use nalgebra::{Point2, SMatrix, Vector2, Vector3, Vector4};
 use palette::{Srgba, blend::Compose, named::BLACK};
 use rustc_hash::FxBuildHasher;
 
-use crate::shapes::{Primitive, Triangle, reduce_shapes};
+use crate::{
+    powerof2::PowerOfTwoIter,
+    shapes::{Primitive, Triangle, reduce_shapes},
+};
 
 mod powerof2;
 mod shapes;

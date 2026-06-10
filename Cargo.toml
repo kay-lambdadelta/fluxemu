@@ -49,6 +49,7 @@ regex = "1.12"
 ringbuffer = "0.16"
 rmp-serde = "1.3"
 ron = "0.12"
+rust-i18n = "4.1"
 rustc-hash = "2.1"
 scc = "3.7"
 sdd = { version = "4.8" }

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bytemuck::{Pod, Zeroable};
 use egui::{Context, FullOutput};
 use egui_wgpu::{Renderer, RendererOptions, ScreenDescriptor};
-use fluxemu_frontend::GraphicsRuntime;
+use fluxemu_frontend::graphics::GraphicsRuntime;
 use fluxemu_graphics::api::{
     GraphicsApi,
     webgpu::{InitializationData, Requirements, Webgpu},
@@ -177,15 +177,15 @@ impl GraphicsRuntime for WebgpuGraphicsRuntime {
                         runtime_guard.safe_advance_timestamp(),
                         |component| {
                             let framebuffer = component.get_framebuffer(framebuffer_path.name());
-    
+
                             let framebuffer_texture: &<Self::GraphicsApi as GraphicsApi>::Framebuffer =
                                 framebuffer.downcast_ref().unwrap();
-                            
-                            
+
+
                             let texture_view =
                                 framebuffer_texture.create_view(&TextureViewDescriptor::default());
                             let size = framebuffer_texture.size();
-        
+
                             let uniforms = ShaderUniform {
                                 viewport_size: Vector2::new(
                                     surface_texture_size.width as f32,
@@ -193,10 +193,10 @@ impl GraphicsRuntime for WebgpuGraphicsRuntime {
                                 ),
                                 framebuffer_size: Vector2::new(size.width as f32, size.height as f32),
                             };
-        
+
                             self.queue
                                 .write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
-        
+
                             let bind_group = self.device.create_bind_group(&BindGroupDescriptor {
                                 label: None,
                                 layout: &self.bind_group_layout,
@@ -215,7 +215,7 @@ impl GraphicsRuntime for WebgpuGraphicsRuntime {
                                     },
                                 ],
                             });
-        
+
                             render_pass.set_bind_group(0, &bind_group, &[]);
                             render_pass.draw(0..3, 0..1);
                         }

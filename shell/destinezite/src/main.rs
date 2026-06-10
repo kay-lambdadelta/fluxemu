@@ -71,7 +71,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_writer(std::io::stderr)
         .with_ansi(true)
         .with_span_events(FmtSpan::CLOSE)
-        .with_thread_names(true);
+        .with_thread_names(true)
+        .with_thread_ids(false);
 
     let subscriber_builder = tracing_subscriber::registry()
         .with(stderr_layer.with_filter(filter.clone() as Arc<dyn Filter<_> + Send + Sync>));

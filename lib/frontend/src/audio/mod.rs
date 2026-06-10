@@ -1,6 +1,8 @@
 use std::{fmt::Debug, sync::Arc};
 
-use crate::audio_mixer::AudioMixer;
+use crate::audio::mixer::AudioMixer;
+
+pub mod mixer;
 
 /// Audio runtime to provide the frontend
 pub trait AudioRuntime: Sized + Debug {

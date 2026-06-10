@@ -1,6 +1,6 @@
 use fluxemu_runtime::platform::Platform;
 
-use crate::{AudioRuntime, GraphicsRuntime};
+use crate::{audio::AudioRuntime, graphics::GraphicsRuntime};
 
 /// Extension trait for the platform relevant to the frontend
 pub trait FrontendPlatform: Platform + Sized + 'static {

@@ -140,7 +140,6 @@ impl ProgramManager {
     }
 
     /// Attempts to identify a program from its program ids
-    #[tracing::instrument(skip_all)]
     pub fn identify_program(&self, roms: &[RomId]) -> Result<Vec<ProgramSpecification>, Error> {
         let read_transaction = self.database().begin_read()?;
         let hash_alias_table = read_transaction.open_multimap_table(HASH_ALIAS_TABLE)?;
