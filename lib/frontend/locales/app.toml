@@ -26,3 +26,9 @@ en = "Realtime Percentage"
 
 [browser.cannot_navigate_to_directory]
 en = "Not a directory that can accessed, check permissions"
+
+[browser.thread_name_rom_id_calculator]
+en = "Thread ID Calculator"
+
+[browser.open_native_file_dialog]
+en = "Open your operating systems native file dialog"

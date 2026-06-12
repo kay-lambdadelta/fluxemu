@@ -37,7 +37,7 @@ pub struct FileBrowserState {
         Option<JoinHandle<Result<IndexMap<OsString, DirectoryEntry>, std::io::Error>>>,
 
     #[cfg(feature = "external-file-dialog")]
-    pub native_file_picker_dialog_job: Option<JoinHandle<Option<rfd::FileHandle>>>,
+    pub native_file_picker_dialog_job: Option<JoinHandle<Option<Vec<rfd::FileHandle>>>>,
 }
 
 impl FileBrowserState {

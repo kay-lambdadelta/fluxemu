@@ -54,19 +54,56 @@ impl<P: FrontendPlatform> Widget for FileBrowser<'_, P> {
 
         ui.horizontal_top(|ui| {
             #[cfg(feature = "external-file-dialog")]
-            if ui
-                .button(egui_material_icons::icons::ICON_OPEN_IN_NEW)
-                .on_hover_text("Open native file picker")
-                .clicked()
-                && native_file_picker_dialog_job.is_none()
             {
-                let handle = std::thread::spawn(|| {
-                    use pollster::FutureExt;
+                use egui_material_icons::icons::ICON_OPEN_IN_NEW;
 
-                    rfd::AsyncFileDialog::new().pick_file().block_on()
-                });
+                let clicked = ui
+                    .button(ICON_OPEN_IN_NEW)
+                    .on_hover_text(t!("browser.open_native_file_dialog"))
+                    .clicked();
 
-                *native_file_picker_dialog_job = Some(handle);
+                match native_file_picker_dialog_job {
+                    Some(job) if job.is_finished() => {
+                        let native_file_picker_dialog_job =
+                            native_file_picker_dialog_job.take().unwrap();
+
+                        if native_file_picker_dialog_job.is_finished()
+                            && let Some(file_handles) =
+                                native_file_picker_dialog_job.join().unwrap()
+                            && !file_handles.is_empty()
+                        {
+                            let program_manager = self.program_manager.clone();
+
+                            let job = std::thread::Builder::new()
+                                .name(t!("browser.thread_name_rom_id_calculator").to_string())
+                                .spawn(move || {
+                                    let mut rom_ids = Vec::default();
+
+                                    for handle in file_handles {
+                                        rom_ids.push(
+                                            program_manager.register_external(handle.path())?,
+                                        );
+                                    }
+
+                                    Ok(rom_ids)
+                                })
+                                .expect("Could not launch thread to process rom for its id!");
+
+                            *self.machine_initialization_step =
+                                Some(MachineInitializationStep::CalculatingRomIds { job });
+                        }
+                    }
+                    None if clicked => {
+                        let handle = std::thread::spawn(|| {
+                            use pollster::FutureExt;
+
+                            rfd::AsyncFileDialog::new().pick_files().block_on()
+                        });
+
+                        *native_file_picker_dialog_job = Some(handle);
+                    }
+                    _ => {}
+                }
             }
 
             match pathbar_state {
@@ -224,14 +261,17 @@ impl<P: FrontendPlatform> Widget for FileBrowser<'_, P> {
                             } else {
                                 let program_manager = self.program_manager.clone();
 
-                                *self.machine_initialization_step =
-                                    Some(MachineInitializationStep::CalculatingRomIds {
-                                        job: std::thread::spawn(move || {
-                                            let rom_id = program_manager.register_external(path)?;
+                                let job = std::thread::Builder::new()
+                                    .name(t!("browser.thread_name_rom_id_calculator").to_string())
+                                    .spawn(move || {
+                                        let rom_id = program_manager.register_external(path)?;
 
-                                            Ok(vec![rom_id])
-                                        }),
-                                    });
+                                        Ok(vec![rom_id])
+                                    })
+                                    .expect("Could not launch thread to process ROM for its ID!");
+
+                                *self.machine_initialization_step =
+                                    Some(MachineInitializationStep::CalculatingRomIds { job });
                             }
                         }
                     }
