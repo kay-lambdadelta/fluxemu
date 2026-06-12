@@ -13,10 +13,9 @@ mod toast;
 use std::{collections::HashMap, num::Wrapping, sync::Arc, thread::JoinHandle};
 
 use egui::{
-    CentralPanel, Color32, ComboBox, Context, FontFamily, Frame, FullOutput, Id, Modal, Panel,
-    RawInput, RichText, TextEdit, TextStyle,
+    Align, CentralPanel, Color32, Context, FontFamily, Frame, FullOutput, Layout, Panel, RawInput,
+    RichText, TextStyle,
 };
-use egui_extras::{Column, TableBuilder};
 use egui_material_icons::{
     MaterialIcon,
     icons::{
@@ -27,7 +26,7 @@ use egui_material_icons::{
 use fluxemu_environment::Environment;
 use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_input::{InputId, InputState, physical::PhysicalInputDeviceId};
-use fluxemu_program::{MachineId, ProgramManager, ProgramSpecification, RomId};
+use fluxemu_program::{ProgramManager, ProgramSpecification, RomId};
 use fluxemu_runtime::{
     machine::{Machine, builder::SealedMachineBuilder},
     path::ResourcePath,
@@ -272,57 +271,55 @@ impl<P: FrontendPlatform> Frontend<P> {
 
             Panel::top("menu_selection")
                 .resizable(false)
-                .min_size(50.0)
                 .show_inside(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        for tab in TabId::iter() {
-                            let mut item_icon = RichText::new(tab.icon()).size(32.0);
+                    Frame::default().inner_margin(8.0).show(ui, |ui| {
+                        ui.horizontal_centered(|ui| {
+                            for tab in TabId::iter() {
+                                let mut item_icon = RichText::new(tab.icon()).size(32.0);
 
-                            if self.current_tab == tab {
-                                item_icon = item_icon.strong();
-                            }
+                                if self.current_tab == tab {
+                                    item_icon = item_icon.strong();
+                                }
 
-                            if ui.button(item_icon).on_hover_text(tab.as_ref()).clicked() {
-                                self.current_tab = tab;
+                                if ui.button(item_icon).on_hover_text(tab.as_ref()).clicked() {
+                                    self.current_tab = tab;
+                                }
                             }
-                        }
-                    });
+                        });
+                    })
                 });
 
             CentralPanel::default().show_inside(ui, |ui| {
-                ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
-                    Frame::new()
-                        .inner_margin(10.0)
-                        .show(ui, |ui| match self.current_tab {
-                            TabId::Library => {}
-                            TabId::FileBrowser => {
-                                ui.add(FileBrowser {
-                                    state: &mut self.file_browser_state,
-                                    machine_initialization_step: &mut self
-                                        .machine_initialization_step,
-                                    program_manager: &self.program_manager,
-                                    toast_manager: &mut self.toast_manager,
-                                });
-                            }
-                            TabId::Settings => {
-                                self.handle_settings(ui);
-                            }
-                            TabId::Log => {}
-                            TabId::Controller => {}
-                            TabId::Debug => {
-                                if let Some(MachineContext {
-                                    simulation_controller,
-                                    ..
-                                }) = &self.machine_context
-                                {
-                                    let state = simulation_controller
-                                        .snapshot_simulation_controller_state();
+                ui.with_layout(Layout::top_down_justified(Align::LEFT), |ui| {
+                    Frame::new().show(ui, |ui| match self.current_tab {
+                        TabId::Library => {}
+                        TabId::FileBrowser => {
+                            ui.add(FileBrowser {
+                                state: &mut self.file_browser_state,
+                                machine_initialization_step: &mut self.machine_initialization_step,
+                                program_manager: &self.program_manager,
+                                toast_manager: &mut self.toast_manager,
+                            });
+                        }
+                        TabId::Settings => {
+                            self.handle_settings(ui);
+                        }
+                        TabId::Log => {}
+                        TabId::Controller => {}
+                        TabId::Debug => {
+                            if let Some(MachineContext {
+                                simulation_controller,
+                                ..
+                            }) = &self.machine_context
+                            {
+                                let state =
+                                    simulation_controller.snapshot_simulation_controller_state();
 
-                                    ui.add(state);
-                                }
+                                ui.add(state);
                             }
-                            TabId::About => {}
-                        });
+                        }
+                        TabId::About => {}
+                    });
                 });
             });
         })
@@ -385,57 +382,6 @@ impl<P: FrontendPlatform> Frontend<P> {
             unfinished => self.machine_initialization_step = Some(unfinished),
         }
     }
-}
-
-fn specification_fillout_clarification_modal(
-    ctx: &Context,
-    specification: &mut ProgramSpecification,
-) {
-    let modal = Modal::new(Id::new("specification-fillout-clarification-modal"));
-
-    let response = modal.show(ctx, |ui| {
-        ui.heading("Please fill in info you know about this program");
-        ui.label("This program needs information on it to execute it");
-        ui.separator();
-
-        TableBuilder::new(ui)
-            .column(Column::auto().resizable(true))
-            .column(Column::remainder())
-            .striped(true)
-            .body(|mut body| {
-                body.row(30.0, |mut row| {
-                    row.col(|ui| {
-                        ui.label("Machine ID");
-                    });
-                    row.col(|ui| {
-                        ComboBox::from_id_salt("Machine ID")
-                            .selected_text(specification.id.machine.to_nointro_string())
-                            .show_ui(ui, |ui| {
-                                for machine_id in MachineId::iter() {
-                                    let no_intro_string = machine_id.to_nointro_string();
-
-                                    ui.selectable_value(
-                                        &mut specification.id.machine,
-                                        machine_id,
-                                        no_intro_string,
-                                    );
-                                }
-                            });
-                    });
-                });
-
-                body.row(30.0, |mut row| {
-                    row.col(|ui| {
-                        ui.label("Program Name");
-                    });
-                    row.col(|ui| {
-                        TextEdit::singleline(&mut specification.id.name).show(ui);
-                    });
-                });
-            });
-    });
-
-    if response.should_close() {}
 }
 
 fn setup_egui_context() -> Context {

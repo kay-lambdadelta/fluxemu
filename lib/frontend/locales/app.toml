@@ -23,3 +23,6 @@ en = "Average Jitter"
 
 [simulation_controller.realtime_percentage]
 en = "Realtime Percentage"
+
+[browser.cannot_navigate_to_directory]
+en = "Not a directory that can accessed, check permissions"

@@ -31,8 +31,6 @@ impl<P: FrontendPlatform> Frontend<P> {
             }
         });
 
-        ui.separator();
-
         ComboBox::from_label("Graphics Api")
             .selected_text(self.environment.graphics_setting.api.to_string())
             .show_ui(ui, |ui| {

@@ -7,8 +7,8 @@ use std::{
 };
 
 use egui::{
-    Align, Button, ComboBox, Frame, Layout, Response, ScrollArea, Sense, Stroke, TextEdit,
-    TextWrapMode, Widget,
+    Align, Button, ComboBox, Frame, Layout, Response, ScrollArea, Sense, TextEdit, TextWrapMode,
+    Widget,
 };
 use egui_material_icons::icons::{
     ICON_ARROW_DOWNWARD, ICON_ARROW_UPWARD, ICON_DIRECTORY_SYNC, ICON_EDIT, ICON_FOLDER_OPEN,
@@ -18,8 +18,9 @@ use fluxemu_program::ProgramManager;
 use indexmap::IndexMap;
 use palette::{
     WithAlpha,
-    named::{GREEN, RED},
+    named::{BLACK, GREEN, RED},
 };
+use rust_i18n::t;
 
 use crate::{
     FrontendPlatform, MachineInitializationStep,
@@ -82,8 +83,6 @@ impl<P: FrontendPlatform> Widget for FileBrowser<'_, P> {
                         }
                     }
 
-                    ui.add_space(2.0);
-
                     if ui
                         .button(ICON_EDIT)
                         .on_hover_text("Manually edit path bar")
@@ -95,29 +94,28 @@ impl<P: FrontendPlatform> Widget for FileBrowser<'_, P> {
                 PathBarState::Editing(pathbar_contents) => {
                     let pathbuf = PathBuf::from(pathbar_contents.trim());
 
-                    let is_accesible_dir = pathbuf.is_dir() && pathbuf.read_dir().is_ok();
+                    let is_accessible_dir = pathbuf.is_dir() && pathbuf.read_dir().is_ok();
 
                     // Check if the path the user entered is real and we can read it
                     let edit_box_frame_color =
-                        if is_accesible_dir { GREEN } else { RED }.with_alpha(u8::MAX / 2);
+                        if is_accessible_dir { GREEN } else { RED }.with_alpha(u8::MAX / 2);
 
                     Frame::NONE
-                        .stroke(Stroke::new(4.0, to_egui_color(edit_box_frame_color)))
-                        .corner_radius(2.0)
-                        .inner_margin(2.0)
+                        .fill(to_egui_color(edit_box_frame_color))
                         .show(ui, |ui| {
+                            // Make sure the background is visible through the text edit
+                            ui.visuals_mut().extreme_bg_color = to_egui_color(BLACK.with_alpha(0));
+
                             let mut edit = TextEdit::singleline(pathbar_contents);
                             edit = edit.desired_width(ui.available_width());
 
                             // Note that [TextEdit] loses focus when you press enter
                             if ui.add(edit).lost_focus() {
-                                if is_accesible_dir {
+                                if is_accessible_dir {
                                     *directory_to_navigate_to = Some(pathbuf);
                                 } else {
-                                    self.toast_manager.error(
-                                        "Not a filesystem entry that can entered, check the type \
-                                         or permissions of this item",
-                                    );
+                                    self.toast_manager
+                                        .error(t!("browser.cannot_navigate_to_directory"));
                                 }
                             }
                         });
