@@ -27,7 +27,7 @@ mod shapes;
 
 #[derive(Debug, Default)]
 pub struct Renderer {
-    textures: HashMap<TextureId, Texture<Srgba<u8>>, FxBuildHasher>,
+    textures: HashMap<TextureId, Texture<Srgba<f32>>, FxBuildHasher>,
 }
 
 impl Renderer {
@@ -92,12 +92,12 @@ impl Renderer {
         "x86_64+ssse3",
         "x86+sse2",
         "x86+sse",
-        "aarch64+neon",
-        "aarch64+sve",
         "aarch64+sve2",
+        "aarch64+sve",
+        "aarch64+neon",
     ))]
     fn render_inner<P: From<Srgba<u8>> + Into<Srgba<u8>> + Copy>(
-        textures: &mut HashMap<TextureId, Texture<Srgba<u8>>, FxBuildHasher>,
+        textures: &mut HashMap<TextureId, Texture<Srgba<f32>>, FxBuildHasher>,
         context: &egui::Context,
         full_output: FullOutput,
         mut target_texture: TextureViewMut<P>,
@@ -386,7 +386,7 @@ impl Renderer {
         #[inherit_target]
         unsafe fn pixel_rounds<const C: usize, P: From<Srgba<u8>> + Into<Srgba<u8>> + Copy>(
             mut target_pixel_row: TextureViewMut<P>,
-            texture: &Texture<Srgba<u8>>,
+            texture: &Texture<Srgba<f32>>,
             texture_dimensions: Vector2<f32>,
             current_uv: Vector2<f32>,
             current_color: Srgba<f32>,
@@ -430,8 +430,7 @@ impl Renderer {
             for index in 0..C {
                 let texture_position = texture_positions.row(index).transpose();
 
-                let texture_pixel =
-                    unsafe { texture.get_unchecked(texture_position.cast()) }.into_format();
+                let texture_pixel = unsafe { texture.get_unchecked(texture_position.cast()) };
                 let texture_pixel = Vector4::from_row_slice(texture_pixel.as_ref());
 
                 texture_pixels.set_row(index, &texture_pixel.transpose());
