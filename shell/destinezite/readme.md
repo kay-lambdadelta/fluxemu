@@ -45,7 +45,7 @@ Feature specific dependencies (`webgpu` and `windowing` are on by default, `drm`
 | Arch     | `libx11 libxkbcommon wayland`                   |
 | openSUSE | `libX11-devel libxkbcommon-devel wayland-devel` |
 
-#### `drm` — DRM backend for graphics rendering (linux only)
+#### `drm` — DRM backend for interface display (linux only)
 
 | Distro   | Development Package Name                          |
 | -------- | ------------------------------------------------- |
