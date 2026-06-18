@@ -30,7 +30,7 @@ fluxemu-range = { path = "lib/range" }
 fluxemu-runtime = { path = "lib/runtime" }
 heapless = { version = "0.9", features = ["serde"] }
 indexmap = { version = "2.14", features = ["serde"] }
-itertools = "0.14"
+itertools = "0.15"
 nalgebra = {
   version = "0.35",
   features = [
