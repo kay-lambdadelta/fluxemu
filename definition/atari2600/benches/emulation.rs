@@ -1,44 +1,17 @@
 use std::{ops::Deref, time::Duration};
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
-use fluxemu_definition_nes::Nes;
+use fluxemu_definition_atari2600::Atari2600;
 use fluxemu_environment::{ENVIRONMENT_LOCATION, Environment};
 use fluxemu_program::ProgramManager;
 use fluxemu_runtime::machine::{Machine, builder::MachineFactory};
 use redb::Database;
 
 fn emulation_performance(c: &mut Criterion) {
-    // All from https://github.com/christopherpow/nes-test-roms
-    let roms = [
-        (
-            "Pennant League!! - Home Run Nighter (Japan).nes",
-            "30b02626f7432213b828ab245d7b0335d7b5baf5",
-        ),
-        (
-            "Legend of Zelda, The (USA) (Rev 1).nes",
-            "4671517d72d09799403f6c672cd2b395933e926e",
-        ),
-        (
-            "Hydlide (USA).nes",
-            "f9767c7b90b2909fa1e90ade58153bcb911c107f",
-        ),
-        (
-            "Super Mario Bros. (World).nes",
-            "33d23c2f2cfa4c9efec87f7bc1321ce3ce6c89bd",
-        ),
-        (
-            "Pac-Man (USA) (Tengen).nes",
-            "aa3d1672d679a5ca8625ebe67ce46d805719d3fe",
-        ),
-        (
-            "1942 (Japan, USA) (En).nes",
-            "1fc8410c271441b313ad4b382fbe9dcd9eefb6cb",
-        ),
-        (
-            "Xevious (Japan) (En).nes",
-            "c4a36c14de32424f0ee2f9cd3fa8ec28103f9bf0",
-        ),
-    ];
+    let roms = [(
+        "Donkey Kong (USA).a26",
+        "6e6e37ec8d66aea1c13ed444863e3db91497aa35",
+    )];
 
     let environment = if let Ok(environment_string) =
         std::fs::read_to_string(ENVIRONMENT_LOCATION.deref())
@@ -71,7 +44,7 @@ fn emulation_performance(c: &mut Criterion) {
             && program_manager.load(rom_id).unwrap().is_some()
         {
             let machine = Machine::build_test(Some(specification), program_manager.clone());
-            let machine = Nes.construct(machine).seal().build(());
+            let machine = Atari2600.construct(machine).seal().build(());
 
             group.bench_function(program_name, |b| {
                 b.iter(|| {
