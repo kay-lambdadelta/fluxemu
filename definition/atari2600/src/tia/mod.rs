@@ -266,7 +266,7 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
             active_objects.push(ObjectId::Playfield);
         }
 
-        for (object_0, object_1) in active_objects.iter().tuple_combinations() {
+        for [object_0, object_1] in active_objects.iter().array_combinations() {
             self.state
                 .collision_matrix
                 .entry(*object_0)
