@@ -54,7 +54,7 @@ pub static ENVIRONMENT_LOCATION: LazyLock<PathBuf> = LazyLock::new(|| {
 
 #[serde_as]
 #[serde_inline_default]
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Environment {
     #[serde(default)]
     pub physical_input_configs: IndexMap<PhysicalInputDeviceId, PhysicalGamepadConfiguration>,

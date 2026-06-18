@@ -29,6 +29,5 @@ impl<R: GraphicsRuntime> Platform for DesktopPlatform<R> {
 
 impl<R: GraphicsRuntime> FrontendPlatform for DesktopPlatform<R> {
     type AudioRuntime = CpalAudioRuntime;
-
     type GraphicsRuntime = R;
 }

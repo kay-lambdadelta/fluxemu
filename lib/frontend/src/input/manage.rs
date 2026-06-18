@@ -187,14 +187,14 @@ impl<P: FrontendPlatform> Frontend<P> {
         id: PhysicalInputDeviceId,
         metadata: PhysicalInputDeviceMetadata,
         is_id_stable: bool,
-        feed_into_gui: bool,
+        rely_on_frontend_input_handling: bool,
     ) {
         self.physical_input_devices.insert(
             id,
             PhysicalInputDeviceState {
                 is_id_stable,
                 metadata,
-                feed_into_gui,
+                rely_on_frontend_input_handling,
                 gui_relevant_input_state: IndexMap::default(),
             },
         );

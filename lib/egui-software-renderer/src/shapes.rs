@@ -236,11 +236,11 @@ pub fn reduce_shapes(
                     min: Point2::new(
                         clipped_primitive.clip_rect.min.x,
                         clipped_primitive.clip_rect.min.y,
-                    ),
+                    ) * pixels_per_point,
                     max: Point2::new(
                         clipped_primitive.clip_rect.max.x,
                         clipped_primitive.clip_rect.max.y,
-                    ),
+                    ) * pixels_per_point,
                     texture_id: mesh.texture_id,
                     primitives,
                 });

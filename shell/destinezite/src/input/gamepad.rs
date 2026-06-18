@@ -1,5 +1,8 @@
-use fluxemu_input::{GamepadInputId, InputId, InputState};
-use gilrs::{Axis, Button};
+use std::collections::HashMap;
+
+use fluxemu_input::{GamepadInputId, InputId, InputState, physical::PhysicalInputDeviceId};
+use gilrs::{Axis, Button, Gamepad, GamepadId};
+use uuid::Uuid;
 
 pub fn gilrs_button2input(button: Button) -> Option<InputId> {
     Some(InputId::Gamepad(match button {
@@ -81,4 +84,26 @@ pub fn gilrs_axis2input(axis: Axis, value: f32) -> Option<(InputId, InputState)>
         )),
         Axis::Unknown => None,
     }
+}
+
+fn produce_id_for_gilrs_gamepad(
+    non_stable_controller_identification: &mut HashMap<GamepadId, Uuid>,
+    gilrs_gamepad_id: GamepadId,
+    gilrs_gamepad: Gamepad<'_>,
+) -> PhysicalInputDeviceId {
+    let mut gamepad_id = Uuid::from_bytes(gilrs_gamepad.uuid());
+    if gamepad_id == Uuid::nil() {
+        gamepad_id = *non_stable_controller_identification
+            .entry(gilrs_gamepad_id)
+            .or_insert_with(|| {
+                tracing::warn!(
+                    "Gamepad {} is not giving us an ID, assigning it a arbitary one",
+                    gamepad_id
+                );
+
+                Uuid::new_v4()
+            });
+    }
+
+    PhysicalInputDeviceId::new(gamepad_id.try_into().unwrap())
 }

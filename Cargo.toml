@@ -68,5 +68,4 @@ versions = "7.0"
 wgpu = "29.0"
 
 [profile.release]
-debug = true
 panic = "abort"

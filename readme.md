@@ -1,23 +1,5 @@
 # FluxEMU
 
-This is a prototype of a multisystem hardware emulator
+This is a prototype of a multisystem hardware emulator.
 
-## Dependencies
-
-`fluxemu-utils`
-
-| Distro | Development Package Name |
-| ------ | ------------------------ |
-| Debian | libbz2-dev               |
-
-`fluxemu-shell-destinezite`
-
-| Distro | Development Package Name                                                                         |
-| ------ | ------------------------------------------------------------------------------------------------ |
-| Debian | libx11-dev libxkbcommon-dev libwayland-dev libasound2-dev libudev-dev pkg-config build-essential |
-
-Feature specific dependencies (all features are enabled by default)
-
-| Distro | Feature | Development Package Name |
-| ------ | ------- | ------------------------ |
-| Debian | `webgpu`  | libvulkan-dev libgl-dev  |
+For further information, check the `readme.md` files scattered among crates in the repository.

@@ -52,7 +52,7 @@ fn render<const W: usize, const H: usize, P: From<Srgba<u8>> + Into<Srgba<u8>> +
         },
     );
 
-    renderer.render::<P>(context, full_output, texture.as_view_mut());
+    renderer.render::<P>(context, full_output, texture);
 }
 
 fn bench_egui_software(c: &mut Criterion) {

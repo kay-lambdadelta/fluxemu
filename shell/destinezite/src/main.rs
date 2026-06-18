@@ -1,6 +1,16 @@
 //! A multisystem hardware emulator
 
+// Make sure this does not spawn with the console on windows
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+#[cfg(all(not(feature = "drm"), not(feature = "windowing")))]
+compile_error!(
+    "No display backend enabled, please enable one of the supported backends (drm and/or \
+     windowing)"
+);
+
+#[cfg(all(feature = "drm", not(target_os = "linux")))]
+compile_error!("The DRM/KMS backend is only compatible with Linux");
 
 use std::{
     fs::{File, create_dir_all},
@@ -23,15 +33,15 @@ use tracing_subscriber::{
     util::SubscriberInitExt,
 };
 
-use crate::{backend::software::SoftwareGraphicsRuntime, windowing::DesktopEventLoop};
+use crate::{display::software::SoftwareGraphicsRuntime, event_loop::DisplayBackend};
 
 mod audio;
-mod backend;
 mod build_machine;
 mod cli;
+mod display;
+mod event_loop;
 mod input;
 mod platform;
-mod windowing;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = create_dir_all(STORAGE_DIRECTORY.deref());
@@ -118,24 +128,59 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     match environment.graphics_setting.api {
-        fluxemu_environment::graphics::GraphicsApi::Software => {
-            DesktopEventLoop::<SoftwareGraphicsRuntime>::run(
-                environment,
-                program_manager.clone(),
-                build_machine::get_software_factories(),
-                initial_program,
-            )?;
-        }
+        // Software backend is always available
+        fluxemu_environment::graphics::GraphicsApi::Software => match cli.display_backend {
+            #[cfg(feature = "windowing")]
+            DisplayBackend::Windowing => {
+                use crate::event_loop::windowing::WindowingEventLoop;
+
+                WindowingEventLoop::<SoftwareGraphicsRuntime<_>>::run(
+                    environment.clone(),
+                    program_manager.clone(),
+                    build_machine::get_software_factories(),
+                    initial_program.clone(),
+                )?;
+            }
+            #[cfg(feature = "drm")]
+            DisplayBackend::Drm => {
+                use crate::event_loop::drm::DrmEventLoop;
+
+                DrmEventLoop::<SoftwareGraphicsRuntime<_>>::run(
+                    environment.clone(),
+                    program_manager.clone(),
+                    build_machine::get_software_factories(),
+                    initial_program.clone(),
+                )?;
+            }
+        },
         #[cfg(feature = "webgpu")]
         fluxemu_environment::graphics::GraphicsApi::Webgpu => {
-            use crate::backend::webgpu::WebgpuGraphicsRuntime;
+            use crate::display::webgpu::WebgpuGraphicsRuntime;
 
-            DesktopEventLoop::<WebgpuGraphicsRuntime>::run(
-                environment,
-                program_manager.clone(),
-                build_machine::get_webgpu_factories(),
-                initial_program,
-            )?;
+            match cli.display_backend {
+                #[cfg(feature = "windowing")]
+                DisplayBackend::Windowing => {
+                    use crate::event_loop::windowing::WindowingEventLoop;
+
+                    WindowingEventLoop::<WebgpuGraphicsRuntime<_>>::run(
+                        environment.clone(),
+                        program_manager.clone(),
+                        build_machine::get_webgpu_factories(),
+                        initial_program.clone(),
+                    )?;
+                }
+                #[cfg(feature = "drm")]
+                DisplayBackend::Drm => {
+                    use crate::event_loop::drm::DrmEventLoop;
+
+                    DrmEventLoop::<WebgpuGraphicsRuntime<_>>::run(
+                        environment.clone(),
+                        program_manager.clone(),
+                        build_machine::get_webgpu_factories(),
+                        initial_program.clone(),
+                    )?;
+                }
+            }
         }
         _ => todo!(),
     }

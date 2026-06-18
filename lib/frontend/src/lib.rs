@@ -83,7 +83,7 @@ struct PhysicalInputDeviceState {
     pub is_id_stable: bool,
     pub metadata: PhysicalInputDeviceMetadata,
     // Should the runtime translate this input device into something egui can understand
-    pub feed_into_gui: bool,
+    pub rely_on_frontend_input_handling: bool,
     pub gui_relevant_input_state: IndexMap<InputId, InputState>,
 }
 
@@ -123,6 +123,7 @@ pub struct Frontend<P: FrontendPlatform> {
     machine_initialization_step: Option<MachineInitializationStep<P>>,
     toast_manager: ToastManager,
     audio_mixer: Arc<AudioMixer>,
+    external_file_dialog_supported: bool,
 }
 
 impl<P: FrontendPlatform> Frontend<P> {
@@ -132,6 +133,7 @@ impl<P: FrontendPlatform> Frontend<P> {
         program_manager: Arc<ProgramManager>,
         mut audio_runtime: P::AudioRuntime,
         initial_program: Option<Vec<RomId>>,
+        external_file_dialog_supported: bool,
     ) -> Self {
         let initial_program_initialization_step = initial_program.map(|roms| {
             let program_manager = program_manager.clone();
@@ -165,6 +167,7 @@ impl<P: FrontendPlatform> Frontend<P> {
             toast_manager: ToastManager::default(),
             machine_initialization_step: initial_program_initialization_step,
             environment,
+            external_file_dialog_supported,
         }
     }
 
@@ -178,7 +181,7 @@ impl<P: FrontendPlatform> Frontend<P> {
             .map(|context| &context.machine)
     }
 
-    pub fn frontend_overlay_active(&self) -> bool {
+    pub fn overlay_active(&self) -> bool {
         self.frontend_overlay_active
     }
 
@@ -211,7 +214,7 @@ impl<P: FrontendPlatform> Frontend<P> {
             Some(MachineInitializationStep::BuildingMachineBuilder { job: handle });
     }
 
-    pub fn reset_graphics_to_meet_machine_requirements(
+    pub fn maybe_reset_graphics_to_meet_machine_requirements(
         &mut self,
         callback: impl FnOnce(
             &Context,
@@ -299,6 +302,7 @@ impl<P: FrontendPlatform> Frontend<P> {
                                 machine_initialization_step: &mut self.machine_initialization_step,
                                 program_manager: &self.program_manager,
                                 toast_manager: &mut self.toast_manager,
+                                external_file_dialog_supported: self.external_file_dialog_supported,
                             });
                         }
                         TabId::Settings => {

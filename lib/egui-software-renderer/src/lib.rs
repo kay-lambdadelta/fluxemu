@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use egui::{FullOutput, TextureId};
 use fluxemu_graphics::api::software::texture::{
-    CopyMode, Texture, TextureImpl, TextureImplMut, TextureViewMut,
+    AsTextureViewMut, CopyMode, Texture, TextureImpl, TextureImplMut, TextureViewMut,
 };
 use fluxemu_range::ContiguousRange;
 use multiversion::inherit_target;
@@ -37,7 +37,7 @@ impl Renderer {
         &mut self,
         context: &egui::Context,
         full_output: FullOutput,
-        target_texture: TextureViewMut<P>,
+        target_texture: impl AsTextureViewMut<P>,
     ) {
         for (new_texture_id, image_delta) in &full_output.textures_delta.set {
             assert!(
@@ -100,8 +100,10 @@ impl Renderer {
         textures: &mut HashMap<TextureId, Texture<Srgba<f32>>, FxBuildHasher>,
         context: &egui::Context,
         full_output: FullOutput,
-        mut target_texture: TextureViewMut<P>,
+        mut target_texture: impl AsTextureViewMut<P>,
     ) {
+        let mut target_texture = target_texture.as_texture_view_mut();
+
         for shape in reduce_shapes(context, full_output.shapes, full_output.pixels_per_point) {
             for primitive in shape.primitives {
                 match primitive {

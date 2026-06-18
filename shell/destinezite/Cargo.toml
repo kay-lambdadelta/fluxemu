@@ -2,7 +2,7 @@
 name = "fluxemu-shell-destinezite"
 version = "0.1.0"
 edition = "2024"
-description = "Port of the FluxEMU framework to desktopish platforms"
+description = "Port of the FluxEMU framework to desktop platforms"
 license = "GPL-3.0-or-later"
 
 [package.metadata.deb]
@@ -13,8 +13,6 @@ bytemuck = { workspace = true }
 clap = { workspace = true }
 cpal = "0.18"
 egui = { workspace = true }
-egui-wgpu = { version = "0.34", optional = true }
-egui-winit = "0.34"
 fluxemu-audio = { workspace = true }
 fluxemu-definition-atari2600 = { workspace = true }
 fluxemu-definition-atarilynx = { workspace = true }
@@ -22,10 +20,9 @@ fluxemu-definition-chip8 = { workspace = true }
 fluxemu-definition-nes = { workspace = true }
 fluxemu-egui-software-renderer = { workspace = true }
 fluxemu-environment = { workspace = true }
-fluxemu-frontend = { workspace = true, features = ["external-file-dialog"] }
+fluxemu-frontend = { workspace = true }
 fluxemu-graphics = { workspace = true }
 fluxemu-input = { workspace = true }
-# Any platform this crate supports will have memmap or at least won't have compile errors if it doesn't work
 fluxemu-program = { workspace = true, features = ["mmap"] }
 fluxemu-runtime = { workspace = true, features = ["std"] }
 gilrs = "0.11"
@@ -33,19 +30,45 @@ itertools = { workspace = true }
 nalgebra = { workspace = true }
 palette = { workspace = true }
 pollster = { workspace = true }
+raw-window-handle = "0.6"
 redb = { workspace = true }
 ringbuffer = { workspace = true }
 ron = { workspace = true }
-softbuffer = "0.4"
+scc = { workspace = true }
 strum = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
+
+# Webgpu required stuff
+egui-wgpu = { version = "0.34", optional = true }
 wgpu = { workspace = true, optional = true }
-winit = "0.30"
+
+# Windowing required stuff
+egui-winit = { version = "0.34", optional = true }
+softbuffer = { version = "0.4", optional = true }
+winit = { version = "0.30", optional = true }
+
+# DRM required stuff
+drm = { version = "0.15", optional = true }
+evdev = { version = "0.13", optional = true }
+input = { version = "0.10", features = ["log"], optional = true }
+libseat = { version = "0.2", optional = true }
+nix = { version = "0.31", features = ["event", "poll"], optional = true }
+udev = { version = "0.9", optional = true }
+xkbcommon = { version = "0.9", optional = true }
 
 [features]
-default = ["webgpu"]
+default = ["webgpu", "windowing"]
+drm = [
+  "dep:drm",
+  "dep:evdev",
+  "dep:input",
+  "dep:libseat",
+  "dep:nix",
+  "dep:udev",
+  "dep:xkbcommon",
+]
 webgpu = [
   "dep:egui-wgpu",
   "dep:wgpu",
@@ -54,4 +77,10 @@ webgpu = [
   "fluxemu-definition-chip8/webgpu",
   "fluxemu-definition-nes/webgpu",
   "fluxemu-graphics/webgpu",
+]
+windowing = [
+  "dep:egui-winit",
+  "dep:softbuffer",
+  "dep:winit",
+  "fluxemu-frontend/external-file-dialog"
 ]
