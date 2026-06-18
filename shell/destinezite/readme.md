@@ -72,7 +72,7 @@ cargo build -p fluxemu-shell-destinezite --release --features drm
 
 Note the `drm` feature is not strictly required for Linux, and not enabling it can drop some dependencies (listed above).
 
-The `drm` feature also requires a working Vulkan implementation, or the fallback software renderer (always enabled).
+The `drm` feature also requires a working Vulkan implementation (for WebGPU support), or the fallback software renderer (always enabled).
 
 ### Others
 
