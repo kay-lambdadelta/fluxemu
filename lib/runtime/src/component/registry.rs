@@ -3,6 +3,7 @@ use std::{
     collections::HashMap,
     fmt::Debug,
     ops::DerefMut,
+    sync::Mutex,
     thread::{Thread, ThreadId},
 };
 
@@ -29,11 +30,15 @@ struct GlobalComponentMetadata {
 }
 
 #[derive(Debug, Default)]
+struct GlobalSyncState {
+    global_component_store: HashMap<ComponentId, ComponentHandle, FxBuildHasher>,
+    threads_awaiting_component: HashMap<ComponentId, HashMap<ThreadId, Thread>, FxBuildHasher>,
+}
+
+#[derive(Debug, Default)]
 /// The store for components
 pub(crate) struct ComponentRegistryData {
-    global_component_store: scc::HashMap<ComponentId, ComponentHandle, FxBuildHasher>,
-    threads_awaiting_component: scc::HashMap<ComponentId, HashMap<ThreadId, Thread>, FxBuildHasher>,
-
+    sync_state: Mutex<GlobalSyncState>,
     metadata: HashMap<ComponentPath, GlobalComponentMetadata, FxBuildHasher>,
     next_component_id: u16,
 }
@@ -49,14 +54,17 @@ impl ComponentRegistryData {
         synchronize: bool,
         component: C,
     ) {
+        let mut sync_state_guard = self.sync_state.lock().unwrap();
+
         let id = ComponentId(self.next_component_id);
         self.next_component_id = self
             .next_component_id
             .checked_add(1)
             .expect("Too many components");
 
-        self.global_component_store
-            .insert_sync(
+        if sync_state_guard
+            .global_component_store
+            .insert(
                 id,
                 ComponentHandle {
                     current_timestamp: Period::default(),
@@ -64,9 +72,10 @@ impl ComponentRegistryData {
                     component: Some(Box::new(component)),
                 },
             )
-            .unwrap_or_else(|_| {
-                panic!("Component with the same path already exists");
-            });
+            .is_some()
+        {
+            panic!("Component with the same path already exists")
+        }
 
         self.metadata.insert(
             path,
@@ -283,22 +292,29 @@ impl<'a> ComponentRegistry<'a> {
         local_component_store: &'b mut LocalComponentStore,
     ) -> &'b mut ComponentHandle {
         let thread = std::thread::current();
+        let mut sync_state_guard = self.data.sync_state.lock().unwrap();
 
         loop {
-            let Some((_, handle)) = self.data.global_component_store.remove_sync(&id) else {
+            let Some(handle) = sync_state_guard.global_component_store.remove(&id) else {
                 // Insert thread token
-                self.data
+                sync_state_guard
                     .threads_awaiting_component
-                    .entry_sync(id)
+                    .entry(id)
                     .or_default()
                     .entry(thread.id())
                     .or_insert(thread.clone());
 
                 // Give components back so others can potentially access them
-                self.release_all_components(local_component_store);
+                self.release_all_components_inner(local_component_store, &mut sync_state_guard);
+
+                // Drop the guard
+                drop(sync_state_guard);
 
                 // Await for that component to potentially become available
                 std::thread::park();
+
+                // Pick up the guard again
+                sync_state_guard = self.data.sync_state.lock().unwrap();
 
                 // Try again until we can acquire that component
                 continue;
@@ -307,20 +323,29 @@ impl<'a> ComponentRegistry<'a> {
             let slot = local_component_store.get_slot(id);
             *slot = Some(handle);
 
-            // Clean up
-            self.data
+            // Remove thread token
+            sync_state_guard
                 .threads_awaiting_component
-                .entry_sync(id)
+                .entry(id)
                 .or_default()
-                .get_mut()
                 .remove(&thread.id());
 
             return slot.as_mut().unwrap();
         }
     }
 
-    /// Release all components currently available for releasing
     pub(crate) fn release_all_components(&self, local_component_store: &mut LocalComponentStore) {
+        let mut sync_state_guard = self.data.sync_state.lock().unwrap();
+
+        self.release_all_components_inner(local_component_store, &mut sync_state_guard);
+    }
+
+    /// Release all components currently available for releasing
+    fn release_all_components_inner(
+        &self,
+        local_component_store: &mut LocalComponentStore,
+        sync_state: &mut GlobalSyncState,
+    ) {
         for (id, slot) in local_component_store.iter_mut() {
             // Check if the slot is occupied and the handle isn't borrowed
             if let Some(handle) = slot
@@ -328,13 +353,15 @@ impl<'a> ComponentRegistry<'a> {
             {
                 let handle = slot.take().unwrap();
 
-                self.data
+                if sync_state
                     .global_component_store
-                    .insert_sync(id, handle)
-                    .expect("Component shadowed by another component");
+                    .insert(id, handle)
+                    .is_some()
+                {
+                    panic!("Component shadowed by another component");
+                }
 
-                let Some((_, threads_waiting)) =
-                    self.data.threads_awaiting_component.remove_sync(&id)
+                let Some(threads_waiting) = sync_state.threads_awaiting_component.remove(&id)
                 else {
                     continue;
                 };
