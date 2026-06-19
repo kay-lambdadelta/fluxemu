@@ -24,7 +24,7 @@ use crate::{
     },
     gamepad::standard_controllers::NesControllerConfig,
     ppu::{
-        BACKGROUND_PALETTE_BASE_ADDRESS, NAMETABLE_ADDRESSES, NAMETABLE_BASE_ADDRESS,
+        BACKGROUND_PALETTE_BASE_ADDRESS, NAMETABLE_ADDRESSES,
         backend::SupportedGraphicsApiPpu,
         region::{Region, ntsc::Ntsc},
     },
@@ -113,7 +113,7 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> MachineFactory<P>
             machine = machine.memory_map_mirror(
                 cpu_address_space,
                 RangeInclusive::from_start_and_length(address, 8),
-                RangeInclusive::from_start_and_length(NAMETABLE_BASE_ADDRESS, 8),
+                RangeInclusive::from_start_and_length(0x2000, 8),
             );
         }
 
@@ -126,7 +126,11 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> MachineFactory<P>
         if header.trainer {
             tracing::warn!("This ROM contains a trainer, which is not emulated at this time");
         }
-        let (mut machine, nametables) = setup_ppu_nametables(machine, ppu_address_space, &header);
+        let (machine, nametables) = setup_ppu_nametables(machine, ppu_address_space, &header);
+
+        // Nametable mirror
+        let mut machine =
+            machine.memory_map_mirror(ppu_address_space, 0x3000..=0x3eff, 0x2000..=0x2eff);
 
         let prg_rom = header.extract_prg_rom(&rom);
         let chr_rom = header.extract_chr_rom(&rom);
