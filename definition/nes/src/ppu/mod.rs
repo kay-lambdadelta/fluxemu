@@ -11,7 +11,7 @@ use fluxemu_runtime::{
     },
     event::{Event, EventMode, downcast_event},
     machine::builder::{ComponentBuilder, SchedulerParticipation},
-    memory::{Address, AddressSpace, AddressSpaceId, MemoryError},
+    memory::{Address, AddressSpaceId, MemoryError},
     path::ComponentPath,
     platform::Platform,
     scheduler::{Period, SynchronizationContext},
@@ -33,9 +33,9 @@ pub mod backend;
 mod background;
 mod color;
 mod oam;
+mod pipeline;
 pub mod region;
 mod state;
-mod visible_scanlines;
 
 #[derive(Clone, Copy, Debug, FromRepr)]
 #[repr(u16)]
@@ -65,7 +65,7 @@ const DUMMY_SCANLINE_COUNT: u16 = 2;
 const VISIBLE_SCANLINE_LENGTH: u16 = 256;
 const HBLANK_LENGTH: u16 = 85;
 const TOTAL_SCANLINE_LENGTH: u16 = VISIBLE_SCANLINE_LENGTH + HBLANK_LENGTH;
-const INITIAL_CYCLE_COUNTER_POSITION: Point2<u16> = Point2::new(0, 0);
+const INITIAL_CYCLE_COUNTER_POSITION: Point2<u16> = Point2::new(1, 261);
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct ColorEmphasis {
@@ -118,16 +118,6 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
             .scheduler_participation(Some(SchedulerParticipation::OnAccess))
             .framebuffer("framebuffer");
 
-        let total_screen_time =
-            Period::from_num(TOTAL_SCANLINE_LENGTH as u32 * R::TOTAL_SCANLINES as u32) / frequency;
-        let framerate = total_screen_time.recip();
-
-        let vblank_start_from_initial_position =
-            (Period::from_num(TOTAL_SCANLINE_LENGTH) * 241 + Period::from_num(1)) / frequency;
-
-        let vblank_end_from_initial_position =
-            (Period::from_num(TOTAL_SCANLINE_LENGTH) * 261 + Period::from_num(1)) / frequency;
-
         let my_path = component_builder.path().clone();
 
         let component_builder = component_builder
@@ -172,20 +162,9 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
             .schedule_event::<Self::Component>(
                 // x: 1, y: 241
                 &my_path,
-                vblank_start_from_initial_position,
-                EventMode::Repeating {
-                    frequency: framerate,
-                },
+                Period::from_num(82522) / frequency,
+                EventMode::Once,
                 PpuEvent::VblankStart,
-            )
-            .schedule_event::<Self::Component>(
-                // x: 1, y: 261
-                &my_path,
-                vblank_end_from_initial_position,
-                EventMode::Repeating {
-                    frequency: framerate,
-                },
-                PpuEvent::VblankEnd,
             );
 
         let staging_buffer = Texture::new(
@@ -237,6 +216,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
                 },
                 vram_address_pointer: 0,
                 shadow_vram_address_pointer: 0,
+                odd_frame: false,
             },
             backend: None,
             staging_buffer,
@@ -303,10 +283,8 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                             timestamp,
                         )?;
                     } else {
-                        let new_value = ppu_address_space.read_le_value::<u8>(
-                            self.state.vram_address_pointer as usize,
-                            timestamp,
-                        )?;
+                        let new_value = ppu_address_space
+                            .read_le_value(self.state.vram_address_pointer as usize, timestamp)?;
 
                         *buffer = std::mem::replace(&mut self.state.vram_read_buffer, new_value);
                     }
@@ -491,9 +469,20 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         },
                     );
                 }
+
+                let vblank_len =
+                    Period::from_num(TOTAL_SCANLINE_LENGTH as u128 * R::VBLANK_LENGTH as u128);
+
+                runtime.schedule_event::<Self>(
+                    &self.path,
+                    EventMode::Once,
+                    timestamp + self.period * vblank_len,
+                    PpuEvent::VblankEnd,
+                );
             }
             PpuEvent::VblankEnd => {
                 self.state.entered_vblank = false;
+                self.state.odd_frame = !self.state.odd_frame;
 
                 runtime.schedule_event::<Mos6502>(
                     &self.processor_path,
@@ -509,6 +498,24 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     .as_mut()
                     .unwrap()
                     .commit_staging_buffer(&self.staging_buffer);
+
+                let lines_until_next_vblank = R::TOTAL_SCANLINES - R::VBLANK_LENGTH;
+                let mut cycles_until_next_vblank =
+                    TOTAL_SCANLINE_LENGTH as u128 * lines_until_next_vblank as u128;
+
+                if self.state.odd_frame
+                    && (self.state.background.rendering_enabled || self.state.oam.rendering_enabled)
+                {
+                    cycles_until_next_vblank -= 1;
+                }
+
+                let next_timestamp = timestamp + self.period * cycles_until_next_vblank;
+                runtime.schedule_event::<Self>(
+                    &self.path,
+                    EventMode::Once,
+                    next_timestamp,
+                    PpuEvent::VblankStart,
+                );
             }
         }
     }
@@ -524,15 +531,23 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                 self.handle_prerender(&mut ppu_address_space, timestamp);
             }
 
-            self.state.cycle_counter.x += 1;
+            if self.state.cycle_counter.y == 261
+                && self.state.cycle_counter.x == 339
+                && self.state.odd_frame
+                && (self.state.background.rendering_enabled || self.state.oam.rendering_enabled)
+            {
+                self.state.cycle_counter = Point2::default();
+            } else {
+                self.state.cycle_counter.x += 1;
 
-            if self.state.cycle_counter.x >= TOTAL_SCANLINE_LENGTH {
-                self.state.cycle_counter.x = 0;
-                self.state.cycle_counter.y += 1;
-            }
+                if self.state.cycle_counter.x >= TOTAL_SCANLINE_LENGTH {
+                    self.state.cycle_counter.x = 0;
+                    self.state.cycle_counter.y += 1;
+                }
 
-            if self.state.cycle_counter.y >= R::TOTAL_SCANLINES {
-                self.state.cycle_counter.y = 0;
+                if self.state.cycle_counter.y >= R::TOTAL_SCANLINES {
+                    self.state.cycle_counter.y = 0;
+                }
             }
         }
     }
@@ -543,46 +558,6 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
 
     fn get_framebuffer(&mut self, _name: &str) -> &dyn Any {
         self.backend.as_ref().unwrap().framebuffer()
-    }
-}
-
-impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
-    fn handle_prerender(&mut self, ppu_address_space: &mut AddressSpace<'_>, timestamp: Period) {
-        if self.state.cycle_counter.x == 1 {
-            self.state.oam.sprite_zero_hit = false;
-        }
-
-        if self.state.cycle_counter.x == 257
-            && (self.state.background.rendering_enabled || self.state.oam.rendering_enabled)
-        {
-            let t = VramAddressPointerContents::from(self.state.shadow_vram_address_pointer);
-            let mut v = VramAddressPointerContents::from(self.state.vram_address_pointer);
-
-            v.nametable.x = t.nametable.x;
-            v.coarse.x = t.coarse.x;
-
-            self.state.vram_address_pointer = u16::from(v);
-        }
-
-        if let 280..=304 = self.state.cycle_counter.x
-            && (self.state.background.rendering_enabled || self.state.oam.rendering_enabled)
-        {
-            let t = VramAddressPointerContents::from(self.state.shadow_vram_address_pointer);
-            let mut v = VramAddressPointerContents::from(self.state.vram_address_pointer);
-
-            v.nametable.y = t.nametable.y;
-            v.coarse.y = t.coarse.y;
-            v.fine_y = t.fine_y;
-
-            self.state.vram_address_pointer = u16::from(v);
-        }
-
-        if let 305..=320 = self.state.cycle_counter.x
-            && self.state.background.rendering_enabled
-        {
-            self.state
-                .drive_background_pipeline(ppu_address_space, timestamp);
-        }
     }
 }
 
