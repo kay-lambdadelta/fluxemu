@@ -287,6 +287,11 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                             .read_le_value(self.state.vram_address_pointer as usize, timestamp)?;
 
                         *buffer = std::mem::replace(&mut self.state.vram_read_buffer, new_value);
+
+                        self.state.vram_address_pointer =
+                            self.state.vram_address_pointer.wrapping_add(u16::from(
+                                self.state.vram_address_pointer_increment_amount,
+                            )) & 0b0111_1111_1111_1111;
                     }
                 }
                 _ => {
