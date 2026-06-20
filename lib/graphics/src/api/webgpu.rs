@@ -40,8 +40,8 @@ impl BitOr for Requirements {
 }
 
 impl GraphicsApi for Webgpu {
-    type InitializationData = InitializationData;
     type Framebuffer = Texture;
+    type InitializationData = InitializationData;
     type Requirements = Requirements;
 }
 

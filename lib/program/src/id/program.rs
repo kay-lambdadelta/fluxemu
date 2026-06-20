@@ -21,9 +21,8 @@ impl Display for ProgramId {
 }
 
 impl Value for ProgramId {
-    type SelfType<'a> = Self;
-
     type AsBytes<'a> = Vec<u8>;
+    type SelfType<'a> = Self;
 
     fn fixed_width() -> Option<usize> {
         None

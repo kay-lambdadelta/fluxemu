@@ -157,6 +157,7 @@ impl<P: Platform> ComponentConfig<P> for MemoryConfig {
 impl AutoSerializableComponent for Memory {
     type SaveState<'a> = MemoryPersistance<'a>;
     type SnapshotState<'a> = MemoryPersistance<'a>;
+
     const VERSION: PersistanceFormatVersion = 0;
 
     fn impending_snapshot_load(&mut self) {

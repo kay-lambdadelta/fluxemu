@@ -80,10 +80,9 @@ impl RuntimeAssociatedDisplayContext<SoftwareGraphicsRuntime<Self>> for Arc<DrmC
 }
 
 impl SoftwareCompatibleDisplayContext for Arc<DrmContext> {
-    type Surface = Surface;
-
-    type ResizeError = std::io::Error;
     type MappingError = std::io::Error;
+    type ResizeError = std::io::Error;
+    type Surface = Surface;
 
     fn resize_surface(&self, _surface: &mut Self::Surface) -> Result<(), Self::ResizeError> {
         unimplemented!()

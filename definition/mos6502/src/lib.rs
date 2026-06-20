@@ -276,6 +276,7 @@ impl Component for Mos6502 {
 impl AutoSerializableComponent for Mos6502 {
     type SaveState<'a> = ();
     type SnapshotState<'a> = State;
+
     const VERSION: PersistanceFormatVersion = 0;
 
     fn read_save(&self) -> Self::SaveState<'_> {

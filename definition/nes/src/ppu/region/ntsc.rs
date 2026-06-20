@@ -74,9 +74,9 @@ pub static COLOR_PALETTE: [Srgb<u8>; 64] = [
 pub struct Ntsc;
 
 impl Region for Ntsc {
-    const VISIBLE_SCANLINES: u16 = 240;
-    const VBLANK_LENGTH: u16 = 20;
     const COLOR_PALETTE: [Srgb<u8>; 64] = COLOR_PALETTE;
+    const VBLANK_LENGTH: u16 = 20;
+    const VISIBLE_SCANLINES: u16 = 240;
 
     #[inline]
     fn master_clock() -> Frequency {

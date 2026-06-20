@@ -41,9 +41,9 @@ impl RuntimeAssociatedDisplayContext<SoftwareGraphicsRuntime<Self>> for Arc<Wind
 }
 
 impl SoftwareCompatibleDisplayContext for Arc<Window> {
-    type Surface = softbuffer::Surface<Arc<Window>, Arc<Window>>;
-    type ResizeError = SoftBufferError;
     type MappingError = SoftBufferError;
+    type ResizeError = SoftBufferError;
+    type Surface = softbuffer::Surface<Arc<Window>, Arc<Window>>;
 
     fn resize_surface(&self, surface: &mut Self::Surface) -> Result<(), Self::ResizeError> {
         let window_dimensions = self.inner_size();

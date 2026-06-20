@@ -61,9 +61,8 @@ impl ProgramInfo {
 }
 
 impl Value for ProgramInfo {
-    type SelfType<'a> = ProgramInfo;
-
     type AsBytes<'a> = Vec<u8>;
+    type SelfType<'a> = ProgramInfo;
 
     fn fixed_width() -> Option<usize> {
         None

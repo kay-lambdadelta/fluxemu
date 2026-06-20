@@ -55,14 +55,15 @@ pub fn rom_export(
 
             for program_info_access_guard in program_information_values {
                 let Ok(program_info_access_guard) = program_info_access_guard.map_err(|err| {
-                        tracing::error!(
-                            "Could not access entry in the program information entries for program id {}: {}",
-                            program_id,
-                            err
-                        );
-                    }) else {
-                        continue;
-                    };
+                    tracing::error!(
+                        "Could not access entry in the program information entries for program id \
+                         {}: {}",
+                        program_id,
+                        err
+                    );
+                }) else {
+                    continue;
+                };
 
                 let program_info = program_info_access_guard.value();
 

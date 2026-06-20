@@ -131,8 +131,8 @@ impl<'de> Deserialize<'de> for ComponentPath {
 }
 
 impl Value for ComponentPath {
-    type SelfType<'a> = Self;
     type AsBytes<'a> = String;
+    type SelfType<'a> = Self;
 
     fn fixed_width() -> Option<usize> {
         None
@@ -267,8 +267,8 @@ impl<'de> Deserialize<'de> for ResourcePath {
 }
 
 impl Value for ResourcePath {
-    type SelfType<'a> = Self;
     type AsBytes<'a> = String;
+    type SelfType<'a> = Self;
 
     fn fixed_width() -> Option<usize> {
         None

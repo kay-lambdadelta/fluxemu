@@ -33,8 +33,8 @@ impl BitOr for Requirements {
 }
 
 impl GraphicsApi for Software {
+    type Framebuffer = Texture<Srgba<u8>>;
     /// Software backend does not and should not require any kind of initialization data
     type InitializationData = ();
-    type Framebuffer = Texture<Srgba<u8>>;
     type Requirements = Requirements;
 }

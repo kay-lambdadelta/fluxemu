@@ -23,12 +23,10 @@ impl Permissions {
         read: true,
         write: true,
     };
-
     pub const READ: Self = Permissions {
         read: true,
         write: false,
     };
-
     pub const WRITE: Self = Permissions {
         read: false,
         write: true,

@@ -51,7 +51,6 @@ impl Default for InputState {
 impl InputState {
     /// Digital press
     pub const PRESSED: Self = Self::Digital(true);
-
     /// Digital release
     pub const RELEASED: Self = Self::Digital(false);
 
