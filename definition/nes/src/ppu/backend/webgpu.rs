@@ -1,6 +1,6 @@
 use fluxemu_graphics::api::{
     GraphicsApi,
-    software::texture::TextureImpl,
+    software::texture::{AsTextureMut, OwnedTexture},
     webgpu::{InitializationData, Webgpu, suggested_framebuffer_texture_usages},
 };
 use palette::{Srgba, named::BLACK};
@@ -18,7 +18,7 @@ use crate::ppu::{
 #[derive(Debug)]
 pub struct State {
     pub queue: Queue,
-    pub staging_texture: fluxemu_graphics::api::software::texture::Texture<Srgba<u8>>,
+    pub staging_texture: OwnedTexture<Srgba<u8>>,
     pub framebuffer: Texture,
 }
 
@@ -58,11 +58,8 @@ impl<R: Region> PpuDisplayBackend<R> for State {
         &self.framebuffer
     }
 
-    fn commit_staging_buffer(
-        &mut self,
-        staging_buffer: &fluxemu_graphics::api::software::texture::Texture<PpuColorIndex>,
-    ) {
-        convert_paletted_staging_buffer::<R>(staging_buffer, &mut self.staging_texture);
+    fn commit_staging_buffer(&mut self, staging_buffer: &OwnedTexture<PpuColorIndex>) {
+        convert_paletted_staging_buffer::<R>(staging_buffer, self.staging_texture.as_texture_mut());
 
         self.queue.write_texture(
             TexelCopyTextureInfo {
@@ -71,7 +68,7 @@ impl<R: Region> PpuDisplayBackend<R> for State {
                 origin: Origin3d::default(),
                 aspect: TextureAspect::All,
             },
-            bytemuck::cast_slice(self.staging_texture.as_slice()),
+            bytemuck::cast_slice(self.staging_texture.as_slice().unwrap()),
             TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some((staging_buffer.width() * size_of::<Srgba<u8>>()) as u32),

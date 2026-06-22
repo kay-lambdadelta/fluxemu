@@ -10,7 +10,7 @@ use core::{fmt::Debug, ops::BitOr};
 
 use palette::Srgba;
 
-use crate::api::{GraphicsApi, software::texture::Texture};
+use crate::api::{GraphicsApi, software::texture::OwnedTexture};
 
 /// Marker trait for software rendering
 ///
@@ -33,7 +33,7 @@ impl BitOr for Requirements {
 }
 
 impl GraphicsApi for Software {
-    type Framebuffer = Texture<Srgba<u8>>;
+    type Framebuffer = OwnedTexture<Srgba<u8>>;
     /// Software backend does not and should not require any kind of initialization data
     type InitializationData = ();
     type Requirements = Requirements;

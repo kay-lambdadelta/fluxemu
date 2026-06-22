@@ -2,7 +2,10 @@ use std::fmt::Debug;
 
 use fluxemu_graphics::api::{
     GraphicsApi,
-    software::{Software, texture::Texture},
+    software::{
+        Software,
+        texture::{AsTextureMut, OwnedTexture, Texture},
+    },
 };
 use palette::{Srgba, named::BLACK};
 
@@ -13,7 +16,7 @@ use crate::ppu::{
 };
 
 pub struct SoftwareState {
-    framebuffer: Texture<Srgba<u8>>,
+    framebuffer: OwnedTexture<Srgba<u8>>,
 }
 
 // elide the buffers
@@ -41,8 +44,8 @@ impl<R: Region> PpuDisplayBackend<R> for SoftwareState {
         &self.framebuffer
     }
 
-    fn commit_staging_buffer(&mut self, staging_buffer: &Texture<PpuColorIndex>) {
-        convert_paletted_staging_buffer::<R>(staging_buffer, &mut self.framebuffer);
+    fn commit_staging_buffer(&mut self, staging_buffer: &OwnedTexture<PpuColorIndex>) {
+        convert_paletted_staging_buffer::<R>(staging_buffer, self.framebuffer.as_texture_mut());
     }
 }
 

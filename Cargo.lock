@@ -1738,6 +1738,7 @@ dependencies = [
 name = "fluxemu-graphics"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "fluxemu-range",
  "heapless",
  "itertools 0.15.0",

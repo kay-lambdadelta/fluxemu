@@ -2,7 +2,7 @@ use fluxemu_graphics::api::{
     GraphicsApi,
     software::{
         Software,
-        texture::{CopyMode, Texture, TextureImpl, TextureImplMut},
+        texture::{CopyMode, OwnedTexture, Texture},
     },
 };
 use palette::{Srgba, named::BLACK};
@@ -12,7 +12,7 @@ use crate::display::LORES;
 
 #[derive(Debug)]
 pub struct SoftwareState {
-    framebuffer: Texture<Srgba<u8>>,
+    framebuffer: OwnedTexture<Srgba<u8>>,
 }
 
 impl Chip8DisplayBackend for SoftwareState {
@@ -28,7 +28,7 @@ impl Chip8DisplayBackend for SoftwareState {
         &self.framebuffer
     }
 
-    fn commit_staging_buffer(&mut self, staging_buffer: &Texture<Srgba<u8>>) {
+    fn commit_staging_buffer(&mut self, staging_buffer: &OwnedTexture<Srgba<u8>>) {
         if self.framebuffer.size() != staging_buffer.size() {
             self.framebuffer = staging_buffer.clone();
         } else {

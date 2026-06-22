@@ -1,8 +1,6 @@
 use std::ops::RangeInclusive;
 
-use fluxemu_graphics::api::software::texture::{
-    Texture, TextureImpl, TextureImplMut, TextureViewMut,
-};
+use fluxemu_graphics::api::software::texture::{OwnedTexture, StorageMut, Texture};
 use fluxemu_range::ContiguousRange;
 use nalgebra::{Point2, SMatrix, Vector2, Vector3};
 use palette::{
@@ -19,7 +17,7 @@ use crate::{
 pub fn fill_quad<P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'static>(
     shape: &Shape,
     solid_quad: SolidQuad,
-    target_texture: &mut TextureViewMut<'_, P>,
+    mut target_texture: Texture<impl StorageMut<Pixel = P>>,
 ) {
     let texture_max = Point2::from(target_texture.size() - Vector2::from_element(1));
 
@@ -46,8 +44,8 @@ pub fn fill_triangle<
 >(
     geometry: &Shape,
     triangle: Triangle,
-    source_texture: &Texture<PreAlpha<Srgb<f32>>>,
-    destination_texture: &mut TextureViewMut<'_, P>,
+    source_texture: &OwnedTexture<PreAlpha<Srgb<f32>>>,
+    mut destination_texture: Texture<impl StorageMut<Pixel = P>>,
 ) {
     let target_texture_dimensions = destination_texture.size().cast();
     let max_texture_coordinates =
@@ -198,12 +196,12 @@ pub fn fill_triangle<
 
         // This power of two iterator forcing constant run lengths makes very efficient simd code
         for len in PowerOfTwoIter::<BATCH_SIZE>::new(x_range.len()) {
-            let target_pixel_row =
+            let target_row =
                 destination_texture.view_mut(RangeInclusive::from_start_and_length(x, len), y..=y);
 
             match len {
                 32 => pixel_rounds::<32, P>(
-                    target_pixel_row,
+                    target_row,
                     source_texture,
                     texture_dimensions,
                     current_uv,
@@ -212,7 +210,7 @@ pub fn fill_triangle<
                     step_color,
                 ),
                 16 => pixel_rounds::<16, P>(
-                    target_pixel_row,
+                    target_row,
                     source_texture,
                     texture_dimensions,
                     current_uv,
@@ -221,7 +219,7 @@ pub fn fill_triangle<
                     step_color,
                 ),
                 8 => pixel_rounds::<8, P>(
-                    target_pixel_row,
+                    target_row,
                     source_texture,
                     texture_dimensions,
                     current_uv,
@@ -230,7 +228,7 @@ pub fn fill_triangle<
                     step_color,
                 ),
                 4 => pixel_rounds::<4, P>(
-                    target_pixel_row,
+                    target_row,
                     source_texture,
                     texture_dimensions,
                     current_uv,
@@ -239,7 +237,7 @@ pub fn fill_triangle<
                     step_color,
                 ),
                 2 => pixel_rounds::<2, P>(
-                    target_pixel_row,
+                    target_row,
                     source_texture,
                     texture_dimensions,
                     current_uv,
@@ -248,7 +246,7 @@ pub fn fill_triangle<
                     step_color,
                 ),
                 1 => pixel_rounds::<1, P>(
-                    target_pixel_row,
+                    target_row,
                     source_texture,
                     texture_dimensions,
                     current_uv,
@@ -281,8 +279,8 @@ fn pixel_rounds<
     const C: usize,
     P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'static,
 >(
-    mut target_row: TextureViewMut<P>,
-    texture: &Texture<PreAlpha<Srgb<f32>>>,
+    mut target_row: Texture<impl StorageMut<Pixel = P>>,
+    texture: &OwnedTexture<PreAlpha<Srgb<f32>>>,
     texture_dimensions: Vector2<f32>,
     current_uv: Vector2<f32>,
     current_color: Srgba<f32>,

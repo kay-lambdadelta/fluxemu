@@ -10,7 +10,7 @@ use drm::{
 use fluxemu_egui_software_renderer::Renderer;
 use fluxemu_graphics::api::software::{
     Software,
-    texture::{AsTextureView, AsTextureViewMut, TextureView, TextureViewMut},
+    texture::{AsTexture, AsTextureMut, RefMutTexture, RefTexture},
 };
 use fluxemu_runtime::graphics::GraphicsRequirements;
 use libseat::Seat;
@@ -37,29 +37,29 @@ pub struct Surface {
 }
 
 pub struct SurfaceBufferGuard<'a> {
-    dimensions: Vector2<u32>,
+    dimensions: Vector2<u16>,
     stride: u32,
     buffer: DumbMapping<'a>,
 }
 
-impl AsTextureView<Packed<Bgra, [u8; 4]>> for SurfaceBufferGuard<'_> {
-    fn as_texture_view(&self) -> TextureView<'_, Packed<Bgra, [u8; 4]>> {
-        TextureView::from_slice_with_stride(
-            bytemuck::cast_slice(&self.buffer),
+impl AsTexture<Packed<Bgra, [u8; 4]>> for SurfaceBufferGuard<'_> {
+    fn as_texture(&self) -> RefTexture<'_, Packed<Bgra, [u8; 4]>> {
+        RefTexture::from_storage_with_stride(
             self.dimensions.x as usize,
             self.dimensions.y as usize,
             self.stride as usize,
+            bytemuck::cast_slice(self.buffer.as_ref()),
         )
     }
 }
 
-impl AsTextureViewMut<Packed<Bgra, [u8; 4]>> for SurfaceBufferGuard<'_> {
-    fn as_texture_view_mut(&mut self) -> TextureViewMut<'_, Packed<Bgra, [u8; 4]>> {
-        TextureViewMut::from_slice_with_stride(
-            bytemuck::cast_slice_mut(&mut self.buffer),
+impl AsTextureMut<Packed<Bgra, [u8; 4]>> for SurfaceBufferGuard<'_> {
+    fn as_texture_mut(&mut self) -> RefMutTexture<'_, Packed<Bgra, [u8; 4]>> {
+        RefMutTexture::from_storage_with_stride(
             self.dimensions.x as usize,
             self.dimensions.y as usize,
             self.stride as usize,
+            bytemuck::cast_slice_mut(self.buffer.as_mut()),
         )
     }
 }
@@ -119,7 +119,6 @@ impl SoftwareCompatibleDisplayContext for Arc<DrmContext> {
     type PresentError = std::io::Error;
     type ResizeError = std::io::Error;
     type Surface = Surface;
-    type SurfaceBufferGuard<'a> = SurfaceBufferGuard<'a>;
 
     fn resize_surface(&self, _surface: &mut Self::Surface) -> Result<(), Self::ResizeError> {
         unimplemented!()
@@ -129,7 +128,7 @@ impl SoftwareCompatibleDisplayContext for Arc<DrmContext> {
     fn map_surface_buffer<'a>(
         &'a self,
         surface: &'a mut Self::Surface,
-    ) -> Result<Self::SurfaceBufferGuard<'a>, Self::MappingError> {
+    ) -> Result<impl AsTextureMut<Packed<Bgra, [u8; 4]>> + 'a, Self::MappingError> {
         let back_buffer = &mut surface.buffers[surface.on_back_buffer as usize];
 
         let (width, height) = self.params.mode.size();
@@ -138,9 +137,9 @@ impl SoftwareCompatibleDisplayContext for Arc<DrmContext> {
         let mapped_buffer = self.card.map_dumb_buffer(back_buffer)?;
 
         Ok(SurfaceBufferGuard {
-            dimensions: Vector2::new(width, height).cast(),
-            stride,
             buffer: mapped_buffer,
+            dimensions: Vector2::new(width, height),
+            stride,
         })
     }
 

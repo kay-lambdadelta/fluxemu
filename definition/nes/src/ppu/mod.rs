@@ -1,7 +1,7 @@
 use std::{any::Any, marker::PhantomData, ops::RangeInclusive};
 
 use fluxemu_definition_mos6502::{Mos6502, Mos6502Event, Pin};
-use fluxemu_graphics::api::software::texture::Texture;
+use fluxemu_graphics::api::software::texture::{OwnedTexture, Texture};
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
     ComponentRuntimeApi,
@@ -91,7 +91,7 @@ pub struct Ppu<R: Region, G: SupportedGraphicsApiPpu> {
     cpu_address_space: AddressSpaceId,
     ppu_address_space: AddressSpaceId,
     processor_path: ComponentPath,
-    staging_buffer: Texture<PpuColorIndex>,
+    staging_buffer: OwnedTexture<PpuColorIndex>,
     path: ComponentPath,
     period: Period,
 }

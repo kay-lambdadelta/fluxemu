@@ -4,7 +4,7 @@ use fluxemu_graphics::api::{
     GraphicsApi,
     software::{
         Software,
-        texture::{CopyMode, Texture, TextureImplMut},
+        texture::{CopyMode, OwnedTexture, Texture},
     },
 };
 use palette::{Srgba, named::BLACK};
@@ -13,7 +13,7 @@ use super::{SupportedGraphicsApiTia, TiaDisplayBackend};
 use crate::tia::{VISIBLE_SCANLINE_LENGTH, region::Region};
 
 pub struct SoftwareState {
-    framebuffer: Texture<Srgba<u8>>,
+    framebuffer: OwnedTexture<Srgba<u8>>,
 }
 
 // elide the buffers
@@ -41,7 +41,7 @@ impl<R: Region> TiaDisplayBackend<R> for SoftwareState {
         &self.framebuffer
     }
 
-    fn commit_staging_buffer(&mut self, staging_buffer: &Texture<Srgba<u8>>) {
+    fn commit_staging_buffer(&mut self, staging_buffer: &OwnedTexture<Srgba<u8>>) {
         self.framebuffer
             .copy_from(staging_buffer, CopyMode::Nearest);
     }

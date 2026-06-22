@@ -3,7 +3,7 @@ use std::sync::Arc;
 use fluxemu_egui_software_renderer::Renderer;
 use fluxemu_graphics::api::software::{
     Software,
-    texture::{AsTextureView, AsTextureViewMut, TextureView, TextureViewMut},
+    texture::{AsTexture, AsTextureMut, RefMutTexture, RefTexture},
 };
 use fluxemu_runtime::graphics::GraphicsRequirements;
 use palette::{cast::Packed, rgb::channels::Bgra};
@@ -19,21 +19,21 @@ pub struct SurfaceBufferGuard<'a> {
     buffer: Buffer<'a, Arc<Window>, Arc<Window>>,
 }
 
-impl AsTextureView<Packed<Bgra, [u8; 4]>> for SurfaceBufferGuard<'_> {
-    fn as_texture_view(&self) -> TextureView<'_, Packed<Bgra, [u8; 4]>> {
+impl AsTexture<Packed<Bgra, [u8; 4]>> for SurfaceBufferGuard<'_> {
+    fn as_texture(&self) -> RefTexture<'_, Packed<Bgra, [u8; 4]>> {
         let width = self.buffer.width().get() as usize;
         let height = self.buffer.height().get() as usize;
 
-        TextureView::from_slice(bytemuck::cast_slice(&self.buffer), width, height)
+        RefTexture::from_storage(width, height, bytemuck::cast_slice(&self.buffer))
     }
 }
 
-impl AsTextureViewMut<Packed<Bgra, [u8; 4]>> for SurfaceBufferGuard<'_> {
-    fn as_texture_view_mut(&mut self) -> TextureViewMut<'_, Packed<Bgra, [u8; 4]>> {
+impl AsTextureMut<Packed<Bgra, [u8; 4]>> for SurfaceBufferGuard<'_> {
+    fn as_texture_mut(&mut self) -> RefMutTexture<'_, Packed<Bgra, [u8; 4]>> {
         let width = self.buffer.width().get() as usize;
         let height = self.buffer.height().get() as usize;
 
-        TextureViewMut::from_slice(bytemuck::cast_slice_mut(&mut self.buffer), width, height)
+        RefMutTexture::from_storage(width, height, bytemuck::cast_slice_mut(&mut self.buffer))
     }
 }
 
@@ -70,7 +70,6 @@ impl SoftwareCompatibleDisplayContext for Arc<Window> {
     type PresentError = SoftBufferError;
     type ResizeError = SoftBufferError;
     type Surface = softbuffer::Surface<Arc<Window>, Arc<Window>>;
-    type SurfaceBufferGuard<'a> = SurfaceBufferGuard<'a>;
 
     fn resize_surface(&self, surface: &mut Self::Surface) -> Result<(), Self::ResizeError> {
         let window_dimensions = self.inner_size();
@@ -84,7 +83,7 @@ impl SoftwareCompatibleDisplayContext for Arc<Window> {
     fn map_surface_buffer<'a>(
         &'a self,
         surface: &'a mut Self::Surface,
-    ) -> Result<Self::SurfaceBufferGuard<'a>, Self::MappingError> {
+    ) -> Result<impl AsTextureMut<Packed<Bgra, [u8; 4]>> + 'a, Self::MappingError> {
         let buffer = surface.buffer_mut()?;
 
         Ok(SurfaceBufferGuard { buffer })

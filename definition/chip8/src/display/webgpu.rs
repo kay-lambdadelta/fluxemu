@@ -1,6 +1,6 @@
 use fluxemu_graphics::api::{
     GraphicsApi,
-    software::texture::TextureImpl,
+    software::texture::OwnedTexture,
     webgpu::{Webgpu, suggested_framebuffer_texture_usages},
 };
 use palette::Srgba;
@@ -51,10 +51,7 @@ impl Chip8DisplayBackend for State {
         &self.framebuffer
     }
 
-    fn commit_staging_buffer(
-        &mut self,
-        staging_buffer: &fluxemu_graphics::api::software::texture::Texture<Srgba<u8>>,
-    ) {
+    fn commit_staging_buffer(&mut self, staging_buffer: &OwnedTexture<Srgba<u8>>) {
         if staging_buffer.width() != self.framebuffer.width() as usize
             || staging_buffer.height() != self.framebuffer.height() as usize
         {
@@ -83,7 +80,7 @@ impl Chip8DisplayBackend for State {
                 origin: Origin3d::ZERO,
                 aspect: TextureAspect::All,
             },
-            bytemuck::cast_slice(staging_buffer.as_slice()),
+            bytemuck::cast_slice(staging_buffer.as_slice().unwrap()),
             TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some((staging_buffer.width() * size_of::<Srgba<u8>>()) as u32),

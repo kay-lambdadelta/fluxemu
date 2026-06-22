@@ -3,7 +3,7 @@ use std::{collections::HashMap, hint::black_box};
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use egui::{Context, RawInput, Rect, ViewportId, ViewportInfo};
 use fluxemu_egui_software_renderer::Renderer;
-use fluxemu_graphics::api::software::texture::{Texture, TextureImplMut};
+use fluxemu_graphics::api::software::texture::{AsTextureMut, OwnedTexture};
 use palette::{
     Srgba, WithAlpha,
     cast::Packed,
@@ -19,9 +19,11 @@ fn render<
 >(
     renderer: &mut Renderer,
     context: &Context,
-    texture: &mut Texture<P>,
+    mut texture: impl AsTextureMut<P>,
 ) {
-    texture.fill(BLACK.with_alpha(u8::MAX).into());
+    texture
+        .as_texture_mut()
+        .fill(BLACK.with_alpha(u8::MAX).into());
 
     let full_output = context.run_ui(
         RawInput {
@@ -77,7 +79,7 @@ macro_rules! bench_combinations {
             {
                 let mut renderer = Renderer::default();
                 let context = Context::default();
-                let mut texture = Texture::new($w, $h, BLACK.with_alpha(u8::MAX).into());
+                let mut texture = OwnedTexture::new($w, $h, BLACK.with_alpha(u8::MAX).into());
 
                 let bench_name = format!("{}x{}", $w, $h);
                 let param_combo = format!("{} @ Batch Size {}", $name, $batch);
@@ -87,7 +89,7 @@ macro_rules! bench_combinations {
                         render::<$t, $w, $h, $batch>(
                             &mut renderer,
                             &context,
-                            black_box(&mut texture),
+                            black_box(texture.as_texture_mut()),
                         )
                     });
                 });

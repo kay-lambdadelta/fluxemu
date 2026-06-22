@@ -2,7 +2,7 @@ use std::{any::Any, fmt::Debug};
 
 use fluxemu_graphics::api::{
     GraphicsApi,
-    software::texture::{CopyMode, Texture, TextureImpl, TextureImplMut},
+    software::texture::{CopyMode, OwnedTexture, Texture},
 };
 use fluxemu_runtime::{
     component::{
@@ -29,7 +29,7 @@ const HIRES: Vector2<u8> = Vector2::new(128, 64);
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Snapshot {
-    screen_buffer: Texture<Srgba<u8>>,
+    screen_buffer: OwnedTexture<Srgba<u8>>,
     vsync_occurred: bool,
     hires: bool,
 }
@@ -39,7 +39,7 @@ pub struct Chip8Display<G: SupportedGraphicsApiChip8Display> {
     backend: Option<G::Backend>,
     /// The cpu reads this to see if it can continue execution post draw call
     vsync_occurred: bool,
-    staging_buffer: Texture<Srgba<u8>>,
+    staging_buffer: OwnedTexture<Srgba<u8>>,
     hires: bool,
     config: Chip8DisplayConfig,
 }
@@ -193,7 +193,7 @@ pub(crate) trait Chip8DisplayBackend: Send + Sync + Debug + 'static {
 
     fn new(initialization_data: <Self::GraphicsApi as GraphicsApi>::InitializationData) -> Self;
     fn framebuffer(&self) -> &<Self::GraphicsApi as GraphicsApi>::Framebuffer;
-    fn commit_staging_buffer(&mut self, staging_buffer: &Texture<Srgba<u8>>);
+    fn commit_staging_buffer(&mut self, staging_buffer: &OwnedTexture<Srgba<u8>>);
 }
 
 #[derive(Debug, Default)]

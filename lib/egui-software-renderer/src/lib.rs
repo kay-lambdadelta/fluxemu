@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use egui::{FullOutput, TextureId};
 use fluxemu_graphics::api::software::texture::{
-    AsTextureViewMut, CopyMode, Texture, TextureImpl, TextureImplMut,
+    AsTextureMut, CopyMode, OwnedTexture, StorageMut, Texture,
 };
 use nalgebra::Vector2;
 use palette::{Srgb, Srgba, blend::PreAlpha, named::BLACK};
@@ -23,25 +23,28 @@ mod powerof2;
 
 #[derive(Debug, Default)]
 pub struct Renderer {
-    textures: HashMap<TextureId, Texture<PreAlpha<Srgb<f32>>>, FxBuildHasher>,
+    textures: HashMap<TextureId, OwnedTexture<PreAlpha<Srgb<f32>>>, FxBuildHasher>,
 }
 
 impl Renderer {
     /// Render to a surface
     #[inline]
     pub fn render<
+        'a,
         P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'static,
         const BATCH_SIZE: usize,
     >(
         &mut self,
         context: &egui::Context,
         full_output: FullOutput,
-        target_texture: impl AsTextureViewMut<P>,
+        mut target_texture: impl AsTextureMut<P> + 'a,
     ) {
         assert!(BATCH_SIZE <= 32, "Batch size is too large to be useful");
 
         self.update_textures(&full_output);
         let to_free = full_output.textures_delta.free.clone();
+
+        let target_texture = target_texture.as_texture_mut();
 
         render_inner::<_, BATCH_SIZE>(context, full_output, target_texture, &mut self.textures);
 
@@ -68,11 +71,9 @@ impl Renderer {
         >(
             context: &egui::Context,
             full_output: FullOutput,
-            mut target_texture: impl AsTextureViewMut<P>,
-            textures: &mut HashMap<TextureId, Texture<PreAlpha<Srgb<f32>>>, FxBuildHasher>,
+            mut target_texture: Texture<impl StorageMut<Pixel = P>>,
+            textures: &mut HashMap<TextureId, OwnedTexture<PreAlpha<Srgb<f32>>>, FxBuildHasher>,
         ) {
-            let mut target_texture = target_texture.as_texture_view_mut();
-
             assert_ne!(target_texture.width(), 0);
             assert_ne!(target_texture.height(), 0);
 
@@ -82,16 +83,19 @@ impl Renderer {
                 for primitive in geometry.primitives.iter().copied() {
                     match primitive {
                         Primitive::SolidQuad(solid_quad) => {
-                            fill_quad(&geometry, solid_quad, &mut target_texture);
+                            let target_texture = target_texture.view_mut(.., ..);
+
+                            fill_quad(&geometry, solid_quad, target_texture);
                         }
                         Primitive::Triangle(triangle) => {
                             let texture = &textures[&geometry.texture_id];
+                            let target_texture = target_texture.view_mut(.., ..);
 
                             fill_triangle::<_, BATCH_SIZE>(
                                 &geometry,
                                 triangle,
                                 texture,
-                                &mut target_texture,
+                                target_texture,
                             );
                         }
                     }
@@ -127,7 +131,7 @@ impl Renderer {
 
             let source_texture_view = match &image_delta.image {
                 egui::ImageData::Color(image) => {
-                    let converted_image = image
+                    let converted_image: Vec<_> = image
                         .pixels
                         .clone()
                         .into_iter()
@@ -138,7 +142,7 @@ impl Renderer {
                         })
                         .collect();
 
-                    Texture::from_vec(image.size[0], image.size[1], converted_image)
+                    Texture::from_storage(image.size[0], image.size[1], converted_image)
                 }
             };
 

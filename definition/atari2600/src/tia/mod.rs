@@ -6,7 +6,7 @@ use std::{
 
 pub(crate) use backend::SupportedGraphicsApiTia;
 use color::TiaColor;
-use fluxemu_graphics::api::software::texture::Texture;
+use fluxemu_graphics::api::software::texture::OwnedTexture;
 use fluxemu_runtime::{
     ComponentPath,
     component::Component,
@@ -117,7 +117,7 @@ struct State {
     playfield: Playfield,
     high_playfield_ball_priority: bool,
     background_color: TiaColor,
-    staging_buffer: Texture<Srgba<u8>>,
+    staging_buffer: OwnedTexture<Srgba<u8>>,
     hmove_pending: bool,
 }
 

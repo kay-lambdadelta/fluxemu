@@ -6,7 +6,7 @@ use fluxemu_graphics::api::{
     GraphicsApi,
     software::{
         Software,
-        texture::{AsTextureViewMut, CopyMode, TextureImpl, TextureImplMut},
+        texture::{AsTextureMut, CopyMode},
     },
 };
 use fluxemu_runtime::{graphics::GraphicsRequirements, machine::Machine};
@@ -49,10 +49,9 @@ impl<H: SoftwareCompatibleDisplayContext> GraphicsRuntime for SoftwareGraphicsRu
             .display_handle
             .map_surface_buffer(&mut self.surface)
             .unwrap();
+        let mut surface_buffer = surface_buffer_guard.as_texture_mut();
 
-        surface_buffer_guard
-            .as_texture_view_mut()
-            .fill(clear_color.into());
+        surface_buffer.fill(clear_color.into());
 
         for target in targets {
             match target {
@@ -61,10 +60,10 @@ impl<H: SoftwareCompatibleDisplayContext> GraphicsRuntime for SoftwareGraphicsRu
                     full_output,
                 } => {
                     self.renderer
-                        .render::<_, 32>(context, full_output, &mut surface_buffer_guard);
+                        .render::<_, 32>(context, full_output, &mut surface_buffer);
                 }
                 DrawTarget::Machine { machine } => {
-                    present_machine(&mut surface_buffer_guard, machine);
+                    present_machine(&mut surface_buffer, machine);
                 }
             }
         }
@@ -93,23 +92,21 @@ pub trait SoftwareCompatibleDisplayContext:
     type MappingError: std::error::Error;
     type PresentError: std::error::Error;
 
-    type SurfaceBufferGuard<'a>: AsTextureViewMut<Packed<Bgra, [u8; 4]>>;
-
     fn resize_surface(&self, surface: &mut Self::Surface) -> Result<(), Self::ResizeError>;
 
     fn map_surface_buffer<'a>(
         &'a self,
         surface: &'a mut Self::Surface,
-    ) -> Result<Self::SurfaceBufferGuard<'a>, Self::MappingError>;
+    ) -> Result<impl AsTextureMut<Packed<Bgra, [u8; 4]>> + 'a, Self::MappingError>;
 
     fn present(&self, surface: &mut Self::Surface) -> Result<(), Self::PresentError>;
 }
 
 fn present_machine(
-    mut surface_buffer: impl AsTextureViewMut<Packed<Bgra, [u8; 4]>>,
+    mut surface_buffer: impl AsTextureMut<Packed<Bgra, [u8; 4]>>,
     machine: &Arc<Machine>,
 ) {
-    let mut surface_buffer = surface_buffer.as_texture_view_mut();
+    let mut surface_buffer = surface_buffer.as_texture_mut();
     let width = surface_buffer.width();
     let height = surface_buffer.height();
 

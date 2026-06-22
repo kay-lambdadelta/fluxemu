@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use fluxemu_graphics::api::{GraphicsApi, software::texture::Texture};
+use fluxemu_graphics::api::{GraphicsApi, software::texture::OwnedTexture};
 use palette::Srgba;
 
 use crate::tia::region::Region;
@@ -16,7 +16,7 @@ pub(crate) trait TiaDisplayBackend<R: Region>:
 
     fn new(initialization_data: <Self::GraphicsApi as GraphicsApi>::InitializationData) -> Self;
     fn framebuffer(&self) -> &<Self::GraphicsApi as GraphicsApi>::Framebuffer;
-    fn commit_staging_buffer(&mut self, staging_buffer: &Texture<Srgba<u8>>);
+    fn commit_staging_buffer(&mut self, staging_buffer: &OwnedTexture<Srgba<u8>>);
 }
 
 pub(crate) trait SupportedGraphicsApiTia: GraphicsApi {
