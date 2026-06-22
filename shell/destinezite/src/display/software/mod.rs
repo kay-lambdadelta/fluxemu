@@ -1,13 +1,15 @@
+use std::sync::Arc;
+
 use fluxemu_egui_software_renderer::Renderer;
 use fluxemu_frontend::graphics::{DrawTarget, GraphicsRuntime};
 use fluxemu_graphics::api::{
     GraphicsApi,
     software::{
         Software,
-        texture::{CopyMode, TextureImpl, TextureImplMut, TextureViewMut},
+        texture::{AsTextureViewMut, CopyMode, TextureImpl, TextureImplMut},
     },
 };
-use fluxemu_runtime::graphics::GraphicsRequirements;
+use fluxemu_runtime::{graphics::GraphicsRequirements, machine::Machine};
 use nalgebra::{Point2, Vector2};
 use palette::{Srgb, cast::Packed, rgb::channels::Bgra};
 
@@ -43,90 +45,34 @@ impl<H: SoftwareCompatibleDisplayContext> GraphicsRuntime for SoftwareGraphicsRu
         clear_color: Srgb<u8>,
         targets: impl IntoIterator<Item = DrawTarget<'a>>,
     ) {
-        self.display_handle
-            .map_surface_buffer(&mut self.surface, |mut surface_buffer| {
-                let width = surface_buffer.width();
-                let height = surface_buffer.height();
-
-                surface_buffer.fill(clear_color.into());
-
-                for target in targets {
-                    match target {
-                        DrawTarget::Egui {
-                            context,
-                            full_output,
-                        } => {
-
-                            self.renderer.render(
-                                context,
-                                full_output,
-                                &mut surface_buffer,
-                            );
-                        }
-                        DrawTarget::Machine { machine } => {
-                            let destination_dimensions: Vector2<f32> = Vector2::new(width, height).cast();
-
-                            let runtime_guard = machine.enter_runtime();
-                            let framebuffer_paths = runtime_guard.framebuffer_paths();
-
-                            for framebuffer_path in framebuffer_paths.iter() {
-                                let framebuffer_parent_path = framebuffer_path.parent().unwrap();
-
-                                // Ensure we are at least on this frame for this component
-                                runtime_guard.registry().interact_dyn(
-                                    framebuffer_parent_path,
-                                    runtime_guard.safe_advance_timestamp(),
-                                    |component| {
-                                        let framebuffer = component.get_framebuffer(framebuffer_path.name());
-
-                                        let framebuffer_texture: &<Self::GraphicsApi as GraphicsApi>::Framebuffer =
-                                            framebuffer.downcast_ref().unwrap();
-
-                                        let source_dimensions: Vector2<f32> = framebuffer_texture.size().cast();
-
-                                        let source_aspect = source_dimensions.x / source_dimensions.y;
-                                        let destination_aspect =
-                                            destination_dimensions.x / destination_dimensions.y;
-
-                                        let (scaled_dimensions, offset) = if source_aspect > destination_aspect {
-                                            let scaled_width = destination_dimensions.x;
-                                            let scaled_height = destination_dimensions.x / source_aspect;
-
-                                            let offset = Point2::new(
-                                                0,
-                                                ((destination_dimensions.y - scaled_height) / 2.0) as usize,
-                                            );
-
-                                            (Vector2::new(scaled_width, scaled_height), offset)
-                                        } else {
-                                            let scaled_width = destination_dimensions.y * source_aspect;
-                                            let scaled_height = destination_dimensions.y;
-
-                                            let offset = Point2::new(
-                                                ((destination_dimensions.x - scaled_width) / 2.0) as usize,
-                                                0,
-                                            );
-
-                                            (Vector2::new(scaled_width, scaled_height), offset)
-                                        };
-
-                                        let min = offset;
-                                        let max = offset + scaled_dimensions.try_cast().unwrap();
-
-                                        surface_buffer
-                                            .view_mut(min.x..max.x, min.y..max.y)
-                                            .copy_from(framebuffer_texture, CopyMode::Nearest);
-                                    },
-                                );
-                            }
-                            drop(runtime_guard);
-                        }
-                    }
-                }
-
-                self.display_handle.pre_present_notify();
-            })
+        let mut surface_buffer_guard = self
+            .display_handle
+            .map_surface_buffer(&mut self.surface)
             .unwrap();
+
+        surface_buffer_guard
+            .as_texture_view_mut()
+            .fill(clear_color.into());
+
+        for target in targets {
+            match target {
+                DrawTarget::Egui {
+                    context,
+                    full_output,
+                } => {
+                    self.renderer
+                        .render::<_, 32>(context, full_output, &mut surface_buffer_guard);
+                }
+                DrawTarget::Machine { machine } => {
+                    present_machine(&mut surface_buffer_guard, machine);
+                }
+            }
+        }
+
+        drop(surface_buffer_guard);
+
+        self.display_handle.pre_present_notify();
+        self.display_handle.present(&mut self.surface).unwrap();
     }
 
     fn component_initialization_data(
@@ -145,12 +91,80 @@ pub trait SoftwareCompatibleDisplayContext:
     type Surface;
     type ResizeError: std::error::Error;
     type MappingError: std::error::Error;
+    type PresentError: std::error::Error;
+
+    type SurfaceBufferGuard<'a>: AsTextureViewMut<Packed<Bgra, [u8; 4]>>;
 
     fn resize_surface(&self, surface: &mut Self::Surface) -> Result<(), Self::ResizeError>;
 
-    fn map_surface_buffer(
-        &self,
-        surface: &mut Self::Surface,
-        callback: impl FnOnce(TextureViewMut<'_, Packed<Bgra, [u8; 4]>>),
-    ) -> Result<(), Self::MappingError>;
+    fn map_surface_buffer<'a>(
+        &'a self,
+        surface: &'a mut Self::Surface,
+    ) -> Result<Self::SurfaceBufferGuard<'a>, Self::MappingError>;
+
+    fn present(&self, surface: &mut Self::Surface) -> Result<(), Self::PresentError>;
+}
+
+fn present_machine(
+    mut surface_buffer: impl AsTextureViewMut<Packed<Bgra, [u8; 4]>>,
+    machine: &Arc<Machine>,
+) {
+    let mut surface_buffer = surface_buffer.as_texture_view_mut();
+    let width = surface_buffer.width();
+    let height = surface_buffer.height();
+
+    let destination_dimensions: Vector2<f32> = Vector2::new(width, height).cast();
+
+    let runtime_guard = machine.enter_runtime();
+    let framebuffer_paths = runtime_guard.framebuffer_paths();
+
+    for framebuffer_path in framebuffer_paths.iter() {
+        let framebuffer_parent_path = framebuffer_path.parent().unwrap();
+
+        // Ensure we are at least on this frame for this component
+        runtime_guard.registry().interact_dyn(
+            framebuffer_parent_path,
+            runtime_guard.safe_advance_timestamp(),
+            |component| {
+                let framebuffer = component.get_framebuffer(framebuffer_path.name());
+
+                let framebuffer_texture: &<Software as GraphicsApi>::Framebuffer =
+                    framebuffer.downcast_ref().unwrap();
+
+                let source_dimensions: Vector2<f32> = framebuffer_texture.size().cast();
+
+                let source_aspect = source_dimensions.x / source_dimensions.y;
+                let destination_aspect = destination_dimensions.x / destination_dimensions.y;
+
+                let (scaled_dimensions, offset) = if source_aspect > destination_aspect {
+                    let scaled_width = destination_dimensions.x;
+                    let scaled_height = destination_dimensions.x / source_aspect;
+
+                    let offset = Point2::new(
+                        0,
+                        ((destination_dimensions.y - scaled_height) / 2.0) as usize,
+                    );
+
+                    (Vector2::new(scaled_width, scaled_height), offset)
+                } else {
+                    let scaled_width = destination_dimensions.y * source_aspect;
+                    let scaled_height = destination_dimensions.y;
+
+                    let offset = Point2::new(
+                        ((destination_dimensions.x - scaled_width) / 2.0) as usize,
+                        0,
+                    );
+
+                    (Vector2::new(scaled_width, scaled_height), offset)
+                };
+
+                let min = offset;
+                let max = offset + scaled_dimensions.try_cast().unwrap();
+
+                surface_buffer
+                    .view_mut(min.x..max.x, min.y..max.y)
+                    .copy_from(framebuffer_texture, CopyMode::Nearest);
+            },
+        );
+    }
 }

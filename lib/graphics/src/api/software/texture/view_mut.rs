@@ -2,6 +2,10 @@ use core::ops::{Index, IndexMut, RangeBounds, RangeInclusive};
 
 use fluxemu_range::ContiguousRange;
 use nalgebra::{Point2, Vector2};
+use rayon::{
+    iter::{IndexedParallelIterator, ParallelIterator},
+    slice::{ParallelSlice, ParallelSliceMut},
+};
 
 use crate::api::software::texture::{
     AsTextureView, AsTextureViewMut, TextureImpl, TextureImplMut, TextureView, resolve_range,
@@ -75,7 +79,7 @@ impl<T: Sized> AsTextureViewMut<T> for TextureViewMut<'_, T> {
     }
 }
 
-impl<'a, P: Into<Point2<usize>>, T> Index<P> for TextureViewMut<'a, T> {
+impl<'a, P: Into<Point2<usize>>, T: 'static> Index<P> for TextureViewMut<'a, T> {
     type Output = T;
 
     #[inline]
@@ -89,7 +93,7 @@ impl<'a, P: Into<Point2<usize>>, T> Index<P> for TextureViewMut<'a, T> {
     }
 }
 
-impl<'a, P: Into<Point2<usize>>, T> IndexMut<P> for TextureViewMut<'a, T> {
+impl<'a, P: Into<Point2<usize>>, T: 'static> IndexMut<P> for TextureViewMut<'a, T> {
     #[inline]
     fn index_mut(&mut self, point: P) -> &mut Self::Output {
         let point = point.into();
@@ -101,7 +105,7 @@ impl<'a, P: Into<Point2<usize>>, T> IndexMut<P> for TextureViewMut<'a, T> {
     }
 }
 
-impl<'a, T: Sized> TextureImpl<T> for TextureViewMut<'a, T> {
+impl<'a, T: Sized + 'static> TextureImpl<T> for TextureViewMut<'a, T> {
     #[inline]
     fn width(&self) -> usize {
         self.size.x
@@ -140,9 +144,23 @@ impl<'a, T: Sized> TextureImpl<T> for TextureViewMut<'a, T> {
 
         unsafe { self.texture.get_unchecked(index) }
     }
+
+    fn par_rows(&self) -> impl IndexedParallelIterator<Item = &[T]>
+    where
+        Self: Sync,
+        T: Send + Sync,
+    {
+        self.texture
+            .par_chunks_exact(self.stride())
+            .skip(self.offset.y)
+            .take(self.height())
+            .map(move |row| {
+                &row[RangeInclusive::from_start_and_length(self.offset.x, self.width())]
+            })
+    }
 }
 
-impl<'a, T: Sized> TextureImplMut<T> for TextureViewMut<'a, T> {
+impl<'a, T: Sized + 'static> TextureImplMut<T> for TextureViewMut<'a, T> {
     #[inline]
     fn view_mut(
         &mut self,
@@ -164,10 +182,7 @@ impl<'a, T: Sized> TextureImplMut<T> for TextureViewMut<'a, T> {
     }
 
     #[inline]
-    fn iter_pixels_mut<'b>(&'b mut self) -> impl Iterator<Item = &'b mut T> + 'b
-    where
-        T: 'b,
-    {
+    fn iter_pixels_mut(&mut self) -> impl Iterator<Item = &mut T> {
         let view_width = self.width();
         let offset = self.offset;
         let texture_width = self.texture_size.x;
@@ -180,12 +195,7 @@ impl<'a, T: Sized> TextureImplMut<T> for TextureViewMut<'a, T> {
     }
 
     #[inline]
-    fn iter_pixels_indexed_mut<'b>(
-        &'b mut self,
-    ) -> impl Iterator<Item = (Point2<usize>, &'b mut T)> + 'b
-    where
-        T: 'b,
-    {
+    fn iter_pixels_indexed_mut(&mut self) -> impl Iterator<Item = (Point2<usize>, &mut T)> {
         let view_width = self.width();
         let offset = self.offset;
         let texture_width = self.texture_size.x;
@@ -240,5 +250,23 @@ impl<'a, T: Sized> TextureImplMut<T> for TextureViewMut<'a, T> {
         let index = global.y * self.texture_size.x + global.x;
 
         unsafe { self.texture.get_unchecked_mut(index) }
+    }
+
+    #[inline]
+    fn par_rows_mut(&mut self) -> impl IndexedParallelIterator<Item = &mut [T]>
+    where
+        Self: Sync,
+        T: Send + Sync,
+    {
+        let stride = self.stride();
+        let offset = self.offset;
+        let width = self.width();
+        let height = self.height();
+
+        self.texture
+            .par_chunks_exact_mut(stride)
+            .skip(self.offset.y)
+            .take(height)
+            .map(move |row| &mut row[RangeInclusive::from_start_and_length(offset.x, width)])
     }
 }

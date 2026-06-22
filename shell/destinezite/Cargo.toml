@@ -24,7 +24,7 @@ fluxemu-frontend = { workspace = true }
 fluxemu-graphics = { workspace = true }
 fluxemu-input = { workspace = true }
 fluxemu-program = { workspace = true, features = ["mmap"] }
-fluxemu-runtime = { workspace = true, features = ["std"] }
+fluxemu-runtime = { workspace = true }
 gilrs = "0.11"
 nalgebra = { workspace = true }
 palette = { workspace = true }

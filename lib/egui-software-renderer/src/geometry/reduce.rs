@@ -1,15 +1,84 @@
-use egui::{Context, TextureId, epaint::ClippedShape};
+use egui::{Context, epaint::ClippedShape};
 use itertools::Itertools;
-use nalgebra::{Point2, Vector2};
+use nalgebra::Point2;
 use palette::Srgba;
+
+use crate::geometry::{Primitive, Shape, SolidQuad, Triangle, Vertex};
 
 const WHITE_UV: Point2<f32> = Point2::new(0.0, 0.0);
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Vertex {
-    pub position: Point2<f32>,
-    pub uv: Point2<f32>,
-    pub color: Srgba<f32>,
+#[inline]
+pub fn reduce_geometry(
+    context: &Context,
+    input_shapes: Vec<ClippedShape>,
+    pixels_per_point: f32,
+) -> impl Iterator<Item = Shape> {
+    let mut shapes = Vec::default();
+
+    for clipped_primitive in context.tessellate(input_shapes, pixels_per_point) {
+        match clipped_primitive.primitive {
+            egui::epaint::Primitive::Mesh(mesh) => {
+                let mut primitives = Vec::default();
+
+                let mut triangles = mesh
+                    .indices
+                    .chunks_exact(3)
+                    .map(
+                        #[inline]
+                        |vertex_indexes| {
+                            let [mut v0, mut v1, mut v2]: [Vertex; 3] = [
+                                mesh.vertices[vertex_indexes[0] as usize].into(),
+                                mesh.vertices[vertex_indexes[1] as usize].into(),
+                                mesh.vertices[vertex_indexes[2] as usize].into(),
+                            ];
+
+                            // Scale for our physical screen dimensions
+                            v0.position *= pixels_per_point;
+                            v1.position *= pixels_per_point;
+                            v2.position *= pixels_per_point;
+
+                            (v0, v1, v2)
+                        },
+                    )
+                    .peekable();
+
+                while let Some((v0, v1, v2)) = triangles.next() {
+                    if let Some((next_v0, next_v1, next_v2)) = triangles.peek()
+                        && let Some(solid_quad) = SolidQuad::new_if_eligible([
+                            [v0, v1, v2],
+                            [*next_v0, *next_v1, *next_v2],
+                        ])
+                    {
+                        triangles.next();
+
+                        primitives.push(Primitive::SolidQuad(solid_quad));
+                    } else {
+                        if let Some(triangle) = Triangle::new(v0, v1, v2) {
+                            primitives.push(Primitive::Triangle(triangle));
+                        }
+                    }
+                }
+
+                shapes.push(Shape {
+                    min: Point2::new(
+                        clipped_primitive.clip_rect.min.x,
+                        clipped_primitive.clip_rect.min.y,
+                    ) * pixels_per_point,
+                    max: Point2::new(
+                        clipped_primitive.clip_rect.max.x,
+                        clipped_primitive.clip_rect.max.y,
+                    ) * pixels_per_point,
+                    texture_id: mesh.texture_id,
+                    primitives,
+                });
+            }
+            egui::epaint::Primitive::Callback(_) => {
+                unreachable!("Epaint callbacks should not be sent");
+            }
+        }
+    }
+
+    shapes.into_iter()
 }
 
 impl From<egui::epaint::Vertex> for Vertex {
@@ -21,22 +90,6 @@ impl From<egui::epaint::Vertex> for Vertex {
             color: Srgba::from_components(vertex.color.to_tuple()).into_format(),
         }
     }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Triangle {
-    // Vertexes
-    pub v0: Vertex,
-    pub v1: Vertex,
-    pub v2: Vertex,
-
-    // Edges
-    pub edge0: Vector2<f32>,
-    pub edge1: Vector2<f32>,
-    pub edge2: Vector2<f32>,
-
-    // Double area
-    pub signed_double_area: f32,
 }
 
 impl Triangle {
@@ -65,17 +118,9 @@ impl Triangle {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct SolidQuad {
-    pub min: Point2<f32>,
-    pub max: Point2<f32>,
-    // This is only for single color quads
-    pub color: Srgba<f32>,
-}
-
 impl SolidQuad {
     #[inline]
-    pub fn new_if_eligible([triangle_a, triangle_b]: [[Vertex; 3]; 2]) -> Option<Self> {
+    fn new_if_eligible([triangle_a, triangle_b]: [[Vertex; 3]; 2]) -> Option<Self> {
         // Ensure this shape has a solid coloring
         let potential_color = triangle_a[0].color;
 
@@ -164,92 +209,4 @@ impl SolidQuad {
             color: potential_color,
         })
     }
-}
-
-#[derive(Debug)]
-pub struct Shape {
-    pub min: Point2<f32>,
-    pub max: Point2<f32>,
-    pub texture_id: TextureId,
-    pub primitives: Vec<Primitive>,
-}
-
-#[derive(Debug)]
-pub enum Primitive {
-    Triangle(Triangle),
-    SolidQuad(SolidQuad),
-}
-
-#[inline]
-pub fn reduce_shapes(
-    context: &Context,
-    input_shapes: Vec<ClippedShape>,
-    pixels_per_point: f32,
-) -> impl Iterator<Item = Shape> {
-    let mut shapes = Vec::default();
-
-    for clipped_primitive in context.tessellate(input_shapes, pixels_per_point) {
-        match clipped_primitive.primitive {
-            egui::epaint::Primitive::Mesh(mesh) => {
-                let mut primitives = Vec::default();
-
-                let mut triangles = mesh
-                    .indices
-                    .chunks_exact(3)
-                    .map(
-                        #[inline]
-                        |vertex_indexes| {
-                            let [mut v0, mut v1, mut v2]: [Vertex; 3] = [
-                                mesh.vertices[vertex_indexes[0] as usize].into(),
-                                mesh.vertices[vertex_indexes[1] as usize].into(),
-                                mesh.vertices[vertex_indexes[2] as usize].into(),
-                            ];
-
-                            // Scale for our physical screen dimensions
-                            v0.position *= pixels_per_point;
-                            v1.position *= pixels_per_point;
-                            v2.position *= pixels_per_point;
-
-                            (v0, v1, v2)
-                        },
-                    )
-                    .peekable();
-
-                while let Some((v0, v1, v2)) = triangles.next() {
-                    if let Some(next_triangle) = triangles.peek()
-                        && let Some(solid_quad) = SolidQuad::new_if_eligible([
-                            [v0, v1, v2],
-                            [next_triangle.0, next_triangle.1, next_triangle.2],
-                        ])
-                    {
-                        triangles.next();
-
-                        primitives.push(Primitive::SolidQuad(solid_quad));
-                    } else {
-                        if let Some(triangle) = Triangle::new(v0, v1, v2) {
-                            primitives.push(Primitive::Triangle(triangle));
-                        }
-                    }
-                }
-
-                shapes.push(Shape {
-                    min: Point2::new(
-                        clipped_primitive.clip_rect.min.x,
-                        clipped_primitive.clip_rect.min.y,
-                    ) * pixels_per_point,
-                    max: Point2::new(
-                        clipped_primitive.clip_rect.max.x,
-                        clipped_primitive.clip_rect.max.y,
-                    ) * pixels_per_point,
-                    texture_id: mesh.texture_id,
-                    primitives,
-                });
-            }
-            egui::epaint::Primitive::Callback(_) => {
-                unreachable!("Epaint callbacks should not be sent");
-            }
-        }
-    }
-
-    shapes.into_iter()
 }

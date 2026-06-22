@@ -2,12 +2,19 @@ use std::sync::Arc;
 
 use drm::{
     buffer::{Buffer, DrmFourcc},
-    control::{Device, PageFlipFlags, dumbbuffer::DumbBuffer},
+    control::{
+        Device, PageFlipFlags,
+        dumbbuffer::{DumbBuffer, DumbMapping},
+    },
 };
 use fluxemu_egui_software_renderer::Renderer;
-use fluxemu_graphics::api::software::{Software, texture::TextureViewMut};
+use fluxemu_graphics::api::software::{
+    Software,
+    texture::{AsTextureView, AsTextureViewMut, TextureView, TextureViewMut},
+};
 use fluxemu_runtime::graphics::GraphicsRequirements;
 use libseat::Seat;
+use nalgebra::Vector2;
 use nix::{
     poll::PollTimeout,
     sys::epoll::{Epoll, EpollCreateFlags, EpollEvent, EpollFlags},
@@ -27,6 +34,34 @@ pub struct Surface {
     framebuffers: [drm::control::framebuffer::Handle; 2],
     epoll: Epoll,
     on_back_buffer: bool,
+}
+
+pub struct SurfaceBufferGuard<'a> {
+    dimensions: Vector2<u32>,
+    stride: u32,
+    buffer: DumbMapping<'a>,
+}
+
+impl AsTextureView<Packed<Bgra, [u8; 4]>> for SurfaceBufferGuard<'_> {
+    fn as_texture_view(&self) -> TextureView<'_, Packed<Bgra, [u8; 4]>> {
+        TextureView::from_slice_with_stride(
+            bytemuck::cast_slice(&self.buffer),
+            self.dimensions.x as usize,
+            self.dimensions.y as usize,
+            self.stride as usize,
+        )
+    }
+}
+
+impl AsTextureViewMut<Packed<Bgra, [u8; 4]>> for SurfaceBufferGuard<'_> {
+    fn as_texture_view_mut(&mut self) -> TextureViewMut<'_, Packed<Bgra, [u8; 4]>> {
+        TextureViewMut::from_slice_with_stride(
+            bytemuck::cast_slice_mut(&mut self.buffer),
+            self.dimensions.x as usize,
+            self.dimensions.y as usize,
+            self.stride as usize,
+        )
+    }
 }
 
 impl RuntimeAssociatedDisplayContext<SoftwareGraphicsRuntime<Self>> for Arc<DrmContext> {
@@ -81,37 +116,36 @@ impl RuntimeAssociatedDisplayContext<SoftwareGraphicsRuntime<Self>> for Arc<DrmC
 
 impl SoftwareCompatibleDisplayContext for Arc<DrmContext> {
     type MappingError = std::io::Error;
+    type PresentError = std::io::Error;
     type ResizeError = std::io::Error;
     type Surface = Surface;
+    type SurfaceBufferGuard<'a> = SurfaceBufferGuard<'a>;
 
     fn resize_surface(&self, _surface: &mut Self::Surface) -> Result<(), Self::ResizeError> {
         unimplemented!()
     }
 
-    fn map_surface_buffer(
-        &self,
-        surface: &mut Self::Surface,
-        callback: impl FnOnce(TextureViewMut<'_, Packed<Bgra, [u8; 4]>>),
-    ) -> Result<(), Self::MappingError> {
+    #[inline]
+    fn map_surface_buffer<'a>(
+        &'a self,
+        surface: &'a mut Self::Surface,
+    ) -> Result<Self::SurfaceBufferGuard<'a>, Self::MappingError> {
+        let back_buffer = &mut surface.buffers[surface.on_back_buffer as usize];
+
         let (width, height) = self.params.mode.size();
-
-        let (back_buffer, back_framebuffer_handle) = (
-            &mut surface.buffers[surface.on_back_buffer as usize],
-            surface.framebuffers[surface.on_back_buffer as usize],
-        );
-
         let stride = back_buffer.pitch() / size_of::<Packed<Bgra, [u8; 4]>>() as u32;
 
-        let mut mapped_buffer = self.card.map_dumb_buffer(back_buffer)?;
-        let texture_view = TextureViewMut::from_slice_with_stride(
-            bytemuck::cast_slice_mut(&mut mapped_buffer),
-            width as usize,
-            height as usize,
-            stride as usize,
-        );
+        let mapped_buffer = self.card.map_dumb_buffer(back_buffer)?;
 
-        callback(texture_view);
-        drop(mapped_buffer);
+        Ok(SurfaceBufferGuard {
+            dimensions: Vector2::new(width, height).cast(),
+            stride,
+            buffer: mapped_buffer,
+        })
+    }
+
+    fn present(&self, surface: &mut Self::Surface) -> Result<(), Self::PresentError> {
+        let back_framebuffer_handle = surface.framebuffers[surface.on_back_buffer as usize];
 
         self.card.page_flip(
             self.params.crtc_handle,

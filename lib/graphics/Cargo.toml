@@ -10,12 +10,11 @@ heapless = { workspace = true }
 itertools = { workspace = true }
 nalgebra = { workspace = true }
 palette = { workspace = true }
+rayon = { workspace = true }
 rustc-hash = { workspace = true }
 serde = { workspace = true }
 tracing = { workspace = true }
 wgpu = { workspace = true, optional = true }
 
 [features]
-default = ["std"]
-std = []
 webgpu = ["dep:wgpu"]

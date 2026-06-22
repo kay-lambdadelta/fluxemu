@@ -1,6 +1,14 @@
-use core::ops::{Index, RangeBounds};
+use core::{
+    ops::{Index, RangeBounds},
+    range::RangeInclusive,
+};
 
+use fluxemu_range::ContiguousRange;
 use nalgebra::{Point2, Vector2};
+use rayon::{
+    iter::{IndexedParallelIterator, ParallelIterator},
+    slice::ParallelSlice,
+};
 
 use crate::api::software::texture::{AsTextureView, TextureImpl, resolve_range};
 
@@ -60,7 +68,20 @@ impl<T: Sized> AsTextureView<T> for TextureView<'_, T> {
     }
 }
 
-impl<'a, T: Sized> TextureImpl<T> for TextureView<'a, T> {
+impl<'a, T: Sized + 'static> TextureImpl<T> for TextureView<'a, T> {
+    #[inline]
+    unsafe fn get_unchecked(&self, point: impl Into<Point2<usize>>) -> &T {
+        let point = point.into();
+
+        debug_assert!(point.x < self.width());
+        debug_assert!(point.y < self.height());
+
+        let global = point + self.offset.coords;
+        let index = global.y * self.texture_size.x + global.x;
+
+        unsafe { self.texture.get_unchecked(index) }
+    }
+
     #[inline]
     fn width(&self) -> usize {
         self.size.x
@@ -87,20 +108,22 @@ impl<'a, T: Sized> TextureImpl<T> for TextureView<'a, T> {
         }
     }
 
-    unsafe fn get_unchecked(&self, point: impl Into<Point2<usize>>) -> &T {
-        let point = point.into();
-
-        debug_assert!(point.x < self.width());
-        debug_assert!(point.y < self.height());
-
-        let global = point + self.offset.coords;
-        let index = global.y * self.texture_size.x + global.x;
-
-        unsafe { self.texture.get_unchecked(index) }
+    fn par_rows(&self) -> impl IndexedParallelIterator<Item = &[T]>
+    where
+        Self: Sync,
+        T: Send + Sync,
+    {
+        self.texture
+            .par_chunks_exact(self.stride())
+            .skip(self.offset.y)
+            .take(self.height())
+            .map(move |row| {
+                &row[RangeInclusive::from_start_and_length(self.offset.x, self.width())]
+            })
     }
 }
 
-impl<'a, P: Into<Point2<usize>>, T> Index<P> for TextureView<'a, T> {
+impl<'a, P: Into<Point2<usize>>, T: 'static> Index<P> for TextureView<'a, T> {
     type Output = T;
 
     #[inline]

@@ -2,6 +2,10 @@ use alloc::{vec, vec::Vec};
 use core::ops::{Index, IndexMut, RangeBounds};
 
 use nalgebra::{Point2, Vector2};
+use rayon::{
+    iter::IndexedParallelIterator,
+    slice::{ParallelSlice, ParallelSliceMut},
+};
 use serde::{Deserialize, Serialize};
 
 use crate::api::software::texture::{
@@ -64,6 +68,18 @@ impl<T: Sized + 'static> Texture<T> {
 
 impl<T: Sized + 'static> TextureImpl<T> for Texture<T> {
     #[inline]
+    unsafe fn get_unchecked(&self, point: impl Into<Point2<usize>>) -> &T {
+        let point = point.into();
+
+        debug_assert!(point.x < self.width());
+        debug_assert!(point.y < self.height());
+
+        let index = point.y * self.size.x + point.x;
+
+        unsafe { self.data.get_unchecked(index) }
+    }
+
+    #[inline]
     fn width(&self) -> usize {
         self.size.x
     }
@@ -90,15 +106,12 @@ impl<T: Sized + 'static> TextureImpl<T> for Texture<T> {
     }
 
     #[inline]
-    unsafe fn get_unchecked(&self, point: impl Into<Point2<usize>>) -> &T {
-        let point = point.into();
-
-        debug_assert!(point.x < self.width());
-        debug_assert!(point.y < self.height());
-
-        let index = point.y * self.size.x + point.x;
-
-        unsafe { self.data.get_unchecked(index) }
+    fn par_rows(&self) -> impl IndexedParallelIterator<Item = &[T]>
+    where
+        Self: Sync,
+        T: Send + Sync,
+    {
+        self.data.par_chunks_exact(self.width())
     }
 }
 
@@ -128,6 +141,18 @@ impl<T: 'static> AsTextureViewMut<T> for Texture<T> {
 
 impl<T: Sized + 'static> TextureImplMut<T> for Texture<T> {
     #[inline]
+    unsafe fn get_unchecked_mut(&mut self, point: impl Into<Point2<usize>>) -> &mut T {
+        let point = point.into();
+
+        debug_assert!(point.x < self.width());
+        debug_assert!(point.y < self.height());
+
+        let index = point.y * self.size.x + point.x;
+
+        unsafe { self.data.get_unchecked_mut(index) }
+    }
+
+    #[inline]
     fn fill(&mut self, value: T)
     where
         T: Clone,
@@ -156,20 +181,12 @@ impl<T: Sized + 'static> TextureImplMut<T> for Texture<T> {
     }
 
     #[inline]
-    fn iter_pixels_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut T> + 'a
-    where
-        T: 'a,
-    {
+    fn iter_pixels_mut(&mut self) -> impl Iterator<Item = &mut T> {
         self.data.iter_mut()
     }
 
     #[inline]
-    fn iter_pixels_indexed_mut<'a>(
-        &'a mut self,
-    ) -> impl Iterator<Item = (Point2<usize>, &'a mut T)> + 'a
-    where
-        T: 'a,
-    {
+    fn iter_pixels_indexed_mut(&mut self) -> impl Iterator<Item = (Point2<usize>, &mut T)> {
         let width = self.width();
 
         self.data
@@ -179,15 +196,14 @@ impl<T: Sized + 'static> TextureImplMut<T> for Texture<T> {
     }
 
     #[inline]
-    unsafe fn get_unchecked_mut(&mut self, point: impl Into<Point2<usize>>) -> &mut T {
-        let point = point.into();
+    fn par_rows_mut(&mut self) -> impl IndexedParallelIterator<Item = &mut [T]>
+    where
+        Self: Sync,
+        T: Send + Sync,
+    {
+        let width = self.width();
 
-        debug_assert!(point.x < self.width());
-        debug_assert!(point.y < self.height());
-
-        let index = point.y * self.size.x + point.x;
-
-        unsafe { self.data.get_unchecked_mut(index) }
+        self.data.par_chunks_exact_mut(width)
     }
 }
 

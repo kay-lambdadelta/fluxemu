@@ -6,13 +6,18 @@ use nalgebra::{Point2, Vector2};
 mod owned;
 pub use owned::Texture;
 mod view;
+use rayon::iter::IndexedParallelIterator;
 pub use view::TextureView;
 mod view_mut;
 pub use view_mut::TextureViewMut;
 
-pub trait TextureImpl<T: Sized>:
+pub trait TextureImpl<T: Sized + 'static>:
     Index<Point2<usize>, Output = T> + AsTextureView<T> + Sized
 {
+    ///  # Safety
+    ///     Access must not be out of bounds
+    unsafe fn get_unchecked(&self, point: impl Into<Point2<usize>>) -> &T;
+
     fn width(&self) -> usize;
     fn height(&self) -> usize;
 
@@ -24,10 +29,7 @@ pub trait TextureImpl<T: Sized>:
     fn view(&self, x: impl RangeBounds<usize>, y: impl RangeBounds<usize>) -> TextureView<'_, T>;
 
     #[inline]
-    fn iter_pixels<'a>(&'a self) -> impl Iterator<Item = &'a T> + 'a
-    where
-        T: 'a,
-    {
+    fn iter_pixels(&self) -> impl Iterator<Item = &T> {
         (0..self.height())
             .cartesian_product(0..self.width())
             .map(|(y, x)| {
@@ -37,10 +39,7 @@ pub trait TextureImpl<T: Sized>:
     }
 
     #[inline]
-    fn iter_pixels_indexed<'a>(&'a self) -> impl Iterator<Item = (Point2<usize>, &'a T)> + 'a
-    where
-        T: 'a,
-    {
+    fn iter_pixels_indexed(&self) -> impl Iterator<Item = (Point2<usize>, &T)> {
         (0..self.height())
             .cartesian_product(0..self.width())
             .map(|(y, x)| {
@@ -50,14 +49,19 @@ pub trait TextureImpl<T: Sized>:
             })
     }
 
-    ///  # Safety
-    ///     Access must not be out of bounds
-    unsafe fn get_unchecked(&self, point: impl Into<Point2<usize>>) -> &T;
+    fn par_rows(&self) -> impl IndexedParallelIterator<Item = &[T]>
+    where
+        Self: Sync,
+        T: Send + Sync;
 }
 
-pub trait TextureImplMut<T: Sized>:
+pub trait TextureImplMut<T: Sized + 'static>:
     TextureImpl<T> + AsTextureViewMut<T> + IndexMut<Point2<usize>>
 {
+    ///  # Safety
+    ///     Access must not be out of bounds
+    unsafe fn get_unchecked_mut(&mut self, point: impl Into<Point2<usize>>) -> &mut T;
+
     #[inline]
     fn fill(&mut self, value: T)
     where
@@ -79,7 +83,11 @@ pub trait TextureImplMut<T: Sized>:
     ) -> TextureViewMut<'_, T>;
 
     #[inline]
-    fn copy_from<T2: Into<T> + Clone>(&mut self, other: &impl TextureImpl<T2>, mode: CopyMode) {
+    fn copy_from<T2: Into<T> + Clone + 'static>(
+        &mut self,
+        other: &impl TextureImpl<T2>,
+        mode: CopyMode,
+    ) {
         if self.size() == other.size() {
             for y in 0..self.height() {
                 for x in 0..self.width() {
@@ -157,19 +165,13 @@ pub trait TextureImplMut<T: Sized>:
         }
     }
 
-    fn iter_pixels_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut T> + 'a
-    where
-        T: 'a;
+    fn iter_pixels_mut(&mut self) -> impl Iterator<Item = &mut T>;
+    fn iter_pixels_indexed_mut(&mut self) -> impl Iterator<Item = (Point2<usize>, &mut T)>;
 
-    fn iter_pixels_indexed_mut<'a>(
-        &'a mut self,
-    ) -> impl Iterator<Item = (Point2<usize>, &'a mut T)> + 'a
+    fn par_rows_mut(&mut self) -> impl IndexedParallelIterator<Item = &mut [T]>
     where
-        T: 'a;
-
-    ///  # Safety
-    ///     Access must not be out of bounds
-    unsafe fn get_unchecked_mut(&mut self, point: impl Into<Point2<usize>>) -> &mut T;
+        Self: Sync,
+        T: Send + Sync;
 }
 
 pub trait AsTextureView<T> {

@@ -1743,6 +1743,7 @@ dependencies = [
  "itertools 0.15.0",
  "nalgebra",
  "palette",
+ "rayon",
  "rustc-hash 2.1.2",
  "serde",
  "tracing",
