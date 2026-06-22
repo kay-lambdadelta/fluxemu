@@ -4,7 +4,7 @@ use fluxemu_graphics::api::software::texture::{
     Texture, TextureImpl, TextureImplMut, TextureViewMut,
 };
 use fluxemu_range::ContiguousRange;
-use nalgebra::{Point2, SMatrix, Vector2, Vector3, Vector4};
+use nalgebra::{Point2, SMatrix, Vector2, Vector3};
 use palette::{
     Srgb, Srgba,
     blend::{Compose, PreAlpha},
@@ -21,23 +21,19 @@ pub fn fill_quad<P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'st
     solid_quad: SolidQuad,
     target_texture: &mut TextureViewMut<'_, P>,
 ) {
+    let texture_max = Point2::from(target_texture.size() - Vector2::from_element(1));
+
     let min = solid_quad
         .min
-        .coords
-        .zip_map(&shape.min.coords, |a, b| a.max(b));
+        .sup(&shape.min)
+        .map(|c| c as usize)
+        .inf(&texture_max);
 
     let max = solid_quad
         .max
-        .coords
-        .zip_map(&shape.max.coords, |a, b| a.min(b));
-
-    let min: Point2<_> = Vector2::new(min.x as usize, min.y as usize)
-        .zip_map(&target_texture.size(), |a, b| a.min(b))
-        .into();
-
-    let max: Point2<_> = Vector2::new(max.x as usize, max.y as usize)
-        .zip_map(&target_texture.size(), |a, b| a.min(b))
-        .into();
+        .inf(&shape.max)
+        .map(|c| c as usize)
+        .inf(&texture_max);
 
     let mut region = target_texture.view_mut(min.x..max.x, min.y..max.y);
     region.fill(solid_quad.color.into_format().into());
@@ -53,54 +49,51 @@ pub fn fill_triangle<
     source_texture: &Texture<PreAlpha<Srgb<f32>>>,
     destination_texture: &mut TextureViewMut<'_, P>,
 ) {
-    let target_texture_width = destination_texture.width() as f32;
-    let target_texture_height = destination_texture.height() as f32;
+    let target_texture_dimensions = destination_texture.size().cast();
+    let max_texture_coordinates =
+        Point2::from(target_texture_dimensions - Vector2::from_element(1.0));
 
-    let vertex_x_max = Vector3::new(
-        triangle.v0.position.x,
-        triangle.v1.position.x,
-        triangle.v2.position.x,
-    )
-    .max();
-    let vertex_y_max = Vector3::new(
-        triangle.v0.position.y,
-        triangle.v1.position.y,
-        triangle.v2.position.y,
-    )
-    .max();
+    let vector_max = Point2::new(
+        Vector3::new(
+            triangle.v0.position.x,
+            triangle.v1.position.x,
+            triangle.v2.position.x,
+        )
+        .max(),
+        Vector3::new(
+            triangle.v0.position.y,
+            triangle.v1.position.y,
+            triangle.v2.position.y,
+        )
+        .max(),
+    );
 
     // Clip the clipping box by the target texture size
-    let clip_x_max = geometry.max.x.min(target_texture_width - 1.0);
-    let clip_y_max = geometry.max.y.min(target_texture_height - 1.0);
+    let clip_max = geometry.max.inf(&max_texture_coordinates);
 
     // Clip the triangle
-    let triangle_bounding_max = Point2::new(
-        vertex_x_max.min(clip_x_max).floor(),
-        vertex_y_max.min(clip_y_max).floor(),
-    );
+    let triangle_bounding_max = vector_max.inf(&clip_max).map(|c| c.floor());
 
-    let vertex_x_min = Vector3::new(
-        triangle.v0.position.x,
-        triangle.v1.position.x,
-        triangle.v2.position.x,
-    )
-    .min();
-    let vertex_y_min = Vector3::new(
-        triangle.v0.position.y,
-        triangle.v1.position.y,
-        triangle.v2.position.y,
-    )
-    .min();
+    let vertex_min = Point2::new(
+        Vector3::new(
+            triangle.v0.position.x,
+            triangle.v1.position.x,
+            triangle.v2.position.x,
+        )
+        .min(),
+        Vector3::new(
+            triangle.v0.position.y,
+            triangle.v1.position.y,
+            triangle.v2.position.y,
+        )
+        .min(),
+    );
 
     // Ensure negative clip values do not exist
-    let clip_x_min = geometry.min.x.max(0.0);
-    let clip_y_min = geometry.min.y.max(0.0);
+    let clip_min = geometry.min.sup(&Point2::new(0.0, 0.0));
 
     // Clip the triangle again
-    let triangle_bounding_min = Point2::new(
-        vertex_x_min.max(clip_x_min).ceil(),
-        vertex_y_min.max(clip_y_min).ceil(),
-    );
+    let triangle_bounding_min = vertex_min.sup(&clip_min).map(|c| c.ceil());
 
     // Guard against degenerate triangles
     if triangle_bounding_min.x > triangle_bounding_max.x
@@ -312,18 +305,19 @@ fn pixel_rounds<
     let mut interpolated_colors: SMatrix<_, C, 4> = SMatrix::from_element(0.0);
     for index in 0..C {
         let color = current_color + (step_color * index as f32);
-        let color = Vector4::from_row_slice(color.premultiply().as_ref());
 
         interpolated_colors
             .row_mut(index)
-            .copy_from(&color.transpose());
+            .copy_from_slice(color.premultiply().as_ref());
     }
 
     let mut scaled_uvs: SMatrix<_, C, 2> = SMatrix::from_element(0.0);
     for index in 0..C {
-        let scaled_uv = texture_dimensions.component_mul(&interpolated_uvs.row(index).transpose());
+        let scaled_uv = texture_dimensions
+            .transpose()
+            .component_mul(&interpolated_uvs.row(index));
 
-        scaled_uvs.row_mut(index).copy_from(&scaled_uv.transpose());
+        scaled_uvs.row_mut(index).copy_from(&scaled_uv);
     }
 
     // A coordinate being emitted somehow that ended up being beyond u32::MAX would be absurd, but clamp just in case
@@ -358,64 +352,55 @@ fn pixel_rounds<
 
     let mut sampled_texture_color: SMatrix<_, C, 4> = SMatrix::from_element(0.0);
     for index in 0..C {
-        let texture_coordinate: Point2<_> =
-            texture_coordinates.row(index).transpose().cast().into();
+        let texture_coordinate = texture_coordinates.row(index).transpose().cast();
 
         // SAFETY:
         //  We clamped to the texture size while producing the texture coordinates
         let texture_pixel = *unsafe { texture.get_unchecked(texture_coordinate) };
-        let texture_pixel = Vector4::from_column_slice(texture_pixel.as_ref());
 
         sampled_texture_color
             .row_mut(index)
-            .copy_from(&texture_pixel.transpose());
+            .copy_from_slice(texture_pixel.as_ref());
     }
 
     let mut source_colors: SMatrix<_, C, 4> = SMatrix::from_element(0.0);
     for index in 0..C {
-        let interpolated_color = interpolated_colors.row(index).transpose();
-        let sampled_texture_color = sampled_texture_color.row(index).transpose();
+        let interpolated_color = interpolated_colors.row(index);
+        let sampled_texture_color = sampled_texture_color.row(index);
 
         let source_color = sampled_texture_color.component_mul(&interpolated_color);
 
-        source_colors
-            .row_mut(index)
-            .copy_from(&source_color.transpose());
+        source_colors.row_mut(index).copy_from(&source_color);
     }
 
     let mut destination_colors: SMatrix<_, C, 4> = SMatrix::from_element(0.0);
     for index in 0..C {
         let destination_color = target_row[Point2::new(index, 0)].into().into_format();
-        let destination_color =
-            Vector4::from_column_slice(destination_color.premultiply().as_ref());
 
         destination_colors
             .row_mut(index)
-            .copy_from(&destination_color.transpose());
+            .copy_from_slice(destination_color.premultiply().as_ref());
     }
 
     let mut output_colors: SMatrix<_, C, 4> = SMatrix::from_element(0.0);
     for index in 0..C {
         let source_color = source_colors.row(index).transpose();
-        let source_color: PreAlpha<Srgb<f32>> =
-            PreAlpha::from(<[_; 4]>::from(source_color.transpose()));
+        let source_color: PreAlpha<Srgb<f32>> = PreAlpha::from(<[_; 4]>::from(source_color));
 
         let destination_color = destination_colors.row(index).transpose();
         let destination_color: PreAlpha<Srgb<f32>> =
-            PreAlpha::from(<[_; 4]>::from(destination_color.transpose()));
+            PreAlpha::from(<[_; 4]>::from(destination_color));
 
         let output_color = source_color.over(destination_color);
-        let output_color = Vector4::from_column_slice(output_color.as_ref());
 
         output_colors
             .row_mut(index)
-            .copy_from(&output_color.transpose());
+            .copy_from_slice(output_color.as_ref());
     }
 
     for index in 0..C {
         let output_color = output_colors.row(index).transpose();
-        let output_color: PreAlpha<Srgb<f32>> =
-            PreAlpha::from(<[_; 4]>::from(output_color.transpose()));
+        let output_color: PreAlpha<Srgb<f32>> = PreAlpha::from(<[_; 4]>::from(output_color));
 
         target_row[Point2::new(index, 0)] = output_color.unpremultiply().into_format().into();
     }
