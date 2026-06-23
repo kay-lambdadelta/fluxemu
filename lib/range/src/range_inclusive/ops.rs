@@ -21,6 +21,11 @@ impl<Idx: Integer + Clone> RangeBase<Idx> for RangeInclusive<Idx> {
 impl<Idx: Integer + Clone + ToPrimitive> ContiguousRange<Idx> for RangeInclusive<Idx> {
     #[inline]
     fn from_start_and_length(start: Idx, length: Idx) -> Self {
+        assert!(
+            length > Idx::zero(),
+            "Neither zero length nor negative inclusive ranges are possible"
+        );
+
         let one = Idx::one();
 
         start.clone()..=(start + length - one)
