@@ -29,7 +29,7 @@ impl<R: Region> TiaDisplayBackend<R> for SoftwareState {
 
     fn new(_: ()) -> Self {
         SoftwareState {
-            framebuffer: Texture::new(
+            framebuffer: Texture::from_value(
                 VISIBLE_SCANLINE_LENGTH as usize,
                 R::TOTAL_SCANLINES as usize,
                 BLACK.into(),

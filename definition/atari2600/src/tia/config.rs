@@ -60,7 +60,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>> ComponentConf
             );
         }
 
-        let staging_buffer = Texture::new(
+        let staging_buffer = Texture::from_value(
             VISIBLE_SCANLINE_LENGTH as usize,
             R::TOTAL_SCANLINES as usize,
             BLACK.into(),

@@ -1,6 +1,6 @@
 use fluxemu_graphics::api::{
     GraphicsApi,
-    software::texture::{AsTextureMut, OwnedTexture},
+    software::texture::{AsViewTextureMut, OwnedTexture},
     webgpu::{InitializationData, Webgpu, suggested_framebuffer_texture_usages},
 };
 use palette::{Srgba, named::BLACK};
@@ -45,7 +45,7 @@ impl<R: Region> PpuDisplayBackend<R> for State {
 
         State {
             queue: initialization_data.queue,
-            staging_texture: fluxemu_graphics::api::software::texture::Texture::new(
+            staging_texture: fluxemu_graphics::api::software::texture::Texture::from_value(
                 VISIBLE_SCANLINE_LENGTH as usize,
                 R::VISIBLE_SCANLINES as usize,
                 BLACK.into(),
@@ -59,7 +59,7 @@ impl<R: Region> PpuDisplayBackend<R> for State {
     }
 
     fn commit_staging_buffer(&mut self, staging_buffer: &OwnedTexture<PpuColorIndex>) {
-        convert_paletted_staging_buffer::<R>(staging_buffer, self.staging_texture.as_texture_mut());
+        convert_paletted_staging_buffer::<R>(staging_buffer, self.staging_texture.as_view_mut());
 
         self.queue.write_texture(
             TexelCopyTextureInfo {

@@ -54,7 +54,8 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Display<G> {
             self.clear_display();
         }
 
-        let mut new_staging_buffer = Texture::new(HIRES.x as usize, HIRES.y as usize, BLACK.into());
+        let mut new_staging_buffer =
+            Texture::from_value(HIRES.x as usize, HIRES.y as usize, BLACK.into());
 
         new_staging_buffer
             .view_mut(
@@ -225,7 +226,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
             backend: None,
             hires: false,
             vsync_occurred: false,
-            staging_buffer: Texture::new(LORES.x as usize, LORES.y as usize, BLACK.into()),
+            staging_buffer: Texture::from_value(LORES.x as usize, LORES.y as usize, BLACK.into()),
             config: self,
         })
     }

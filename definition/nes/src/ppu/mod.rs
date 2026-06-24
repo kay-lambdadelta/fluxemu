@@ -167,7 +167,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
                 PpuEvent::VblankStart,
             );
 
-        let staging_buffer = Texture::new(
+        let staging_buffer = Texture::from_value(
             VISIBLE_SCANLINE_LENGTH as usize,
             R::VISIBLE_SCANLINES as usize,
             PPU_BLACK_INDEX,

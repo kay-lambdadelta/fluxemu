@@ -10,7 +10,7 @@ use drm::{
 use fluxemu_egui_software_renderer::Renderer;
 use fluxemu_graphics::api::software::{
     Software,
-    texture::{AsTexture, AsTextureMut, RefMutTexture, RefTexture},
+    texture::{AsViewTexture, AsViewTextureMut, RefMutTexture, RefTexture},
 };
 use fluxemu_runtime::graphics::GraphicsRequirements;
 use libseat::Seat;
@@ -42,25 +42,25 @@ pub struct SurfaceBufferGuard<'a> {
     buffer: DumbMapping<'a>,
 }
 
-impl AsTexture<Packed<Bgra, [u8; 4]>> for SurfaceBufferGuard<'_> {
-    fn as_texture(&self) -> RefTexture<'_, Packed<Bgra, [u8; 4]>> {
-        RefTexture::from_storage_with_stride(
+impl AsViewTexture<Packed<Bgra, [u8; 4]>> for SurfaceBufferGuard<'_> {
+    fn as_view(&self) -> RefTexture<'_, Packed<Bgra, [u8; 4]>> {
+        RefTexture::from_storage(
             self.dimensions.x as usize,
             self.dimensions.y as usize,
-            self.stride as usize,
             bytemuck::cast_slice(self.buffer.as_ref()),
         )
+        .view_owned(..self.stride as usize, ..)
     }
 }
 
-impl AsTextureMut<Packed<Bgra, [u8; 4]>> for SurfaceBufferGuard<'_> {
-    fn as_texture_mut(&mut self) -> RefMutTexture<'_, Packed<Bgra, [u8; 4]>> {
-        RefMutTexture::from_storage_with_stride(
+impl AsViewTextureMut<Packed<Bgra, [u8; 4]>> for SurfaceBufferGuard<'_> {
+    fn as_view_mut(&mut self) -> RefMutTexture<'_, Packed<Bgra, [u8; 4]>> {
+        RefMutTexture::from_storage(
             self.dimensions.x as usize,
             self.dimensions.y as usize,
-            self.stride as usize,
             bytemuck::cast_slice_mut(self.buffer.as_mut()),
         )
+        .view_owned(..self.stride as usize, ..)
     }
 }
 
@@ -128,7 +128,7 @@ impl SoftwareCompatibleDisplayContext for Arc<DrmContext> {
     fn map_surface_buffer<'a>(
         &'a self,
         surface: &'a mut Self::Surface,
-    ) -> Result<impl AsTextureMut<Packed<Bgra, [u8; 4]>> + 'a, Self::MappingError> {
+    ) -> Result<impl AsViewTextureMut<Packed<Bgra, [u8; 4]>> + 'a, Self::MappingError> {
         let back_buffer = &mut surface.buffers[surface.on_back_buffer as usize];
 
         let (width, height) = self.params.mode.size();

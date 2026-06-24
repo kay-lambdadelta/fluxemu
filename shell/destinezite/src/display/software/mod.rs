@@ -6,7 +6,7 @@ use fluxemu_graphics::api::{
     GraphicsApi,
     software::{
         Software,
-        texture::{AsTextureMut, CopyMode},
+        texture::{AsViewTextureMut, CopyMode},
     },
 };
 use fluxemu_runtime::{graphics::GraphicsRequirements, machine::Machine};
@@ -49,7 +49,7 @@ impl<H: SoftwareCompatibleDisplayContext> GraphicsRuntime for SoftwareGraphicsRu
             .display_handle
             .map_surface_buffer(&mut self.surface)
             .unwrap();
-        let mut surface_buffer = surface_buffer_guard.as_texture_mut();
+        let mut surface_buffer = surface_buffer_guard.as_view_mut();
 
         surface_buffer.fill(clear_color.into());
 
@@ -97,16 +97,16 @@ pub trait SoftwareCompatibleDisplayContext:
     fn map_surface_buffer<'a>(
         &'a self,
         surface: &'a mut Self::Surface,
-    ) -> Result<impl AsTextureMut<Packed<Bgra, [u8; 4]>> + 'a, Self::MappingError>;
+    ) -> Result<impl AsViewTextureMut<Packed<Bgra, [u8; 4]>> + 'a, Self::MappingError>;
 
     fn present(&self, surface: &mut Self::Surface) -> Result<(), Self::PresentError>;
 }
 
 fn present_machine(
-    mut surface_buffer: impl AsTextureMut<Packed<Bgra, [u8; 4]>>,
+    mut surface_buffer: impl AsViewTextureMut<Packed<Bgra, [u8; 4]>>,
     machine: &Arc<Machine>,
 ) {
-    let mut surface_buffer = surface_buffer.as_texture_mut();
+    let mut surface_buffer = surface_buffer.as_view_mut();
     let width = surface_buffer.width();
     let height = surface_buffer.height();
 

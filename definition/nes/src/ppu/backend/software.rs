@@ -4,7 +4,7 @@ use fluxemu_graphics::api::{
     GraphicsApi,
     software::{
         Software,
-        texture::{AsTextureMut, OwnedTexture, Texture},
+        texture::{AsViewTextureMut, OwnedTexture, Texture},
     },
 };
 use palette::{Srgba, named::BLACK};
@@ -32,7 +32,7 @@ impl<R: Region> PpuDisplayBackend<R> for SoftwareState {
 
     fn new(_: ()) -> Self {
         SoftwareState {
-            framebuffer: Texture::new(
+            framebuffer: Texture::from_value(
                 VISIBLE_SCANLINE_LENGTH as usize,
                 R::VISIBLE_SCANLINES as usize,
                 BLACK.into(),
@@ -45,7 +45,7 @@ impl<R: Region> PpuDisplayBackend<R> for SoftwareState {
     }
 
     fn commit_staging_buffer(&mut self, staging_buffer: &OwnedTexture<PpuColorIndex>) {
-        convert_paletted_staging_buffer::<R>(staging_buffer, self.framebuffer.as_texture_mut());
+        convert_paletted_staging_buffer::<R>(staging_buffer, self.framebuffer.as_view_mut());
     }
 }
 

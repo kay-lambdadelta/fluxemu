@@ -33,8 +33,9 @@ pub fn fill_quad<P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'st
         .map(|c| c as usize)
         .inf(&texture_max);
 
-    let mut region = target_texture.view_mut(min.x..max.x, min.y..max.y);
-    region.fill(solid_quad.color.into_format().into());
+    target_texture
+        .view_mut(min.x..=max.x, min.y..=max.y)
+        .fill(solid_quad.color.into_format().into());
 }
 
 #[inline(always)]

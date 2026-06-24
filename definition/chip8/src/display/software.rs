@@ -20,7 +20,7 @@ impl Chip8DisplayBackend for SoftwareState {
 
     fn new(_: ()) -> Self {
         Self {
-            framebuffer: Texture::new(LORES.x as usize, LORES.y as usize, BLACK.into()),
+            framebuffer: Texture::from_value(LORES.x as usize, LORES.y as usize, BLACK.into()),
         }
     }
 
