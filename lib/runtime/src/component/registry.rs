@@ -3,8 +3,7 @@ use std::{
     collections::HashMap,
     fmt::Debug,
     ops::DerefMut,
-    sync::Mutex,
-    thread::{Thread, ThreadId},
+    sync::{Arc, Condvar, Mutex},
 };
 
 use rustc_hash::FxBuildHasher;
@@ -32,7 +31,7 @@ struct GlobalComponentMetadata {
 #[derive(Debug, Default)]
 struct GlobalSyncState {
     global_component_store: HashMap<ComponentId, ComponentHandle, FxBuildHasher>,
-    threads_awaiting_component: HashMap<ComponentId, HashMap<ThreadId, Thread>, FxBuildHasher>,
+    threads_awaiting_component: HashMap<ComponentId, Arc<Condvar>, FxBuildHasher>,
 }
 
 #[derive(Debug, Default)]
@@ -117,14 +116,16 @@ impl<'a> ComponentRegistry<'a> {
         )
     }
 
+    /// # Safety
+    ///
+    /// The ID must be valid for the registry instance.
     #[inline]
-    pub fn interact_dyn<'b, T>(
-        &'b self,
-        id: impl Into<ComponentIdentifier<'b>>,
+    pub(crate) unsafe fn interact_dyn_id_unchecked<T>(
+        &self,
+        id: ComponentId,
         target_timestamp: Period,
         callback: impl FnOnce(&mut dyn Component) -> T,
-    ) -> Option<T> {
-        let id = self.convert_identifier(id)?;
+    ) -> T {
         let cell = self.runtime.local_component_store();
 
         // Move the component handle to our thread and check if it needs synchronization
@@ -172,7 +173,20 @@ impl<'a> ComponentRegistry<'a> {
             std::mem::forget(handle.component.replace(component));
         }
 
-        Some(item)
+        item
+    }
+
+    #[inline]
+    pub fn interact_dyn<'b, T>(
+        &'b self,
+        id: impl Into<ComponentIdentifier<'b>>,
+        target_timestamp: Period,
+        callback: impl FnOnce(&mut dyn Component) -> T,
+    ) -> Option<T> {
+        let id = self.convert_identifier(id)?;
+
+        // SAFETY: convert_identifier validates the ID, returning None if it isn't within the local store size
+        Some(unsafe { self.interact_dyn_id_unchecked(id, target_timestamp, callback) })
     }
 
     #[inline]
@@ -180,22 +194,18 @@ impl<'a> ComponentRegistry<'a> {
         &'a self,
         id: impl Into<ComponentIdentifier<'b>>,
     ) -> Option<ComponentId> {
-        let id = match id.into() {
+        match id.into() {
             ComponentIdentifier::Id(id) => {
-                assert!(
-                    (id.0 as usize) < self.data.required_local_store_size(),
-                    "Component ID is out of bounds, it likely did not originate from this machine"
-                );
-
-                id
+                if (id.0 as usize) < self.data.required_local_store_size() {
+                    Some(id)
+                } else {
+                    None
+                }
             }
-            ComponentIdentifier::Path(path) => self.data.metadata.get(path)?.id,
-        };
-
-        Some(id)
+            ComponentIdentifier::Path(path) => Some(self.data.metadata.get(path)?.id),
+        }
     }
 
-    #[cold]
     fn synchronize_component(&self, id: ComponentId, target_timestamp: Period) {
         let cell = self.runtime.local_component_store();
 
@@ -291,30 +301,22 @@ impl<'a> ComponentRegistry<'a> {
         id: ComponentId,
         local_component_store: &'b mut LocalComponentStore,
     ) -> &'b mut ComponentHandle {
-        let thread = std::thread::current();
         let mut sync_state_guard = self.data.sync_state.lock().unwrap();
 
         loop {
             let Some(handle) = sync_state_guard.global_component_store.remove(&id) else {
-                // Insert thread token
-                sync_state_guard
-                    .threads_awaiting_component
-                    .entry(id)
-                    .or_default()
-                    .entry(thread.id())
-                    .or_insert(thread.clone());
-
                 // Give components back so others can potentially access them
                 self.release_all_components_inner(local_component_store, &mut sync_state_guard);
 
-                // Drop the guard
-                drop(sync_state_guard);
+                // Get condvar
+                let condvar = sync_state_guard
+                    .threads_awaiting_component
+                    .entry(id)
+                    .or_default()
+                    .clone();
 
-                // Await for that component to potentially become available
-                std::thread::park();
-
-                // Pick up the guard again
-                sync_state_guard = self.data.sync_state.lock().unwrap();
+                // Wait for someone to give up that component
+                sync_state_guard = condvar.wait(sync_state_guard).unwrap();
 
                 // Try again until we can acquire that component
                 continue;
@@ -322,13 +324,6 @@ impl<'a> ComponentRegistry<'a> {
 
             let slot = local_component_store.get_slot(id);
             *slot = Some(handle);
-
-            // Remove thread token
-            sync_state_guard
-                .threads_awaiting_component
-                .entry(id)
-                .or_default()
-                .remove(&thread.id());
 
             return slot.as_mut().unwrap();
         }
@@ -361,15 +356,12 @@ impl<'a> ComponentRegistry<'a> {
                     panic!("Component shadowed by another component");
                 }
 
-                let Some(threads_waiting) = sync_state.threads_awaiting_component.remove(&id)
-                else {
+                let Some(condvar) = sync_state.threads_awaiting_component.get(&id) else {
                     continue;
                 };
 
-                // Wake those threads up
-                for (_, thread) in threads_waiting {
-                    thread.unpark();
-                }
+                // Notify one lucky thread!
+                condvar.notify_one();
             }
         }
     }
@@ -426,6 +418,8 @@ impl LocalComponentStore {
 
     #[inline]
     fn get_slot(&mut self, id: ComponentId) -> &mut Option<ComponentHandle> {
+        debug_assert!(id.0 < self.0.len() as u16);
+
         // SAFETY:
         //  All ids are validated against required_local_store_size in convert_identifier before this function
         //  Component store has a static size

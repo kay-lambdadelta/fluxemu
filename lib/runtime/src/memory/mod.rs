@@ -18,11 +18,10 @@ use crate::{
 };
 
 pub mod component;
-mod read;
+mod ops;
 mod remap;
 #[cfg(test)]
 mod tests;
-mod write;
 
 pub type Address = usize;
 const PAGE_SIZE: Address = 0x1000;
@@ -260,9 +259,4 @@ pub enum MemoryRemappingCommand {
 pub struct Permissions {
     pub read: bool,
     pub write: bool,
-}
-
-#[inline]
-fn form_error(access_range: RangeInclusive<usize>) -> MemoryError {
-    MemoryError(std::iter::once((access_range, MemoryErrorType::Denied)).collect())
 }
