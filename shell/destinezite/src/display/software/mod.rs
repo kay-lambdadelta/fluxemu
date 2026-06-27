@@ -59,8 +59,13 @@ impl<H: SoftwareCompatibleDisplayContext> GraphicsRuntime for SoftwareGraphicsRu
                     context,
                     full_output,
                 } => {
+                    // Benchmarks say that a batch size of 16 is the most ideal across several low and mid power machines
+                    //
+                    // As far as throughput for realistic ui goes at the very least
+                    //
+                    // This is suggested by benchmarks on a i5-1245U and a RK3566T
                     self.renderer
-                        .render::<_, 32>(context, full_output, &mut surface_buffer);
+                        .render::<_, 16>(context, full_output, &mut surface_buffer);
                 }
                 DrawTarget::Machine { machine } => {
                     present_machine(&mut surface_buffer, machine);

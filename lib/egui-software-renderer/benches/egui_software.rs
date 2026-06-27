@@ -2,6 +2,7 @@ use std::{collections::HashMap, hint::black_box};
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use egui::{Context, RawInput, Rect, ViewportId, ViewportInfo};
+use egui_demo_lib::DemoWindows;
 use fluxemu_egui_software_renderer::Renderer;
 use fluxemu_graphics::api::software::texture::{AsViewTextureMut, OwnedTexture};
 use palette::{
@@ -19,6 +20,7 @@ fn render<
 >(
     renderer: &mut Renderer,
     context: &Context,
+    demo_windows: &mut DemoWindows,
     mut texture: impl AsViewTextureMut<P>,
 ) {
     texture.as_view_mut().fill(BLACK.with_alpha(u8::MAX).into());
@@ -41,19 +43,7 @@ fn render<
             ..Default::default()
         },
         |ui| {
-            for _ in 0..25 {
-                ui.vertical_centered(|ui| {
-                    let _ = ui.button(
-                        "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod \
-                         tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim \
-                         veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea \
-                         commodo consequat. Duis aute irure dolor in reprehenderit in voluptate \
-                         velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint \
-                         occaecat cupidatat non proident, sunt in culpa qui officia deserunt \
-                         mollit anim id est laborum.",
-                    );
-                });
-            }
+            demo_windows.ui(ui);
         },
     );
 
@@ -82,11 +72,14 @@ macro_rules! bench_combinations {
                 let bench_name = format!("{}x{}", $w, $h);
                 let param_combo = format!("{} @ Batch Size {}", $name, $batch);
 
+                let mut demo_windows = DemoWindows::default();
+
                 $group.bench_function(BenchmarkId::new(bench_name, param_combo), |b| {
                     b.iter(|| {
                         render::<$t, $w, $h, $batch>(
                             &mut renderer,
                             &context,
+                            &mut demo_windows,
                             black_box(texture.as_view_mut()),
                         )
                     });
