@@ -86,7 +86,8 @@ impl<STORAGE: Storage> Texture<STORAGE> {
     /// Index the texture without bounds checking
     ///
     /// # Safety
-    ///     Access must not be out of bounds
+    ///
+    /// Access must not be out of bounds
     #[inline]
     pub unsafe fn get_unchecked(&self, point: impl Into<Point2<usize>>) -> &STORAGE::Pixel {
         let point = point.into();
@@ -105,7 +106,8 @@ impl<STORAGE: Storage> Texture<STORAGE> {
     /// Index the texture mutably without bounds checking
     ///
     /// # Safety
-    ///     Access must not be out of bounds
+    ///
+    /// Access must not be out of bounds
     #[inline]
     pub unsafe fn get_unchecked_mut(
         &mut self,
