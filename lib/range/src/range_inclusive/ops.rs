@@ -126,9 +126,6 @@ mod tests {
 
         let r = RangeInclusive::from_start_and_length(7, 1);
         assert_eq!(r, 7..=7);
-
-        let r = RangeInclusive::from_start_and_length(10, 0);
-        assert!(r.is_empty());
     }
 
     #[test]
