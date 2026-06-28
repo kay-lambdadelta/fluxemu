@@ -11,6 +11,7 @@ use crate::{
     scheduler::{Period, SynchronizationContext},
 };
 
+/// Component config (factory) related items
 pub mod config;
 mod registry;
 
@@ -34,8 +35,7 @@ pub trait Component: Send + Sync + Debug + Any {
 
     /// Read memory at the specified address given the address space id
     ///
-    /// The avoid side effects flag should be respected, state changes should not occur as a result of the read
-    /// if it is true
+    /// The avoid side effects flag should be respected, state changes should not occur as a result of the operation if it is true
     ///
     /// The default implementation of this simply denies
     fn memory_read(
@@ -60,15 +60,19 @@ pub trait Component: Send + Sync + Debug + Any {
         Err(denied_range(address, buffer.len()))
     }
 
+    /// Inform the component it should treat `base` as the new base address for its operations
     fn memory_rebase(&mut self, base: Address) {
         unreachable!("This component does not support rebasing");
     }
 
-    /// Give the runtime the audio sample ring buffer
+    /// Returns the audio channel with the given name, based upon what this component registered
     fn get_audio_channel(&mut self, name: &str) -> SampleSource<'_> {
         unreachable!()
     }
 
+    /// Returns the framebuffer with the given name, based upon what this component registered
+    ///
+    /// This should be downcasted to [`GraphicsApi::Framebuffer`](fluxemu_graphics::api::GraphicsApi::Framebuffer)
     fn get_framebuffer(&mut self, name: &str) -> &dyn Any {
         unreachable!()
     }
@@ -86,12 +90,17 @@ pub trait Component: Send + Sync + Debug + Any {
     /// Handle an event targeted towards this component
     fn handle_event(&mut self, event: Box<dyn Event>) {}
 
-    /// Handle some input targeted at destination
+    /// Inform the component of an input event from the runtime
+    ///
+    /// This will as an invariant, only pass in inputs the component registered as supporting
     fn handle_input(&mut self, destination: &str, id: InputId, state: InputState) {}
 }
 
+/// A source of audio samples for the runtime
 pub struct SampleSource<'a> {
+    /// A ring buffer of audio samples
     pub audio_ring: &'a mut AllocRingBuffer<SVector<f32, 1>>,
+    /// The sample rate in which to properly interpret `audio_ring`
     pub sample_rate: f32,
 }
 
@@ -106,5 +115,8 @@ fn denied_range(address: Address, len: usize) -> MemoryError {
     )
 }
 
+/// A nonstable ID to refer to a component.
+///
+/// Use a path if stability is a concern, but use this if absolute speed is more of a concern
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ComponentId(pub(crate) u16);

@@ -45,6 +45,9 @@ impl Scheduler {
         self.driven.push(path);
     }
 
+    /// Run the scheduler for a given amount of time, advancing the machine's timestamp and interacting with driven components
+    ///
+    /// After all driven components (ie: cpus) are successfully advanced, the safe advance timestamp is updated to reflect the new time
     pub fn run(&self, component_registry: ComponentRegistry<'_>, allocated_time: Period) {
         // Grab current time
         let safe_advance_timestamp = self.safe_advance_timestamp() + allocated_time;
@@ -80,14 +83,6 @@ pub struct SynchronizationContext<'a> {
 }
 
 impl<'a> SynchronizationContext<'a> {
-    #[inline]
-    pub fn allocate(&mut self, period: Period) -> bool {
-        let (_, budget) = self.check_allocation_preconditions(period);
-
-        // This allocation is possible
-        budget > 0
-    }
-
     /// Create an iterator that continuously allocates an amount of time represented by period until either the target timestamp is reached
     /// or the runtime preempts the task
     #[inline]

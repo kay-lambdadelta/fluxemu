@@ -45,6 +45,9 @@ impl<P: Platform> ComponentData<P> {
     }
 }
 
+/// Builder for a component
+///
+/// This is used as a way for components to construct themselves
 pub struct ComponentBuilder<'a, P: Platform, C: Component> {
     pub(super) machine_builder: &'a mut MachineBuilder<P>,
     pub(super) component_data: &'a mut ComponentData<P>,
@@ -53,6 +56,7 @@ pub struct ComponentBuilder<'a, P: Platform, C: Component> {
 }
 
 impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
+    /// Resulting path of the component
     pub fn path(&self) -> &ComponentPath {
         self.path
     }

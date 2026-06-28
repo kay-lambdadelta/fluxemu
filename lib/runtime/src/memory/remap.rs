@@ -34,6 +34,12 @@ impl Permissions {
 }
 
 impl PageTable {
+    // NOTE:
+    //
+    // ANY changes to this functions should involve a FULL review of the functions in `ops.rs`
+    //
+    // It relies on the current behavior of this function quite a bit
+
     #[inline]
     fn commit(
         &mut self,

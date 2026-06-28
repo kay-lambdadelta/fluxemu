@@ -116,6 +116,12 @@ impl<'a> AddressSpace<'a> {
     }
 
     /// Read a buffer from an address
+    ///
+    /// If the target is a component, the component will be advanced to the timestamp before the operation
+    ///
+    /// # Error Behavior
+    ///
+    /// It is completely unspecified what the buffer will contain if an error occurs during an read operation
     #[inline]
     pub fn read<B: NumBytes + ?Sized>(
         &mut self,
@@ -126,8 +132,12 @@ impl<'a> AddressSpace<'a> {
         self.read_internal::<_, false>(address, current_timestamp, buffer)
     }
 
-    /// Read a buffer from an address, informing the component that this should not induce state change as a direct result of a read.
-    /// Synchronization will still occur.
+    /// Read a buffer from an address
+    ///
+    /// If the target is a component, the component will be advanced to the timestamp before the operation
+    /// Additionally, the component will be informed it should not change state as a result of the operation (such as a flag clear)
+    ///
+    /// It is completely unspecified what the buffer will contain if an error occurs during an read operation
     #[inline]
     pub fn read_pure<B: NumBytes + ?Sized>(
         &mut self,
@@ -138,7 +148,9 @@ impl<'a> AddressSpace<'a> {
         self.read_internal::<_, true>(address, current_timestamp, buffer)
     }
 
-    /// Read a little endian value from an address
+    /// Convenience method for reading a little endian value from an address
+    ///
+    /// Has the same behavior as [`read`](Self::read)
     #[inline]
     pub fn read_le_value<T: FromBytes>(
         &mut self,
@@ -153,8 +165,9 @@ impl<'a> AddressSpace<'a> {
         Ok(T::from_le_bytes(&buffer))
     }
 
-    /// Read a little endian value from an address, informing the component that this should not induce state change as a direct result of a read.
-    /// Synchronization will still occur.
+    /// Convenience method for reading a little endian value from an address
+    ///
+    /// Has the same behavior as [`read_pure`](Self::read_pure)
     #[inline]
     pub fn read_le_value_pure<T: FromBytes>(
         &mut self,
@@ -169,7 +182,9 @@ impl<'a> AddressSpace<'a> {
         Ok(T::from_le_bytes(&buffer))
     }
 
-    /// Read a big endian value from an address
+    /// Convenience method for reading a big endian value from an address
+    ///
+    /// Has the same behavior as [`read`](Self::read)
     #[inline]
     pub fn read_be_value<T: FromBytes>(
         &mut self,
@@ -184,8 +199,9 @@ impl<'a> AddressSpace<'a> {
         Ok(T::from_be_bytes(&buffer))
     }
 
-    /// Read a big endian value from an address, informing the component that this should not induce state change as a direct result of a read.
-    /// Synchronization will still occur.
+    /// Convenience method for reading a big endian value from an address
+    ///
+    /// Has the same behavior as [`read_pure`](Self::read_pure)
     #[inline]
     pub fn read_be_value_pure<T: FromBytes>(
         &mut self,
@@ -290,6 +306,11 @@ impl<'a> AddressSpace<'a> {
     }
 
     /// Write a buffer to an address
+    ///
+    /// If the target is a component, the component will be advanced to the timestamp before the operation
+    /// Additionally, the component will be informed it should not change state as a result of the operation (such as a flag clear)
+    ///
+    /// It is completely unspecified what parts of the buffer will be written if an error occurs midway through the operation
     #[inline]
     pub fn write<B: NumBytes + ?Sized>(
         &mut self,
@@ -300,9 +321,9 @@ impl<'a> AddressSpace<'a> {
         self.write_internal(address, current_timestamp, buffer)
     }
 
-    /// Write a little endian value to an address
+    /// Convenience method for writing a little endian value to an address
     ///
-    /// This is generally faster than [Self::write], especially for single byte operations
+    /// Has the same behavior as [`write`](Self::write)
     #[inline]
     pub fn write_le_value<T: ToBytes>(
         &mut self,
@@ -313,9 +334,9 @@ impl<'a> AddressSpace<'a> {
         self.write_internal(address, current_timestamp, &value.to_le_bytes())
     }
 
-    /// Write a big endian value to an address
+    /// Convenience method for writing a big endian value to an address
     ///
-    /// This is generally faster than [Self::write], especially for single byte operations
+    /// Has the same behavior as [`write`](Self::write)
     #[inline]
     pub fn write_be_value<T: ToBytes>(
         &mut self,

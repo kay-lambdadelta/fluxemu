@@ -20,7 +20,7 @@ use crate::{
 
 /// Supertrait aggregate type for events
 ///
-/// It is implement for every type that implements the supertraits
+/// It is implemented for every type that implements the supertraits
 pub trait Event: Any + DynClone + Send + Debug + 'static {}
 impl<T: Any + DynClone + Send + Debug + 'static> Event for T {}
 
@@ -114,10 +114,16 @@ impl EventPreemptionSignal {
     }
 }
 
+/// Mode of an event
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum EventMode {
+    /// This event is a oneshot
     Once,
-    Repeating { frequency: Frequency },
+    /// This event will be rescheduled every execution
+    Repeating {
+        /// The frequency at which this event will be rescheduled
+        frequency: Frequency,
+    },
 }
 
 /// Downcast the event down to the type that it should be

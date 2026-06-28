@@ -41,7 +41,7 @@ impl ComponentPath {
             return Err(Error::TooShort);
         }
 
-        validate_segments(segments.into_iter())?;
+        validate_segments(segments)?;
 
         Ok(ComponentPath(Arc::from(component)))
     }

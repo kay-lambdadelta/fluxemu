@@ -5,8 +5,8 @@ use std::ops::BitOr;
 use fluxemu_graphics::api::GraphicsApi;
 use serde::{Deserialize, Serialize};
 
+/// Version specifier for graphics apis
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-/// Version specifier used in this library
 pub struct GraphicsVersion {
     /// Major
     pub major: u32,
@@ -17,7 +17,11 @@ pub struct GraphicsVersion {
 /// The requirements for a graphics context
 #[derive(Debug)]
 pub struct GraphicsRequirements<G: GraphicsApi> {
+    /// Requirements that are needed for basic operation, failure is allowed if these are not present
+    ///
+    /// It is recommended there be as little of these as possible
     pub required: G::Requirements,
+    /// Requirements that are nice to have, operation may continue without them
     pub preferred: G::Requirements,
 }
 

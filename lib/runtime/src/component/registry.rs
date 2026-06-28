@@ -86,6 +86,9 @@ impl ComponentRegistryData {
     }
 }
 
+/// A registry to interact with components participating in the machine it borrows from
+///
+/// It has ID and Path based lookup, and cross thread concurrency with automatic synchronization
 #[derive(Debug, Clone, Copy)]
 pub struct ComponentRegistry<'a> {
     runtime: &'a RuntimeApi,
@@ -97,16 +100,19 @@ impl<'a> ComponentRegistry<'a> {
         Self { runtime, data }
     }
 
+    /// The interaction is performed the exact same way as [`interact_dyn`](Self::interact_dyn), except it downcasts the component to `C` before calling the callback.
+    ///
+    /// Prefer this if you are a component author and you need to directly interact with another component
     #[inline]
     pub fn interact<'b, C: Component, T>(
         &'b self,
         id: impl Into<ComponentIdentifier<'b>>,
-        time: Period,
+        target_timestamp: Period,
         callback: impl FnOnce(&mut C) -> T,
     ) -> Option<T> {
         self.interact_dyn(
             id,
-            time,
+            target_timestamp,
             #[inline]
             |component| {
                 let component = (component as &mut dyn Any).downcast_mut::<C>().unwrap();
@@ -176,6 +182,16 @@ impl<'a> ComponentRegistry<'a> {
         item
     }
 
+    /// Interact with a component by its ID or path via a closure, returning the output of that closure if the component could be found
+    ///
+    /// If the component has not yet reached the timestamp given, it will be caught up to it before the interaction occurs.
+    /// Components are cached in a thread local store, meaning that repeated interactions with the same component are very cheap.
+    ///
+    /// # Concurrent interaction behavior
+    ///
+    /// This function will automatically block when another thread has the component in its per thread store, until it is released.
+    ///
+    /// Additionally, right before this function blocks, it is guaranteed to return the non-borrowed components in the local store to the global store.
     #[inline]
     pub fn interact_dyn<'b, T>(
         &'b self,
@@ -389,8 +405,13 @@ impl<'a> ComponentRegistry<'a> {
     }
 }
 
+/// An identifier for a component, either by its ID or path.
+///
+/// You should not have to use this type directly, instead rely on its `From` impls
 pub enum ComponentIdentifier<'a> {
+    /// ID
     Id(ComponentId),
+    /// Path
     Path(&'a ComponentPath),
 }
 

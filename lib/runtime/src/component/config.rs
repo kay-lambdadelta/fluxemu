@@ -4,8 +4,8 @@ use fluxemu_graphics::api::GraphicsApi;
 
 use crate::{Platform, component::Component, machine::builder::ComponentBuilder};
 
-#[allow(unused)]
 /// Factory config to construct a component
+#[allow(unused)]
 pub trait ComponentConfig<P: Platform>: Debug + Sized + Sync + Send {
     /// The component that this config will create
     type Component: Component;
@@ -22,7 +22,8 @@ pub trait ComponentConfig<P: Platform>: Debug + Sized + Sync + Send {
     }
 }
 
-/// Data that the runtime will provide at the end of the initialization sequence
+/// Late initialized data the runtime will produce for you
 pub struct LateContext<P: Platform> {
+    /// Graphics initialization data matching the specifications the component gave, or a superset of them
     pub graphics_initialization_data: <P::GraphicsApi as GraphicsApi>::InitializationData,
 }

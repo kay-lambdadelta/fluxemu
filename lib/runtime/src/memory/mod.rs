@@ -27,7 +27,9 @@ pub type Address = usize;
 const PAGE_SIZE: Address = 0x1000;
 const MAX_MIRROR_DEPTH: usize = 4;
 
-/// The main structure representing the devices memory address spaces
+/// Handle to a address space specificed at machine registration time
+///
+/// This is the primary interface for accessing memory in the runtime
 #[derive(Debug)]
 pub struct AddressSpace<'a> {
     registry: ComponentRegistry<'a>,
@@ -44,7 +46,7 @@ impl<'a> AddressSpace<'a> {
         }
     }
 
-    /// Change the memory mapping based upon the command list given
+    /// Modify the memory mapping based upon the command list given
     ///
     /// Note that:
     ///
@@ -115,14 +117,16 @@ struct Members {
     pub write: PageTable,
 }
 
+/// Why a memory operation failed
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-/// Why a read operation failed
 pub enum MemoryErrorType {
     /// Access was denied
     Denied,
     /// Nothing is mapped there
     OutOfBus,
     /// It would be impossible to view this memory without a state change
+    ///
+    /// Only applicable for read operations
     Impossible,
 }
 
