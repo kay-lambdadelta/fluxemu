@@ -351,8 +351,8 @@ impl AddressSpaceData {
                         }
                         MapTarget::Mirror { destination } => {
                             assert!(
-                                valid_range.contains(range.start())
-                                    && valid_range.contains(range.end()),
+                                valid_range.contains(destination.start())
+                                    && valid_range.contains(destination.end()),
                                 "Range {destination:#04x?} is invalid for a address space that \
                                  ends at {max:04x?}"
                             );
