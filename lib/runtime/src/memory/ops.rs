@@ -389,11 +389,17 @@ fn virtual_memory_write(
 }
 
 trait SplitableBuffer: Sized {
+    fn empty() -> Self;
     fn split(self, mid: usize) -> (Self, Self);
     fn len(&self) -> usize;
 }
 
 impl SplitableBuffer for &[u8] {
+    #[inline]
+    fn empty() -> Self {
+        &[]
+    }
+
     #[inline]
     fn split(self, mid: usize) -> (Self, Self) {
         self.split_at(mid)
@@ -406,6 +412,11 @@ impl SplitableBuffer for &[u8] {
 }
 
 impl SplitableBuffer for &mut [u8] {
+    #[inline]
+    fn empty() -> Self {
+        &mut []
+    }
+
     #[inline]
     fn split(self, mid: usize) -> (Self, Self) {
         self.split_at_mut(mid)
@@ -426,7 +437,7 @@ struct Chunk<'a, BUFFER> {
 struct ChunkIter<'a, BUFFER> {
     address: Address,
     width_mask: usize,
-    buffer: Option<BUFFER>,
+    buffer: BUFFER,
     page_table: &'a [Arc<[PageTableEntry]>],
 }
 
@@ -441,7 +452,7 @@ impl<'a, BUFFER: SplitableBuffer> ChunkIter<'a, BUFFER> {
         Self {
             address: address & width_mask,
             width_mask,
-            buffer: Some(buffer),
+            buffer,
             page_table,
         }
     }
@@ -452,24 +463,20 @@ impl<'a, BUFFER: SplitableBuffer> Iterator for ChunkIter<'a, BUFFER> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        let buffer = self.buffer.take()?;
-        let remaining = buffer.len();
-
-        if remaining == 0 {
+        if self.buffer.len() == 0 {
             return None;
         }
 
         let max_to_width_boundary = self.width_mask - self.address;
-        let chunk_len = if remaining - 1 <= max_to_width_boundary {
-            remaining
+        let chunk_len = if self.buffer.len() - 1 <= max_to_width_boundary {
+            self.buffer.len()
         } else {
             max_to_width_boundary + 1
         };
 
+        let buffer = std::mem::replace(&mut self.buffer, SplitableBuffer::empty());
         let (chunk_buffer, next_buffer) = buffer.split(chunk_len);
-        if next_buffer.len() > 0 {
-            self.buffer = Some(next_buffer);
-        }
+        self.buffer = next_buffer;
 
         let access_range = RangeInclusive::from_start_and_length(self.address, chunk_len);
         let page_range = (access_range.start / PAGE_SIZE)..=(access_range.last / PAGE_SIZE);
