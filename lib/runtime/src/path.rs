@@ -2,7 +2,6 @@ use std::{
     borrow::Cow,
     fmt::{Display, Write},
     str::FromStr,
-    sync::Arc,
 };
 
 use itertools::Itertools;
@@ -31,10 +30,11 @@ pub enum Error {
 ///
 /// Item names cannot be empty or contain whitespace or `/`
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ComponentPath(Arc<str>);
+pub struct ComponentPath(Cow<'static, str>);
 
 impl ComponentPath {
-    pub fn new(component: String) -> Result<Self, Error> {
+    pub fn new(component: impl Into<Cow<'static, str>>) -> Result<Self, Error> {
+        let component = component.into();
         let segments: Vec<&str> = component.split('/').collect();
 
         if segments.is_empty() {
@@ -43,7 +43,7 @@ impl ComponentPath {
 
         validate_segments(segments)?;
 
-        Ok(ComponentPath(Arc::from(component)))
+        Ok(ComponentPath(component))
     }
 
     pub fn join(&self, segment: &str) -> Result<ComponentPath, Error> {
@@ -51,7 +51,7 @@ impl ComponentPath {
 
         let path = format!("{}/{}", self.0, segment);
 
-        Ok(ComponentPath(Arc::from(path)))
+        Ok(ComponentPath(Cow::from(path)))
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &str> {
@@ -67,7 +67,7 @@ impl ComponentPath {
 
         let path = self.iter().take(segment_count - 1).join("/");
 
-        Some(ComponentPath(Arc::from(path)))
+        Some(ComponentPath(Cow::from(path)))
     }
 
     pub fn name(&self) -> &str {
@@ -112,7 +112,7 @@ impl FromStr for ComponentPath {
 
         validate_segments(segments[1..].iter().copied())?;
 
-        Ok(ComponentPath(Arc::from(segments[1..].join("/"))))
+        Ok(ComponentPath(Cow::from(segments[1..].join("/"))))
     }
 }
 
@@ -240,7 +240,7 @@ impl FromStr for ResourcePath {
         let component = if segments.len() == 2 {
             None
         } else {
-            Some(ComponentPath(Arc::from(
+            Some(ComponentPath(Cow::from(
                 segments[1..segments.len() - 1].join("/"),
             )))
         };

@@ -1,5 +1,5 @@
 use fluxemu_runtime::{
-    ComponentRuntimeApi,
+    RuntimeApi,
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
     memory::{
@@ -42,8 +42,8 @@ impl Component for Mapctl {
         _address_space: AddressSpaceId,
         buffer: &[u8],
     ) -> Result<(), MemoryError> {
-        let runtime = ComponentRuntimeApi::current(&self.path);
-        let timestamp = runtime.current_timestamp();
+        let runtime = RuntimeApi::current();
+        let timestamp = runtime.current_timestamp(&self.path);
 
         self.status = MapctlStatus::from_byte(buffer[0]);
 

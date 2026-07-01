@@ -11,7 +11,6 @@ use sdd::{AtomicOwned, Guard};
 use thiserror::Error;
 
 use crate::{
-    RuntimeApi,
     component::{ComponentId, ComponentRegistry},
     path::ComponentPath,
     scheduler::Period,
@@ -38,9 +37,10 @@ pub struct AddressSpace<'a> {
 }
 
 impl<'a> AddressSpace<'a> {
-    pub(crate) fn new(runtime: &'a RuntimeApi, data: &'a AddressSpaceData) -> Self {
+    #[inline]
+    pub(crate) fn new(registry: ComponentRegistry<'a>, data: &'a AddressSpaceData) -> Self {
         Self {
-            registry: runtime.registry(),
+            registry,
             data,
             guard: Guard::new(),
         }
@@ -68,7 +68,7 @@ impl<'a> AddressSpace<'a> {
         self.guard.accelerate();
 
         self.data
-            .remap(timestamp, self.registry, &self.guard, commands);
+            .remap(timestamp, &self.registry, &self.guard, commands);
     }
 }
 

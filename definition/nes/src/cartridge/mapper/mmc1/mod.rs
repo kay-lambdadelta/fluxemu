@@ -2,7 +2,7 @@ use std::ops::RangeInclusive;
 
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
-    ComponentPath, ComponentRuntimeApi,
+    ComponentPath, RuntimeApi,
     component::{
         Component,
         config::{ComponentConfig, LateContext},
@@ -68,8 +68,8 @@ impl Mmc1 {
         //
         // Therefore the ppu can never observe stale mappings
 
-        let runtime = ComponentRuntimeApi::current(&self.path);
-        let timestamp = runtime.current_timestamp();
+        let runtime = RuntimeApi::current();
+        let timestamp = runtime.current_timestamp(&self.path);
 
         let mut cpu_commands = Vec::new();
 
@@ -161,8 +161,8 @@ impl Mmc1 {
     }
 
     fn update_nametables(&mut self) {
-        let runtime = ComponentRuntimeApi::current(&self.path);
-        let timestamp = runtime.current_timestamp();
+        let runtime = RuntimeApi::current();
+        let timestamp = runtime.current_timestamp(&self.path);
 
         let [nametable_0, nametable_1] = &self.config.params.nametables;
 

@@ -6,7 +6,6 @@ use alloc::{borrow::ToOwned, boxed::Box};
 use core::fmt::Debug;
 
 use fluxemu_runtime::{
-    ComponentPath, ComponentRuntimeApi,
     component::{Component, config::ComponentConfig},
     event::{Event, downcast_event},
     machine::builder::{ComponentBuilder, SchedulerParticipation},
@@ -138,14 +137,13 @@ pub struct Mos6502 {
     state: State,
     config: Mos6502Config,
     period: Period,
-    path: ComponentPath,
 }
 
 impl Component for Mos6502 {
     type Event = Mos6502Event;
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
-        let runtime = ComponentRuntimeApi::current(self.path.clone());
+        let runtime = context.runtime();
 
         let mut address_space = runtime
             .address_space(self.config.assigned_address_space)
@@ -303,7 +301,7 @@ impl<P: Platform> ComponentConfig<P> for Mos6502Config {
         self,
         component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn core::error::Error>> {
-        let component_builder = component_builder
+        component_builder
             .scheduler_participation(Some(SchedulerParticipation::SchedulerDriven))
             .snapshot_codec(MessagePackCodec::default());
 
@@ -329,7 +327,6 @@ impl<P: Platform> ComponentConfig<P> for Mos6502Config {
                 consume_effective_address: false,
             },
             period: self.frequency.recip(),
-            path: component_builder.path().clone(),
             config: self,
         };
 

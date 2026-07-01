@@ -6,13 +6,18 @@ use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
     fmt::Debug,
+    io::Read,
     marker::PhantomData,
     ops::Deref,
     sync::Arc,
+    time::Duration,
 };
 
+use fluxemu_input::{InputId, InputState};
 use fluxemu_program::{ProgramManager, ProgramSpecification};
+use num::FromPrimitive;
 use rustc_hash::FxBuildHasher;
+use tracing::Level;
 
 use crate::{
     ComponentPath, RuntimeApi,
@@ -21,9 +26,9 @@ use crate::{
     machine::builder::MachineBuilder,
     memory::{AddressSpaceData, AddressSpaceId},
     path::ResourcePath,
-    persistence::ErasedCodec,
+    persistence::{ErasedCodec, SnapshotMetadata},
     platform::{Platform, TestPlatform},
-    scheduler::Scheduler,
+    scheduler::{Period, Scheduler},
 };
 
 /// Builder pattern constructor for a [`Machine`]
@@ -84,7 +89,7 @@ impl Machine {
     /// Panics if the runtime is already entered on this thread
     #[must_use]
     pub fn enter_runtime(self: &Arc<Self>) -> RuntimeGuard<'_> {
-        let runtime = RUNTIME_CONTEXT.with(|runtime_context| {
+        let local_component_store = RUNTIME_CONTEXT.with(|runtime_context| {
             let mut runtime_context_guard = runtime_context.borrow_mut();
 
             if runtime_context_guard.is_some() {
@@ -93,13 +98,13 @@ impl Machine {
 
             let runtime = RuntimeApi::new(self.clone());
 
-            *runtime_context_guard = Some(runtime.duplicate());
+            *runtime_context_guard = Some(runtime.clone());
 
-            runtime
+            runtime.local_component_store().clone()
         });
 
         RuntimeGuard {
-            runtime,
+            runtime: RuntimeApi::new_with_local_store(self, local_component_store),
             _phantom: PhantomData,
         }
     }
@@ -109,13 +114,104 @@ impl Machine {
 ///
 /// When this is dropped, the runtime is exited
 pub struct RuntimeGuard<'a> {
-    runtime: RuntimeApi,
+    runtime: RuntimeApi<&'a Machine>,
     // Make sure the lifetime is constrained, and do not allow this guard to cross thread boundaries
-    _phantom: PhantomData<(&'a (), *mut ())>,
+    _phantom: PhantomData<*mut ()>,
+}
+
+impl RuntimeGuard<'_> {
+    /// Helper function to advance the scheduler forward by a [Duration]
+    ///
+    /// Internally converts to the closest representable period
+    #[tracing::instrument(skip(self), level = Level::TRACE)]
+    pub fn run_duration(&self, allocated_time: Duration) {
+        let allocated_time = Period::from_f32(allocated_time.as_secs_f32()).unwrap_or_default();
+
+        self.run(allocated_time);
+    }
+
+    /// Drive the scheduler driven components to the current timestamp + the given time
+    pub fn run(&self, allocated_time: Period) {
+        self.runtime
+            .machine()
+            .scheduler
+            .run(self.runtime.registry(), allocated_time)
+    }
+
+    /// Get the last safe time to advance any component to
+    pub fn safe_advance_timestamp(&self) -> Period {
+        self.runtime.machine().scheduler.safe_advance_timestamp()
+    }
+
+    /// Retrieves the timestamp that the machine started with
+    pub fn start_time(&self) -> Period {
+        self.runtime.machine().scheduler.start_time()
+    }
+
+    /// Insert inputs into the machine, storing them into the logical device state and directly giving input devices the
+    /// new input change
+    #[inline]
+    pub fn insert_inputs(
+        &self,
+        path: &ResourcePath,
+        inputs: impl IntoIterator<Item = (InputId, InputState)>,
+    ) {
+        let logical_input_device = self.runtime.machine().input_devices.get(path).unwrap();
+
+        self.registry()
+            .interact_dyn(
+                path.parent().unwrap(),
+                self.safe_advance_timestamp(),
+                |component| {
+                    for (input_id, state) in inputs {
+                        logical_input_device.set_state(input_id, state);
+
+                        component.handle_input(path.name(), input_id, state);
+                    }
+                },
+            )
+            .unwrap();
+    }
+
+    pub fn load_snapshot(
+        &self,
+        _metadata: &SnapshotMetadata,
+        mut component_section: impl Read,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let registry = self.registry();
+
+        for (path, codec) in &self.runtime.machine().save_codecs {
+            registry
+                .interact_dyn(path, Period::default(), |component| {
+                    codec.deserialize(component, &mut component_section)
+                })
+                .unwrap()?;
+        }
+
+        Ok(())
+    }
+
+    /// List of paths to any audio outputs this machine was created with
+    #[inline]
+    pub fn audio_outputs(&self) -> &HashSet<ResourcePath> {
+        &self.runtime.machine().audio_channels
+    }
+
+    /// Input devices this machine was created with
+    #[inline]
+    pub fn input_devices(&self) -> &HashMap<ResourcePath, Arc<LogicalInputDevice>, FxBuildHasher> {
+        &self.runtime.machine().input_devices
+    }
+
+    /// Framebuffers this machine was created with
+    #[inline]
+    pub fn framebuffer_paths(&self) -> &HashSet<ResourcePath> {
+        &self.runtime.machine().framebuffers
+    }
 }
 
 impl<'a> Deref for RuntimeGuard<'a> {
-    type Target = RuntimeApi;
+    type Target = RuntimeApi<&'a Machine>;
 
     fn deref(&self) -> &Self::Target {
         &self.runtime
@@ -143,5 +239,5 @@ impl<'a> Drop for RuntimeGuard<'a> {
 }
 
 thread_local! {
-    pub(crate) static RUNTIME_CONTEXT: RefCell<Option<RuntimeApi>> = const { RefCell::new(None) };
+    pub(crate) static RUNTIME_CONTEXT: RefCell<Option<RuntimeApi<Arc<Machine>>>> = const { RefCell::new(None) };
 }

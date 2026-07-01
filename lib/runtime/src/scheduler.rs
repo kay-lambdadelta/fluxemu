@@ -6,6 +6,7 @@ use crate::{
     RuntimeApi,
     component::ComponentRegistry,
     event::{EventManager, EventPreemptionSignal},
+    machine::Machine,
     path::ComponentPath,
 };
 
@@ -76,13 +77,19 @@ pub type Frequency = FixedU128<U64>;
 /// Context to begin the synchronization process
 #[derive(Debug)]
 pub struct SynchronizationContext<'a> {
-    pub(crate) runtime: &'a RuntimeApi,
+    pub(crate) runtime: RuntimeApi<&'a Machine>,
     pub(crate) current_timestamp: &'a mut Period,
     pub(crate) target_timestamp: Period,
     pub(crate) last_attempted_allocation: &'a mut Period,
 }
 
 impl<'a> SynchronizationContext<'a> {
+    /// Convenience method to get a [`ComponentRuntimeApi`] by borrowing from this context
+    #[inline]
+    pub fn runtime(&self) -> RuntimeApi<&'a Machine> {
+        self.runtime.clone()
+    }
+
     /// Create an iterator that continuously allocates an amount of time represented by period until either the target timestamp is reached
     /// or the runtime preempts the task
     #[inline]
@@ -144,6 +151,8 @@ impl Iterator for QuantaIterator<'_, '_> {
         }
 
         if self.budget == 0 {
+            std::hint::cold_path();
+
             return None;
         }
         self.budget -= 1;

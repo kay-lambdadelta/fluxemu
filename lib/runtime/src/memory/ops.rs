@@ -90,7 +90,7 @@ impl<'a> AddressSpace<'a> {
                                 virtual_memory_read::<AVOID_SIDE_EFFECTS>(
                                     *component_id,
                                     timestamp,
-                                    self.registry,
+                                    &self.registry,
                                     destination,
                                     self.data.id,
                                     adjusted,
@@ -287,7 +287,7 @@ impl<'a> AddressSpace<'a> {
                                 virtual_memory_write(
                                     *component_id,
                                     timestamp,
-                                    self.registry,
+                                    &self.registry,
                                     destination,
                                     self.data.id,
                                     adjusted,
@@ -349,10 +349,11 @@ impl<'a> AddressSpace<'a> {
 }
 
 #[cold]
+#[inline]
 fn virtual_memory_read<const AVOID_SIDE_EFFECTS: bool>(
     component_id: ComponentId,
     timestamp: Period,
-    registry: ComponentRegistry<'_>,
+    registry: &ComponentRegistry<'_>,
     destination: usize,
     address_space_id: AddressSpaceId,
     buffer: &mut [u8],
@@ -370,10 +371,11 @@ fn virtual_memory_read<const AVOID_SIDE_EFFECTS: bool>(
 }
 
 #[cold]
+#[inline]
 fn virtual_memory_write(
     component_id: ComponentId,
     timestamp: Period,
-    registry: ComponentRegistry<'_>,
+    registry: &ComponentRegistry<'_>,
     destination: usize,
     address_space_id: AddressSpaceId,
     buffer: &[u8],

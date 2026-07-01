@@ -2,7 +2,7 @@ use std::{fmt::Debug, ops::RangeInclusive};
 
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
-    ComponentRuntimeApi,
+    RuntimeApi,
     component::{
         Component,
         config::{ComponentConfig, LateContext},
@@ -123,8 +123,8 @@ impl Component for Mos6532Riot {
         _address_space: AddressSpaceId,
         buffer: &[u8],
     ) -> Result<(), MemoryError> {
-        let runtime = ComponentRuntimeApi::current(&self.path);
-        let timestamp = runtime.current_timestamp();
+        let runtime = RuntimeApi::current();
+        let timestamp = runtime.current_timestamp(&self.path);
 
         for (address, buffer_section) in
             RangeInclusive::from_start_and_length(address, buffer.len()).zip(buffer.iter())
@@ -265,7 +265,7 @@ impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
         let swchb_address =
             (Register::Swchb as Address) + component.config.registers_assigned_address;
 
-        let runtime = ComponentRuntimeApi::current(&component.path);
+        let runtime = RuntimeApi::current();
         let mut mapping_commands = Vec::default();
 
         if let Some(swcha) = &component.config.swcha {

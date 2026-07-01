@@ -4,7 +4,6 @@ use std::{
 };
 
 use fluxemu_runtime::{
-    ComponentRuntimeApi,
     component::{Component, config::ComponentConfig},
     input::LogicalInputDevice,
     machine::builder::{ComponentBuilder, SchedulerParticipation},
@@ -87,7 +86,6 @@ pub struct Chip8Processor<G: SupportedGraphicsApiChip8Display> {
     keypad: Arc<LogicalInputDevice>,
     // What chip8 mode we are currently in
     mode: Arc<Mutex<Chip8Mode>>,
-    path: ComponentPath,
     config: Chip8ProcessorConfig<G>,
 }
 
@@ -102,7 +100,7 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
     type Event = ();
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
-        let runtime = ComponentRuntimeApi::current(self.path.clone());
+        let runtime = context.runtime();
 
         let mut address_space = runtime
             .address_space(self.config.cpu_address_space)
@@ -128,7 +126,7 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
                         self.state.registers.program = self.state.registers.program.wrapping_add(2);
 
                         self.interpret_instruction(
-                            &runtime,
+                            runtime.clone(),
                             &mut address_space,
                             timestamp,
                             instruction,
@@ -226,7 +224,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
         let mode = Arc::new(Mutex::new(self.force_mode.unwrap_or(Chip8Mode::Chip8)));
         let state = ProcessorState::default();
 
-        let (component_builder, keypad) = component_builder
+        let (_component_builder, keypad) = component_builder
             .scheduler_participation(Some(SchedulerParticipation::SchedulerDriven))
             .input("keypad", PRESENT_INPUTS, DEFAULT_MAPPINGS);
 
@@ -234,7 +232,6 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
             state,
             keypad,
             mode,
-            path: component_builder.path().clone(),
             config: self,
         })
     }

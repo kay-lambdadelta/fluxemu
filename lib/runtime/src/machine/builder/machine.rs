@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     collections::{HashMap, HashSet},
     marker::PhantomData,
     ops::RangeInclusive,
@@ -155,10 +156,10 @@ impl<P: Platform> MachineBuilder<P> {
     #[inline]
     pub fn component<B: ComponentConfig<P>>(
         mut self,
-        name: &str,
+        name: impl Into<Cow<'static, str>>,
         config: B,
     ) -> (Self, ComponentPath) {
-        let path = ComponentPath::new(name.into()).unwrap();
+        let path = ComponentPath::new(name).unwrap();
         self.insert_component_with_path(path.clone(), config);
 
         (self, path)
@@ -168,7 +169,7 @@ impl<P: Platform> MachineBuilder<P> {
     #[inline]
     pub fn default_component<B: ComponentConfig<P> + Default>(
         self,
-        name: &str,
+        name: impl Into<Cow<'static, str>>,
     ) -> (Self, ComponentPath) {
         let config = B::default();
         self.component(name, config)

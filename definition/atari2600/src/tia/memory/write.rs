@@ -1,5 +1,5 @@
 use fluxemu_definition_mos6502::{Mos6502, Mos6502Event, Pin};
-use fluxemu_runtime::{ComponentRuntimeApi, event::EventMode, scheduler::Period};
+use fluxemu_runtime::{RuntimeApi, event::EventMode, scheduler::Period};
 use nalgebra::Point2;
 
 use super::WriteRegisters;
@@ -50,8 +50,8 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
                 self.state.input_control[5] = bit;
             }
             WriteRegisters::Wsync => {
-                let runtime = ComponentRuntimeApi::current(&self.path);
-                let timestamp = runtime.current_timestamp();
+                let runtime = RuntimeApi::current();
+                let timestamp = runtime.current_timestamp(&self.path);
 
                 let until =
                     Period::from_num(SCANLINE_LENGTH - self.state.electron_beam.x) / R::frequency();

@@ -4,7 +4,7 @@ use fluxemu_definition_mos6502::{Mos6502, Mos6502Event, Pin};
 use fluxemu_graphics::api::software::texture::{OwnedTexture, Texture};
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
-    ComponentRuntimeApi,
+    RuntimeApi,
     component::{
         Component,
         config::{ComponentConfig, LateContext},
@@ -271,8 +271,8 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                 CpuAccessibleRegister::PpuScroll => todo!(),
                 CpuAccessibleRegister::PpuAddr => todo!(),
                 CpuAccessibleRegister::PpuData => {
-                    let runtime = ComponentRuntimeApi::current(&self.path);
-                    let timestamp = runtime.current_timestamp();
+                    let runtime = RuntimeApi::current();
+                    let timestamp = runtime.current_timestamp(&self.path);
 
                     let mut ppu_address_space =
                         runtime.address_space(self.ppu_address_space).unwrap();
@@ -387,8 +387,8 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         !self.state.vram_address_pointer_write_phase;
                 }
                 CpuAccessibleRegister::PpuData => {
-                    let runtime = ComponentRuntimeApi::current(&self.path);
-                    let timestamp = runtime.current_timestamp();
+                    let runtime = RuntimeApi::current();
+                    let timestamp = runtime.current_timestamp(&self.path);
                     let mut ppu_address_space =
                         runtime.address_space(self.ppu_address_space).unwrap();
 
@@ -405,8 +405,8 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         )) & 0b0111_1111_1111_1111;
                 }
                 CpuAccessibleRegister::OamDma => {
-                    let runtime = ComponentRuntimeApi::current(&self.path);
-                    let timestamp = runtime.current_timestamp();
+                    let runtime = RuntimeApi::current();
+                    let timestamp = runtime.current_timestamp(&self.path);
 
                     let mut cpu_address_space =
                         runtime.address_space(self.cpu_address_space).unwrap();
@@ -454,8 +454,8 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
     }
 
     fn handle_event(&mut self, event: Box<dyn Event>) {
-        let runtime = ComponentRuntimeApi::current(&self.path);
-        let timestamp = runtime.current_timestamp();
+        let runtime = RuntimeApi::current();
+        let timestamp = runtime.current_timestamp(&self.path);
 
         let event = downcast_event::<Self>(event);
 
@@ -526,7 +526,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
     }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
-        let runtime = ComponentRuntimeApi::current(self.path.clone());
+        let runtime = context.runtime();
         let mut ppu_address_space = runtime.address_space(self.ppu_address_space).unwrap();
 
         for timestamp in context.allocate_continuous(self.period) {

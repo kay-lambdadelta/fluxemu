@@ -11,6 +11,7 @@ use rustc_hash::FxBuildHasher;
 use crate::{
     RuntimeApi,
     component::{Component, ComponentId},
+    machine::Machine,
     path::ComponentPath,
     scheduler::{Period, SynchronizationContext},
 };
@@ -89,14 +90,15 @@ impl ComponentRegistryData {
 /// A registry to interact with components participating in the machine it borrows from
 ///
 /// It has ID and Path based lookup, and cross thread concurrency with automatic synchronization
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct ComponentRegistry<'a> {
-    runtime: &'a RuntimeApi,
+    runtime: RuntimeApi<&'a Machine>,
     data: &'a ComponentRegistryData,
 }
 
 impl<'a> ComponentRegistry<'a> {
-    pub(crate) fn new(runtime: &'a RuntimeApi, data: &'a ComponentRegistryData) -> Self {
+    #[inline]
+    pub(crate) fn new(runtime: RuntimeApi<&'a Machine>, data: &'a ComponentRegistryData) -> Self {
         Self { runtime, data }
     }
 
@@ -248,8 +250,9 @@ impl<'a> ComponentRegistry<'a> {
 
         loop {
             let mut last_attempted_allocation = Period::ZERO;
+
             let context = SynchronizationContext {
-                runtime: self.runtime,
+                runtime: self.runtime.clone(),
                 current_timestamp: &mut current_timestamp,
                 target_timestamp,
                 last_attempted_allocation: &mut last_attempted_allocation,
@@ -284,7 +287,7 @@ impl<'a> ComponentRegistry<'a> {
                 .machine()
                 .scheduler
                 .event_manager
-                .consume(*self, hazard_timestamp);
+                .consume(self.clone(), hazard_timestamp);
 
             {
                 let store = unsafe { &mut *cell.get() };
