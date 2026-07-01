@@ -13,7 +13,7 @@ clap = { workspace = true }
 fluxemu-environment = { workspace = true }
 fluxemu-locale = { workspace = true }
 fluxemu-program = { workspace = true }
-quick-xml = { version = "0.40", features = ["serialize"] }
+quick-xml = { version = "0.41", features = ["serialize"] }
 rayon = { workspace = true }
 redb = { workspace = true }
 ron = { workspace = true }
