@@ -99,15 +99,13 @@ impl<'a> SynchronizationContext<'a> {
         QuantaIterator {
             period,
             budget,
-            timestamp_at_allocation: *self.current_timestamp,
-            steps_taken: 0,
             last_seen_event_generation,
             context: self,
         }
     }
 
     #[inline]
-    fn check_allocation_preconditions(&mut self, period: Period) -> (u32, u64) {
+    fn check_allocation_preconditions(&mut self, period: Period) -> (u32, u32) {
         assert_ne!(period, Period::ZERO, "Cannot allocate zero period");
         *self.last_attempted_allocation = period;
 
@@ -121,7 +119,8 @@ impl<'a> SynchronizationContext<'a> {
 
         let budget = (stop_time.saturating_sub(*self.current_timestamp) / period)
             .floor()
-            .to_num::<u64>();
+            .checked_to_num::<u32>()
+            .unwrap_or(u32::MAX);
 
         (last_seen_event_generation, budget)
     }
@@ -130,9 +129,7 @@ impl<'a> SynchronizationContext<'a> {
 /// Helper iterator to continuously allocate a period until the time budget is exhausted
 pub struct QuantaIterator<'b, 'a> {
     period: Period,
-    budget: u64,
-    timestamp_at_allocation: Period,
-    steps_taken: u64,
+    budget: u32,
     last_seen_event_generation: u32,
     context: &'b mut SynchronizationContext<'a>,
 }
@@ -156,15 +153,10 @@ impl Iterator for QuantaIterator<'_, '_> {
             return None;
         }
         self.budget -= 1;
-        self.steps_taken += 1;
 
-        // Multiply by steps taken to reduce accumulated error
-        let next_timestamp =
-            self.timestamp_at_allocation + self.period * FixedU128::from(self.steps_taken);
-        *self.context.current_timestamp = next_timestamp;
+        *self.context.current_timestamp += self.period;
 
-        // Return new now
-        Some(next_timestamp)
+        Some(*self.context.current_timestamp)
     }
 }
 
@@ -188,7 +180,8 @@ impl<'b, 'a> QuantaIterator<'b, 'a> {
         // Recalculate budget
         let new_budget = (stop_time.saturating_sub(*self.context.current_timestamp) / self.period)
             .floor()
-            .to_num::<u64>();
+            .checked_to_num()
+            .unwrap_or(u32::MAX);
 
         self.budget = self.budget.min(new_budget);
     }
