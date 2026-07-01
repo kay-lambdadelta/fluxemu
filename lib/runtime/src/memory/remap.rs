@@ -48,11 +48,11 @@ impl PageTable {
         dirty: &RangeInclusiveSet<Address>,
         registry: &ComponentRegistry<'_>,
     ) {
-        for (page_index, page) in self.0.iter_mut().enumerate() {
+        for page_index in 0..self.0.len() {
             let page_address_range =
                 RangeInclusive::from_start_and_length(page_index * PAGE_SIZE, PAGE_SIZE);
 
-            if dirty.overlaps(&page_address_range) {
+            self.0[page_index] = if dirty.overlaps(&page_address_range) {
                 let mut page_contents = Vec::default();
 
                 // Compile master table entries into this page
@@ -145,10 +145,18 @@ impl PageTable {
                     _ => false,
                 });
 
-                *page = Arc::from(page_contents);
+                let previous_page = page_index.checked_sub(1).map(|index| &self.0[index]);
+
+                if let Some(previous_page) = previous_page
+                    && pages_have_same_mapping(previous_page, &page_contents)
+                {
+                    previous_page.clone()
+                } else {
+                    Arc::from(page_contents)
+                }
             } else {
-                *page = previous_table.0[page_index].clone();
-            }
+                previous_table.0[page_index].clone()
+            };
         }
     }
 
@@ -439,4 +447,34 @@ impl AddressSpaceData {
             .members
             .swap((Some(Owned::new(members)), Tag::None), Ordering::AcqRel);
     }
+}
+
+impl PageTableTarget {
+    #[inline]
+    fn same_mapping(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Memory(a), Self::Memory(b)) => a.as_ptr() == b.as_ptr() && a.len() == b.len(),
+            (
+                Self::Component {
+                    destination_start: destination_start_a,
+                    component_id: component_id_a,
+                    is_standard_memory: _,
+                },
+                Self::Component {
+                    destination_start: destination_start_b,
+                    component_id: component_id_b,
+                    is_standard_memory: _,
+                },
+            ) => destination_start_a == destination_start_b && component_id_a == component_id_b,
+            _ => false,
+        }
+    }
+}
+
+#[inline]
+fn pages_have_same_mapping(a: &[PageTableEntry], b: &[PageTableEntry]) -> bool {
+    a.len() == b.len()
+        && a.iter()
+            .zip(b)
+            .all(|(a, b)| a.range == b.range && a.target.same_mapping(&b.target))
 }
