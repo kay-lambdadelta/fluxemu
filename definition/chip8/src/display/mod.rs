@@ -166,7 +166,8 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Display<G> {
     fn synchronize(&mut self, mut context: SynchronizationContext) {
         let mut commit_staging_buffer = false;
 
-        for _ in context.allocate_continuous(Period::ONE / 60) {
+        let mut quanta_iterator = context.quanta_allocator(Period::ONE / 60);
+        while quanta_iterator.allocate().is_some() {
             self.vsync_occurred = true;
 
             commit_staging_buffer = true;

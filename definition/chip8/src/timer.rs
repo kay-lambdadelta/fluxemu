@@ -25,7 +25,8 @@ impl Component for Chip8Timer {
     type Event = ();
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
-        for _ in context.allocate_continuous(Period::ONE / 60) {
+        let mut quanta_iterator = context.quanta_allocator(Period::ONE / 60);
+        while quanta_iterator.allocate().is_some() {
             self.timer = self.timer.saturating_sub(1);
         }
     }

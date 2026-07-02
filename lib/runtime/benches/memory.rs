@@ -48,7 +48,7 @@ fn bench_reads(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u8>(black_box(0x0000), Period::default())
+                    .read_le_value::<u8>(black_box(0x0000), &Period::default())
                     .unwrap(),
             )
         });
@@ -58,7 +58,7 @@ fn bench_reads(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u16>(black_box(0x0000), Period::default())
+                    .read_le_value::<u16>(black_box(0x0000), &Period::default())
                     .unwrap(),
             )
         });
@@ -68,7 +68,7 @@ fn bench_reads(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u32>(black_box(0x0000), Period::default())
+                    .read_le_value::<u32>(black_box(0x0000), &Period::default())
                     .unwrap(),
             )
         });
@@ -78,7 +78,7 @@ fn bench_reads(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u64>(black_box(0x0000), Period::default())
+                    .read_le_value::<u64>(black_box(0x0000), &Period::default())
                     .unwrap(),
             )
         });
@@ -88,7 +88,7 @@ fn bench_reads(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u8>(black_box(0x1000), Period::default())
+                    .read_le_value::<u8>(black_box(0x1000), &Period::default())
                     .unwrap(),
             )
         });
@@ -98,7 +98,7 @@ fn bench_reads(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u16>(black_box(0x1000), Period::default())
+                    .read_le_value::<u16>(black_box(0x1000), &Period::default())
                     .unwrap(),
             )
         });
@@ -108,7 +108,7 @@ fn bench_reads(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u32>(black_box(0x1000), Period::default())
+                    .read_le_value::<u32>(black_box(0x1000), &Period::default())
                     .unwrap(),
             )
         });
@@ -118,7 +118,7 @@ fn bench_reads(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u64>(black_box(0x1000), Period::default())
+                    .read_le_value::<u64>(black_box(0x1000), &Period::default())
                     .unwrap(),
             )
         });
@@ -137,7 +137,7 @@ fn bench_writes(c: &mut Criterion) {
     group.bench_function("u8", |b| {
         b.iter(|| {
             address_space
-                .write_le_value::<u8>(black_box(0x0000), Period::default(), black_box(0))
+                .write_le_value::<u8>(black_box(0x0000), &Period::default(), black_box(0))
                 .unwrap();
         });
     });
@@ -145,7 +145,7 @@ fn bench_writes(c: &mut Criterion) {
     group.bench_function("u16", |b| {
         b.iter(|| {
             address_space
-                .write_le_value::<u16>(black_box(0x0000), Period::default(), black_box(0))
+                .write_le_value::<u16>(black_box(0x0000), &Period::default(), black_box(0))
                 .unwrap();
         });
     });
@@ -153,7 +153,7 @@ fn bench_writes(c: &mut Criterion) {
     group.bench_function("u32", |b| {
         b.iter(|| {
             address_space
-                .write_le_value::<u32>(black_box(0x0000), Period::default(), black_box(0))
+                .write_le_value::<u32>(black_box(0x0000), &Period::default(), black_box(0))
                 .unwrap();
         });
     });
@@ -161,7 +161,7 @@ fn bench_writes(c: &mut Criterion) {
     group.bench_function("u64", |b| {
         b.iter(|| {
             address_space
-                .write_le_value::<u64>(black_box(0x0000), Period::default(), black_box(0))
+                .write_le_value::<u64>(black_box(0x0000), &Period::default(), black_box(0))
                 .unwrap();
         });
     });

@@ -106,7 +106,7 @@ impl Mmc1 {
         runtime
             .address_space(self.config.params.cpu_address_space)
             .unwrap()
-            .remap(timestamp, cpu_commands);
+            .remap(&timestamp, cpu_commands);
 
         if let Some(chr_rom) = self.config.params.chr_rom.as_ref() {
             let mut ppu_commands = Vec::new();
@@ -156,7 +156,7 @@ impl Mmc1 {
             runtime
                 .address_space(self.config.params.ppu_address_space)
                 .unwrap()
-                .remap(timestamp, ppu_commands);
+                .remap(&timestamp, ppu_commands);
         }
     }
 
@@ -304,7 +304,7 @@ impl Mmc1 {
         runtime
             .address_space(self.config.params.ppu_address_space)
             .unwrap()
-            .remap(timestamp, commands);
+            .remap(&timestamp, commands);
     }
 }
 

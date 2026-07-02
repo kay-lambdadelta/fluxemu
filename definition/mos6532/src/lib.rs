@@ -151,7 +151,7 @@ impl Component for Mos6532Riot {
                             .address_space(self.config.assigned_address_space)
                             .unwrap()
                             .remap(
-                                timestamp,
+                                &timestamp,
                                 [MemoryRemappingCommand::Map {
                                     range: address..=address,
                                     target: MapTarget::Component(swacnt.clone()),
@@ -179,7 +179,7 @@ impl Component for Mos6532Riot {
                             .address_space(self.config.assigned_address_space)
                             .unwrap()
                             .remap(
-                                timestamp,
+                                &timestamp,
                                 [MemoryRemappingCommand::Map {
                                     range: address..=address,
                                     target: MapTarget::Component(swbcnt.clone()),
@@ -228,9 +228,10 @@ impl Component for Mos6532Riot {
     }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
-        for timestamp in context.allocate_continuous(self.period) {
+        let mut quanta_iterator = context.quanta_allocator(self.period);
+        while let Some(timestamp) = quanta_iterator.allocate() {
             if let Some(config) = &mut self.state.timer_configuration
-                && timestamp == config.next_timestamp
+                && timestamp == &config.next_timestamp
             {
                 let (new_timer, underflowed) = config.timer.overflowing_sub(1);
 
@@ -287,7 +288,7 @@ impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
         runtime
             .address_space(component.config.assigned_address_space)
             .unwrap()
-            .remap(Period::ZERO, mapping_commands);
+            .remap(&Period::ZERO, mapping_commands);
     }
 
     fn build_component(

@@ -59,7 +59,7 @@ impl<'a> AddressSpace<'a> {
     #[inline]
     pub fn remap(
         &self,
-        timestamp: Period,
+        timestamp: &Period,
         commands: impl IntoIterator<Item = MemoryRemappingCommand>,
     ) {
         // Some programs who do extremely frequent remappings will inflate ram with old copies of the mapping table

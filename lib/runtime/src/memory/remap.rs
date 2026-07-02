@@ -283,7 +283,7 @@ impl AddressSpaceData {
     #[inline]
     pub fn remap(
         &self,
-        timestamp: Period,
+        timestamp: &Period,
         registry: &ComponentRegistry<'_>,
         guard: &Guard,
         commands: impl IntoIterator<Item = MemoryRemappingCommand>,

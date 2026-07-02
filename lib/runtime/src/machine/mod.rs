@@ -161,7 +161,7 @@ impl RuntimeGuard<'_> {
         self.registry()
             .interact_dyn(
                 path.parent().unwrap(),
-                self.safe_advance_timestamp(),
+                &self.safe_advance_timestamp(),
                 |component| {
                     for (input_id, state) in inputs {
                         logical_input_device.set_state(input_id, state);
@@ -182,7 +182,7 @@ impl RuntimeGuard<'_> {
 
         for (path, codec) in &self.runtime.machine().save_codecs {
             registry
-                .interact_dyn(path, Period::default(), |component| {
+                .interact_dyn(path, &Period::default(), |component| {
                     codec.deserialize(component, &mut component_section)
                 })
                 .unwrap()?;

@@ -149,7 +149,8 @@ impl Component for Mos6502 {
             .address_space(self.config.assigned_address_space)
             .unwrap();
 
-        for timestamp in context.allocate_continuous(self.period) {
+        let mut quanta_iterator = context.quanta_allocator(self.period);
+        while let Some(timestamp) = quanta_iterator.allocate() {
             if self.state.cycle_queue.is_empty() {
                 self.state
                     .cycle_queue

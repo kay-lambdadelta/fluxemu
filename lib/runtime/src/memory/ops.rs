@@ -7,8 +7,8 @@ use super::AddressSpace;
 use crate::{
     component::{Component, ComponentId, ComponentRegistry},
     memory::{
-        Address, AddressSpaceData, AddressSpaceId, MemoryError, MemoryErrorType, PAGE_SIZE,
-        PageTableEntry, PageTableTarget, component::Memory,
+        Address, AddressSpaceId, MemoryError, MemoryErrorType, PAGE_SIZE, PageTableEntry,
+        PageTableTarget, component::Memory,
     },
     scheduler::Period,
 };
@@ -18,7 +18,7 @@ impl<'a> AddressSpace<'a> {
     pub(super) fn read_internal<B: NumBytes + ?Sized, const AVOID_SIDE_EFFECTS: bool>(
         &mut self,
         address: Address,
-        timestamp: Period,
+        timestamp: &Period,
         buffer: &mut B,
     ) -> Result<(), MemoryError> {
         let members = self.data.get_members(&self.guard);
@@ -57,35 +57,13 @@ impl<'a> AddressSpace<'a> {
                                         |component| {
                                             standard_memory_read::<AVOID_SIDE_EFFECTS>(
                                                 component,
-                                                self.data,
+                                                self.id(),
                                                 destination,
                                                 adjusted,
                                             )
                                         },
                                     )?;
                                 };
-
-                                #[inline]
-                                fn standard_memory_read<const AVOID_SIDE_EFFECTS: bool>(
-                                    component: &mut (dyn Component + 'static),
-                                    data: &AddressSpaceData,
-                                    destination: usize,
-                                    adjusted: &mut [u8],
-                                ) -> Result<(), MemoryError> {
-                                    // SAFETY: In `commit` is_standard_memory is set based upon the typeid of the component
-                                    //
-                                    // This is basically doing a stable `downcast_unchecked`
-                                    let component = unsafe {
-                                        &mut *(std::ptr::from_mut(component) as *mut Memory)
-                                    };
-
-                                    component.memory_read(
-                                        destination,
-                                        data.id,
-                                        AVOID_SIDE_EFFECTS,
-                                        adjusted,
-                                    )
-                                }
                             } else {
                                 virtual_memory_read::<AVOID_SIDE_EFFECTS>(
                                     *component_id,
@@ -95,7 +73,7 @@ impl<'a> AddressSpace<'a> {
                                     self.data.id,
                                     adjusted,
                                 )?;
-                            }
+                            };
                         }
                         PageTableTarget::Memory(bytes) => {
                             let memory_range =
@@ -126,7 +104,7 @@ impl<'a> AddressSpace<'a> {
     pub fn read<B: NumBytes + ?Sized>(
         &mut self,
         address: Address,
-        current_timestamp: Period,
+        current_timestamp: &Period,
         buffer: &mut B,
     ) -> Result<(), MemoryError> {
         self.read_internal::<_, false>(address, current_timestamp, buffer)
@@ -142,7 +120,7 @@ impl<'a> AddressSpace<'a> {
     pub fn read_pure<B: NumBytes + ?Sized>(
         &mut self,
         address: Address,
-        current_timestamp: Period,
+        current_timestamp: &Period,
         buffer: &mut B,
     ) -> Result<(), MemoryError> {
         self.read_internal::<_, true>(address, current_timestamp, buffer)
@@ -155,7 +133,7 @@ impl<'a> AddressSpace<'a> {
     pub fn read_le_value<T: FromBytes>(
         &mut self,
         address: Address,
-        current_timestamp: Period,
+        current_timestamp: &Period,
     ) -> Result<T, MemoryError>
     where
         T::Bytes: Default,
@@ -172,7 +150,7 @@ impl<'a> AddressSpace<'a> {
     pub fn read_le_value_pure<T: FromBytes>(
         &mut self,
         address: Address,
-        current_timestamp: Period,
+        current_timestamp: &Period,
     ) -> Result<T, MemoryError>
     where
         T::Bytes: Default,
@@ -189,7 +167,7 @@ impl<'a> AddressSpace<'a> {
     pub fn read_be_value<T: FromBytes>(
         &mut self,
         address: Address,
-        current_timestamp: Period,
+        current_timestamp: &Period,
     ) -> Result<T, MemoryError>
     where
         T::Bytes: Default,
@@ -206,7 +184,7 @@ impl<'a> AddressSpace<'a> {
     pub fn read_be_value_pure<T: FromBytes>(
         &mut self,
         address: Address,
-        current_timestamp: Period,
+        current_timestamp: &Period,
     ) -> Result<T, MemoryError>
     where
         T::Bytes: Default,
@@ -220,7 +198,7 @@ impl<'a> AddressSpace<'a> {
     pub(super) fn write_internal<B: NumBytes + ?Sized>(
         &mut self,
         address: Address,
-        timestamp: Period,
+        timestamp: &Period,
         buffer: &B,
     ) -> Result<(), MemoryError> {
         let members = self.data.get_members(&self.guard);
@@ -259,30 +237,13 @@ impl<'a> AddressSpace<'a> {
                                         |component| {
                                             standard_memory_write(
                                                 component,
-                                                self.data,
+                                                self.id(),
                                                 destination,
                                                 adjusted,
                                             )
                                         },
                                     )?;
                                 };
-
-                                #[inline]
-                                fn standard_memory_write(
-                                    component: &mut (dyn Component + 'static),
-                                    data: &AddressSpaceData,
-                                    destination: usize,
-                                    adjusted: &[u8],
-                                ) -> Result<(), MemoryError> {
-                                    // SAFETY: In `commit` is_standard_memory is set based upon the typeid of the component
-                                    //
-                                    // This is basically doing a stable `downcast_unchecked`
-                                    let component = unsafe {
-                                        &mut *(std::ptr::from_mut(component) as *mut Memory)
-                                    };
-
-                                    component.memory_write(destination, data.id, adjusted)
-                                }
                             } else {
                                 virtual_memory_write(
                                     *component_id,
@@ -292,7 +253,7 @@ impl<'a> AddressSpace<'a> {
                                     self.data.id,
                                     adjusted,
                                 )?;
-                            }
+                            };
                         }
                         PageTableTarget::Memory(_) => unreachable!(),
                     }
@@ -315,7 +276,7 @@ impl<'a> AddressSpace<'a> {
     pub fn write<B: NumBytes + ?Sized>(
         &mut self,
         address: Address,
-        current_timestamp: Period,
+        current_timestamp: &Period,
         buffer: &B,
     ) -> Result<(), MemoryError> {
         self.write_internal(address, current_timestamp, buffer)
@@ -328,7 +289,7 @@ impl<'a> AddressSpace<'a> {
     pub fn write_le_value<T: ToBytes>(
         &mut self,
         address: Address,
-        current_timestamp: Period,
+        current_timestamp: &Period,
         value: T,
     ) -> Result<(), MemoryError> {
         self.write_internal(address, current_timestamp, &value.to_le_bytes())
@@ -341,53 +302,11 @@ impl<'a> AddressSpace<'a> {
     pub fn write_be_value<T: ToBytes>(
         &mut self,
         address: Address,
-        current_timestamp: Period,
+        current_timestamp: &Period,
         value: T,
     ) -> Result<(), MemoryError> {
         self.write_internal(address, current_timestamp, &value.to_be_bytes())
     }
-}
-
-#[cold]
-#[inline]
-fn virtual_memory_read<const AVOID_SIDE_EFFECTS: bool>(
-    component_id: ComponentId,
-    timestamp: Period,
-    registry: &ComponentRegistry<'_>,
-    destination: usize,
-    address_space_id: AddressSpaceId,
-    buffer: &mut [u8],
-) -> Result<(), MemoryError> {
-    registry
-        .interact_dyn(
-            component_id,
-            timestamp,
-            #[inline]
-            |component| {
-                component.memory_read(destination, address_space_id, AVOID_SIDE_EFFECTS, buffer)
-            },
-        )
-        .unwrap()
-}
-
-#[cold]
-#[inline]
-fn virtual_memory_write(
-    component_id: ComponentId,
-    timestamp: Period,
-    registry: &ComponentRegistry<'_>,
-    destination: usize,
-    address_space_id: AddressSpaceId,
-    buffer: &[u8],
-) -> Result<(), MemoryError> {
-    registry
-        .interact_dyn(
-            component_id,
-            timestamp,
-            #[inline]
-            |component| component.memory_write(destination, address_space_id, buffer),
-        )
-        .unwrap()
 }
 
 trait SplitableBuffer: Sized {
@@ -506,41 +425,43 @@ fn visit_page_entries<BUFFER: SplitableBuffer>(
     let initial_buffer_len = buffer.len();
     let mut remaining = buffer;
 
-    for PageTableEntry {
-        range: entry_assigned_range,
-        target,
-    } in page_table_slice.iter().flat_map(|page| page.iter())
-    {
-        if entry_assigned_range.last < access_range.start {
-            continue;
-        }
+    for page in page_table_slice {
+        for PageTableEntry {
+            range: entry_assigned_range,
+            target,
+        } in page.iter()
+        {
+            if entry_assigned_range.last < access_range.start {
+                continue;
+            }
 
-        if entry_assigned_range.start > access_range.last {
-            break;
-        }
+            if entry_assigned_range.start > access_range.last {
+                break;
+            }
 
-        let entry_access_range = entry_assigned_range.intersection(&access_range);
-        let offset = entry_access_range.start - entry_assigned_range.start;
+            let entry_access_range = entry_assigned_range.intersection(&access_range);
+            let offset = entry_access_range.start - entry_assigned_range.start;
 
-        let buffer_range = (entry_access_range.start - access_range.start)
-            ..=(entry_access_range.last - access_range.start);
+            let buffer_range = (entry_access_range.start - access_range.start)
+                ..=(entry_access_range.last - access_range.start);
 
-        let consumed = initial_buffer_len - remaining.len();
-        let gap = buffer_range.start() - consumed;
-        if gap > 0 {
-            return Err(form_error(RangeInclusive::from_start_and_length(
-                access_range.start + consumed,
-                gap,
-            )));
-        }
+            let consumed = initial_buffer_len - remaining.len();
+            let gap = buffer_range.start() - consumed;
+            if gap > 0 {
+                return Err(form_error(RangeInclusive::from_start_and_length(
+                    access_range.start + consumed,
+                    gap,
+                )));
+            }
 
-        let (adjusted_buffer, rest) = remaining.split(buffer_range.len());
-        remaining = rest;
+            let (adjusted_buffer, rest) = remaining.split(buffer_range.len());
+            remaining = rest;
 
-        callback(target, offset, adjusted_buffer)?;
+            callback(target, offset, adjusted_buffer)?;
 
-        if entry_access_range.last == access_range.last {
-            break;
+            if entry_access_range.last == access_range.last {
+                break;
+            }
         }
     }
 
@@ -557,6 +478,77 @@ fn visit_page_entries<BUFFER: SplitableBuffer>(
 }
 
 #[cold]
+fn virtual_memory_read<const AVOID_SIDE_EFFECTS: bool>(
+    component_id: ComponentId,
+    timestamp: &Period,
+    registry: &ComponentRegistry<'_>,
+    destination: usize,
+    address_space_id: AddressSpaceId,
+    buffer: &mut [u8],
+) -> Result<(), MemoryError> {
+    registry
+        .interact_dyn(
+            component_id,
+            timestamp,
+            #[inline]
+            |component| {
+                component.memory_read(destination, address_space_id, AVOID_SIDE_EFFECTS, buffer)
+            },
+        )
+        .unwrap()
+}
+
+#[cold]
+fn virtual_memory_write(
+    component_id: ComponentId,
+    timestamp: &Period,
+    registry: &ComponentRegistry<'_>,
+    destination: usize,
+    address_space_id: AddressSpaceId,
+    buffer: &[u8],
+) -> Result<(), MemoryError> {
+    registry
+        .interact_dyn(
+            component_id,
+            timestamp,
+            #[inline]
+            |component| component.memory_write(destination, address_space_id, buffer),
+        )
+        .unwrap()
+}
+
+#[inline]
+fn standard_memory_read<const AVOID_SIDE_EFFECTS: bool>(
+    component: &mut dyn Component,
+    address_space_id: AddressSpaceId,
+    destination: usize,
+    adjusted: &mut [u8],
+) -> Result<(), MemoryError> {
+    // SAFETY: In `commit` is_standard_memory is set based upon the typeid of the component
+    //
+    // This is basically doing a stable `downcast_unchecked`
+    let component = unsafe { &mut *(std::ptr::from_mut(component) as *mut Memory) };
+
+    component.memory_read(destination, address_space_id, AVOID_SIDE_EFFECTS, adjusted)
+}
+
+#[inline]
+fn standard_memory_write(
+    component: &mut dyn Component,
+    address_space_id: AddressSpaceId,
+    destination: usize,
+    adjusted: &[u8],
+) -> Result<(), MemoryError> {
+    // SAFETY: In `commit` is_standard_memory is set based upon the typeid of the component
+    //
+    // This is basically doing a stable `downcast_unchecked`
+    let component = unsafe { &mut *(std::ptr::from_mut(component) as *mut Memory) };
+
+    component.memory_write(destination, address_space_id, adjusted)
+}
+
+#[cold]
+#[inline]
 fn form_error(access_range: RangeInclusive<usize>) -> MemoryError {
     MemoryError(std::iter::once((access_range.into(), MemoryErrorType::OutOfBus)).collect())
 }

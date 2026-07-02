@@ -126,7 +126,7 @@ fn present_machine(
         // Ensure we are at least on this frame for this component
         runtime_guard.registry().interact_dyn(
             framebuffer_parent_path,
-            runtime_guard.safe_advance_timestamp(),
+            &runtime_guard.safe_advance_timestamp(),
             |component| {
                 let framebuffer = component.get_framebuffer(framebuffer_path.name());
 

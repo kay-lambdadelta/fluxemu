@@ -41,7 +41,7 @@ impl AudioMixer {
                 .registry()
                 .interact_dyn(
                     component_path,
-                    runtime_guard.safe_advance_timestamp(),
+                    &runtime_guard.safe_advance_timestamp(),
                     |component| {
                         let source = component.get_audio_channel(audio_stream_path.name());
 

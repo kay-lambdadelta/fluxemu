@@ -106,7 +106,8 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
             .address_space(self.config.cpu_address_space)
             .unwrap();
 
-        for timestamp in context.allocate_continuous(self.config.frequency.recip()) {
+        let mut quanta_iterator = context.quanta_allocator(self.config.frequency.recip());
+        while let Some(timestamp) = quanta_iterator.allocate() {
             'main: {
                 match &self.state.execution_state {
                     ExecutionState::Normal => {

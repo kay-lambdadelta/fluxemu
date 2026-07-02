@@ -366,7 +366,8 @@ impl<P: Platform> MachineBuilder<P> {
         let runtime_guard = machine.enter_runtime();
         for (id, commands) in remapping_commands {
             let address_space = runtime_guard.address_space(id).unwrap();
-            address_space.remap(Period::default(), commands);
+
+            address_space.remap(&Period::default(), commands);
         }
         drop(runtime_guard);
 

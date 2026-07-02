@@ -74,7 +74,7 @@ impl EventManager {
             // Drop to prevent deadlocks due to reentrancy
             drop(heap_guard);
 
-            registry.interact_dyn(&event.path, event.time.0, |component| {
+            registry.interact_dyn(&event.path, &event.time.0, |component| {
                 component.handle_event(event.data);
             });
 

@@ -172,7 +172,8 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
     }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {
-        for _ in context.allocate_continuous(R::frequency().recip()) {
+        let mut quanta_iterator = context.quanta_allocator(R::frequency().recip());
+        while quanta_iterator.allocate().is_some() {
             if !(self.state.in_vsync || self.state.vblank_active)
                 && (HBLANK_LENGTH..(VISIBLE_SCANLINE_LENGTH + HBLANK_LENGTH))
                     .contains(&self.state.electron_beam.x)

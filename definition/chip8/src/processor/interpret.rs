@@ -23,7 +23,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
         &mut self,
         runtime: RuntimeApi<&Machine>,
         address_space: &mut AddressSpace<'_>,
-        timestamp: Period,
+        timestamp: &Period,
         instruction: Chip8InstructionSet,
     ) {
         let mut mode_guard = self.mode.lock().unwrap();

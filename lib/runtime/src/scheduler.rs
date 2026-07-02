@@ -55,7 +55,7 @@ impl Scheduler {
 
         // Advance the time forward for all driven components
         for path in &self.driven {
-            component_registry.interact_dyn(path, safe_advance_timestamp, |_| {});
+            component_registry.interact_dyn(path, &safe_advance_timestamp, |_| {});
         }
 
         // Set the new time, marking that the machine has officially advanced to this time
@@ -93,10 +93,10 @@ impl<'a> SynchronizationContext<'a> {
     /// Create an iterator that continuously allocates an amount of time represented by period until either the target timestamp is reached
     /// or the runtime preempts the task
     #[inline]
-    pub fn allocate_continuous<'b>(&'b mut self, period: Period) -> QuantaIterator<'b, 'a> {
+    pub fn quanta_allocator<'b>(&'b mut self, period: Period) -> QuantaAllocator<'b, 'a> {
         let (last_seen_event_generation, budget) = self.check_allocation_preconditions(period);
 
-        QuantaIterator {
+        QuantaAllocator {
             period,
             budget,
             last_seen_event_generation,
@@ -127,18 +127,16 @@ impl<'a> SynchronizationContext<'a> {
 }
 
 /// Helper iterator to continuously allocate a period until the time budget is exhausted
-pub struct QuantaIterator<'b, 'a> {
+pub struct QuantaAllocator<'b, 'a> {
     period: Period,
     budget: u32,
     last_seen_event_generation: u32,
     context: &'b mut SynchronizationContext<'a>,
 }
 
-impl Iterator for QuantaIterator<'_, '_> {
-    type Item = Period;
-
+impl QuantaAllocator<'_, '_> {
     #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
+    pub fn allocate(&mut self) -> Option<&Period> {
         let preemption_signal = self.context.runtime.machine().scheduler.preemption_signal();
 
         let current_generation = preemption_signal.generation();
@@ -156,11 +154,11 @@ impl Iterator for QuantaIterator<'_, '_> {
 
         *self.context.current_timestamp += self.period;
 
-        Some(*self.context.current_timestamp)
+        Some(self.context.current_timestamp)
     }
 }
 
-impl<'b, 'a> QuantaIterator<'b, 'a> {
+impl<'b, 'a> QuantaAllocator<'b, 'a> {
     #[cold]
     fn rebudget(&mut self) {
         let mut stop_time = self.context.target_timestamp;

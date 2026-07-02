@@ -280,11 +280,11 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     if avoid_side_effects {
                         *buffer = ppu_address_space.read_le_value_pure(
                             self.state.vram_address_pointer as usize,
-                            timestamp,
+                            &timestamp,
                         )?;
                     } else {
                         let new_value = ppu_address_space
-                            .read_le_value(self.state.vram_address_pointer as usize, timestamp)?;
+                            .read_le_value(self.state.vram_address_pointer as usize, &timestamp)?;
 
                         *buffer = std::mem::replace(&mut self.state.vram_read_buffer, new_value);
 
@@ -395,7 +395,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     // Redirect into the ppu address space
                     ppu_address_space.write_le_value(
                         self.state.vram_address_pointer as usize,
-                        timestamp,
+                        &timestamp,
                         *buffer,
                     )?;
 
@@ -442,7 +442,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     // Read off OAM data immediately, this is done for performance and should not
                     // have any side effects
                     let _ =
-                        cpu_address_space.read(page as usize, timestamp, &mut self.state.oam.data);
+                        cpu_address_space.read(page as usize, &timestamp, &mut self.state.oam.data);
                 }
                 _ => {
                     unreachable!("{:?}", register);
@@ -529,7 +529,8 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
         let runtime = context.runtime();
         let mut ppu_address_space = runtime.address_space(self.ppu_address_space).unwrap();
 
-        for timestamp in context.allocate_continuous(self.period) {
+        let mut quanta_iterator = context.quanta_allocator(self.period);
+        while let Some(timestamp) = quanta_iterator.allocate() {
             if (0..R::VISIBLE_SCANLINES).contains(&self.state.cycle_counter.y) {
                 self.handle_visible_scanlines(&mut ppu_address_space, timestamp);
             } else if self.state.cycle_counter.y == 261 {

@@ -109,7 +109,7 @@ impl<'a> ComponentRegistry<'a> {
     pub fn interact<'b, C: Component, T>(
         &'b self,
         id: impl Into<ComponentIdentifier<'b>>,
-        target_timestamp: Period,
+        target_timestamp: &Period,
         callback: impl FnOnce(&mut C) -> T,
     ) -> Option<T> {
         self.interact_dyn(
@@ -131,7 +131,7 @@ impl<'a> ComponentRegistry<'a> {
     pub(crate) unsafe fn interact_dyn_id_unchecked<T>(
         &self,
         id: ComponentId,
-        target_timestamp: Period,
+        target_timestamp: &Period,
         callback: impl FnOnce(&mut dyn Component) -> T,
     ) -> T {
         let cell = self.runtime.local_component_store();
@@ -143,7 +143,16 @@ impl<'a> ComponentRegistry<'a> {
             let handle = self.fetch_or_acquire_component(id, store);
 
             if !handle.synchronize {
-                handle.current_timestamp = target_timestamp;
+                // Working around bad LLVM optimization
+                //
+                // SAFETY: This is essentially the same as a dereference and assign
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        target_timestamp,
+                        &mut handle.current_timestamp,
+                        1,
+                    );
+                }
             }
 
             handle.synchronize
@@ -198,7 +207,7 @@ impl<'a> ComponentRegistry<'a> {
     pub fn interact_dyn<'b, T>(
         &'b self,
         id: impl Into<ComponentIdentifier<'b>>,
-        target_timestamp: Period,
+        target_timestamp: &Period,
         callback: impl FnOnce(&mut dyn Component) -> T,
     ) -> Option<T> {
         let id = self.convert_identifier(id)?;
@@ -224,7 +233,8 @@ impl<'a> ComponentRegistry<'a> {
         }
     }
 
-    fn synchronize_component(&self, id: ComponentId, target_timestamp: Period) {
+    #[cold]
+    fn synchronize_component(&self, id: ComponentId, target_timestamp: &Period) {
         let cell = self.runtime.local_component_store();
 
         let mut current_timestamp;
@@ -236,6 +246,7 @@ impl<'a> ComponentRegistry<'a> {
             let Some(delta) = target_timestamp.checked_sub(handle.current_timestamp) else {
                 return;
             };
+
             current_timestamp = handle.current_timestamp;
 
             (delta, handle.component.take().unwrap())
@@ -254,7 +265,7 @@ impl<'a> ComponentRegistry<'a> {
             let context = SynchronizationContext {
                 runtime: self.runtime.clone(),
                 current_timestamp: &mut current_timestamp,
-                target_timestamp,
+                target_timestamp: *target_timestamp,
                 last_attempted_allocation: &mut last_attempted_allocation,
             };
 

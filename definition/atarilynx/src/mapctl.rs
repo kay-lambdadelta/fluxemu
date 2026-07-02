@@ -93,7 +93,7 @@ impl Component for Mapctl {
         runtime
             .address_space(self.config.cpu_address_space)
             .unwrap()
-            .remap(timestamp, remapping_commands);
+            .remap(&timestamp, remapping_commands);
 
         Ok(())
     }
