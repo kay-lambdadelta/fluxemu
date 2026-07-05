@@ -5,7 +5,10 @@ use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
-    memory::{Address, AddressSpaceId, MemoryError, MemoryErrorType},
+    memory::{
+        Address, AddressSpaceId, MapTarget, MemoryError, MemoryErrorType, MemoryMapCommand,
+        Permissions,
+    },
     platform::Platform,
 };
 
@@ -107,7 +110,15 @@ impl<P: Platform> ComponentConfig<P> for BankedCartConfig {
             .into());
         }
 
-        component_builder.memory_map_component_read(self.cpu_address_space, get_cart_range());
+        let my_path = component_builder.path().clone();
+        component_builder.map_memory(
+            self.cpu_address_space,
+            [MemoryMapCommand::Map {
+                range: get_cart_range(),
+                permissions: Permissions::READ,
+                target: MapTarget::Component(my_path),
+            }],
+        );
 
         Ok(BankedCart {
             rom: self.rom,

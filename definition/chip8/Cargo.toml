@@ -6,10 +6,12 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 bytemuck = { workspace = true }
+bytes = { workspace = true }
 fluxemu-audio = { workspace = true }
 fluxemu-graphics = { workspace = true }
 fluxemu-input = { workspace = true }
 fluxemu-program = { workspace = true }
+fluxemu-range = { workspace = true }
 fluxemu-runtime = { workspace = true }
 heapless = { workspace = true }
 nalgebra = { workspace = true }

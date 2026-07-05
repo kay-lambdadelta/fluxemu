@@ -9,6 +9,8 @@ harness = false
 name = "memory"
 
 [dependencies]
+# FIXME: Temporary until the merge request is done and the latest commit ends up in a release
+bit-vec = { git = "https://github.com/kay-lambdadelta/bit-vec" }
 bytes = { workspace = true }
 dyn-clone = "1.0"
 fixed = { workspace = true }

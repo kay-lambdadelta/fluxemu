@@ -4,7 +4,7 @@ use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
-    memory::{Address, AddressSpaceId, MemoryError},
+    memory::{Address, AddressSpaceId, MemoryError, MemoryMapCommand, Permissions},
     platform::Platform,
 };
 
@@ -85,15 +85,24 @@ impl<P: Platform> ComponentConfig<P> for ApuConfig {
         self,
         component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
-        component_builder
-            .memory_map_component_write(self.cpu_address_space, PULSE_1)
-            .memory_map_component_write(self.cpu_address_space, PULSE_2)
-            .memory_map_component_write(self.cpu_address_space, TRIANGLE)
-            .memory_map_component_write(self.cpu_address_space, NOISE)
-            .memory_map_component_write(self.cpu_address_space, DMC)
-            .memory_map_component_write(self.cpu_address_space, CONTROL..=CONTROL)
-            .memory_map_component_read(self.cpu_address_space, STATUS..=STATUS)
-            .memory_map_component_write(self.cpu_address_space, FRAME_COUNTER..=FRAME_COUNTER);
+        let my_path = component_builder.path().clone();
+
+        component_builder.map_memory(
+            self.cpu_address_space,
+            MemoryMapCommand::with_component(
+                my_path,
+                [
+                    (PULSE_1, Permissions::WRITE),
+                    (PULSE_2, Permissions::WRITE),
+                    (TRIANGLE, Permissions::WRITE),
+                    (NOISE, Permissions::WRITE),
+                    (DMC, Permissions::WRITE),
+                    (CONTROL..=CONTROL, Permissions::WRITE),
+                    (STATUS..=STATUS, Permissions::READ),
+                    (FRAME_COUNTER..=FRAME_COUNTER, Permissions::WRITE),
+                ],
+            ),
+        );
 
         Ok(Apu {
             pulse_channels: Default::default(),

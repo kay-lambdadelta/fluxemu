@@ -202,7 +202,7 @@ impl<H: WebgpuCompatibleDisplayContext> GraphicsRuntime for WebgpuGraphicsRuntim
                                 let framebuffer_parent_path = framebuffer_path.parent().unwrap();
 
                                 // Ensure we are at least on this frame for this component
-                                runtime_guard.registry().interact_dyn(
+                                runtime_guard.component_registry().interact_dyn(
                                     framebuffer_parent_path,
                                     &runtime_guard.safe_advance_timestamp(),
                                     |component| {

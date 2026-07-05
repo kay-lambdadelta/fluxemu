@@ -62,7 +62,7 @@ impl<P: Platform> SealedMachineBuilder<P> {
 
         for (path, initializer) in self.component_late_initializers.drain() {
             runtime_guard
-                .registry()
+                .component_registry()
                 .interact_dyn(&path, &Period::ZERO, |mut component| {
                     initializer(component.deref_mut(), &late_initialized_data);
                 })

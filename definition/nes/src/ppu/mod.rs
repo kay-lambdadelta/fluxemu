@@ -11,7 +11,7 @@ use fluxemu_runtime::{
     },
     event::{Event, EventMode, downcast_event},
     machine::builder::{ComponentBuilder, SchedulerParticipation},
-    memory::{Address, AddressSpaceId, MemoryError},
+    memory::{Address, AddressSpaceId, MemoryError, MemoryMapCommand, Permissions},
     path::ComponentPath,
     platform::Platform,
     scheduler::{Period, SynchronizationContext},
@@ -120,45 +120,50 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
 
         let my_path = component_builder.path().clone();
 
+        let register_mappings = MemoryMapCommand::with_component(
+            my_path.clone(),
+            [
+                (
+                    RangeInclusive::from_single(CpuAccessibleRegister::PpuCtrl as usize),
+                    Permissions::WRITE,
+                ),
+                (
+                    RangeInclusive::from_single(CpuAccessibleRegister::PpuScroll as usize),
+                    Permissions::WRITE,
+                ),
+                (
+                    RangeInclusive::from_single(CpuAccessibleRegister::PpuMask as usize),
+                    Permissions::WRITE,
+                ),
+                (
+                    RangeInclusive::from_single(CpuAccessibleRegister::PpuStatus as usize),
+                    Permissions::READ,
+                ),
+                (
+                    RangeInclusive::from_single(CpuAccessibleRegister::PpuAddr as usize),
+                    Permissions::ALL,
+                ),
+                (
+                    RangeInclusive::from_single(CpuAccessibleRegister::PpuData as usize),
+                    Permissions::ALL,
+                ),
+                (
+                    RangeInclusive::from_single(CpuAccessibleRegister::OamAddr as usize),
+                    Permissions::ALL,
+                ),
+                (
+                    RangeInclusive::from_single(CpuAccessibleRegister::OamData as usize),
+                    Permissions::ALL,
+                ),
+                (
+                    RangeInclusive::from_single(CpuAccessibleRegister::OamDma as usize),
+                    Permissions::WRITE,
+                ),
+            ],
+        );
+
         let component_builder = component_builder
-            .memory_map_component_write(
-                self.cpu_address_space,
-                CpuAccessibleRegister::PpuCtrl as usize..=CpuAccessibleRegister::PpuCtrl as usize,
-            )
-            .memory_map_component_write(
-                self.cpu_address_space,
-                CpuAccessibleRegister::PpuScroll as usize
-                    ..=CpuAccessibleRegister::PpuScroll as usize,
-            )
-            .memory_map_component_write(
-                self.cpu_address_space,
-                CpuAccessibleRegister::PpuMask as usize..=CpuAccessibleRegister::PpuMask as usize,
-            )
-            .memory_map_component_read(
-                self.cpu_address_space,
-                CpuAccessibleRegister::PpuStatus as usize
-                    ..=CpuAccessibleRegister::PpuStatus as usize,
-            )
-            .memory_map_component(
-                self.cpu_address_space,
-                CpuAccessibleRegister::PpuAddr as usize..=CpuAccessibleRegister::PpuAddr as usize,
-            )
-            .memory_map_component(
-                self.cpu_address_space,
-                CpuAccessibleRegister::PpuData as usize..=CpuAccessibleRegister::PpuData as usize,
-            )
-            .memory_map_component(
-                self.cpu_address_space,
-                CpuAccessibleRegister::OamAddr as usize..=CpuAccessibleRegister::OamAddr as usize,
-            )
-            .memory_map_component(
-                self.cpu_address_space,
-                CpuAccessibleRegister::OamData as usize..=CpuAccessibleRegister::OamData as usize,
-            )
-            .memory_map_component_write(
-                self.cpu_address_space,
-                CpuAccessibleRegister::OamDma as usize..=CpuAccessibleRegister::OamDma as usize,
-            )
+            .map_memory(self.cpu_address_space, register_mappings)
             .schedule_event::<Self::Component>(
                 // x: 1, y: 241
                 &my_path,

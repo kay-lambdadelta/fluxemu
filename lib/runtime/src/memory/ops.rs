@@ -5,10 +5,10 @@ use num::traits::{FromBytes, ToBytes, ops::bytes::NumBytes};
 
 use super::AddressSpace;
 use crate::{
-    component::{Component, ComponentId, ComponentRegistry},
+    component::{ComponentId, ComponentRegistry},
     memory::{
-        Address, AddressSpaceId, MemoryError, MemoryErrorType, PAGE_SIZE, PageTableEntry,
-        PageTableTarget, component::Memory,
+        Address, AddressSpaceId, CHUNK_SIZE, MemoryError, MemoryErrorType, PageTableEntry,
+        PageTableTarget,
     },
     scheduler::Period,
 };
@@ -40,42 +40,7 @@ impl<'a> AddressSpace<'a> {
                 #[inline]
                 |target, offset, adjusted| {
                     match target {
-                        PageTableTarget::Component {
-                            destination_start,
-                            component_id,
-                            is_standard_memory,
-                        } => {
-                            let destination = destination_start + offset;
-
-                            if *is_standard_memory {
-                                // SAFETY: The component ids have been resolved in `commit`, they are valid for the current machine/registry
-                                unsafe {
-                                    self.registry.interact_dyn_id_unchecked(
-                                        *component_id,
-                                        timestamp,
-                                        #[inline]
-                                        |component| {
-                                            standard_memory_read::<AVOID_SIDE_EFFECTS>(
-                                                component,
-                                                self.id(),
-                                                destination,
-                                                adjusted,
-                                            )
-                                        },
-                                    )?;
-                                };
-                            } else {
-                                virtual_memory_read::<AVOID_SIDE_EFFECTS>(
-                                    *component_id,
-                                    timestamp,
-                                    &self.registry,
-                                    destination,
-                                    self.data.id,
-                                    adjusted,
-                                )?;
-                            };
-                        }
-                        PageTableTarget::Memory(bytes) => {
+                        PageTableTarget::ImmutableMemory(bytes) => {
                             let memory_range =
                                 RangeInclusive::from_start_and_length(offset, adjusted.len());
 
@@ -83,6 +48,29 @@ impl<'a> AddressSpace<'a> {
                             let bytes = unsafe { bytes.get_unchecked(memory_range) };
 
                             adjusted.copy_from_slice(bytes);
+                        }
+                        PageTableTarget::Memory {
+                            offset: destination_start,
+                            id,
+                        } => {
+                            let destination = destination_start + offset;
+
+                            self.memory_registry.read(*id, destination, adjusted);
+                        }
+                        PageTableTarget::Component {
+                            offset: destination_start,
+                            id,
+                        } => {
+                            let destination = destination_start + offset;
+
+                            virtual_memory_read::<AVOID_SIDE_EFFECTS>(
+                                *id,
+                                timestamp,
+                                destination,
+                                self.data.id,
+                                adjusted,
+                                &mut self.component_registry,
+                            )?;
                         }
                     }
                     Ok(())
@@ -220,42 +208,30 @@ impl<'a> AddressSpace<'a> {
                 #[inline]
                 |target, offset, adjusted| {
                     match target {
-                        PageTableTarget::Component {
-                            destination_start,
-                            component_id,
-                            is_standard_memory,
+                        PageTableTarget::Memory {
+                            offset: destination_start,
+                            id,
                         } => {
                             let destination = destination_start + offset;
 
-                            if *is_standard_memory {
-                                // SAFETY: The component ids have been resolved in `commit`, they are valid for the current machine/registry
-                                unsafe {
-                                    self.registry.interact_dyn_id_unchecked(
-                                        *component_id,
-                                        timestamp,
-                                        #[inline]
-                                        |component| {
-                                            standard_memory_write(
-                                                component,
-                                                self.id(),
-                                                destination,
-                                                adjusted,
-                                            )
-                                        },
-                                    )?;
-                                };
-                            } else {
-                                virtual_memory_write(
-                                    *component_id,
-                                    timestamp,
-                                    &self.registry,
-                                    destination,
-                                    self.data.id,
-                                    adjusted,
-                                )?;
-                            };
+                            self.memory_registry.write(*id, destination, adjusted);
                         }
-                        PageTableTarget::Memory(_) => unreachable!(),
+                        PageTableTarget::Component {
+                            offset: destination_start,
+                            id,
+                        } => {
+                            let destination = destination_start + offset;
+
+                            virtual_memory_write(
+                                *id,
+                                timestamp,
+                                destination,
+                                self.data.id,
+                                adjusted,
+                                &mut self.component_registry,
+                            )?;
+                        }
+                        PageTableTarget::ImmutableMemory(_) => unreachable!(),
                     }
 
                     Ok(())
@@ -269,7 +245,6 @@ impl<'a> AddressSpace<'a> {
     /// Write a buffer to an address
     ///
     /// If the target is a component, the component will be advanced to the timestamp before the operation
-    /// Additionally, the component will be informed it should not change state as a result of the operation (such as a flag clear)
     ///
     /// It is completely unspecified what parts of the buffer will be written if an error occurs midway through the operation
     #[inline]
@@ -400,7 +375,7 @@ impl<'a, BUFFER: SplitableBuffer> Iterator for ChunkIter<'a, BUFFER> {
         self.buffer = next_buffer;
 
         let access_range = RangeInclusive::from_start_and_length(self.address, chunk_len);
-        let page_range = (access_range.start / PAGE_SIZE)..=(access_range.last / PAGE_SIZE);
+        let page_range = (access_range.start / CHUNK_SIZE)..=(access_range.last / CHUNK_SIZE);
 
         let chunk = Chunk {
             access_range,
@@ -440,12 +415,16 @@ fn visit_page_entries<BUFFER: SplitableBuffer>(
             }
 
             let entry_access_range = entry_assigned_range.intersection(&access_range);
-            let offset = entry_access_range.start - entry_assigned_range.start;
-
             let buffer_range = (entry_access_range.start - access_range.start)
                 ..=(entry_access_range.last - access_range.start);
 
             let consumed = initial_buffer_len - remaining.len();
+
+            // Potentially skip the duplicate entry for the last entry we processed that is on the next page
+            if *buffer_range.end() < consumed {
+                continue;
+            }
+
             let gap = buffer_range.start() - consumed;
             if gap > 0 {
                 return Err(form_error(RangeInclusive::from_start_and_length(
@@ -453,6 +432,8 @@ fn visit_page_entries<BUFFER: SplitableBuffer>(
                     gap,
                 )));
             }
+
+            let offset = entry_access_range.start - entry_assigned_range.start;
 
             let (adjusted_buffer, rest) = remaining.split(buffer_range.len());
             remaining = rest;
@@ -477,18 +458,17 @@ fn visit_page_entries<BUFFER: SplitableBuffer>(
     Ok(())
 }
 
-#[cold]
 fn virtual_memory_read<const AVOID_SIDE_EFFECTS: bool>(
-    component_id: ComponentId,
+    id: ComponentId,
     timestamp: &Period,
-    registry: &ComponentRegistry<'_>,
     destination: usize,
     address_space_id: AddressSpaceId,
     buffer: &mut [u8],
+    component_registry: &mut ComponentRegistry,
 ) -> Result<(), MemoryError> {
-    registry
+    component_registry
         .interact_dyn(
-            component_id,
+            id,
             timestamp,
             #[inline]
             |component| {
@@ -498,53 +478,22 @@ fn virtual_memory_read<const AVOID_SIDE_EFFECTS: bool>(
         .unwrap()
 }
 
-#[cold]
 fn virtual_memory_write(
-    component_id: ComponentId,
+    id: ComponentId,
     timestamp: &Period,
-    registry: &ComponentRegistry<'_>,
     destination: usize,
     address_space_id: AddressSpaceId,
     buffer: &[u8],
+    component_registry: &mut ComponentRegistry,
 ) -> Result<(), MemoryError> {
-    registry
+    component_registry
         .interact_dyn(
-            component_id,
+            id,
             timestamp,
             #[inline]
             |component| component.memory_write(destination, address_space_id, buffer),
         )
         .unwrap()
-}
-
-#[inline]
-fn standard_memory_read<const AVOID_SIDE_EFFECTS: bool>(
-    component: &mut dyn Component,
-    address_space_id: AddressSpaceId,
-    destination: usize,
-    adjusted: &mut [u8],
-) -> Result<(), MemoryError> {
-    // SAFETY: In `commit` is_standard_memory is set based upon the typeid of the component
-    //
-    // This is basically doing a stable `downcast_unchecked`
-    let component = unsafe { &mut *(std::ptr::from_mut(component) as *mut Memory) };
-
-    component.memory_read(destination, address_space_id, AVOID_SIDE_EFFECTS, adjusted)
-}
-
-#[inline]
-fn standard_memory_write(
-    component: &mut dyn Component,
-    address_space_id: AddressSpaceId,
-    destination: usize,
-    adjusted: &[u8],
-) -> Result<(), MemoryError> {
-    // SAFETY: In `commit` is_standard_memory is set based upon the typeid of the component
-    //
-    // This is basically doing a stable `downcast_unchecked`
-    let component = unsafe { &mut *(std::ptr::from_mut(component) as *mut Memory) };
-
-    component.memory_write(destination, address_space_id, adjusted)
 }
 
 #[cold]

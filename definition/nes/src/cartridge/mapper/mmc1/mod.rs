@@ -8,13 +8,9 @@ use fluxemu_runtime::{
         config::{ComponentConfig, LateContext},
     },
     machine::builder::ComponentBuilder,
-    memory::{
-        Address, AddressSpaceId, MapTarget, MemoryError, MemoryRemappingCommand, Permissions,
-        component::{InitialContents, MemoryConfig},
-    },
+    memory::{Address, AddressSpaceId, MapTarget, MemoryError, MemoryMapCommand, Permissions},
     platform::Platform,
 };
-use rangemap::RangeInclusiveMap;
 
 use crate::{
     cartridge::{CartParams, mapper::mmc1::shift::ShiftRegister},
@@ -87,17 +83,17 @@ impl Mmc1 {
             }
         };
 
-        cpu_commands.push(MemoryRemappingCommand::Map {
+        cpu_commands.push(MemoryMapCommand::Map {
             range: 0x8000..=0xbfff,
-            target: MapTarget::Buffer(self.config.params.prg_rom.slice(
+            target: MapTarget::ImmutableMemory(self.config.params.prg_rom.slice(
                 RangeInclusive::from_start_and_length(prg_low_bank * PRG_BANK_SIZE, PRG_BANK_SIZE),
             )),
             permissions: Permissions::READ,
         });
 
-        cpu_commands.push(MemoryRemappingCommand::Map {
+        cpu_commands.push(MemoryMapCommand::Map {
             range: 0xc000..=0xffff,
-            target: MapTarget::Buffer(self.config.params.prg_rom.slice(
+            target: MapTarget::ImmutableMemory(self.config.params.prg_rom.slice(
                 RangeInclusive::from_start_and_length(prg_high_bank * PRG_BANK_SIZE, PRG_BANK_SIZE),
             )),
             permissions: Permissions::READ,
@@ -115,9 +111,9 @@ impl Mmc1 {
                 ChrRomBankMode::Unified8k => {
                     let bank = (self.chr_rom_bank_indexes[0] & !1) as usize;
 
-                    ppu_commands.push(MemoryRemappingCommand::Map {
+                    ppu_commands.push(MemoryMapCommand::Map {
                         range: 0x0000..=0x0fff,
-                        target: MapTarget::Buffer(chr_rom.slice(
+                        target: MapTarget::ImmutableMemory(chr_rom.slice(
                             RangeInclusive::from_start_and_length(
                                 bank * CHR_BANK_SIZE,
                                 CHR_BANK_SIZE,
@@ -126,9 +122,9 @@ impl Mmc1 {
                         permissions: Permissions::READ,
                     });
 
-                    ppu_commands.push(MemoryRemappingCommand::Map {
+                    ppu_commands.push(MemoryMapCommand::Map {
                         range: 0x1000..=0x1fff,
-                        target: MapTarget::Buffer(chr_rom.slice(
+                        target: MapTarget::ImmutableMemory(chr_rom.slice(
                             RangeInclusive::from_start_and_length(
                                 (bank + 1) * CHR_BANK_SIZE,
                                 CHR_BANK_SIZE,
@@ -142,9 +138,9 @@ impl Mmc1 {
                         let ppu_base = i * 0x1000;
                         let rom_offset = bank_index as usize * CHR_BANK_SIZE;
 
-                        ppu_commands.push(MemoryRemappingCommand::Map {
+                        ppu_commands.push(MemoryMapCommand::Map {
                             range: RangeInclusive::from_start_and_length(ppu_base, 0x1000),
-                            target: MapTarget::Buffer(chr_rom.slice(
+                            target: MapTarget::ImmutableMemory(chr_rom.slice(
                                 RangeInclusive::from_start_and_length(rom_offset, CHR_BANK_SIZE),
                             )),
                             permissions: Permissions::READ,
@@ -168,30 +164,29 @@ impl Mmc1 {
 
         let commands = match self.mirroring {
             Mirroring::OneScreenLower => vec![
-                MemoryRemappingCommand::Map {
+                MemoryMapCommand::Map {
                     range: NAMETABLE_ADDRESSES[0].clone(),
-                    target: MapTarget::Component(nametable_0.clone()),
+                    target: MapTarget::Memory {
+                        path: nametable_0.clone(),
+                        subrange: None,
+                    },
                     permissions: Permissions::ALL,
                 },
-                MemoryRemappingCommand::RebaseComponent {
-                    component: nametable_0.clone(),
-                    base: *NAMETABLE_ADDRESSES[0].start(),
-                },
-                MemoryRemappingCommand::Map {
+                MemoryMapCommand::Map {
                     range: NAMETABLE_ADDRESSES[1].clone(),
                     target: MapTarget::Mirror {
                         destination: NAMETABLE_ADDRESSES[0].clone(),
                     },
                     permissions: Permissions::ALL,
                 },
-                MemoryRemappingCommand::Map {
+                MemoryMapCommand::Map {
                     range: NAMETABLE_ADDRESSES[2].clone(),
                     target: MapTarget::Mirror {
                         destination: NAMETABLE_ADDRESSES[0].clone(),
                     },
                     permissions: Permissions::ALL,
                 },
-                MemoryRemappingCommand::Map {
+                MemoryMapCommand::Map {
                     range: NAMETABLE_ADDRESSES[3].clone(),
                     target: MapTarget::Mirror {
                         destination: NAMETABLE_ADDRESSES[0].clone(),
@@ -200,30 +195,29 @@ impl Mmc1 {
                 },
             ],
             Mirroring::OneScreenUpper => vec![
-                MemoryRemappingCommand::Map {
+                MemoryMapCommand::Map {
                     range: NAMETABLE_ADDRESSES[0].clone(),
                     target: MapTarget::Mirror {
                         destination: NAMETABLE_ADDRESSES[1].clone(),
                     },
                     permissions: Permissions::ALL,
                 },
-                MemoryRemappingCommand::Map {
+                MemoryMapCommand::Map {
                     range: NAMETABLE_ADDRESSES[1].clone(),
-                    target: MapTarget::Component(nametable_1.clone()),
+                    target: MapTarget::Memory {
+                        path: nametable_1.clone(),
+                        subrange: None,
+                    },
                     permissions: Permissions::ALL,
                 },
-                MemoryRemappingCommand::RebaseComponent {
-                    component: nametable_1.clone(),
-                    base: *NAMETABLE_ADDRESSES[1].start(),
-                },
-                MemoryRemappingCommand::Map {
+                MemoryMapCommand::Map {
                     range: NAMETABLE_ADDRESSES[2].clone(),
                     target: MapTarget::Mirror {
                         destination: NAMETABLE_ADDRESSES[1].clone(),
                     },
                     permissions: Permissions::ALL,
                 },
-                MemoryRemappingCommand::Map {
+                MemoryMapCommand::Map {
                     range: NAMETABLE_ADDRESSES[3].clone(),
                     target: MapTarget::Mirror {
                         destination: NAMETABLE_ADDRESSES[1].clone(),
@@ -232,32 +226,30 @@ impl Mmc1 {
                 },
             ],
             Mirroring::Vertical => vec![
-                MemoryRemappingCommand::Map {
+                MemoryMapCommand::Map {
                     range: NAMETABLE_ADDRESSES[0].clone(),
-                    target: MapTarget::Component(nametable_0.clone()),
+                    target: MapTarget::Memory {
+                        path: nametable_0.clone(),
+                        subrange: None,
+                    },
                     permissions: Permissions::ALL,
                 },
-                MemoryRemappingCommand::RebaseComponent {
-                    component: nametable_0.clone(),
-                    base: *NAMETABLE_ADDRESSES[0].start(),
-                },
-                MemoryRemappingCommand::Map {
+                MemoryMapCommand::Map {
                     range: NAMETABLE_ADDRESSES[1].clone(),
-                    target: MapTarget::Component(nametable_1.clone()),
+                    target: MapTarget::Memory {
+                        path: nametable_1.clone(),
+                        subrange: None,
+                    },
                     permissions: Permissions::ALL,
                 },
-                MemoryRemappingCommand::RebaseComponent {
-                    component: nametable_1.clone(),
-                    base: *NAMETABLE_ADDRESSES[1].start(),
-                },
-                MemoryRemappingCommand::Map {
+                MemoryMapCommand::Map {
                     range: NAMETABLE_ADDRESSES[2].clone(),
                     target: MapTarget::Mirror {
                         destination: NAMETABLE_ADDRESSES[0].clone(),
                     },
                     permissions: Permissions::ALL,
                 },
-                MemoryRemappingCommand::Map {
+                MemoryMapCommand::Map {
                     range: NAMETABLE_ADDRESSES[3].clone(),
                     target: MapTarget::Mirror {
                         destination: NAMETABLE_ADDRESSES[1].clone(),
@@ -266,32 +258,30 @@ impl Mmc1 {
                 },
             ],
             Mirroring::Horizontal => vec![
-                MemoryRemappingCommand::Map {
+                MemoryMapCommand::Map {
                     range: NAMETABLE_ADDRESSES[0].clone(),
-                    target: MapTarget::Component(nametable_0.clone()),
+                    target: MapTarget::Memory {
+                        path: nametable_0.clone(),
+                        subrange: None,
+                    },
                     permissions: Permissions::ALL,
                 },
-                MemoryRemappingCommand::RebaseComponent {
-                    component: nametable_0.clone(),
-                    base: *NAMETABLE_ADDRESSES[0].start(),
-                },
-                MemoryRemappingCommand::Map {
+                MemoryMapCommand::Map {
                     range: NAMETABLE_ADDRESSES[1].clone(),
                     target: MapTarget::Mirror {
                         destination: NAMETABLE_ADDRESSES[0].clone(),
                     },
                     permissions: Permissions::ALL,
                 },
-                MemoryRemappingCommand::Map {
+                MemoryMapCommand::Map {
                     range: NAMETABLE_ADDRESSES[2].clone(),
-                    target: MapTarget::Component(nametable_1.clone()),
+                    target: MapTarget::Memory {
+                        path: nametable_1.clone(),
+                        subrange: None,
+                    },
                     permissions: Permissions::ALL,
                 },
-                MemoryRemappingCommand::RebaseComponent {
-                    component: nametable_1.clone(),
-                    base: *NAMETABLE_ADDRESSES[2].start(),
-                },
-                MemoryRemappingCommand::Map {
+                MemoryMapCommand::Map {
                     range: NAMETABLE_ADDRESSES[3].clone(),
                     target: MapTarget::Mirror {
                         destination: NAMETABLE_ADDRESSES[2].clone(),
@@ -442,42 +432,43 @@ impl<P: Platform> ComponentConfig<P> for Mmc1Config {
                 (self.params.chr_ram_size, false)
             };
 
-            let (cb, _) = component_builder.component(
-                "chr-ram",
-                MemoryConfig {
-                    readable: true,
-                    writable: true,
-                    assigned_range: RangeInclusive::from_start_and_length(0x0000, size),
-                    assigned_address_space: self.params.ppu_address_space,
-                    initial_contents: RangeInclusiveMap::from_iter([(
-                        RangeInclusive::from_start_and_length(0x0000, size),
-                        InitialContents::Random,
-                    )]),
-                    sram,
-                },
+            let (cb, chr_ram_path) = if sram {
+                component_builder.save_memory("chr-ram", size, [])
+            } else {
+                component_builder.memory("chr-ram", size, [])
+            };
+
+            let cb = cb.map_memory(
+                self.params.ppu_address_space,
+                [MemoryMapCommand::Map {
+                    range: RangeInclusive::from_start_and_length(0x0000, size),
+                    permissions: Permissions::ALL,
+                    target: MapTarget::Memory {
+                        path: chr_ram_path,
+                        subrange: None,
+                    },
+                }],
             );
 
             component_builder = cb;
         }
 
         if self.params.prg_ram_size != 0 {
-            if self.params.prg_ram_size != 8 * 1024 {
+            if self.params.prg_ram_size != 0x2000 {
                 return Err("PRG-RAM size is invalid for MMC1".into());
             }
 
-            let (cb, _) = component_builder.component(
-                "prg-ram",
-                MemoryConfig {
-                    readable: true,
-                    writable: true,
-                    assigned_range: 0x6000..=0x7fff,
-                    assigned_address_space: self.params.cpu_address_space,
-                    initial_contents: RangeInclusiveMap::from_iter([(
-                        0x6000..=0x7fff,
-                        InitialContents::Random,
-                    )]),
-                    sram: true,
-                },
+            let (cb, prg_ram_path) = component_builder.memory("prg-ram", 0x2000, []);
+            let cb = cb.map_memory(
+                self.params.cpu_address_space,
+                [MemoryMapCommand::Map {
+                    range: RangeInclusive::from_start_and_length(0x6000, 0x2000),
+                    permissions: Permissions::ALL,
+                    target: MapTarget::Memory {
+                        path: prg_ram_path,
+                        subrange: None,
+                    },
+                }],
             );
 
             component_builder = cb;
@@ -486,8 +477,14 @@ impl<P: Platform> ComponentConfig<P> for Mmc1Config {
         let my_path = component_builder.path().clone();
 
         // Control register
-        component_builder
-            .memory_map_component_write(self.params.cpu_address_space, 0x8000..=0xffff);
+        component_builder.map_memory(
+            self.params.cpu_address_space,
+            [MemoryMapCommand::Map {
+                range: 0x8000..=0xffff,
+                permissions: Permissions::WRITE,
+                target: MapTarget::Component(my_path.clone()),
+            }],
+        );
 
         Ok(Mmc1 {
             shift_register: ShiftRegister::default(),

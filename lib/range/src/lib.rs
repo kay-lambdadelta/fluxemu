@@ -9,6 +9,7 @@ pub trait RangeBase<Idx> {
 }
 
 pub trait ContiguousRange<Idx>: RangeBase<Idx> {
+    fn from_single(index: Idx) -> Self;
     fn from_start_and_length(start: Idx, length: Idx) -> Self;
     fn is_adjacent(&self, other: &Self) -> bool;
     fn len(&self) -> usize;

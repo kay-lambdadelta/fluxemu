@@ -1,10 +1,10 @@
-use std::{marker::PhantomData, ops::RangeInclusive};
+use std::marker::PhantomData;
 
 use fluxemu_definition_mos6502::{Mos6502Config, Mos6502Kind};
 use fluxemu_definition_mos6532::Mos6532RiotConfig;
 use fluxemu_runtime::{
     machine::builder::{MachineBuilder, MachineFactory, RomRequirement},
-    memory::{Address, AddressSpaceId},
+    memory::{Address, AddressSpaceId, MemoryMapCommand, Permissions},
     platform::Platform,
 };
 use gamepad::joystick::JoystickConfig;
@@ -64,7 +64,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiTia>> MachineFactory<P> for At
 
         tracing::info!("Cart type {:?}", cart_type);
 
-        let (mut machine, _) = match cart_type {
+        let (machine, _) = match cart_type {
             CartType::Raw2k | CartType::Raw4k => machine.component(
                 "cartridge",
                 NonbankedCartConfig {
@@ -83,18 +83,27 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiTia>> MachineFactory<P> for At
             ),
         };
 
-        for source_addresses in tia_register_mirror_ranges() {
-            machine =
-                machine.memory_map_mirror(cpu_address_space, source_addresses, 0x0000..=0x003f);
-        }
-
-        for source_addresses in riot_register_mirror_ranges() {
-            machine = machine.memory_map_mirror(cpu_address_space, source_addresses, 0x280..=0x29f);
-        }
-
-        for source_addresses in riot_ram_mirror_ranges() {
-            machine = machine.memory_map_mirror(cpu_address_space, source_addresses, 0x80..=0xff);
-        }
+        let machine = machine.map_memory(
+            cpu_address_space,
+            MemoryMapCommand::with_mirrors_to_destination(
+                0x0000..=0x003f,
+                tia_register_mirror_ranges().map(|range| (range, Permissions::ALL)),
+            ),
+        );
+        let machine = machine.map_memory(
+            cpu_address_space,
+            MemoryMapCommand::with_mirrors_to_destination(
+                0x280..=0x29f,
+                riot_register_mirror_ranges().map(|range| (range, Permissions::ALL)),
+            ),
+        );
+        let machine = machine.map_memory(
+            cpu_address_space,
+            MemoryMapCommand::with_mirrors_to_destination(
+                0x80..=0xff,
+                riot_ram_mirror_ranges().map(|range| (range, Permissions::ALL)),
+            ),
+        );
 
         match region {
             RegionSelection::Ntsc => common::<Ntsc, _>(cpu_address_space, machine),
@@ -147,7 +156,7 @@ fn common<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>>(
 // These three functions hardcode mirror addresses instead of trying to mechanically replicate partial address decoding
 // Which would be difficult, painful, and require inefficient changes to the memory translation table
 
-fn tia_register_mirror_ranges() -> impl Iterator<Item = RangeInclusive<Address>> {
+fn tia_register_mirror_ranges() -> impl Iterator<Item = Address> {
     [
         0x0000, 0x0040, 0x0100, 0x0140, 0x0200, 0x0240, 0x0300, 0x0340, 0x0400, 0x0440, 0x0500,
         0x0540, 0x0600, 0x0640, 0x0700, 0x0740, 0x0800, 0x0840, 0x0900, 0x0940, 0x0a00, 0x0a40,
@@ -155,33 +164,24 @@ fn tia_register_mirror_ranges() -> impl Iterator<Item = RangeInclusive<Address>>
     ]
     .into_iter()
     .skip(1)
-    .map(|start_range| start_range..=start_range + 0x003f)
 }
 
 // 0x280..=0x29f
-#[rustfmt::skip]
-fn riot_register_mirror_ranges() -> impl Iterator<Item = RangeInclusive<Address>> {
+fn riot_register_mirror_ranges() -> impl Iterator<Item = Address> {
     [
-        0x280, 0x2a0, 0x2c0, 0x2e0,
-        0x380, 0x3a0, 0x3c0, 0x3e0,
-        0x680, 0x6a0, 0x6c0, 0x6e0,
-        0x780, 0x7a0, 0x7c0, 0x7e0,
-        0xa80, 0xaa0, 0xac0, 0xae0,
-        0xb80, 0xba0, 0xbc0, 0xbe0,
-        0xe80, 0xea0, 0xec0, 0xee0,
-        0xf80, 0xfa0, 0xfc0, 0xfe0,
+        0x280, 0x2a0, 0x2c0, 0x2e0, 0x380, 0x3a0, 0x3c0, 0x3e0, 0x680, 0x6a0, 0x6c0, 0x6e0, 0x780,
+        0x7a0, 0x7c0, 0x7e0, 0xa80, 0xaa0, 0xac0, 0xae0, 0xb80, 0xba0, 0xbc0, 0xbe0, 0xe80, 0xea0,
+        0xec0, 0xee0, 0xf80, 0xfa0, 0xfc0, 0xfe0,
     ]
     .into_iter()
     .skip(1)
-    .map(|range| range..=range + 0x1f)
 }
 
 // 0x80..=0xff
-fn riot_ram_mirror_ranges() -> impl Iterator<Item = RangeInclusive<Address>> {
+fn riot_ram_mirror_ranges() -> impl Iterator<Item = Address> {
     [
         0x080, 0x0180, 0x0480, 0x0580, 0x0880, 0x0980, 0x0c80, 0x0d80,
     ]
     .into_iter()
     .skip(1)
-    .map(|range| range..=range + 0x7f)
 }

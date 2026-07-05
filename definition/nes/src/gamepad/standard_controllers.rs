@@ -6,7 +6,7 @@ use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     input::LogicalInputDevice,
     machine::builder::ComponentBuilder,
-    memory::{Address, AddressSpaceId, MemoryError},
+    memory::{Address, AddressSpaceId, MemoryError, MemoryMapCommand, Permissions},
     platform::Platform,
 };
 
@@ -150,13 +150,23 @@ impl<P: Platform> ComponentConfig<P> for NesControllerConfig {
         }
 
         // Grab both controllers
-        let component_builder = component_builder.memory_map_component_read(
+        let my_path = component_builder.path().clone();
+        component_builder.map_memory(
             self.cpu_address_space,
-            RangeInclusive::from_start_and_length(CONTROLLER_0, 2),
+            MemoryMapCommand::with_component(
+                my_path,
+                [
+                    (
+                        RangeInclusive::from_start_and_length(CONTROLLER_0, 2),
+                        Permissions::READ,
+                    ),
+                    (
+                        RangeInclusive::from_single(CONTROLLER_0),
+                        Permissions::WRITE,
+                    ),
+                ],
+            ),
         );
-
-        component_builder
-            .memory_map_component_write(self.cpu_address_space, CONTROLLER_0..=CONTROLLER_0);
 
         Ok(StandardNesControllers {
             logical_input_devices,

@@ -9,15 +9,13 @@ use fluxemu_runtime::{
     },
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::{
-        Address, AddressSpaceId, MapTarget, MemoryError, MemoryErrorType, MemoryRemappingCommand,
+        Address, AddressSpaceId, MapTarget, MemoryError, MemoryErrorType, MemoryMapCommand,
         Permissions,
-        component::{InitialContents, MemoryConfig},
     },
     path::ComponentPath,
     platform::Platform,
     scheduler::{Frequency, Period, SynchronizationContext},
 };
-use rangemap::RangeInclusiveMap;
 use serde::{Deserialize, Serialize};
 use strum::FromRepr;
 
@@ -152,7 +150,7 @@ impl Component for Mos6532Riot {
                             .unwrap()
                             .remap(
                                 &timestamp,
-                                [MemoryRemappingCommand::Map {
+                                [MemoryMapCommand::Map {
                                     range: address..=address,
                                     target: MapTarget::Component(swacnt.clone()),
                                     permissions,
@@ -180,7 +178,7 @@ impl Component for Mos6532Riot {
                             .unwrap()
                             .remap(
                                 &timestamp,
-                                [MemoryRemappingCommand::Map {
+                                [MemoryMapCommand::Map {
                                     range: address..=address,
                                     target: MapTarget::Component(swbcnt.clone()),
                                     permissions,
@@ -270,7 +268,7 @@ impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
         let mut mapping_commands = Vec::default();
 
         if let Some(swcha) = &component.config.swcha {
-            mapping_commands.push(MemoryRemappingCommand::Map {
+            mapping_commands.push(MemoryMapCommand::Map {
                 range: swcha_address..=swcha_address,
                 target: MapTarget::Component(swcha.clone()),
                 permissions: Permissions::READ,
@@ -278,7 +276,7 @@ impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
         }
 
         if let Some(swchb) = &component.config.swchb {
-            mapping_commands.push(MemoryRemappingCommand::Map {
+            mapping_commands.push(MemoryMapCommand::Map {
                 range: swchb_address..=swchb_address,
                 target: MapTarget::Component(swchb.clone()),
                 permissions: Permissions::READ,
@@ -296,7 +294,7 @@ impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
         component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         let ram_assigned_addresses =
-            self.ram_assigned_address..=self.ram_assigned_address.checked_add(0x7f).unwrap();
+            RangeInclusive::from_start_and_length(self.ram_assigned_address, 0x80);
 
         let swacnt = (Register::Swacnt as Address) + self.registers_assigned_address;
         let swbcnt = (Register::Swbcnt as Address) + self.registers_assigned_address;
@@ -307,32 +305,42 @@ impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
         let t1024t = (Register::T1024t as Address) + self.registers_assigned_address;
         let instat = (Register::Instat as Address) + self.registers_assigned_address;
 
+        let my_path = component_builder.path().clone();
+
         let component_builder = component_builder
-            .memory_map_component(self.assigned_address_space, swacnt..=swacnt)
-            .memory_map_component(self.assigned_address_space, swbcnt..=swbcnt)
-            .memory_map_component_read(self.assigned_address_space, intim..=intim)
-            .memory_map_component_write(self.assigned_address_space, tim1t..=tim1t)
-            .memory_map_component_write(self.assigned_address_space, tim8t..=tim8t)
-            .memory_map_component_write(self.assigned_address_space, tim64t..=tim64t)
-            .memory_map_component_write(self.assigned_address_space, t1024t..=t1024t)
-            .memory_map_component_read(self.assigned_address_space, instat..=instat)
+            .map_memory(
+                self.assigned_address_space,
+                MemoryMapCommand::with_component(
+                    my_path,
+                    [
+                        (RangeInclusive::from_single(swacnt), Permissions::ALL),
+                        (RangeInclusive::from_single(swbcnt), Permissions::ALL),
+                        (RangeInclusive::from_single(intim), Permissions::READ),
+                        (RangeInclusive::from_single(tim1t), Permissions::WRITE),
+                        (RangeInclusive::from_single(tim8t), Permissions::WRITE),
+                        (RangeInclusive::from_single(tim64t), Permissions::WRITE),
+                        (RangeInclusive::from_single(t1024t), Permissions::WRITE),
+                        (RangeInclusive::from_single(instat), Permissions::READ),
+                    ],
+                ),
+            )
             .scheduler_participation(Some(SchedulerParticipation::OnAccess));
 
         let path = component_builder.path().clone();
 
-        component_builder.component(
-            "ram",
-            MemoryConfig {
-                readable: true,
-                writable: true,
-                assigned_range: ram_assigned_addresses.clone(),
-                assigned_address_space: self.assigned_address_space,
-                initial_contents: RangeInclusiveMap::from_iter([(
-                    ram_assigned_addresses,
-                    InitialContents::Random,
-                )]),
-                sram: false,
-            },
+        let (component_builder, ram_path) =
+            component_builder.memory("ram", ram_assigned_addresses.len(), []);
+
+        component_builder.map_memory(
+            self.assigned_address_space,
+            [MemoryMapCommand::Map {
+                range: ram_assigned_addresses,
+                permissions: Permissions::ALL,
+                target: MapTarget::Memory {
+                    path: ram_path,
+                    subrange: None,
+                },
+            }],
         );
 
         Ok(Self::Component {

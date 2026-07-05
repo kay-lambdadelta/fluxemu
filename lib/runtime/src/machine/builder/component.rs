@@ -12,7 +12,7 @@ use crate::{
     machine::builder::{
         ComponentLateInitializer, MachineBuilder, RomRequirement, SchedulerParticipation,
     },
-    memory::{Address, AddressSpaceId, MapTarget, MemoryRemappingCommand, Permissions},
+    memory::{AddressSpaceId, MemoryMapCommand, RegionInitializationData},
     path::{ComponentPath, ResourcePath},
     persistence::{Codec, ErasedCodec, ErasedCodecWrapper},
     platform::Platform,
@@ -156,140 +156,59 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
         (self, device)
     }
 
-    /// Insert a callback into the memory translation table for reading
-    pub fn memory_map_component_read(
+    /// Creates a mutable memory region
+    pub fn memory(
         self,
-        address_space: AddressSpaceId,
-        range: RangeInclusive<Address>,
-    ) -> Self {
-        self.machine_builder
-            .address_spaces
-            .get_mut(&address_space)
-            .unwrap()
-            .commands
-            .push(MemoryRemappingCommand::Map {
-                range,
-                target: MapTarget::Component(self.path.clone()),
-                permissions: Permissions::READ,
-            });
+        name: impl Into<Cow<'static, str>>,
+        size: usize,
+        initial_contents: impl IntoIterator<Item = (RangeInclusive<usize>, Bytes)>,
+    ) -> (Self, ResourcePath) {
+        let path = ResourcePath::new(None, name).unwrap();
 
-        self
+        self.machine_builder.required_memory_regions.insert(
+            path.clone(),
+            RegionInitializationData {
+                size,
+                sram: false,
+                initial_contents: initial_contents.into_iter().collect(),
+            },
+        );
+
+        (self, path)
     }
 
-    pub fn memory_map_component_write(
+    /// Creates a mutable memory region that will be committed to saves
+    pub fn save_memory(
         self,
-        address_space: AddressSpaceId,
-        range: RangeInclusive<Address>,
-    ) -> Self {
-        self.machine_builder
-            .address_spaces
-            .get_mut(&address_space)
-            .unwrap()
-            .commands
-            .push(MemoryRemappingCommand::Map {
-                range,
-                target: MapTarget::Component(self.path.clone()),
-                permissions: Permissions::WRITE,
-            });
+        name: impl Into<Cow<'static, str>>,
+        size: usize,
+        initial_contents: impl IntoIterator<Item = (RangeInclusive<usize>, Bytes)>,
+    ) -> (Self, ResourcePath) {
+        let path = ResourcePath::new(None, name).unwrap();
 
-        self
+        self.machine_builder.required_memory_regions.insert(
+            path.clone(),
+            RegionInitializationData {
+                size,
+                sram: true,
+                initial_contents: initial_contents.into_iter().collect(),
+            },
+        );
+
+        (self, path)
     }
 
-    pub fn memory_map_component(
+    pub fn map_memory(
         self,
         address_space: AddressSpaceId,
-        range: RangeInclusive<Address>,
+        commands: impl IntoIterator<Item = MemoryMapCommand>,
     ) -> Self {
         self.machine_builder
             .address_spaces
             .get_mut(&address_space)
             .unwrap()
             .commands
-            .push(MemoryRemappingCommand::Map {
-                range,
-                target: MapTarget::Component(self.path.clone()),
-                permissions: Permissions::ALL,
-            });
-
-        self
-    }
-
-    pub fn memory_map_mirror_read(
-        self,
-        address_space: AddressSpaceId,
-        source: RangeInclusive<Address>,
-        destination: RangeInclusive<Address>,
-    ) -> Self {
-        self.machine_builder
-            .address_spaces
-            .get_mut(&address_space)
-            .unwrap()
-            .commands
-            .push(MemoryRemappingCommand::Map {
-                range: source,
-                target: MapTarget::Mirror { destination },
-                permissions: Permissions::READ,
-            });
-
-        self
-    }
-
-    pub fn memory_map_mirror_write(
-        self,
-        address_space: AddressSpaceId,
-        source: RangeInclusive<Address>,
-        destination: RangeInclusive<Address>,
-    ) -> Self {
-        self.machine_builder
-            .address_spaces
-            .get_mut(&address_space)
-            .unwrap()
-            .commands
-            .push(MemoryRemappingCommand::Map {
-                range: source,
-                target: MapTarget::Mirror { destination },
-                permissions: Permissions::WRITE,
-            });
-
-        self
-    }
-
-    pub fn memory_map_mirror(
-        self,
-        address_space: AddressSpaceId,
-        source: RangeInclusive<Address>,
-        destination: RangeInclusive<Address>,
-    ) -> Self {
-        self.machine_builder
-            .address_spaces
-            .get_mut(&address_space)
-            .unwrap()
-            .commands
-            .push(MemoryRemappingCommand::Map {
-                range: source,
-                target: MapTarget::Mirror { destination },
-                permissions: Permissions::ALL,
-            });
-
-        self
-    }
-
-    pub fn memory_map_buffer_read(
-        self,
-        address_space: AddressSpaceId,
-        range: RangeInclusive<Address>,
-        memory: impl Into<Bytes>,
-    ) -> Self {
-        self.machine_builder
-            .address_spaces
-            .get_mut(&address_space)
-            .unwrap()
-            .commands
-            .push(MemoryRemappingCommand::Map {
-                range,
-                target: MapTarget::Buffer(memory.into()),
-                permissions: Permissions::READ,
-            });
+            .extend(commands);
 
         self
     }

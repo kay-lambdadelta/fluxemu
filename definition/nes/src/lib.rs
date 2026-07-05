@@ -5,16 +5,12 @@ use cartridge::{CartParams, ines::TimingMode};
 use fluxemu_definition_mos6502::{Mos6502Config, Mos6502Kind};
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
-    ComponentPath,
+    ResourcePath,
     machine::builder::{MachineBuilder, MachineFactory, RomRequirement},
-    memory::{
-        AddressSpaceId,
-        component::{InitialContents, MemoryConfig},
-    },
+    memory::{AddressSpaceId, MapTarget, MemoryMapCommand, Permissions},
     platform::Platform,
 };
 use ppu::PpuConfig;
-use rangemap::RangeInclusiveMap;
 
 use crate::{
     apu::ApuConfig,
@@ -58,64 +54,96 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> MachineFactory<P>
             .copied()
             .unwrap();
 
-        let mut machine = machine
-            .component(
-                "work-ram",
-                MemoryConfig {
-                    readable: true,
-                    writable: true,
-                    assigned_range: 0x0000..=0x07ff,
-                    assigned_address_space: cpu_address_space,
-                    initial_contents: RangeInclusiveMap::from_iter([(
-                        0x0000..=0x07ff,
-                        InitialContents::Random,
-                    )]),
-                    sram: false,
+        let work_ram_range = RangeInclusive::from_start_and_length(0usize, 0x800);
+
+        let (machine, work_ram_path) = machine.memory("work-ram", work_ram_range.len(), []);
+        let machine = machine.map_memory(
+            cpu_address_space,
+            [MemoryMapCommand::Map {
+                range: work_ram_range.clone(),
+                permissions: Permissions::ALL,
+                target: MapTarget::Memory {
+                    path: work_ram_path,
+                    subrange: None,
                 },
-            )
-            .0
-            .component(
-                "palette-ram",
-                MemoryConfig {
-                    readable: true,
-                    writable: true,
-                    assigned_range: BACKGROUND_PALETTE_BASE_ADDRESS
-                        ..=BACKGROUND_PALETTE_BASE_ADDRESS + 0x1f,
-                    assigned_address_space: ppu_address_space,
-                    initial_contents: RangeInclusiveMap::from_iter([(
-                        BACKGROUND_PALETTE_BASE_ADDRESS..=BACKGROUND_PALETTE_BASE_ADDRESS + 0x1f,
-                        InitialContents::Random,
-                    )]),
-                    sram: false,
+            }],
+        );
+
+        let (machine, palette_ram_path) = machine.memory("palette-ram", 0x20, []);
+        let machine = machine.map_memory(
+            ppu_address_space,
+            [MemoryMapCommand::Map {
+                range: RangeInclusive::from_start_and_length(BACKGROUND_PALETTE_BASE_ADDRESS, 0x20),
+                permissions: Permissions::ALL,
+                target: MapTarget::Memory {
+                    path: palette_ram_path,
+                    subrange: None,
                 },
-            )
-            .0
-            // work ram mirrors
-            .memory_map_mirror(cpu_address_space, 0x0800..=0x0fff, 0x0000..=0x07ff)
-            .memory_map_mirror(cpu_address_space, 0x1000..=0x17ff, 0x0000..=0x07ff)
-            .memory_map_mirror(cpu_address_space, 0x1800..=0x1fff, 0x0000..=0x07ff)
-            // palette mirror for background colors
-            .memory_map_mirror(ppu_address_space, 0x3f10..=0x3f10, 0x3f00..=0x3f00)
-            .memory_map_mirror(ppu_address_space, 0x3f14..=0x3f14, 0x3f04..=0x3f04)
-            .memory_map_mirror(ppu_address_space, 0x3f18..=0x3f18, 0x3f08..=0x3f08)
-            .memory_map_mirror(ppu_address_space, 0x3f1c..=0x3f1c, 0x3f0c..=0x3f0c);
+            }],
+        );
+
+        // Workram mirrors
+        let machine = machine.map_memory(
+            cpu_address_space,
+            MemoryMapCommand::with_mirrors_to_destination(
+                work_ram_range.clone(),
+                [
+                    (0x0800, Permissions::ALL),
+                    (0x1000, Permissions::ALL),
+                    (0x1800, Permissions::ALL),
+                ],
+            ),
+        );
+
+        // Background palette mirrors
+        let machine = machine.map_memory(
+            ppu_address_space,
+            [
+                MemoryMapCommand::mirror(
+                    Permissions::ALL,
+                    RangeInclusive::from_single(0x3f10),
+                    0x3f00,
+                ),
+                MemoryMapCommand::mirror(
+                    Permissions::ALL,
+                    RangeInclusive::from_single(0x3f14),
+                    0x3f04,
+                ),
+                MemoryMapCommand::mirror(
+                    Permissions::ALL,
+                    RangeInclusive::from_single(0x3f18),
+                    0x3f08,
+                ),
+                MemoryMapCommand::mirror(
+                    Permissions::ALL,
+                    RangeInclusive::from_single(0x3f1c),
+                    0x3f0c,
+                ),
+            ],
+        );
 
         // full palette mirror blocks
-        for address in (0x3f20..=0x3fff).step_by(0x20) {
-            machine = machine.memory_map_mirror(
+        let machine = machine
+            .map_memory(
                 ppu_address_space,
-                RangeInclusive::from_start_and_length(address, 0x20),
-                RangeInclusive::from_start_and_length(BACKGROUND_PALETTE_BASE_ADDRESS, 0x20),
-            );
-        }
-
-        for address in (0x2000..=0x3fff).step_by(8).skip(1) {
-            machine = machine.memory_map_mirror(
+                MemoryMapCommand::with_mirrors_to_destination(
+                    RangeInclusive::from_start_and_length(BACKGROUND_PALETTE_BASE_ADDRESS, 0x20),
+                    RangeInclusive::from_start_and_length(BACKGROUND_PALETTE_BASE_ADDRESS, 0x100)
+                        .step_by(0x20)
+                        .skip(1)
+                        .map(|address| (address, Permissions::ALL)),
+                ),
+            )
+            .map_memory(
                 cpu_address_space,
-                RangeInclusive::from_start_and_length(address, 8),
-                RangeInclusive::from_start_and_length(0x2000, 8),
+                MemoryMapCommand::with_mirrors_to_destination(
+                    RangeInclusive::from_start_and_length(0x2000, 8),
+                    RangeInclusive::from_start_and_length(0x2000, 0x2000)
+                        .step_by(8)
+                        .skip(1)
+                        .map(|address| (address, Permissions::ALL)),
+                ),
             );
-        }
 
         let rom = machine
             .open_rom(rom_id, RomRequirement::Required)
@@ -126,11 +154,25 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> MachineFactory<P>
         if header.trainer {
             tracing::warn!("This ROM contains a trainer, which is not emulated at this time");
         }
-        let (machine, nametables) = setup_ppu_nametables(machine, ppu_address_space, &header);
+
+        let (machine, nametable_0) =
+            machine.memory("nametable-0", NAMETABLE_ADDRESSES[0].len(), []);
+        let (machine, nametable_1) =
+            machine.memory("nametable-1", NAMETABLE_ADDRESSES[0].len(), []);
+
+        let nametables = [nametable_0, nametable_1];
+
+        let machine = setup_ppu_nametables(machine, ppu_address_space, &nametables, &header);
 
         // Nametable mirror
-        let mut machine =
-            machine.memory_map_mirror(ppu_address_space, 0x3000..=0x3eff, 0x2000..=0x2eff);
+        let mut machine = machine.map_memory(
+            ppu_address_space,
+            [MemoryMapCommand::mirror(
+                Permissions::ALL,
+                0x3000..=0x3eff,
+                0x2000,
+            )],
+        );
 
         let prg_rom = header.extract_prg_rom(&rom);
         let chr_rom = header.extract_chr_rom(&rom);
@@ -286,98 +328,79 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> MachineFactory<P>
 fn setup_ppu_nametables<P: Platform>(
     machine: MachineBuilder<P>,
     ppu_address_space: AddressSpaceId,
+    nametables: &[ResourcePath; 2],
     ines: &INes,
-) -> (MachineBuilder<P>, [ComponentPath; 2]) {
+) -> MachineBuilder<P> {
     match ines.mirroring {
-        NametableMirroring::Vertical => {
-            let (machine, nametable_0) = machine.component(
-                "nametable-0",
-                MemoryConfig {
-                    assigned_address_space: ppu_address_space,
-                    assigned_range: NAMETABLE_ADDRESSES[0].clone(),
-                    readable: true,
-                    writable: true,
-                    initial_contents: RangeInclusiveMap::from_iter([(
-                        NAMETABLE_ADDRESSES[0].clone(),
-                        InitialContents::Random,
-                    )]),
-                    sram: false,
+        NametableMirroring::Vertical => machine.map_memory(
+            ppu_address_space,
+            [
+                MemoryMapCommand::Map {
+                    range: NAMETABLE_ADDRESSES[0].clone(),
+                    permissions: Permissions::ALL,
+                    target: MapTarget::Memory {
+                        path: nametables[0].clone(),
+                        subrange: None,
+                    },
                 },
-            );
-
-            let (machine, nametable_1) = machine.component(
-                "nametable-1",
-                MemoryConfig {
-                    assigned_address_space: ppu_address_space,
-                    assigned_range: NAMETABLE_ADDRESSES[1].clone(),
-                    readable: true,
-                    writable: true,
-                    initial_contents: RangeInclusiveMap::from_iter([(
-                        NAMETABLE_ADDRESSES[1].clone(),
-                        InitialContents::Random,
-                    )]),
-                    sram: false,
+                MemoryMapCommand::Map {
+                    range: NAMETABLE_ADDRESSES[1].clone(),
+                    permissions: Permissions::ALL,
+                    target: MapTarget::Memory {
+                        path: nametables[1].clone(),
+                        subrange: None,
+                    },
                 },
-            );
-
-            let machine = machine
-                .memory_map_mirror(
-                    ppu_address_space,
-                    NAMETABLE_ADDRESSES[2].clone(),
-                    NAMETABLE_ADDRESSES[0].clone(),
-                )
-                .memory_map_mirror(
-                    ppu_address_space,
-                    NAMETABLE_ADDRESSES[3].clone(),
-                    NAMETABLE_ADDRESSES[1].clone(),
-                );
-
-            (machine, [nametable_0, nametable_1])
-        }
-        NametableMirroring::Horizontal => {
-            let (machine, nametable_0) = machine.component(
-                "nametable-0",
-                MemoryConfig {
-                    assigned_address_space: ppu_address_space,
-                    assigned_range: NAMETABLE_ADDRESSES[0].clone(),
-                    readable: true,
-                    writable: true,
-                    initial_contents: RangeInclusiveMap::from_iter([(
-                        NAMETABLE_ADDRESSES[0].clone(),
-                        InitialContents::Random,
-                    )]),
-                    sram: false,
+                MemoryMapCommand::Map {
+                    range: NAMETABLE_ADDRESSES[2].clone(),
+                    permissions: Permissions::ALL,
+                    target: MapTarget::Mirror {
+                        destination: NAMETABLE_ADDRESSES[0].clone(),
+                    },
                 },
-            );
-
-            let (machine, nametable_1) = machine.component(
-                "nametable-1",
-                MemoryConfig {
-                    assigned_address_space: ppu_address_space,
-                    assigned_range: NAMETABLE_ADDRESSES[2].clone(),
-                    readable: true,
-                    writable: true,
-                    initial_contents: RangeInclusiveMap::from_iter([(
-                        NAMETABLE_ADDRESSES[2].clone(),
-                        InitialContents::Random,
-                    )]),
-                    sram: false,
+                MemoryMapCommand::Map {
+                    range: NAMETABLE_ADDRESSES[3].clone(),
+                    permissions: Permissions::ALL,
+                    target: MapTarget::Mirror {
+                        destination: NAMETABLE_ADDRESSES[1].clone(),
+                    },
                 },
-            );
-
-            let machine = machine
-                .memory_map_mirror(
-                    ppu_address_space,
-                    NAMETABLE_ADDRESSES[1].clone(),
-                    NAMETABLE_ADDRESSES[0].clone(),
-                )
-                .memory_map_mirror(
-                    ppu_address_space,
-                    NAMETABLE_ADDRESSES[3].clone(),
-                    NAMETABLE_ADDRESSES[2].clone(),
-                );
-
-            (machine, [nametable_0, nametable_1])
-        }
+            ],
+        ),
+        NametableMirroring::Horizontal => machine.map_memory(
+            ppu_address_space,
+            [
+                MemoryMapCommand::Map {
+                    range: NAMETABLE_ADDRESSES[0].clone(),
+                    permissions: Permissions::ALL,
+                    target: MapTarget::Memory {
+                        path: nametables[0].clone(),
+                        subrange: None,
+                    },
+                },
+                MemoryMapCommand::Map {
+                    range: NAMETABLE_ADDRESSES[2].clone(),
+                    permissions: Permissions::ALL,
+                    target: MapTarget::Memory {
+                        path: nametables[1].clone(),
+                        subrange: None,
+                    },
+                },
+                MemoryMapCommand::Map {
+                    range: NAMETABLE_ADDRESSES[1].clone(),
+                    permissions: Permissions::ALL,
+                    target: MapTarget::Mirror {
+                        destination: NAMETABLE_ADDRESSES[0].clone(),
+                    },
+                },
+                MemoryMapCommand::Map {
+                    range: NAMETABLE_ADDRESSES[3].clone(),
+                    permissions: Permissions::ALL,
+                    target: MapTarget::Mirror {
+                        destination: NAMETABLE_ADDRESSES[2].clone(),
+                    },
+                },
+            ],
+        ),
     }
 }

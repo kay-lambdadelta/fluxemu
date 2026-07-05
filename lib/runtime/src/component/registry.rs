@@ -1,5 +1,5 @@
 use std::{
-    any::{Any, TypeId},
+    any::Any,
     collections::HashMap,
     fmt::Debug,
     ops::DerefMut,
@@ -26,13 +26,12 @@ pub(crate) struct ComponentHandle {
 #[derive(Debug)]
 struct GlobalComponentMetadata {
     id: ComponentId,
-    type_id: TypeId,
 }
 
 #[derive(Debug, Default)]
 struct GlobalSyncState {
     global_component_store: HashMap<ComponentId, ComponentHandle, FxBuildHasher>,
-    threads_awaiting_component: HashMap<ComponentId, Arc<Condvar>, FxBuildHasher>,
+    component_condvars: HashMap<ComponentId, Arc<Condvar>, FxBuildHasher>,
 }
 
 #[derive(Debug, Default)]
@@ -77,20 +76,14 @@ impl ComponentRegistryData {
             panic!("Component with the same path already exists")
         }
 
-        self.metadata.insert(
-            path,
-            GlobalComponentMetadata {
-                id,
-                type_id: TypeId::of::<C>(),
-            },
-        );
+        self.metadata.insert(path, GlobalComponentMetadata { id });
     }
 }
 
 /// A registry to interact with components participating in the machine it borrows from
 ///
 /// It has ID and Path based lookup, and cross thread concurrency with automatic synchronization
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ComponentRegistry<'a> {
     runtime: RuntimeApi<&'a Machine>,
     data: &'a ComponentRegistryData,
@@ -107,7 +100,7 @@ impl<'a> ComponentRegistry<'a> {
     /// Prefer this if you are a component author and you need to directly interact with another component
     #[inline]
     pub fn interact<'b, C: Component, T>(
-        &'b self,
+        &'b mut self,
         id: impl Into<ComponentIdentifier<'b>>,
         target_timestamp: &Period,
         callback: impl FnOnce(&mut C) -> T,
@@ -129,30 +122,20 @@ impl<'a> ComponentRegistry<'a> {
     /// The ID must be valid for the registry instance.
     #[inline]
     pub(crate) unsafe fn interact_dyn_id_unchecked<T>(
-        &self,
+        &mut self,
         id: ComponentId,
         target_timestamp: &Period,
         callback: impl FnOnce(&mut dyn Component) -> T,
     ) -> T {
-        let cell = self.runtime.local_component_store();
-
         // Move the component handle to our thread and check if it needs synchronization
         let needs_sync = {
             // SAFETY: No active borrows
-            let store = unsafe { &mut *cell.get() };
-            let handle = self.fetch_or_acquire_component(id, store);
+            let local_data =
+                unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
+            let handle = self.fetch_or_acquire_component(id, local_data);
 
             if !handle.synchronize {
-                // Working around bad LLVM optimization
-                //
-                // SAFETY: This is essentially the same as a dereference and assign
-                unsafe {
-                    std::ptr::copy_nonoverlapping(
-                        target_timestamp,
-                        &mut handle.current_timestamp,
-                        1,
-                    );
-                }
+                handle.current_timestamp = *target_timestamp;
             }
 
             handle.synchronize
@@ -166,7 +149,7 @@ impl<'a> ComponentRegistry<'a> {
         // Extract the component
         let mut component = {
             // SAFETY: No active borrows
-            let store = unsafe { &mut *cell.get() };
+            let store = unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
             let handle = store.get_slot(id).as_mut().unwrap();
 
             handle
@@ -185,7 +168,7 @@ impl<'a> ComponentRegistry<'a> {
             //  The second is sound because nothing could have been moved out of that slot, due to us owning the component
             //  The third operation is not unsafe, but it is logically sound to forget the `None` in the slot and save some instructions
 
-            let store = unsafe { &mut *cell.get() };
+            let store = unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
             let handle = unsafe { store.get_slot(id).as_mut().unwrap_unchecked() };
             std::mem::forget(handle.component.replace(component));
         }
@@ -205,7 +188,7 @@ impl<'a> ComponentRegistry<'a> {
     /// Additionally, right before this function blocks, it is guaranteed to return the non-borrowed components in the local store to the global store.
     #[inline]
     pub fn interact_dyn<'b, T>(
-        &'b self,
+        &'b mut self,
         id: impl Into<ComponentIdentifier<'b>>,
         target_timestamp: &Period,
         callback: impl FnOnce(&mut dyn Component) -> T,
@@ -218,7 +201,7 @@ impl<'a> ComponentRegistry<'a> {
 
     #[inline]
     fn convert_identifier<'b>(
-        &'a self,
+        &self,
         id: impl Into<ComponentIdentifier<'b>>,
     ) -> Option<ComponentId> {
         match id.into() {
@@ -234,13 +217,11 @@ impl<'a> ComponentRegistry<'a> {
     }
 
     #[cold]
-    fn synchronize_component(&self, id: ComponentId, target_timestamp: &Period) {
-        let cell = self.runtime.local_component_store();
-
+    fn synchronize_component(&mut self, id: ComponentId, target_timestamp: &Period) {
         let mut current_timestamp;
 
         let (delta, mut component) = {
-            let store = unsafe { &mut *cell.get() };
+            let store = unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
             let handle = store.get_slot(id).as_mut().unwrap();
 
             let Some(delta) = target_timestamp.checked_sub(handle.current_timestamp) else {
@@ -253,7 +234,7 @@ impl<'a> ComponentRegistry<'a> {
         };
 
         if delta == Period::ZERO || !component.needs_work(&current_timestamp, &delta) {
-            let store = unsafe { &mut *cell.get() };
+            let store = unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
             store.get_slot(id).as_mut().unwrap().component = Some(component);
 
             return;
@@ -281,7 +262,8 @@ impl<'a> ComponentRegistry<'a> {
             );
 
             let hazard_timestamp = {
-                let store = unsafe { &mut *cell.get() };
+                let store =
+                    unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
                 let handle = store.get_slot(id).as_mut().unwrap();
 
                 handle.component = Some(component);
@@ -294,14 +276,16 @@ impl<'a> ComponentRegistry<'a> {
                 return;
             }
 
-            self.runtime
+            let runtime = self.runtime.clone();
+            runtime
                 .machine()
                 .scheduler
                 .event_manager
-                .consume(self.clone(), hazard_timestamp);
+                .consume(self, hazard_timestamp);
 
             {
-                let store = unsafe { &mut *cell.get() };
+                let store =
+                    unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
                 let handle = self.fetch_or_acquire_component(id, store);
 
                 component = handle.component.take().unwrap();
@@ -312,35 +296,35 @@ impl<'a> ComponentRegistry<'a> {
 
     #[inline]
     fn fetch_or_acquire_component<'b>(
-        &self,
+        &mut self,
         id: ComponentId,
-        local_component_store: &'b mut LocalComponentStore,
+        local_data: &'b mut LocalComponentRegistryData,
     ) -> &'b mut ComponentHandle {
-        if local_component_store.get_slot(id).is_some() {
-            let component_handle = local_component_store.get_slot(id);
+        if local_data.get_slot(id).is_some() {
+            let component_handle = local_data.get_slot(id);
 
             component_handle.as_mut().unwrap()
         } else {
-            self.acquire_component_from_global_store(id, local_component_store)
+            self.acquire_component_from_global_store(id, local_data)
         }
     }
 
     #[cold]
     fn acquire_component_from_global_store<'b>(
-        &self,
+        &mut self,
         id: ComponentId,
-        local_component_store: &'b mut LocalComponentStore,
+        local_data: &'b mut LocalComponentRegistryData,
     ) -> &'b mut ComponentHandle {
         let mut sync_state_guard = self.data.sync_state.lock().unwrap();
 
         loop {
             let Some(handle) = sync_state_guard.global_component_store.remove(&id) else {
                 // Give components back so others can potentially access them
-                self.release_all_components_inner(local_component_store, &mut sync_state_guard);
+                self.release_all_inner(&mut sync_state_guard, local_data);
 
                 // Get condvar
                 let condvar = sync_state_guard
-                    .threads_awaiting_component
+                    .component_condvars
                     .entry(id)
                     .or_default()
                     .clone();
@@ -352,26 +336,27 @@ impl<'a> ComponentRegistry<'a> {
                 continue;
             };
 
-            let slot = local_component_store.get_slot(id);
+            let slot = local_data.get_slot(id);
             *slot = Some(handle);
 
             return slot.as_mut().unwrap();
         }
     }
 
-    pub(crate) fn release_all_components(&self, local_component_store: &mut LocalComponentStore) {
+    pub(crate) unsafe fn release_all(&mut self) {
         let mut sync_state_guard = self.data.sync_state.lock().unwrap();
+        let local_data = unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
 
-        self.release_all_components_inner(local_component_store, &mut sync_state_guard);
+        self.release_all_inner(&mut sync_state_guard, local_data);
     }
 
     /// Release all components currently available for releasing
-    fn release_all_components_inner(
-        &self,
-        local_component_store: &mut LocalComponentStore,
+    fn release_all_inner(
+        &mut self,
         sync_state: &mut GlobalSyncState,
+        local_data: &mut LocalComponentRegistryData,
     ) {
-        for (id, slot) in local_component_store.iter_mut() {
+        for (id, slot) in local_data.iter_mut() {
             // Check if the slot is occupied and the handle isn't borrowed
             if let Some(handle) = slot
                 && handle.component.is_some()
@@ -386,7 +371,7 @@ impl<'a> ComponentRegistry<'a> {
                     panic!("Component shadowed by another component");
                 }
 
-                let Some(condvar) = sync_state.threads_awaiting_component.get(&id) else {
+                let Some(condvar) = sync_state.component_condvars.get(&id) else {
                     continue;
                 };
 
@@ -396,26 +381,23 @@ impl<'a> ComponentRegistry<'a> {
         }
     }
 
-    pub(crate) fn path_to_id(&self, path: &ComponentPath) -> Option<ComponentId> {
+    pub(crate) fn id_for_path(&self, path: &ComponentPath) -> Option<ComponentId> {
         Some(self.data.metadata.get(path)?.id)
     }
 
     pub(crate) fn get_timestamp<'b>(
-        &'b self,
+        &'b mut self,
         id: impl Into<ComponentIdentifier<'b>>,
     ) -> Option<Period> {
         let id = self.convert_identifier(id)?;
+        let local_data = &self.runtime.local_data().component_registry_data;
 
         let timestamp = {
-            let store = unsafe { &mut *self.runtime.local_component_store().get() };
+            let store = unsafe { &mut *local_data.get() };
             self.fetch_or_acquire_component(id, store).current_timestamp
         };
 
         Some(timestamp)
-    }
-
-    pub(crate) fn typeid(&self, path: &ComponentPath) -> Option<TypeId> {
-        Some(self.data.metadata.get(path)?.type_id)
     }
 }
 
@@ -442,11 +424,11 @@ impl<'a> From<ComponentId> for ComponentIdentifier<'a> {
 }
 
 #[derive(Debug)]
-pub(crate) struct LocalComponentStore(Vec<Option<ComponentHandle>>);
+pub(crate) struct LocalComponentRegistryData(Vec<Option<ComponentHandle>>);
 
-impl LocalComponentStore {
+impl LocalComponentRegistryData {
     pub fn new(registry_data: &ComponentRegistryData) -> Self {
-        LocalComponentStore(Vec::from_iter(
+        LocalComponentRegistryData(Vec::from_iter(
             std::iter::repeat_with(|| None).take(registry_data.required_local_store_size()),
         ))
     }

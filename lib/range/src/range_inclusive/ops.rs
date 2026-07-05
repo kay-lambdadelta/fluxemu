@@ -20,6 +20,11 @@ impl<Idx: Integer + Clone> RangeBase<Idx> for RangeInclusive<Idx> {
 
 impl<Idx: Integer + Clone + ToPrimitive> ContiguousRange<Idx> for RangeInclusive<Idx> {
     #[inline]
+    fn from_single(index: Idx) -> Self {
+        Self::from_start_and_length(index, Idx::one())
+    }
+
+    #[inline]
     fn from_start_and_length(start: Idx, length: Idx) -> Self {
         assert!(
             length > Idx::zero(),

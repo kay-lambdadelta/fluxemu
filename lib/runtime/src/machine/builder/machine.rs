@@ -20,7 +20,8 @@ use crate::{
         builder::{ComponentBuilder, ComponentData, RomRequirement, SealedMachineBuilder},
     },
     memory::{
-        Address, AddressSpaceData, AddressSpaceId, MapTarget, MemoryRemappingCommand, Permissions,
+        Address, AddressSpaceData, AddressSpaceId, MemoryMapCommand, MemoryRegistryData,
+        RegionInitializationData,
     },
     path::ComponentPath,
     platform::Platform,
@@ -37,7 +38,7 @@ pub enum MachineError {
 
 pub(super) struct AddressSpaceSetupData {
     pub data: AddressSpaceData,
-    pub commands: Vec<MemoryRemappingCommand>,
+    pub commands: Vec<MemoryMapCommand>,
 }
 
 /// Builder to produce a machine, definition crates will want to use this
@@ -45,12 +46,13 @@ pub struct MachineBuilder<P: Platform> {
     pub(super) program_manager: Arc<ProgramManager>,
     pub(super) program_specification: Option<ProgramSpecification>,
     pub(super) next_address_space_id: AddressSpaceId,
-    pub(super) registry_data: ComponentRegistryData,
+    pub(super) component_registry_data: ComponentRegistryData,
     pub(super) address_spaces: HashMap<AddressSpaceId, AddressSpaceSetupData>,
     pub(super) component_data: HashMap<ComponentPath, ComponentData<P>>,
     pub(super) input_devices: HashMap<ResourcePath, Arc<LogicalInputDevice>, FxBuildHasher>,
     pub(super) framebuffers: HashSet<ResourcePath>,
     pub(super) audio_channels: HashSet<ResourcePath>,
+    pub(super) required_memory_regions: HashMap<ResourcePath, RegionInitializationData>,
     pub(super) scheduler: Scheduler,
 }
 
@@ -63,7 +65,8 @@ impl<P: Platform> MachineBuilder<P> {
             program_manager,
             program_specification,
             next_address_space_id: AddressSpaceId(0),
-            registry_data: ComponentRegistryData::default(),
+            component_registry_data: ComponentRegistryData::default(),
+            required_memory_regions: HashMap::default(),
             address_spaces: HashMap::default(),
             component_data: HashMap::default(),
             input_devices: HashMap::default(),
@@ -143,7 +146,7 @@ impl<P: Platform> MachineBuilder<P> {
             .build_component(component_builder)
             .expect("Failed to build component");
 
-        self.registry_data.insert_component(
+        self.component_registry_data.insert_component(
             path.clone(),
             component_data.scheduler_participation.is_some(),
             component,
@@ -195,129 +198,58 @@ impl<P: Platform> MachineBuilder<P> {
         (self, address_space_id)
     }
 
-    pub fn memory_map_mirror_read(
+    /// Creates a mutable memory region
+    pub fn memory(
         mut self,
-        address_space: AddressSpaceId,
-        source: RangeInclusive<Address>,
-        destination: RangeInclusive<Address>,
-    ) -> Self {
-        self.address_spaces
-            .get_mut(&address_space)
-            .unwrap()
-            .commands
-            .push(MemoryRemappingCommand::Map {
-                range: source,
-                target: MapTarget::Mirror { destination },
-                permissions: Permissions::READ,
-            });
+        name: impl Into<Cow<'static, str>>,
+        size: usize,
+        initial_contents: impl IntoIterator<Item = (RangeInclusive<Address>, Bytes)>,
+    ) -> (Self, ResourcePath) {
+        let path = ResourcePath::new(None, name).unwrap();
 
-        self
+        self.required_memory_regions.insert(
+            path.clone(),
+            RegionInitializationData {
+                size,
+                sram: false,
+                initial_contents: initial_contents.into_iter().collect(),
+            },
+        );
+
+        (self, path)
     }
 
-    pub fn memory_map_mirror_write(
+    /// Creates a mutable memory region that will be committed to saves
+    pub fn save_memory(
         mut self,
-        address_space: AddressSpaceId,
-        source: RangeInclusive<Address>,
-        destination: RangeInclusive<Address>,
-    ) -> Self {
-        self.address_spaces
-            .get_mut(&address_space)
-            .unwrap()
-            .commands
-            .push(MemoryRemappingCommand::Map {
-                range: source,
-                target: MapTarget::Mirror { destination },
-                permissions: Permissions::WRITE,
-            });
+        name: impl Into<Cow<'static, str>>,
+        size: usize,
+        initial_contents: impl IntoIterator<Item = (RangeInclusive<Address>, Bytes)>,
+    ) -> (Self, ResourcePath) {
+        let path = ResourcePath::new(None, name).unwrap();
 
-        self
+        self.required_memory_regions.insert(
+            path.clone(),
+            RegionInitializationData {
+                size,
+                sram: true,
+                initial_contents: initial_contents.into_iter().collect(),
+            },
+        );
+
+        (self, path)
     }
 
-    pub fn memory_map_mirror(
+    pub fn map_memory(
         mut self,
         address_space: AddressSpaceId,
-        source: RangeInclusive<Address>,
-        destination: RangeInclusive<Address>,
+        commands: impl IntoIterator<Item = MemoryMapCommand>,
     ) -> Self {
         self.address_spaces
             .get_mut(&address_space)
             .unwrap()
             .commands
-            .push(MemoryRemappingCommand::Map {
-                range: source,
-                target: MapTarget::Mirror { destination },
-                permissions: Permissions::ALL,
-            });
-
-        self
-    }
-
-    pub fn memory_map_buffer_read(
-        mut self,
-        address_space: AddressSpaceId,
-        range: RangeInclusive<Address>,
-        memory: impl Into<Bytes>,
-    ) -> Self {
-        self.address_spaces
-            .get_mut(&address_space)
-            .unwrap()
-            .commands
-            .push(MemoryRemappingCommand::Map {
-                range,
-                target: MapTarget::Buffer(memory.into()),
-                permissions: Permissions::READ,
-            });
-
-        self
-    }
-
-    pub fn memory_unmap(
-        mut self,
-        address_space: AddressSpaceId,
-        range: RangeInclusive<Address>,
-    ) -> Self {
-        self.address_spaces
-            .get_mut(&address_space)
-            .unwrap()
-            .commands
-            .push(MemoryRemappingCommand::Unmap {
-                range,
-                permissions: Permissions::ALL,
-            });
-
-        self
-    }
-
-    pub fn memory_unmap_read(
-        mut self,
-        address_space: AddressSpaceId,
-        range: RangeInclusive<Address>,
-    ) -> Self {
-        self.address_spaces
-            .get_mut(&address_space)
-            .unwrap()
-            .commands
-            .push(MemoryRemappingCommand::Unmap {
-                range,
-                permissions: Permissions::READ,
-            });
-
-        self
-    }
-
-    pub fn memory_unmap_write(
-        mut self,
-        address_space: AddressSpaceId,
-        range: RangeInclusive<Address>,
-    ) -> Self {
-        self.address_spaces
-            .get_mut(&address_space)
-            .unwrap()
-            .commands
-            .push(MemoryRemappingCommand::Unmap {
-                range,
-                permissions: Permissions::WRITE,
-            });
+            .extend(commands);
 
         self
     }
@@ -350,22 +282,25 @@ impl<P: Platform> MachineBuilder<P> {
             remapping_commands.insert(id, commands);
         }
 
+        let required_memory_regions = self.required_memory_regions;
+
         let machine = Arc::new(Machine {
             scheduler: self.scheduler,
             address_spaces,
             input_devices: self.input_devices,
-            registry_data: self.registry_data,
             framebuffers: self.framebuffers,
             program_specification: self.program_specification,
             audio_channels: self.audio_channels,
             save_codecs,
             snapshot_codecs,
+            component_registry_data: self.component_registry_data,
+            memory_registry_data: MemoryRegistryData::new(required_memory_regions),
         });
 
         // Initialize address spaces
         let runtime_guard = machine.enter_runtime();
         for (id, commands) in remapping_commands {
-            let address_space = runtime_guard.address_space(id).unwrap();
+            let mut address_space = runtime_guard.address_space(id).unwrap();
 
             address_space.remap(&Period::default(), commands);
         }

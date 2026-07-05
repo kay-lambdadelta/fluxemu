@@ -1,10 +1,11 @@
-use std::{collections::HashMap, marker::PhantomData};
+use std::{collections::HashMap, marker::PhantomData, ops::RangeInclusive};
 
 use fluxemu_graphics::api::software::texture::Texture;
+use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
     component::config::{ComponentConfig, LateContext},
     machine::builder::{ComponentBuilder, SchedulerParticipation},
-    memory::AddressSpaceId,
+    memory::{AddressSpaceId, MemoryMapCommand, Permissions},
     path::ComponentPath,
     platform::Platform,
 };
@@ -46,19 +47,32 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>> ComponentConf
             .scheduler_participation(Some(SchedulerParticipation::OnAccess))
             .framebuffer("framebuffer");
 
-        for register in ReadRegisters::iter() {
-            component_builder = component_builder.memory_map_component_read(
-                self.cpu_address_space,
-                register as usize..=register as usize,
-            );
-        }
+        let my_path = component_builder.path().clone();
 
-        for register in WriteRegisters::iter() {
-            component_builder = component_builder.memory_map_component_write(
-                self.cpu_address_space,
-                register as usize..=register as usize,
-            );
-        }
+        component_builder = component_builder.map_memory(
+            self.cpu_address_space,
+            MemoryMapCommand::with_component(
+                my_path.clone(),
+                ReadRegisters::iter().map(|address| {
+                    (
+                        RangeInclusive::from_single(address as usize),
+                        Permissions::READ,
+                    )
+                }),
+            ),
+        );
+        component_builder = component_builder.map_memory(
+            self.cpu_address_space,
+            MemoryMapCommand::with_component(
+                my_path.clone(),
+                WriteRegisters::iter().map(|address| {
+                    (
+                        RangeInclusive::from_single(address as usize),
+                        Permissions::WRITE,
+                    )
+                }),
+            ),
+        );
 
         let staging_buffer = Texture::from_value(
             VISIBLE_SCANLINE_LENGTH as usize,

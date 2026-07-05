@@ -1,18 +1,20 @@
-use std::{borrow::Cow, marker::PhantomData};
+use std::{marker::PhantomData, ops::RangeInclusive};
 
 use audio::Chip8AudioConfig;
+use bytes::Bytes;
 use display::Chip8DisplayConfig;
 use fluxemu_runtime::{
-    machine::builder::{MachineBuilder, MachineFactory},
-    memory::component::{InitialContents, MemoryConfig},
+    machine::builder::{MachineBuilder, MachineFactory, RomRequirement},
+    memory::{MapTarget, MemoryMapCommand, Permissions},
     platform::Platform,
     scheduler::Frequency,
 };
 use font::CHIP8_FONT;
 use processor::Chip8ProcessorConfig;
-use rangemap::RangeInclusiveMap;
 use serde::{Deserialize, Serialize};
 use timer::Chip8TimerConfig;
+
+use fluxemu_range::ContiguousRange;
 
 use crate::display::SupportedGraphicsApiChip8Display;
 
@@ -76,24 +78,35 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> MachineFactory<
             .copied()
             .unwrap();
 
-        let (machine, _) = machine.component(
-            "workram",
-            MemoryConfig {
-                readable: true,
-                writable: true,
-                assigned_range: 0x000..=0xfff,
-                assigned_address_space: cpu_address_space,
-                initial_contents: RangeInclusiveMap::from_iter([
-                    (
-                        0x000..=0x04f,
-                        InitialContents::Array(Cow::Borrowed(bytemuck::cast_slice(&CHIP8_FONT))),
-                    ),
-                    (0x200..=0xfff, InitialContents::Rom(rom_id)),
-                ]),
-                sram: false,
-            },
+        let rom = machine
+            .open_rom(rom_id, RomRequirement::Required)
+            .unwrap()
+            .unwrap();
+
+        let chip8_font = bytemuck::cast_slice(&CHIP8_FONT);
+
+        let (machine, ram_path) = machine.memory(
+            "ram",
+            0x1000,
+            [
+                (
+                    RangeInclusive::from_start_and_length(0, chip8_font.len()),
+                    Bytes::from_static(chip8_font),
+                ),
+                (RangeInclusive::from_start_and_length(0x200, rom.len()), rom),
+            ],
         );
 
-        machine
+        machine.map_memory(
+            cpu_address_space,
+            [MemoryMapCommand::Map {
+                range: 0x000..=0xfff,
+                permissions: Permissions::ALL,
+                target: MapTarget::Memory {
+                    path: ram_path,
+                    subrange: None,
+                },
+            }],
+        )
     }
 }

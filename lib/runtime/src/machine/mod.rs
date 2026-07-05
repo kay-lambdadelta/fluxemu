@@ -3,7 +3,7 @@
 //! The main runtime for the FluxEMU emulator framework
 
 use std::{
-    cell::RefCell,
+    cell::{RefCell, UnsafeCell},
     collections::{HashMap, HashSet},
     fmt::Debug,
     io::Read,
@@ -21,10 +21,10 @@ use tracing::Level;
 
 use crate::{
     ComponentPath, RuntimeApi,
-    component::ComponentRegistryData,
+    component::{ComponentRegistryData, LocalComponentRegistryData},
     input::LogicalInputDevice,
     machine::builder::MachineBuilder,
-    memory::{AddressSpaceData, AddressSpaceId},
+    memory::{AddressSpaceData, AddressSpaceId, LocalMemoryRegistryData, MemoryRegistryData},
     path::ResourcePath,
     persistence::{ErasedCodec, SnapshotMetadata},
     platform::{Platform, TestPlatform},
@@ -46,7 +46,9 @@ where
     /// All virtual gamepads inserted by components
     pub(crate) input_devices: HashMap<ResourcePath, Arc<LogicalInputDevice>, FxBuildHasher>,
     /// Component Registry
-    pub(crate) registry_data: ComponentRegistryData,
+    pub(crate) component_registry_data: ComponentRegistryData,
+    /// Memory Registry
+    pub(crate) memory_registry_data: MemoryRegistryData,
     /// All framebuffers this machine has
     pub(crate) framebuffers: HashSet<ResourcePath>,
     /// All audio outputs this machine has
@@ -89,7 +91,7 @@ impl Machine {
     /// Panics if the runtime is already entered on this thread
     #[must_use]
     pub fn enter_runtime(self: &Arc<Self>) -> RuntimeGuard<'_> {
-        let local_component_store = RUNTIME_CONTEXT.with(|runtime_context| {
+        let local_data = THREAD_RUNTIME_API.with(|runtime_context| {
             let mut runtime_context_guard = runtime_context.borrow_mut();
 
             if runtime_context_guard.is_some() {
@@ -100,11 +102,11 @@ impl Machine {
 
             *runtime_context_guard = Some(runtime.clone());
 
-            runtime.local_component_store().clone()
+            runtime.local_data().clone()
         });
 
         RuntimeGuard {
-            runtime: RuntimeApi::new_with_local_store(self, local_component_store),
+            runtime: RuntimeApi::new_with_local_data(self, local_data),
             _phantom: PhantomData,
         }
     }
@@ -132,10 +134,12 @@ impl RuntimeGuard<'_> {
 
     /// Drive the scheduler driven components to the current timestamp + the given time
     pub fn run(&self, allocated_time: Period) {
+        let mut registry = self.runtime.component_registry();
+
         self.runtime
             .machine()
             .scheduler
-            .run(self.runtime.registry(), allocated_time)
+            .run(&mut registry, allocated_time)
     }
 
     /// Get the last safe time to advance any component to
@@ -158,7 +162,7 @@ impl RuntimeGuard<'_> {
     ) {
         let logical_input_device = self.runtime.machine().input_devices.get(path).unwrap();
 
-        self.registry()
+        self.component_registry()
             .interact_dyn(
                 path.parent().unwrap(),
                 &self.safe_advance_timestamp(),
@@ -178,7 +182,7 @@ impl RuntimeGuard<'_> {
         _metadata: &SnapshotMetadata,
         mut component_section: impl Read,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let registry = self.registry();
+        let mut registry = self.component_registry();
 
         for (path, codec) in &self.runtime.machine().save_codecs {
             registry
@@ -220,7 +224,7 @@ impl<'a> Deref for RuntimeGuard<'a> {
 
 impl<'a> Drop for RuntimeGuard<'a> {
     fn drop(&mut self) {
-        RUNTIME_CONTEXT.with(|runtime_context| {
+        THREAD_RUNTIME_API.with(|runtime_context| {
             let runtime_context = runtime_context.borrow_mut().take();
 
             // Clear the local context
@@ -228,9 +232,10 @@ impl<'a> Drop for RuntimeGuard<'a> {
                 // Release all components
                 //
                 // SAFETY: This is in the drop impl of a !Send !Sync struct, we have exclusive ownership
-                context
-                    .registry()
-                    .release_all_components(unsafe { &mut *context.local_component_store().get() });
+                unsafe { context.component_registry().release_all() };
+
+                // Release all memory regions
+                context.memory_registry().release_all();
             } else {
                 unreachable!("Runtime exited without entering");
             }
@@ -238,6 +243,28 @@ impl<'a> Drop for RuntimeGuard<'a> {
     }
 }
 
+#[derive(Debug)]
+pub(crate) struct ThreadLocalData {
+    pub component_registry_data: UnsafeCell<LocalComponentRegistryData>,
+    pub memory_registry_data: UnsafeCell<LocalMemoryRegistryData>,
+    // Ensure this is !Send and !Sync
+    _phantom: PhantomData<*const ()>,
+}
+
+impl ThreadLocalData {
+    pub fn new(machine: &Machine) -> Self {
+        Self {
+            component_registry_data: UnsafeCell::new(LocalComponentRegistryData::new(
+                &machine.component_registry_data,
+            )),
+            memory_registry_data: UnsafeCell::new(LocalMemoryRegistryData::new(
+                &machine.memory_registry_data,
+            )),
+            _phantom: PhantomData,
+        }
+    }
+}
+
 thread_local! {
-    pub(crate) static RUNTIME_CONTEXT: RefCell<Option<RuntimeApi<Arc<Machine>>>> = const { RefCell::new(None) };
+    pub(crate) static THREAD_RUNTIME_API: RefCell<Option<RuntimeApi<Arc<Machine>>>> = const { RefCell::new(None) };
 }

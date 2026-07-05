@@ -1,17 +1,14 @@
 use std::{ops::RangeInclusive, str::FromStr};
 
 use fluxemu_program::RomId;
+use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
     machine::builder::{MachineBuilder, MachineFactory},
-    memory::{
-        Address,
-        component::{InitialContents, MemoryConfig},
-    },
+    memory::{Address, MapTarget, MemoryMapCommand, Permissions},
     platform::Platform,
 };
 use mapctl::MapctlConfig;
 use num::rational::Ratio;
-use rangemap::RangeInclusiveMap;
 
 use crate::suzy::SuzyConfig;
 
@@ -35,24 +32,25 @@ impl<P: Platform> MachineFactory<P> for AtariLynx {
         let (machine, cpu_address_space) = machine.address_space(16);
 
         // A good portion of this will be initially shadowed
-        let (machine, ram) = machine.component(
-            "ram",
-            MemoryConfig {
-                readable: true,
-                writable: true,
-                assigned_range: 0x0000..=0xffff,
-                assigned_address_space: cpu_address_space,
-                initial_contents: RangeInclusiveMap::from_iter([(
-                    0x0000..=0xffff,
-                    InitialContents::Value(0xff),
-                )]),
-                sram: false,
-            },
+        let (machine, ram_path) = machine.memory("ram", 0x10000, []);
+        let machine = machine.map_memory(
+            cpu_address_space,
+            [MemoryMapCommand::Map {
+                range: RangeInclusive::from_start_and_length(0, 0x10000),
+                permissions: Permissions::ALL,
+                target: MapTarget::Memory {
+                    path: ram_path.clone(),
+                    subrange: None,
+                },
+            }],
         );
 
-        let machine = machine.memory_unmap(
+        let machine = machine.map_memory(
             cpu_address_space,
-            RESERVED_MEMORY_ADDRESS..=RESERVED_MEMORY_ADDRESS,
+            [MemoryMapCommand::Unmap {
+                range: RangeInclusive::from_single(RESERVED_MEMORY_ADDRESS),
+                permissions: Permissions::ALL,
+            }],
         );
 
         let rom = machine
@@ -64,10 +62,12 @@ impl<P: Platform> MachineFactory<P> for AtariLynx {
             .unwrap()
             .unwrap();
 
-        let machine = machine.memory_map_buffer_read(
+        let machine = machine.map_memory(
             cpu_address_space,
-            0xfe00..=0xffff,
-            rom.slice(0x0000..=0x1fff),
+            [MemoryMapCommand::immutable_memory(
+                0xfe00,
+                rom.slice(0x0000..=0x1fff),
+            )],
         );
 
         let (machine, suzy) = machine.component("suzy", SuzyConfig { cpu_address_space });
@@ -76,7 +76,7 @@ impl<P: Platform> MachineFactory<P> for AtariLynx {
             "mapctl",
             MapctlConfig {
                 cpu_address_space,
-                ram,
+                ram: ram_path,
                 suzy,
                 mikey: todo!(),
                 vector: todo!(),

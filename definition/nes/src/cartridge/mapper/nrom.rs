@@ -1,6 +1,7 @@
 use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
+    memory::{MemoryMapCommand, Permissions},
     platform::Platform,
 };
 
@@ -30,31 +31,43 @@ impl<P: Platform> ComponentConfig<P> for NRomConfig {
         let component_builder = match prg_bank_count {
             // NROM-128
             1 => {
-                let component_builder = component_builder.memory_map_buffer_read(
-                    self.config.cpu_address_space,
-                    0x8000..=0xbfff,
-                    self.config.prg_rom,
-                );
+                if self.config.prg_rom.len() != 16 * 1024 {
+                    return Err("NROM-128 must have exactly 16KB of PRG-ROM".into());
+                }
 
-                component_builder.memory_map_mirror_read(
+                component_builder.map_memory(
                     self.config.cpu_address_space,
-                    0xc000..=0xffff,
-                    0x8000..=0xbfff,
+                    [
+                        MemoryMapCommand::immutable_memory(0x8000, self.config.prg_rom),
+                        MemoryMapCommand::mirror(Permissions::READ, 0xc000..=0xffff, 0x8000),
+                    ],
                 )
             }
             // NROM-256
-            2 => component_builder.memory_map_buffer_read(
-                self.config.cpu_address_space,
-                0x8000..=0xffff,
-                self.config.prg_rom,
-            ),
+            2 => {
+                if self.config.prg_rom.len() != 32 * 1024 {
+                    return Err("NROM-256 must have exactly 32KB of PRG-ROM".into());
+                }
+
+                component_builder.map_memory(
+                    self.config.cpu_address_space,
+                    [MemoryMapCommand::immutable_memory(
+                        0x8000,
+                        self.config.prg_rom,
+                    )],
+                )
+            }
             _ => return Err("Unsupported PRG ROM size for NROM mapper".into()),
         };
 
-        component_builder.memory_map_buffer_read(
+        let chr_rom = self.config.chr_rom.ok_or("NROM must have CHR-ROM")?;
+        if chr_rom.len() != 0x2000 {
+            return Err("CHR-ROM must have exactly 8KB of CHR-ROM".into());
+        }
+
+        component_builder.map_memory(
             self.config.ppu_address_space,
-            0x0000..=0x1fff,
-            self.config.chr_rom.ok_or("NROM must have CHR-ROM")?,
+            [MemoryMapCommand::immutable_memory(0x0000, chr_rom)],
         );
 
         Ok(NRom)

@@ -6,7 +6,7 @@ use fluxemu_runtime::{
     Platform,
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
-    memory::AddressSpaceId,
+    memory::{AddressSpaceId, MapTarget, MemoryMapCommand, Permissions},
 };
 
 use crate::cartridge::{CartType, get_cart_range};
@@ -42,15 +42,24 @@ impl<P: Platform> ComponentConfig<P> for NonbankedCartConfig {
                 let high =
                     RangeInclusive::from_start_and_length(*cart_range.start() + halfway, halfway);
 
-                component_builder
-                    .memory_map_buffer_read(self.cpu_address_space, low.clone(), self.rom)
-                    .memory_map_mirror_read(self.cpu_address_space, high, low);
+                let mappings = [
+                    MemoryMapCommand::immutable_memory(*low.start(), self.rom),
+                    MemoryMapCommand::Map {
+                        range: high,
+                        permissions: Permissions::READ,
+                        target: MapTarget::Mirror { destination: low },
+                    },
+                ];
+
+                component_builder.map_memory(self.cpu_address_space, mappings);
             }
             CartType::Raw4k => {
-                component_builder.memory_map_buffer_read(
+                component_builder.map_memory(
                     self.cpu_address_space,
-                    cart_range,
-                    self.rom,
+                    [MemoryMapCommand::immutable_memory(
+                        *cart_range.start(),
+                        self.rom,
+                    )],
                 );
             }
             CartType::F8 | CartType::F6 => {

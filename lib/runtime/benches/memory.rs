@@ -1,36 +1,37 @@
-use std::{hint::black_box, sync::Arc};
+use std::{hint::black_box, ops::RangeInclusive, sync::Arc};
 
 use criterion::{Criterion, criterion_group, criterion_main};
+use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
     machine::Machine,
-    memory::{
-        AddressSpaceId,
-        component::{InitialContents, MemoryConfig},
-    },
+    memory::{AddressSpaceId, MapTarget, MemoryMapCommand, Permissions},
     scheduler::Period,
 };
-use rangemap::RangeInclusiveMap;
 
 fn build_machine() -> (Arc<Machine>, AddressSpaceId) {
     let (machine, address_space_id) = Machine::build_test_minimal().address_space(16);
 
-    let (machine, _) = machine.component(
-        "ram-memory",
-        MemoryConfig {
-            readable: true,
-            writable: true,
-            assigned_range: 0x0000..=0x0fff,
-            assigned_address_space: address_space_id,
-            initial_contents: RangeInclusiveMap::from_iter([(
-                0x0000..=0x0fff,
-                InitialContents::Value(0x00),
-            )]),
-            sram: false,
-        },
-    );
+    let (machine, ram_path) = machine.memory("ram-memory", 0x1000, []);
 
     let machine = machine
-        .memory_map_buffer_read(address_space_id, 0x1000..=0x1fff, vec![0u8; 0x1000])
+        .map_memory(
+            address_space_id,
+            [
+                MemoryMapCommand::Map {
+                    range: RangeInclusive::from_start_and_length(0, 0x1000),
+                    target: MapTarget::Memory {
+                        path: ram_path,
+                        subrange: None,
+                    },
+                    permissions: Permissions::ALL,
+                },
+                MemoryMapCommand::Map {
+                    range: RangeInclusive::from_start_and_length(0x1000, 0x1000),
+                    target: MapTarget::ImmutableMemory(vec![0; 0x1000].into()),
+                    permissions: Permissions::READ,
+                },
+            ],
+        )
         .seal()
         .build(());
 

@@ -174,7 +174,7 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
                     }
                     ExecutionState::AwaitingVsync => {
                         let vsync_occured = runtime
-                            .registry()
+                            .component_registry()
                             .interact::<Chip8Display<G>, _>(
                                 &self.config.display,
                                 timestamp,

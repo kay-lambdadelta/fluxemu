@@ -38,7 +38,7 @@ impl AudioMixer {
             };
 
             runtime_guard
-                .registry()
+                .component_registry()
                 .interact_dyn(
                     component_path,
                     &runtime_guard.safe_advance_timestamp(),

@@ -1,12 +1,12 @@
-use std::{cell::UnsafeCell, ops::Deref, rc::Rc, sync::Arc};
+use std::{ops::Deref, rc::Rc, sync::Arc};
 
 use fluxemu_program::ProgramSpecification;
 
 use crate::{
     ComponentPath,
-    component::{Component, ComponentRegistry, LocalComponentStore},
+    component::{Component, ComponentRegistry},
     event::EventMode,
-    machine::{Machine, RUNTIME_CONTEXT},
+    machine::{Machine, THREAD_RUNTIME_API, ThreadLocalData},
     memory::{AddressSpace, AddressSpaceId},
     scheduler::Period,
 };
@@ -14,32 +14,27 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct RuntimeApi<M: Deref<Target = Machine>> {
     machine: M,
-    local_component_store: Rc<UnsafeCell<LocalComponentStore>>,
+    local_data: Rc<ThreadLocalData>,
 }
 
 impl RuntimeApi<Arc<Machine>> {
     #[inline]
     pub fn current() -> Self {
-        RUNTIME_CONTEXT.with_borrow(|context| context.as_ref().unwrap().clone())
+        THREAD_RUNTIME_API.with_borrow(|context| context.as_ref().unwrap().clone())
     }
 }
 
 impl<M: Deref<Target = Machine>> RuntimeApi<M> {
     pub(crate) fn new(machine: M) -> Self {
         RuntimeApi {
-            local_component_store: Rc::new(UnsafeCell::new(LocalComponentStore::new(
-                &machine.registry_data,
-            ))),
+            local_data: Rc::new(ThreadLocalData::new(&machine)),
             machine,
         }
     }
 
-    pub(crate) fn new_with_local_store(
-        machine: M,
-        local_component_store: Rc<UnsafeCell<LocalComponentStore>>,
-    ) -> Self {
+    pub(crate) fn new_with_local_data(machine: M, local_data: Rc<ThreadLocalData>) -> Self {
         RuntimeApi {
-            local_component_store,
+            local_data,
             machine,
         }
     }
@@ -47,7 +42,7 @@ impl<M: Deref<Target = Machine>> RuntimeApi<M> {
     #[inline]
     pub fn as_ref(&self) -> RuntimeApi<&Machine> {
         RuntimeApi {
-            local_component_store: self.local_component_store.clone(),
+            local_data: self.local_data.clone(),
             machine: &*self.machine,
         }
     }
@@ -58,8 +53,8 @@ impl<M: Deref<Target = Machine>> RuntimeApi<M> {
     }
 
     #[inline]
-    pub(crate) fn local_component_store(&self) -> &Rc<UnsafeCell<LocalComponentStore>> {
-        &self.local_component_store
+    pub(crate) fn local_data(&self) -> &Rc<ThreadLocalData> {
+        &self.local_data
     }
 
     /// Obtain a handle to a address space denoted by the given id
@@ -70,14 +65,20 @@ impl<M: Deref<Target = Machine>> RuntimeApi<M> {
     pub fn address_space(&self, address_space_id: AddressSpaceId) -> Option<AddressSpace<'_>> {
         self.machine.address_spaces.get(&address_space_id).map(
             #[inline]
-            |address_space_data| AddressSpace::new(self.registry(), address_space_data),
+            |address_space_data| {
+                AddressSpace::new(
+                    self.memory_registry(),
+                    self.component_registry(),
+                    address_space_data,
+                )
+            },
         )
     }
 
-    /// Obtain a handle to the registry
+    /// Obtain a handle to the component registry
     #[inline]
-    pub fn registry(&self) -> ComponentRegistry<'_> {
-        ComponentRegistry::new(self.as_ref(), &self.machine.registry_data)
+    pub fn component_registry(&self) -> ComponentRegistry<'_> {
+        ComponentRegistry::new(self.as_ref(), &self.machine.component_registry_data)
     }
 
     /// Gain access to the program specification the [Machine] was created with
@@ -110,6 +111,6 @@ impl<M: Deref<Target = Machine>> RuntimeApi<M> {
     ///
     /// This will NOT be reliable within a synchronization call, and will give the time when the synchronization call started!
     pub fn current_timestamp(&self, path: &ComponentPath) -> Period {
-        self.registry().get_timestamp(path).unwrap()
+        self.component_registry().get_timestamp(path).unwrap()
     }
 }

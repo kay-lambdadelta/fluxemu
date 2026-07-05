@@ -31,7 +31,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
         match instruction {
             Chip8InstructionSet::Chip8(InstructionSetChip8::Clr) => {
                 runtime
-                    .registry()
+                    .component_registry()
                     .interact::<Chip8Display<G>, _>(&self.config.display, timestamp, |component| {
                         component.clear_display();
                     })
@@ -249,7 +249,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                     }
 
                     self.state.registers.work_registers[0xf] = runtime
-                        .registry()
+                        .component_registry()
                         .interact::<Chip8Display<G>, _>(
                             &self.config.display,
                             timestamp,
@@ -274,7 +274,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                     }
 
                     self.state.registers.work_registers[0xf] = runtime
-                        .registry()
+                        .component_registry()
                         .interact::<Chip8Display<G>, _>(
                             &self.config.display,
                             timestamp,
@@ -307,7 +307,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Moved { register }) => {
                 self.state.registers.work_registers[register as usize] = runtime
-                    .registry()
+                    .component_registry()
                     .interact::<Chip8Timer, _>(&self.config.timer, timestamp, |component| {
                         component.get()
                     })
@@ -320,7 +320,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                 let register_value = self.state.registers.work_registers[register as usize];
 
                 runtime
-                    .registry()
+                    .component_registry()
                     .interact::<Chip8Timer, _>(&self.config.timer, timestamp, |component| {
                         component.set(register_value);
                     })
@@ -330,7 +330,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                 let register_value = self.state.registers.work_registers[register as usize];
 
                 runtime
-                    .registry()
+                    .component_registry()
                     .interact::<Chip8Audio, _>(&self.config.audio, timestamp, |component| {
                         component.set(register_value);
                     })
@@ -410,7 +410,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                 match subinstruction {
                     InstructionSetSuperChip8::Lores => {
                         runtime
-                            .registry()
+                            .component_registry()
                             .interact::<Chip8Display<G>, _>(
                                 &self.config.display,
                                 timestamp,
@@ -422,7 +422,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                     }
                     InstructionSetSuperChip8::Hires => {
                         runtime
-                            .registry()
+                            .component_registry()
                             .interact::<Chip8Display<G>, _>(
                                 &self.config.display,
                                 timestamp,

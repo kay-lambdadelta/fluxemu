@@ -1,29 +1,36 @@
 use std::{
     fmt::Debug,
     hash::Hash,
-    ops::RangeInclusive,
+    ops::{Deref, RangeInclusive},
     sync::{Arc, Mutex, atomic::Ordering},
 };
 
 use bytes::Bytes;
+use fluxemu_range::ContiguousRange;
 use rangemap::RangeInclusiveMap;
+pub(crate) use registry::{
+    LocalMemoryRegistryData, MemoryId, MemoryRegistryData, RegionInitializationData,
+};
 use sdd::{AtomicOwned, Guard};
 use thiserror::Error;
 
 use crate::{
+    ResourcePath, RuntimeApi,
     component::{ComponentId, ComponentRegistry},
+    machine::Machine,
+    memory::registry::MemoryRegistry,
     path::ComponentPath,
     scheduler::Period,
 };
 
-pub mod component;
 mod ops;
+mod registry;
 mod remap;
 #[cfg(test)]
 mod tests;
 
 pub type Address = usize;
-const PAGE_SIZE: Address = 0x1000;
+const CHUNK_SIZE: Address = 0x1000;
 const MAX_MIRROR_DEPTH: usize = 4;
 
 /// Handle to a address space specificed at machine registration time
@@ -31,16 +38,22 @@ const MAX_MIRROR_DEPTH: usize = 4;
 /// This is the primary interface for accessing memory in the runtime
 #[derive(Debug)]
 pub struct AddressSpace<'a> {
-    registry: ComponentRegistry<'a>,
+    memory_registry: MemoryRegistry<'a>,
+    component_registry: ComponentRegistry<'a>,
     data: &'a AddressSpaceData,
     guard: Guard,
 }
 
 impl<'a> AddressSpace<'a> {
     #[inline]
-    pub(crate) fn new(registry: ComponentRegistry<'a>, data: &'a AddressSpaceData) -> Self {
+    pub(crate) fn new(
+        memory_registry: MemoryRegistry<'a>,
+        component_registry: ComponentRegistry<'a>,
+        data: &'a AddressSpaceData,
+    ) -> Self {
         Self {
-            registry,
+            memory_registry,
+            component_registry,
             data,
             guard: Guard::new(),
         }
@@ -58,17 +71,22 @@ impl<'a> AddressSpace<'a> {
     ///   Group together commands into as large of lists as you can.
     #[inline]
     pub fn remap(
-        &self,
+        &mut self,
         timestamp: &Period,
-        commands: impl IntoIterator<Item = MemoryRemappingCommand>,
+        commands: impl IntoIterator<Item = MemoryMapCommand>,
     ) {
         // Some programs who do extremely frequent remappings will inflate ram with old copies of the mapping table
         //
         // This informs `sdd` that cleanup should happen sooner rather than later
         self.guard.accelerate();
 
-        self.data
-            .remap(timestamp, &self.registry, &self.guard, commands);
+        self.data.remap(
+            timestamp,
+            &self.guard,
+            &mut self.component_registry,
+            &mut self.memory_registry,
+            commands,
+        );
     }
 }
 
@@ -80,12 +98,9 @@ impl<'a> AddressSpace<'a> {
 
 #[derive(Clone, Debug)]
 enum PageTableTarget {
-    Memory(Bytes),
-    Component {
-        destination_start: Address,
-        component_id: ComponentId,
-        is_standard_memory: bool,
-    },
+    ImmutableMemory(Bytes),
+    Memory { offset: Address, id: MemoryId },
+    Component { offset: Address, id: ComponentId },
 }
 
 #[derive(Debug, Clone)]
@@ -101,7 +116,7 @@ struct PageTable(Box<[Arc<[PageTableEntry]>]>);
 impl PageTable {
     pub fn new(address_space_width: u8) -> Self {
         let addr_space_size = 2usize.pow(u32::from(address_space_width));
-        let total_pages = addr_space_size.div_ceil(PAGE_SIZE);
+        let total_pages = addr_space_size.div_ceil(CHUNK_SIZE);
 
         Self(vec![Default::default(); total_pages].into_boxed_slice())
     }
@@ -154,12 +169,18 @@ struct MasterTables {
 
 #[derive(Debug, Clone)]
 enum MasterTableEntry {
+    Memory {
+        path: ResourcePath,
+        source_base: Address,
+        region_base: Address,
+        length: usize,
+    },
+    ImmutableMemory(Bytes),
     Component(ComponentPath),
     Mirror {
         source_base: Address,
         destination_base: Address,
     },
-    Buffer(Bytes),
 }
 
 impl PartialEq for MasterTableEntry {
@@ -176,8 +197,25 @@ impl PartialEq for MasterTableEntry {
                     destination_base: destination_base_b,
                 },
             ) => source_base_a == source_base_b && destination_base_a == destination_base_b,
-            // Never coalesce buffer entries
-            (Self::Buffer(_), Self::Buffer(_)) => false,
+            (
+                Self::Memory {
+                    path: path_a,
+                    source_base: source_base_a,
+                    region_base: region_base_a,
+                    length: length_a,
+                },
+                Self::Memory {
+                    path: path_b,
+                    source_base: source_base_b,
+                    region_base: region_base_b,
+                    length: length_b,
+                },
+            ) => {
+                path_a == path_b
+                    && source_base_a == source_base_b
+                    && region_base_a == region_base_b
+                    && length_a == length_b
+            }
             _ => false,
         }
     }
@@ -201,7 +239,7 @@ impl AddressSpaceData {
             "width exceeds usize::BITS"
         );
 
-        let width_mask: usize = (1 << width) - 1;
+        let width_mask = (1usize << width).wrapping_sub(1);
 
         Self {
             id,
@@ -230,7 +268,11 @@ impl AddressSpaceData {
 #[derive(Debug, Clone)]
 pub enum MapTarget {
     Component(ComponentPath),
-    Buffer(Bytes),
+    Memory {
+        path: ResourcePath,
+        subrange: Option<RangeInclusive<Address>>,
+    },
+    ImmutableMemory(Bytes),
     Mirror {
         destination: RangeInclusive<Address>,
     },
@@ -239,23 +281,70 @@ pub enum MapTarget {
 /// Command for how the memory access table should modify the memory map
 #[allow(missing_docs)]
 #[derive(Debug, Clone)]
-pub enum MemoryRemappingCommand {
+pub enum MemoryMapCommand {
     /// Add a target to the memory map, or add a map to an existing one
     Map {
         range: RangeInclusive<Address>,
-        target: MapTarget,
         permissions: Permissions,
+        target: MapTarget,
     },
     /// Clear a memory range
     Unmap {
         range: RangeInclusive<Address>,
         permissions: Permissions,
     },
-    /// Notify the component that its base must be changed to an address to function correctly
-    RebaseComponent {
-        component: ComponentPath,
-        base: Address,
-    },
+}
+
+impl MemoryMapCommand {
+    pub fn with_component(
+        path: ComponentPath,
+        input: impl IntoIterator<Item = (RangeInclusive<Address>, Permissions)>,
+    ) -> impl Iterator<Item = Self> {
+        input
+            .into_iter()
+            .map(move |(range, permissions)| Self::Map {
+                permissions,
+                range,
+                target: MapTarget::Component(path.clone()),
+            })
+    }
+
+    pub fn mirror(
+        permissions: Permissions,
+        source: RangeInclusive<Address>,
+        destination: Address,
+    ) -> Self {
+        Self::Map {
+            permissions,
+            target: MapTarget::Mirror {
+                destination: RangeInclusive::from_start_and_length(destination, source.len()),
+            },
+            range: source,
+        }
+    }
+
+    pub fn immutable_memory(base: Address, buffer: impl Into<Bytes>) -> Self {
+        let buffer = buffer.into();
+
+        Self::Map {
+            permissions: Permissions::READ,
+            range: RangeInclusive::from_start_and_length(base, buffer.len()),
+            target: MapTarget::ImmutableMemory(buffer),
+        }
+    }
+
+    pub fn with_mirrors_to_destination(
+        destination: RangeInclusive<Address>,
+        input: impl IntoIterator<Item = (Address, Permissions)>,
+    ) -> impl Iterator<Item = Self> {
+        input.into_iter().map(move |(base, permissions)| Self::Map {
+            permissions,
+            range: RangeInclusive::from_start_and_length(base, destination.len()),
+            target: MapTarget::Mirror {
+                destination: destination.clone(),
+            },
+        })
+    }
 }
 
 #[allow(missing_docs)]
@@ -263,4 +352,27 @@ pub enum MemoryRemappingCommand {
 pub struct Permissions {
     pub read: bool,
     pub write: bool,
+}
+
+impl Permissions {
+    pub const ALL: Self = Permissions {
+        read: true,
+        write: true,
+    };
+    pub const READ: Self = Permissions {
+        read: true,
+        write: false,
+    };
+    pub const WRITE: Self = Permissions {
+        read: false,
+        write: true,
+    };
+}
+
+impl<M: Deref<Target = Machine>> RuntimeApi<M> {
+    /// Obtain a handle to the memory registry
+    #[inline]
+    pub(crate) fn memory_registry(&self) -> MemoryRegistry<'_> {
+        MemoryRegistry::new(self.as_ref(), &self.machine().memory_registry_data)
+    }
 }

@@ -49,7 +49,7 @@ impl Scheduler {
     /// Run the scheduler for a given amount of time, advancing the machine's timestamp and interacting with driven components
     ///
     /// After all driven components (ie: cpus) are successfully advanced, the safe advance timestamp is updated to reflect the new time
-    pub fn run(&self, component_registry: ComponentRegistry<'_>, allocated_time: Period) {
+    pub fn run(&self, component_registry: &mut ComponentRegistry<'_>, allocated_time: Period) {
         // Grab current time
         let safe_advance_timestamp = self.safe_advance_timestamp() + allocated_time;
 
@@ -84,7 +84,6 @@ pub struct SynchronizationContext<'a> {
 }
 
 impl<'a> SynchronizationContext<'a> {
-    /// Convenience method to get a [`ComponentRuntimeApi`] by borrowing from this context
     #[inline]
     pub fn runtime(&self) -> RuntimeApi<&'a Machine> {
         self.runtime.clone()

@@ -7,6 +7,5 @@ license = "GPL-3.0-or-later"
 [dependencies]
 fluxemu-range = { workspace = true }
 fluxemu-runtime = { workspace = true }
-rangemap = { workspace = true }
 serde = { workspace = true }
 strum = { workspace = true }

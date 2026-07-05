@@ -60,11 +60,6 @@ pub trait Component: Send + Sync + Debug + Any {
         Err(denied_range(address, buffer.len()))
     }
 
-    /// Inform the component it should treat `base` as the new base address for its operations
-    fn memory_rebase(&mut self, base: Address) {
-        unreachable!("This component does not support rebasing");
-    }
-
     /// Returns the audio channel with the given name, based upon what this component registered
     fn get_audio_channel(&mut self, name: &str) -> SampleSource<'_> {
         unreachable!()

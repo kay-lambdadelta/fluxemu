@@ -47,7 +47,7 @@ impl EventManager {
     }
 
     #[inline]
-    pub fn consume(&self, registry: ComponentRegistry<'_>, upto: Period) {
+    pub fn consume(&self, registry: &mut ComponentRegistry<'_>, upto: Period) {
         let mut heap_guard = self.heap.lock().unwrap();
 
         while let Some(event) = heap_guard.peek() {

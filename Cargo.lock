@@ -305,7 +305,7 @@ version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34ddef2995421ab6a5c779542c81ee77c115206f4ad9d5a8e05f4ff49716a3dd"
 dependencies = [
- "bit-vec",
+ "bit-vec 0.9.1",
 ]
 
 [[package]]
@@ -313,6 +313,15 @@ name = "bit-vec"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b71798fca2c1fe1086445a7258a4bc81e6e49dcd24c8d0dd9a1e57395b603f51"
+
+[[package]]
+name = "bit-vec"
+version = "0.10.0"
+source = "git+https://github.com/kay-lambdadelta/bit-vec#f7d7829518f4f03c79550307549e1a0507dedf9a"
+dependencies = [
+ "borsh",
+ "serde",
+]
 
 [[package]]
 name = "bitflags"
@@ -1600,11 +1609,11 @@ dependencies = [
  "fluxemu-definition-mos6502",
  "fluxemu-graphics",
  "fluxemu-program",
+ "fluxemu-range",
  "fluxemu-runtime",
  "nalgebra",
  "num",
  "palette",
- "rangemap",
  "serde",
  "strum",
  "thiserror 2.0.18",
@@ -1617,10 +1626,12 @@ name = "fluxemu-definition-chip8"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "bytes",
  "fluxemu-audio",
  "fluxemu-graphics",
  "fluxemu-input",
  "fluxemu-program",
+ "fluxemu-range",
  "fluxemu-runtime",
  "heapless",
  "nalgebra",
@@ -1660,7 +1671,6 @@ version = "0.1.0"
 dependencies = [
  "fluxemu-range",
  "fluxemu-runtime",
- "rangemap",
  "serde",
  "strum",
 ]
@@ -1685,7 +1695,6 @@ dependencies = [
  "nalgebra",
  "palette",
  "rand 0.10.2",
- "rangemap",
  "redb",
  "ringbuffer",
  "ron",
@@ -1840,6 +1849,7 @@ dependencies = [
 name = "fluxemu-runtime"
 version = "0.1.0"
 dependencies = [
+ "bit-vec 0.10.0",
  "bytes",
  "criterion",
  "dyn-clone",
@@ -6203,7 +6213,7 @@ checksum = "2f519832254e56965a9940c4af57dcb75f702b6f6fa4a0b172f685395843a4d7"
 dependencies = [
  "arrayvec",
  "bit-set",
- "bit-vec",
+ "bit-vec 0.9.1",
  "bitflags 2.13.0",
  "bytemuck",
  "cfg_aliases",

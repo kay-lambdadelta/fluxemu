@@ -3,7 +3,7 @@ use std::ops::RangeInclusive;
 use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
-    memory::{Address, AddressSpaceId, MemoryError},
+    memory::{Address, AddressSpaceId, MapTarget, MemoryError, MemoryMapCommand, Permissions},
     platform::Platform,
 };
 
@@ -179,7 +179,15 @@ impl<P: Platform> ComponentConfig<P> for SuzyConfig {
         self,
         component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
-        component_builder.memory_map_component(self.cpu_address_space, SUZY_ADDRESSES);
+        let my_path = component_builder.path().clone();
+        component_builder.map_memory(
+            self.cpu_address_space,
+            [MemoryMapCommand::Map {
+                range: SUZY_ADDRESSES,
+                permissions: Permissions::ALL,
+                target: MapTarget::Component(my_path),
+            }],
+        );
 
         Ok(Suzy {})
     }
