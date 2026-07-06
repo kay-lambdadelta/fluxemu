@@ -97,7 +97,7 @@ impl PageTable {
                                 range: source_range.clone().into(),
                                 target: PageTableTarget::Memory {
                                     offset: region_base + region_offset,
-                                    id: memory_registry.id_for_path(path),
+                                    id: memory_registry.id_for_path(path).unwrap(),
                                 },
                             });
                         }
@@ -251,7 +251,7 @@ impl PageTable {
                         range: calculated_source_range.into(),
                         target: PageTableTarget::Memory {
                             offset: region_base + region_offset,
-                            id: memory_registry.id_for_path(path),
+                            id: memory_registry.id_for_path(path).unwrap(),
                         },
                     });
                 }

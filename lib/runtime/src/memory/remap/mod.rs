@@ -131,7 +131,7 @@ impl AddressSpaceData {
                             }
                         }
                         MapTarget::Memory { path, subrange } => {
-                            let region_size = memory_registry.region_size(&path);
+                            let region_size = memory_registry.region_size(&path).unwrap();
 
                             let subrange = subrange.clone().unwrap_or_else(|| {
                                 RangeInclusive::from_start_and_length(0, region_size)

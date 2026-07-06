@@ -27,7 +27,9 @@ pub(crate) struct RegionInitializationData {
 #[derive(Debug)]
 struct LocalMemoryRegionData {
     base_ptr: NonNull<u8>,
+    // Actual length of the region in bytes
     length: usize,
+    // Chunks this thread currently owns and implicitly how large this region is in chunks
     owned_chunks: BitVec<usize>,
 }
 
@@ -70,7 +72,7 @@ impl MemoryRegistryData {
             },
         ) in required_regions
         {
-            assert!(size > 0, "Region {path:?} requested with zero size");
+            assert!(size > 0, "Region {path} requested with zero size");
 
             let id = next_id;
             next_id = next_id.checked_add(1).expect("Too many regions");
@@ -113,8 +115,7 @@ impl MemoryRegistryData {
 
             assert!(
                 id_for_path.insert(path.clone(), id).is_none(),
-                "Duplicate memory region path: {:?}",
-                path
+                "Duplicate memory region path: {path}",
             );
         }
 
@@ -124,11 +125,8 @@ impl MemoryRegistryData {
         }
     }
 
-    pub fn id_for_path(&self, path: &ResourcePath) -> MemoryId {
-        *self
-            .id_for_path
-            .get(path)
-            .unwrap_or_else(|| panic!("No memory region registered for path {:?}", path))
+    pub fn id_for_path(&self, path: &ResourcePath) -> Option<MemoryId> {
+        self.id_for_path.get(path).copied()
     }
 }
 
@@ -148,39 +146,46 @@ impl<'a> MemoryRegistry<'a> {
     }
 
     #[inline(always)]
-    fn get_memory_of_region(&mut self, id: MemoryId, range: RangeInclusive<usize>) -> &mut [u8] {
-        assert!(!range.is_empty(), "Range must not be empty");
+    fn get_memory_of_region(
+        &mut self,
+        id: MemoryId,
+        range: RangeInclusive<usize>,
+        callback: impl FnOnce(&mut [u8]),
+    ) {
+        // Ensure the range is actually valid
+        assert!(!range.is_empty());
 
         let local_data = &self.runtime.local_data().memory_registry_data;
         let local_data = unsafe { &mut *local_data.get() };
 
-        let region_data = local_data
-            .region_data_cache
-            .get_mut(id as usize)
-            .expect("Invalid Memory ID");
+        let region_data = local_data.region_data_cache.get_mut(id as usize).unwrap();
 
-        assert!(range.start + range.len() <= region_data.length);
+        // This check is sufficient because we assert earlier that the range is a valid range in which "last" is larger or equal to "start"
+        assert!(range.last < region_data.length);
 
         let chunk_range = RangeInclusive {
             start: range.start / CHUNK_SIZE,
             last: range.last / CHUNK_SIZE,
         };
 
-        debug_assert!(
-            chunk_range.last < region_data.owned_chunks.len(),
-            "Computed chunk range {:?} exceeds region chunk count {}",
-            chunk_range,
-            region_data.owned_chunks.len(),
-        );
+        let needs_acquisition = !chunk_range.into_iter().all(|index| {
+            // SAFETY: The chunk range is valid for the region due to the previous checks
+            unsafe { region_data.owned_chunks.get_unchecked(index) }
+        });
 
-        let all_owned = chunk_range.into_iter().all(|i| region_data.owned_chunks[i]);
-        if !all_owned {
+        if needs_acquisition {
             self.acquire_unowned_chunks(id, chunk_range, &mut region_data.owned_chunks);
         }
 
+        // SAFETY: The start offset is within a chunk that we own, and within the allocation we made
         let slice_base_ptr = unsafe { region_data.base_ptr.add(range.start) };
 
-        unsafe { std::slice::from_raw_parts_mut(slice_base_ptr.as_ptr(), range.len()) }
+        // SAFETY: The slice is valid for the region and we own the chunks in the range
+        //
+        // The range length is additionally guaranteed to be equal to or smaller than the chunks
+        //
+        // The lifetime of the slice is constrained to the lifetime of the callback
+        callback(unsafe { std::slice::from_raw_parts_mut(slice_base_ptr.as_ptr(), range.len()) })
     }
 
     #[cold]
@@ -192,7 +197,7 @@ impl<'a> MemoryRegistry<'a> {
     ) {
         let region = self.data.regions.get(&id).unwrap();
         let mut currently_borrowed_chunks = region.borrowed_chunks.lock().unwrap();
-        let mut claimed_this_attempt: Vec<usize> = Vec::new();
+        let mut claimed_this_attempt = Vec::new();
 
         'attempt: loop {
             claimed_this_attempt.clear();
@@ -235,13 +240,10 @@ impl<'a> MemoryRegistry<'a> {
 
             for (chunk_index, mut owned) in local_region.owned_chunks.iter_mut().enumerate() {
                 if *owned {
-                    if !currently_borrowed_chunks[chunk_index] {
-                        unreachable!(
-                            "Desync: chunk {} from memory region {} is marked as locally owned \
-                             but not globally borrowed",
-                            chunk_index, id
-                        );
-                    }
+                    assert!(
+                        currently_borrowed_chunks[chunk_index],
+                        "Desync: chunk {chunk_index} from memory region {id} is marked as locally owned but not globally borrowed"
+                    );
 
                     currently_borrowed_chunks.set(chunk_index, false);
                     *owned = false;
@@ -256,27 +258,41 @@ impl<'a> MemoryRegistry<'a> {
     #[inline]
     pub fn read(&mut self, id: MemoryId, offset: usize, buffer: &mut [u8]) {
         let range = RangeInclusive::from_start_and_length(offset, buffer.len());
-        let relevant_region_memory = self.get_memory_of_region(id, range);
 
-        buffer.copy_from_slice(relevant_region_memory);
+        self.get_memory_of_region(
+            id,
+            range,
+            #[inline]
+            |relevant_region_memory| {
+                buffer.copy_from_slice(relevant_region_memory);
+            },
+        );
     }
 
     #[inline]
     pub fn write(&mut self, id: MemoryId, offset: usize, buffer: &[u8]) {
         let range = RangeInclusive::from_start_and_length(offset, buffer.len());
-        let relevant_region_memory = self.get_memory_of_region(id, range);
 
-        relevant_region_memory.copy_from_slice(buffer);
+        self.get_memory_of_region(
+            id,
+            range,
+            #[inline]
+            |relevant_region_memory| {
+                relevant_region_memory.copy_from_slice(buffer);
+            },
+        );
     }
 
     #[inline]
-    pub fn id_for_path(&self, path: &ResourcePath) -> MemoryId {
+    pub fn id_for_path(&self, path: &ResourcePath) -> Option<MemoryId> {
         self.data.id_for_path(path)
     }
 
-    pub fn region_size(&self, path: &ResourcePath) -> usize {
-        let id = self.id_for_path(path);
-        self.data.regions[&id].size
+    #[inline]
+    pub fn region_size(&self, path: &ResourcePath) -> Option<usize> {
+        let id = self.id_for_path(path)?;
+
+        Some(self.data.regions[&id].size)
     }
 }
 
