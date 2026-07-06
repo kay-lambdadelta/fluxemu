@@ -67,3 +67,7 @@ wgpu = "29.0"
 
 [profile.release]
 panic = "abort"
+
+[profile.profiling]
+inherits = "release"
+debug = true
