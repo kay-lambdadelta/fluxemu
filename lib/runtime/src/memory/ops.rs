@@ -404,16 +404,9 @@ fn visit_page_entries<BUFFER: SplitableBuffer>(
         for PageTableEntry {
             range: entry_assigned_range,
             target,
-        } in page.iter()
-        {
-            if entry_assigned_range.last < access_range.start {
-                continue;
-            }
-
-            if entry_assigned_range.start > access_range.last {
-                break;
-            }
-
+        } in page.iter().filter(|entry| {
+            entry.range.last >= access_range.start && entry.range.start <= access_range.last
+        }) {
             let entry_access_range = entry_assigned_range.intersection(&access_range);
             let buffer_range = (entry_access_range.start - access_range.start)
                 ..=(entry_access_range.last - access_range.start);
@@ -497,7 +490,6 @@ fn virtual_memory_write(
 }
 
 #[cold]
-#[inline]
 fn form_error(access_range: RangeInclusive<usize>) -> MemoryError {
     MemoryError(std::iter::once((access_range.into(), MemoryErrorType::OutOfBus)).collect())
 }
