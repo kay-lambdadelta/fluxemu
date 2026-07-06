@@ -5,7 +5,7 @@ use std::{
     io::Read,
     ops::Deref,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, LazyLock},
 };
 
 use bytes::Bytes;
@@ -55,16 +55,16 @@ pub struct ProgramManager {
 impl ProgramManager {
     /// Opens and loads the default database
     pub fn new(
-        database: Database,
+        database: impl Into<Arc<Database>>,
         rom_stores: impl IntoIterator<Item = PathBuf>,
     ) -> Result<Arc<Self>, Error> {
+        let database = database.into();
+
         let mut database_transaction = database.begin_write()?;
         database_transaction.set_quick_repair(true);
         database_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
         database_transaction.open_multimap_table(HASH_ALIAS_TABLE)?;
         database_transaction.commit()?;
-
-        let database = Arc::new(database);
 
         Ok(Arc::new(Self {
             database,
@@ -132,11 +132,16 @@ impl ProgramManager {
 
     /// For testing purposes
     pub fn dummy() -> Result<Arc<Self>, Error> {
-        let database = Database::builder()
-            .create_with_backend(InMemoryBackend::default())
-            .unwrap();
+        // This function is used for tests, it can share a dummy database to use as a placeholder
+        static DUMMY_DATABASE: LazyLock<Arc<Database>> = LazyLock::new(|| {
+            let database = Database::builder()
+                .create_with_backend(InMemoryBackend::default())
+                .unwrap();
 
-        Self::new(database, [])
+            Arc::new(database)
+        });
+
+        Self::new(DUMMY_DATABASE.clone(), [])
     }
 
     /// Attempts to identify a program from its program ids
