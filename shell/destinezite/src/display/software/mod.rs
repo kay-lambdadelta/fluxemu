@@ -165,7 +165,7 @@ fn present_machine(
 
                 surface_buffer
                     .view_mut(min.x..max.x, min.y..max.y)
-                    .copy_from(framebuffer_texture, CopyMode::Nearest);
+                    .map_from(framebuffer_texture, CopyMode::Nearest, From::from);
             },
         );
     }

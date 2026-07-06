@@ -1,4 +1,7 @@
-use core::ops::{Bound, Deref, DerefMut, Index, IndexMut, RangeBounds, RangeInclusive};
+use core::{
+    convert::identity,
+    ops::{Bound, Deref, DerefMut, Index, IndexMut, RangeBounds, RangeInclusive},
+};
 
 use alloc::boxed::Box;
 use bytemuck::{AnyBitPattern, NoUninit};
@@ -211,10 +214,21 @@ impl<STORAGE: Storage> Texture<STORAGE> {
 
     /// Copy a region from another texture into this texture
     #[inline]
-    pub fn copy_from<T2: Into<STORAGE::Pixel> + Clone + 'static>(
+    pub fn copy_from(&mut self, other: impl AsViewTexture<STORAGE::Pixel>, mode: CopyMode)
+    where
+        STORAGE: StorageMut,
+        STORAGE::Pixel: Clone,
+    {
+        self.map_from(other, mode, identity);
+    }
+
+    /// Copy a region from another texture into this texture, with a custom mapping function
+    #[inline]
+    pub fn map_from<T2: Clone>(
         &mut self,
         other: impl AsViewTexture<T2>,
         mode: CopyMode,
+        mut map: impl FnMut(T2) -> STORAGE::Pixel,
     ) where
         STORAGE: StorageMut,
     {
@@ -223,14 +237,14 @@ impl<STORAGE: Storage> Texture<STORAGE> {
         if self.size() == other.size() {
             if self.storage_size == other.storage_size {
                 for (index, pixel) in other.storage.iter().enumerate() {
-                    self.storage[index] = pixel.clone().into();
+                    self.storage[index] = map(pixel.clone());
                 }
             } else {
                 for y in 0..self.height() {
                     for x in 0..self.width() {
                         let index = Point2::new(x, y);
 
-                        self[index] = other[index].clone().into();
+                        self[index] = map(other[index].clone());
                     }
                 }
             }
@@ -252,7 +266,7 @@ impl<STORAGE: Storage> Texture<STORAGE> {
                             (y as f32 * ratio.y) as usize,
                         );
 
-                        self[Point2::new(x, y)] = other[source_position].clone().into();
+                        self[Point2::new(x, y)] = map(other[source_position].clone());
                     }
                 }
             }

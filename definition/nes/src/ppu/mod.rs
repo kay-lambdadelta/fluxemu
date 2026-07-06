@@ -1,7 +1,7 @@
 use std::{any::Any, marker::PhantomData, ops::RangeInclusive};
 
 use fluxemu_definition_mos6502::{Mos6502, Mos6502Event, Pin};
-use fluxemu_graphics::api::software::texture::{OwnedTexture, Texture};
+use fluxemu_graphics::api::software::texture::{AsViewTexture, OwnedTexture, Texture};
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
     RuntimeApi,
@@ -507,7 +507,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                 self.backend
                     .as_mut()
                     .unwrap()
-                    .commit_staging_buffer(&self.staging_buffer);
+                    .commit_staging_buffer(self.staging_buffer.as_view());
 
                 let lines_until_next_vblank = R::TOTAL_SCANLINES - R::VBLANK_LENGTH;
                 let mut cycles_until_next_vblank =

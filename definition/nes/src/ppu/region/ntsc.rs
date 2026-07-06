@@ -3,7 +3,7 @@ use palette::Srgb;
 
 use super::Region;
 
-pub static COLOR_PALETTE: [Srgb<u8>; 64] = [
+pub const COLOR_PALETTE: [Srgb<u8>; 64] = [
     Srgb::new(84, 84, 84),
     Srgb::new(0, 30, 116),
     Srgb::new(8, 16, 144),
