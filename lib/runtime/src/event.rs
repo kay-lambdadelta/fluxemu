@@ -27,6 +27,7 @@ impl<T: Any + DynClone + Send + Debug + 'static> Event for T {}
 #[derive(Debug, Default)]
 pub(crate) struct EventManager {
     heap: Mutex<BinaryHeap<QueuedEvent>>,
+    event_preemption_signal: EventPreemptionSignal,
 }
 
 impl EventManager {
@@ -44,6 +45,8 @@ impl EventManager {
             mode,
             time: Reverse(time),
         });
+
+        self.event_preemption_signal.event_scheduled();
     }
 
     #[inline]
@@ -68,6 +71,8 @@ impl EventManager {
                         time: Reverse(time),
                         data: dyn_clone::clone_box(event.data.as_ref()),
                     });
+
+                    self.event_preemption_signal.event_scheduled();
                 }
             }
 
@@ -94,17 +99,17 @@ impl EventManager {
 
         None
     }
+
+    pub fn preemption_signal(&self) -> &EventPreemptionSignal {
+        &self.event_preemption_signal
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct EventPreemptionSignal(AtomicU32);
 
 impl EventPreemptionSignal {
-    pub(super) fn new() -> Self {
-        Self(AtomicU32::new(0))
-    }
-
-    pub(crate) fn event_occurred(&self) {
+    fn event_scheduled(&self) {
         self.0.fetch_add(1, Ordering::Release);
     }
 

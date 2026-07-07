@@ -103,8 +103,6 @@ impl<M: Deref<Target = Machine>> RuntimeApi<M> {
             requeue_mode,
             Box::new(data),
         );
-
-        self.machine.scheduler.preemption_signal().event_occurred();
     }
 
     /// Get the current timestamp of your component

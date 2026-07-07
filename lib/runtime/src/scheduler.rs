@@ -3,10 +3,7 @@ use std::{fmt::Debug, sync::Mutex};
 use fixed::{FixedU128, types::extra::U64};
 
 use crate::{
-    RuntimeApi,
-    component::ComponentRegistry,
-    event::{EventManager, EventPreemptionSignal},
-    machine::Machine,
+    RuntimeApi, component::ComponentRegistry, event::EventManager, machine::Machine,
     path::ComponentPath,
 };
 
@@ -16,7 +13,6 @@ pub(crate) struct Scheduler {
     safe_advance_timestamp: Mutex<Period>,
     driven: Vec<ComponentPath>,
     start_time: Period,
-    event_preemption_signal: EventPreemptionSignal,
 }
 
 impl Scheduler {
@@ -26,7 +22,6 @@ impl Scheduler {
             driven: Vec::default(),
             safe_advance_timestamp: Mutex::default(),
             start_time: Period::default(),
-            event_preemption_signal: EventPreemptionSignal::new(),
         }
     }
 
@@ -61,11 +56,6 @@ impl Scheduler {
         // Set the new time, marking that the machine has officially advanced to this time
         let mut safe_advance_timestamp_guard = self.safe_advance_timestamp.lock().unwrap();
         *safe_advance_timestamp_guard = (*safe_advance_timestamp_guard).max(safe_advance_timestamp);
-    }
-
-    /// The preemption signal causes at least one [QuantaIterator] to stop active work and service events
-    pub fn preemption_signal(&self) -> &EventPreemptionSignal {
-        &self.event_preemption_signal
     }
 }
 
@@ -109,7 +99,7 @@ impl<'a> SynchronizationContext<'a> {
         *self.last_attempted_allocation = period;
 
         let scheduler = &self.runtime.machine().scheduler;
-        let last_seen_event_generation = scheduler.preemption_signal().generation();
+        let last_seen_event_generation = scheduler.event_manager.preemption_signal().generation();
 
         let mut stop_time = self.target_timestamp;
         if let Some(next_event) = scheduler.event_manager.next_event() {
@@ -136,7 +126,13 @@ pub struct QuantaAllocator<'b, 'a> {
 impl QuantaAllocator<'_, '_> {
     #[inline]
     pub fn allocate(&mut self) -> Option<&Period> {
-        let preemption_signal = self.context.runtime.machine().scheduler.preemption_signal();
+        let preemption_signal = self
+            .context
+            .runtime
+            .machine()
+            .scheduler
+            .event_manager
+            .preemption_signal();
 
         let current_generation = preemption_signal.generation();
         if current_generation != self.last_seen_event_generation {
