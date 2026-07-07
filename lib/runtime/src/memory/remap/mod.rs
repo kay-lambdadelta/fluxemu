@@ -5,10 +5,10 @@ use rangemap::RangeInclusiveSet;
 use sdd::{Guard, Owned, Tag};
 
 use crate::{
-    component::ComponentRegistry,
+    RuntimeHandle,
     memory::{
         AddressSpaceData, MapTarget, MasterTableEntry, MasterTables, Members, MemoryMapCommand,
-        PageTable, registry::MemoryRegistry,
+        PageTable,
     },
     scheduler::Period,
 };
@@ -21,8 +21,7 @@ impl AddressSpaceData {
         &self,
         _timestamp: &Period,
         guard: &Guard,
-        component_registry: &mut ComponentRegistry,
-        memory_registry: &mut MemoryRegistry,
+        runtime: &RuntimeHandle,
         commands: impl IntoIterator<Item = MemoryMapCommand>,
     ) {
         let max = 2usize.pow(u32::from(self.address_space_width)) - 1;
@@ -131,7 +130,7 @@ impl AddressSpaceData {
                             }
                         }
                         MapTarget::Memory { path, subrange } => {
-                            let region_size = memory_registry.region_size(&path).unwrap();
+                            let region_size = runtime.memory_registry().region_size(&path).unwrap();
 
                             let subrange = subrange.clone().unwrap_or_else(|| {
                                 RangeInclusive::from_start_and_length(0, region_size)
@@ -186,15 +185,15 @@ impl AddressSpaceData {
             &current_members.read,
             master_read,
             &dirty_read,
-            component_registry,
-            memory_registry,
+            runtime.component_registry(),
+            runtime.memory_registry(),
         );
         write_table.commit(
             &current_members.write,
             master_write,
             &dirty_write,
-            component_registry,
-            memory_registry,
+            runtime.component_registry(),
+            runtime.memory_registry(),
         );
 
         let members = Members {

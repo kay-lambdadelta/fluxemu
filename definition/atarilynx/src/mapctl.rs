@@ -2,7 +2,7 @@ use std::ops::RangeInclusive;
 
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
-    ResourcePath, RuntimeApi,
+    ResourcePath, RuntimeHandle,
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId, MapTarget, MemoryError, MemoryMapCommand, Permissions},
@@ -43,61 +43,62 @@ impl Component for Mapctl {
         _address_space: AddressSpaceId,
         buffer: &[u8],
     ) -> Result<(), MemoryError> {
-        let runtime = RuntimeApi::current();
-        let timestamp = runtime.current_timestamp(&self.path);
+        RuntimeHandle::with_current(|runtime| {
+            let timestamp = runtime.current_timestamp(&self.path);
 
-        self.status = MapctlStatus::from_byte(buffer[0]);
+            self.status = MapctlStatus::from_byte(buffer[0]);
 
-        let mut remapping_commands = Vec::default();
+            let mut remapping_commands = Vec::default();
 
-        remapping_commands.push(MemoryMapCommand::Map {
-            range: 0x0000..=0xffff,
-            target: MapTarget::Memory {
-                path: self.config.ram.clone(),
-                subrange: None,
-            },
-            permissions: Permissions::ALL,
-        });
-
-        if self.status.suzy {
             remapping_commands.push(MemoryMapCommand::Map {
-                range: SUZY_ADDRESSES,
-                target: MapTarget::Component(self.config.suzy.clone()),
+                range: 0x0000..=0xffff,
+                target: MapTarget::Memory {
+                    path: self.config.ram.clone(),
+                    subrange: None,
+                },
                 permissions: Permissions::ALL,
             });
-        }
 
-        if self.status.mikey {
-            remapping_commands.push(MemoryMapCommand::Map {
-                range: MIKEY_ADDRESSES,
-                target: MapTarget::Component(self.config.mikey.clone()),
+            if self.status.suzy {
+                remapping_commands.push(MemoryMapCommand::Map {
+                    range: SUZY_ADDRESSES,
+                    target: MapTarget::Component(self.config.suzy.clone()),
+                    permissions: Permissions::ALL,
+                });
+            }
+
+            if self.status.mikey {
+                remapping_commands.push(MemoryMapCommand::Map {
+                    range: MIKEY_ADDRESSES,
+                    target: MapTarget::Component(self.config.mikey.clone()),
+                    permissions: Permissions::ALL,
+                });
+            }
+
+            remapping_commands.push(MemoryMapCommand::Unmap {
+                range: RESERVED_MEMORY_ADDRESS..=RESERVED_MEMORY_ADDRESS,
                 permissions: Permissions::ALL,
             });
-        }
 
-        remapping_commands.push(MemoryMapCommand::Unmap {
-            range: RESERVED_MEMORY_ADDRESS..=RESERVED_MEMORY_ADDRESS,
-            permissions: Permissions::ALL,
-        });
+            if self.status.vector {
+                remapping_commands.push(MemoryMapCommand::Map {
+                    range: VECTOR_ADDRESSES,
+                    target: MapTarget::Component(self.config.vector.clone()),
+                    permissions: Permissions::ALL,
+                });
+            }
 
-        if self.status.vector {
             remapping_commands.push(MemoryMapCommand::Map {
-                range: VECTOR_ADDRESSES,
-                target: MapTarget::Component(self.config.vector.clone()),
+                range: MAPCTL_ADDRESS..=MAPCTL_ADDRESS,
+                target: MapTarget::Component(self.path.clone()),
                 permissions: Permissions::ALL,
             });
-        }
 
-        remapping_commands.push(MemoryMapCommand::Map {
-            range: MAPCTL_ADDRESS..=MAPCTL_ADDRESS,
-            target: MapTarget::Component(self.path.clone()),
-            permissions: Permissions::ALL,
+            runtime
+                .address_space(self.config.cpu_address_space)
+                .unwrap()
+                .remap(&timestamp, remapping_commands);
         });
-
-        runtime
-            .address_space(self.config.cpu_address_space)
-            .unwrap()
-            .remap(&timestamp, remapping_commands);
 
         Ok(())
     }

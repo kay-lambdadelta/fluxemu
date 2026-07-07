@@ -1,4 +1,4 @@
-use fluxemu_runtime::{RuntimeApi, machine::Machine, memory::AddressSpace, scheduler::Period};
+use fluxemu_runtime::{RuntimeHandle, memory::AddressSpace, scheduler::Period};
 use nalgebra::Point2;
 use rand::RngExt;
 
@@ -21,7 +21,7 @@ use crate::{
 impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
     pub(super) fn interpret_instruction(
         &mut self,
-        runtime: RuntimeApi<&Machine>,
+        runtime: &RuntimeHandle,
         address_space: &mut AddressSpace<'_>,
         timestamp: &Period,
         instruction: Chip8InstructionSet,

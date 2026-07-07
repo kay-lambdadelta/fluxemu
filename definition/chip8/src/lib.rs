@@ -3,6 +3,7 @@ use std::{marker::PhantomData, ops::RangeInclusive};
 use audio::Chip8AudioConfig;
 use bytes::Bytes;
 use display::Chip8DisplayConfig;
+use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
     machine::builder::{MachineBuilder, MachineFactory, RomRequirement},
     memory::{MapTarget, MemoryMapCommand, Permissions},
@@ -13,8 +14,6 @@ use font::CHIP8_FONT;
 use processor::Chip8ProcessorConfig;
 use serde::{Deserialize, Serialize};
 use timer::Chip8TimerConfig;
-
-use fluxemu_range::ContiguousRange;
 
 use crate::display::SupportedGraphicsApiChip8Display;
 

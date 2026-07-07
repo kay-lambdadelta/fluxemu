@@ -1,5 +1,6 @@
 use std::{
     alloc::Layout,
+    cell::UnsafeCell,
     collections::HashMap,
     ptr::NonNull,
     range::RangeInclusive,
@@ -13,7 +14,7 @@ use itertools::Itertools;
 use rangemap::RangeInclusiveMap;
 use rustc_hash::FxBuildHasher;
 
-use crate::{ResourcePath, RuntimeApi, machine::Machine, memory::CHUNK_SIZE};
+use crate::{ResourcePath, RuntimeHandle, memory::CHUNK_SIZE};
 
 pub type MemoryId = u16;
 
@@ -134,20 +135,29 @@ impl MemoryRegistryData {
 unsafe impl Send for MemoryRegistryData {}
 unsafe impl Sync for MemoryRegistryData {}
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct MemoryRegistry<'a> {
-    runtime: RuntimeApi<&'a Machine>,
-    data: &'a MemoryRegistryData,
+    runtime: &'a RuntimeHandle,
 }
 
 impl<'a> MemoryRegistry<'a> {
-    pub fn new(runtime: RuntimeApi<&'a Machine>, data: &'a MemoryRegistryData) -> Self {
-        Self { data, runtime }
+    pub fn new(runtime: &'a RuntimeHandle) -> Self {
+        Self { runtime }
+    }
+
+    #[inline]
+    fn data(&self) -> &MemoryRegistryData {
+        &self.runtime.machine().memory_registry_data
+    }
+
+    #[inline]
+    fn local_data(&self) -> &UnsafeCell<LocalMemoryRegistryData> {
+        &self.runtime.local_data().memory_registry_data
     }
 
     #[inline(always)]
     fn get_memory_of_region(
-        &mut self,
+        &self,
         id: MemoryId,
         range: RangeInclusive<usize>,
         callback: impl FnOnce(&mut [u8]),
@@ -155,9 +165,7 @@ impl<'a> MemoryRegistry<'a> {
         // Ensure the range is actually valid
         assert!(!range.is_empty());
 
-        let local_data = &self.runtime.local_data().memory_registry_data;
-        let local_data = unsafe { &mut *local_data.get() };
-
+        let local_data = unsafe { &mut *self.local_data().get() };
         let region_data = local_data.region_data_cache.get_mut(id as usize).unwrap();
 
         // This check is sufficient because we assert earlier that the range is a valid range in which "last" is larger or equal to "start"
@@ -189,13 +197,15 @@ impl<'a> MemoryRegistry<'a> {
     }
 
     #[cold]
+    #[inline]
     fn acquire_unowned_chunks(
-        &mut self,
+        &self,
         id: MemoryId,
         chunk_range: RangeInclusive<usize>,
         owned_chunks: &mut BitVec<usize>,
     ) {
-        let region = self.data.regions.get(&id).unwrap();
+        let region = self.data().regions.get(&id).unwrap();
+
         let mut currently_borrowed_chunks = region.borrowed_chunks.lock().unwrap();
         let mut claimed_this_attempt = Vec::new();
 
@@ -231,18 +241,20 @@ impl<'a> MemoryRegistry<'a> {
         }
     }
 
-    pub fn release_all(&mut self) {
-        let local_data = unsafe { &mut *self.runtime.local_data().memory_registry_data.get() };
+    pub fn release_all(&self) {
+        let local_data = unsafe { &mut *self.local_data().get() };
 
         for (id, local_region) in local_data.region_data_cache.iter_mut().enumerate() {
-            let region = self.data.regions.get(&(id as MemoryId)).unwrap();
+            let region = self.data().regions.get(&(id as MemoryId)).unwrap();
+
             let mut currently_borrowed_chunks = region.borrowed_chunks.lock().unwrap();
 
             for (chunk_index, mut owned) in local_region.owned_chunks.iter_mut().enumerate() {
                 if *owned {
                     assert!(
                         currently_borrowed_chunks[chunk_index],
-                        "Desync: chunk {chunk_index} from memory region {id} is marked as locally owned but not globally borrowed"
+                        "Desync: chunk {chunk_index} from memory region {id} is marked as locally \
+                         owned but not globally borrowed"
                     );
 
                     currently_borrowed_chunks.set(chunk_index, false);
@@ -256,7 +268,7 @@ impl<'a> MemoryRegistry<'a> {
     }
 
     #[inline]
-    pub fn read(&mut self, id: MemoryId, offset: usize, buffer: &mut [u8]) {
+    pub fn read(&self, id: MemoryId, offset: usize, buffer: &mut [u8]) {
         let range = RangeInclusive::from_start_and_length(offset, buffer.len());
 
         self.get_memory_of_region(
@@ -270,7 +282,7 @@ impl<'a> MemoryRegistry<'a> {
     }
 
     #[inline]
-    pub fn write(&mut self, id: MemoryId, offset: usize, buffer: &[u8]) {
+    pub fn write(&self, id: MemoryId, offset: usize, buffer: &[u8]) {
         let range = RangeInclusive::from_start_and_length(offset, buffer.len());
 
         self.get_memory_of_region(
@@ -285,14 +297,14 @@ impl<'a> MemoryRegistry<'a> {
 
     #[inline]
     pub fn id_for_path(&self, path: &ResourcePath) -> Option<MemoryId> {
-        self.data.id_for_path(path)
+        self.data().id_for_path(path)
     }
 
     #[inline]
     pub fn region_size(&self, path: &ResourcePath) -> Option<usize> {
         let id = self.id_for_path(path)?;
 
-        Some(self.data.regions[&id].size)
+        Some(self.data().regions[&id].size)
     }
 }
 

@@ -2,7 +2,7 @@ use std::{fmt::Debug, ops::RangeInclusive};
 
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
-    RuntimeApi,
+    RuntimeHandle,
     component::{
         Component,
         config::{ComponentConfig, LateContext},
@@ -121,106 +121,107 @@ impl Component for Mos6532Riot {
         _address_space: AddressSpaceId,
         buffer: &[u8],
     ) -> Result<(), MemoryError> {
-        let runtime = RuntimeApi::current();
-        let timestamp = runtime.current_timestamp(&self.path);
+        RuntimeHandle::with_current(|runtime| {
+            let timestamp = runtime.current_timestamp(&self.path);
 
-        for (address, buffer_section) in
-            RangeInclusive::from_start_and_length(address, buffer.len()).zip(buffer.iter())
-        {
-            let adjusted_address = address - self.config.registers_assigned_address;
+            for (address, buffer_section) in
+                RangeInclusive::from_start_and_length(address, buffer.len()).zip(buffer.iter())
+            {
+                let adjusted_address = address - self.config.registers_assigned_address;
 
-            match Register::from_repr(adjusted_address).unwrap() {
-                Register::Swcha => {
-                    unreachable!()
-                }
-                Register::Swacnt => {
-                    self.state.swacnt = *buffer_section != 0;
-
-                    if let Some(swacnt) = &self.config.swcha {
-                        let address = self.swcha_address();
-
-                        let permissions = if self.state.swacnt {
-                            Permissions::WRITE
-                        } else {
-                            Permissions::READ
-                        };
-
-                        runtime
-                            .address_space(self.config.assigned_address_space)
-                            .unwrap()
-                            .remap(
-                                &timestamp,
-                                [MemoryMapCommand::Map {
-                                    range: address..=address,
-                                    target: MapTarget::Component(swacnt.clone()),
-                                    permissions,
-                                }],
-                            );
+                match Register::from_repr(adjusted_address).unwrap() {
+                    Register::Swcha => {
+                        unreachable!()
                     }
-                }
-                Register::Swchb => {
-                    unreachable!()
-                }
-                Register::Swbcnt => {
-                    self.state.swbcnt = *buffer_section != 0;
+                    Register::Swacnt => {
+                        self.state.swacnt = *buffer_section != 0;
 
-                    if let Some(swbcnt) = &self.config.swchb {
-                        let address = self.swchb_address();
+                        if let Some(swacnt) = &self.config.swcha {
+                            let address = self.swcha_address();
 
-                        let permissions = if self.state.swbcnt {
-                            Permissions::WRITE
-                        } else {
-                            Permissions::READ
-                        };
+                            let permissions = if self.state.swacnt {
+                                Permissions::WRITE
+                            } else {
+                                Permissions::READ
+                            };
 
-                        runtime
-                            .address_space(self.config.assigned_address_space)
-                            .unwrap()
-                            .remap(
-                                &timestamp,
-                                [MemoryMapCommand::Map {
-                                    range: address..=address,
-                                    target: MapTarget::Component(swbcnt.clone()),
-                                    permissions,
-                                }],
-                            );
+                            runtime
+                                .address_space(self.config.assigned_address_space)
+                                .unwrap()
+                                .remap(
+                                    &timestamp,
+                                    [MemoryMapCommand::Map {
+                                        range: address..=address,
+                                        target: MapTarget::Component(swacnt.clone()),
+                                        permissions,
+                                    }],
+                                );
+                        }
                     }
+                    Register::Swchb => {
+                        unreachable!()
+                    }
+                    Register::Swbcnt => {
+                        self.state.swbcnt = *buffer_section != 0;
+
+                        if let Some(swbcnt) = &self.config.swchb {
+                            let address = self.swchb_address();
+
+                            let permissions = if self.state.swbcnt {
+                                Permissions::WRITE
+                            } else {
+                                Permissions::READ
+                            };
+
+                            runtime
+                                .address_space(self.config.assigned_address_space)
+                                .unwrap()
+                                .remap(
+                                    &timestamp,
+                                    [MemoryMapCommand::Map {
+                                        range: address..=address,
+                                        target: MapTarget::Component(swbcnt.clone()),
+                                        permissions,
+                                    }],
+                                );
+                        }
+                    }
+                    Register::Intim => {
+                        // Read only
+                        unreachable!()
+                    }
+                    Register::Tim1t => {
+                        self.state.timer_configuration = Some(TimerConfiguration {
+                            timer: *buffer_section,
+                            divider: 1,
+                            next_timestamp: timestamp + self.period,
+                        });
+                    }
+                    Register::Tim8t => {
+                        self.state.timer_configuration = Some(TimerConfiguration {
+                            timer: *buffer_section,
+                            divider: 8,
+                            next_timestamp: timestamp + self.period * 8,
+                        });
+                    }
+                    Register::Tim64t => {
+                        self.state.timer_configuration = Some(TimerConfiguration {
+                            timer: *buffer_section,
+                            divider: 64,
+                            next_timestamp: timestamp + self.period * 64,
+                        });
+                    }
+                    Register::T1024t => {
+                        self.state.timer_configuration = Some(TimerConfiguration {
+                            timer: *buffer_section,
+                            divider: 1024,
+                            next_timestamp: timestamp + self.period * 1024,
+                        });
+                    }
+                    Register::Instat => todo!(),
                 }
-                Register::Intim => {
-                    // Read only
-                    unreachable!()
-                }
-                Register::Tim1t => {
-                    self.state.timer_configuration = Some(TimerConfiguration {
-                        timer: *buffer_section,
-                        divider: 1,
-                        next_timestamp: timestamp + self.period,
-                    });
-                }
-                Register::Tim8t => {
-                    self.state.timer_configuration = Some(TimerConfiguration {
-                        timer: *buffer_section,
-                        divider: 8,
-                        next_timestamp: timestamp + self.period * 8,
-                    });
-                }
-                Register::Tim64t => {
-                    self.state.timer_configuration = Some(TimerConfiguration {
-                        timer: *buffer_section,
-                        divider: 64,
-                        next_timestamp: timestamp + self.period * 64,
-                    });
-                }
-                Register::T1024t => {
-                    self.state.timer_configuration = Some(TimerConfiguration {
-                        timer: *buffer_section,
-                        divider: 1024,
-                        next_timestamp: timestamp + self.period * 1024,
-                    });
-                }
-                Register::Instat => todo!(),
             }
-        }
+        });
 
         Ok(())
     }
@@ -264,29 +265,30 @@ impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
         let swchb_address =
             (Register::Swchb as Address) + component.config.registers_assigned_address;
 
-        let runtime = RuntimeApi::current();
-        let mut mapping_commands = Vec::default();
+        RuntimeHandle::with_current(|runtime| {
+            let mut mapping_commands = Vec::default();
 
-        if let Some(swcha) = &component.config.swcha {
-            mapping_commands.push(MemoryMapCommand::Map {
-                range: swcha_address..=swcha_address,
-                target: MapTarget::Component(swcha.clone()),
-                permissions: Permissions::READ,
-            });
-        }
+            if let Some(swcha) = &component.config.swcha {
+                mapping_commands.push(MemoryMapCommand::Map {
+                    range: swcha_address..=swcha_address,
+                    target: MapTarget::Component(swcha.clone()),
+                    permissions: Permissions::READ,
+                });
+            }
 
-        if let Some(swchb) = &component.config.swchb {
-            mapping_commands.push(MemoryMapCommand::Map {
-                range: swchb_address..=swchb_address,
-                target: MapTarget::Component(swchb.clone()),
-                permissions: Permissions::READ,
-            });
-        }
+            if let Some(swchb) = &component.config.swchb {
+                mapping_commands.push(MemoryMapCommand::Map {
+                    range: swchb_address..=swchb_address,
+                    target: MapTarget::Component(swchb.clone()),
+                    permissions: Permissions::READ,
+                });
+            }
 
-        runtime
-            .address_space(component.config.assigned_address_space)
-            .unwrap()
-            .remap(&Period::ZERO, mapping_commands);
+            runtime
+                .address_space(component.config.assigned_address_space)
+                .unwrap()
+                .remap(&Period::ZERO, mapping_commands);
+        });
     }
 
     fn build_component(

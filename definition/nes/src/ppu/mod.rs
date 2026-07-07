@@ -4,7 +4,7 @@ use fluxemu_definition_mos6502::{Mos6502, Mos6502Event, Pin};
 use fluxemu_graphics::api::software::texture::{AsViewTexture, OwnedTexture, Texture};
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
-    RuntimeApi,
+    RuntimeHandle,
     component::{
         Component,
         config::{ComponentConfig, LateContext},
@@ -276,28 +276,34 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                 CpuAccessibleRegister::PpuScroll => todo!(),
                 CpuAccessibleRegister::PpuAddr => todo!(),
                 CpuAccessibleRegister::PpuData => {
-                    let runtime = RuntimeApi::current();
-                    let timestamp = runtime.current_timestamp(&self.path);
+                    RuntimeHandle::with_current(|runtime| {
+                        let timestamp = runtime.current_timestamp(&self.path);
 
-                    let mut ppu_address_space =
-                        runtime.address_space(self.ppu_address_space).unwrap();
+                        let mut ppu_address_space =
+                            runtime.address_space(self.ppu_address_space).unwrap();
 
-                    if avoid_side_effects {
-                        *buffer = ppu_address_space.read_le_value_pure(
-                            self.state.vram_address_pointer as usize,
-                            &timestamp,
-                        )?;
-                    } else {
-                        let new_value = ppu_address_space
-                            .read_le_value(self.state.vram_address_pointer as usize, &timestamp)?;
+                        if avoid_side_effects {
+                            *buffer = ppu_address_space.read_le_value_pure(
+                                self.state.vram_address_pointer as usize,
+                                &timestamp,
+                            )?;
+                        } else {
+                            let new_value = ppu_address_space.read_le_value(
+                                self.state.vram_address_pointer as usize,
+                                &timestamp,
+                            )?;
 
-                        *buffer = std::mem::replace(&mut self.state.vram_read_buffer, new_value);
+                            *buffer =
+                                std::mem::replace(&mut self.state.vram_read_buffer, new_value);
 
-                        self.state.vram_address_pointer =
-                            self.state.vram_address_pointer.wrapping_add(u16::from(
-                                self.state.vram_address_pointer_increment_amount,
-                            )) & 0b0111_1111_1111_1111;
-                    }
+                            self.state.vram_address_pointer =
+                                self.state.vram_address_pointer.wrapping_add(u16::from(
+                                    self.state.vram_address_pointer_increment_amount,
+                                )) & 0b0111_1111_1111_1111;
+                        }
+
+                        Ok(())
+                    })?;
                 }
                 _ => {
                     unreachable!("{:?}", register);
@@ -392,62 +398,72 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         !self.state.vram_address_pointer_write_phase;
                 }
                 CpuAccessibleRegister::PpuData => {
-                    let runtime = RuntimeApi::current();
-                    let timestamp = runtime.current_timestamp(&self.path);
-                    let mut ppu_address_space =
-                        runtime.address_space(self.ppu_address_space).unwrap();
+                    RuntimeHandle::with_current(|runtime| {
+                        let timestamp = runtime.current_timestamp(&self.path);
+                        let mut ppu_address_space =
+                            runtime.address_space(self.ppu_address_space).unwrap();
 
-                    // Redirect into the ppu address space
-                    ppu_address_space.write_le_value(
-                        self.state.vram_address_pointer as usize,
-                        &timestamp,
-                        *buffer,
-                    )?;
+                        // Redirect into the ppu address space
+                        ppu_address_space.write_le_value(
+                            self.state.vram_address_pointer as usize,
+                            &timestamp,
+                            *buffer,
+                        )?;
 
-                    self.state.vram_address_pointer =
-                        self.state.vram_address_pointer.wrapping_add(u16::from(
-                            self.state.vram_address_pointer_increment_amount,
-                        )) & 0b0111_1111_1111_1111;
+                        self.state.vram_address_pointer =
+                            self.state.vram_address_pointer.wrapping_add(u16::from(
+                                self.state.vram_address_pointer_increment_amount,
+                            )) & 0b0111_1111_1111_1111;
+
+                        Ok(())
+                    })?;
                 }
                 CpuAccessibleRegister::OamDma => {
-                    let runtime = RuntimeApi::current();
-                    let timestamp = runtime.current_timestamp(&self.path);
+                    RuntimeHandle::with_current(|runtime| {
+                        let timestamp = runtime.current_timestamp(&self.path);
 
-                    let mut cpu_address_space =
-                        runtime.address_space(self.cpu_address_space).unwrap();
+                        let mut cpu_address_space =
+                            runtime.address_space(self.cpu_address_space).unwrap();
 
-                    let page = u16::from(*buffer) << 8;
+                        let page = u16::from(*buffer) << 8;
 
-                    runtime.schedule_event::<Mos6502>(
-                        &self.processor_path,
-                        EventMode::Once,
-                        timestamp,
-                        Mos6502Event::FlagChange {
-                            pin: Pin::Rdy,
-                            value: false,
-                        },
-                    );
+                        runtime.schedule_event::<Mos6502>(
+                            &self.processor_path,
+                            EventMode::Once,
+                            timestamp,
+                            Mos6502Event::FlagChange {
+                                pin: Pin::Rdy,
+                                value: false,
+                            },
+                        );
 
-                    // TODO: Extract to constant or extract from cpu directly within the config builder
-                    let processor_frequency = R::master_clock() / 12;
+                        // TODO: Extract to constant or extract from cpu directly within the config builder
+                        let processor_frequency = R::master_clock() / 12;
 
-                    let next_processor_rdy_high = timestamp + (processor_frequency.recip() * 514);
+                        let next_processor_rdy_high =
+                            timestamp + (processor_frequency.recip() * 514);
 
-                    // Make sure the cpu wakes up
-                    runtime.schedule_event::<Mos6502>(
-                        &self.processor_path,
-                        EventMode::Once,
-                        next_processor_rdy_high,
-                        Mos6502Event::FlagChange {
-                            pin: Pin::Rdy,
-                            value: true,
-                        },
-                    );
+                        // Make sure the cpu wakes up
+                        runtime.schedule_event::<Mos6502>(
+                            &self.processor_path,
+                            EventMode::Once,
+                            next_processor_rdy_high,
+                            Mos6502Event::FlagChange {
+                                pin: Pin::Rdy,
+                                value: true,
+                            },
+                        );
 
-                    // Read off OAM data immediately, this is done for performance and should not
-                    // have any side effects
-                    let _ =
-                        cpu_address_space.read(page as usize, &timestamp, &mut self.state.oam.data);
+                        // Read off OAM data immediately, this is done for performance and should not
+                        // have any side effects
+                        let _ = cpu_address_space.read(
+                            page as usize,
+                            &timestamp,
+                            &mut self.state.oam.data,
+                        );
+
+                        Ok(())
+                    })?;
                 }
                 _ => {
                     unreachable!("{:?}", register);
@@ -459,75 +475,77 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
     }
 
     fn handle_event(&mut self, event: Box<dyn Event>) {
-        let runtime = RuntimeApi::current();
-        let timestamp = runtime.current_timestamp(&self.path);
-
         let event = downcast_event::<Self>(event);
 
-        match event {
-            PpuEvent::VblankStart => {
-                self.state.entered_vblank = true;
+        RuntimeHandle::with_current(|runtime| {
+            let timestamp = runtime.current_timestamp(&self.path);
 
-                if self.state.vblank_nmi_enabled {
+            match event {
+                PpuEvent::VblankStart => {
+                    self.state.entered_vblank = true;
+
+                    if self.state.vblank_nmi_enabled {
+                        runtime.schedule_event::<Mos6502>(
+                            &self.processor_path,
+                            EventMode::Once,
+                            timestamp,
+                            Mos6502Event::FlagChange {
+                                pin: Pin::Nmi,
+                                value: false,
+                            },
+                        );
+                    }
+
+                    let vblank_len =
+                        Period::from_num(TOTAL_SCANLINE_LENGTH as u128 * R::VBLANK_LENGTH as u128);
+
+                    runtime.schedule_event::<Self>(
+                        &self.path,
+                        EventMode::Once,
+                        timestamp + self.period * vblank_len,
+                        PpuEvent::VblankEnd,
+                    );
+                }
+                PpuEvent::VblankEnd => {
+                    self.state.entered_vblank = false;
+                    self.state.odd_frame = !self.state.odd_frame;
+
                     runtime.schedule_event::<Mos6502>(
                         &self.processor_path,
                         EventMode::Once,
                         timestamp,
                         Mos6502Event::FlagChange {
                             pin: Pin::Nmi,
-                            value: false,
+                            value: true,
                         },
                     );
+
+                    self.backend
+                        .as_mut()
+                        .unwrap()
+                        .commit_staging_buffer(self.staging_buffer.as_view());
+
+                    let lines_until_next_vblank = R::TOTAL_SCANLINES - R::VBLANK_LENGTH;
+                    let mut cycles_until_next_vblank =
+                        TOTAL_SCANLINE_LENGTH as u128 * lines_until_next_vblank as u128;
+
+                    if self.state.odd_frame
+                        && (self.state.background.rendering_enabled
+                            || self.state.oam.rendering_enabled)
+                    {
+                        cycles_until_next_vblank -= 1;
+                    }
+
+                    let next_timestamp = timestamp + self.period * cycles_until_next_vblank;
+                    runtime.schedule_event::<Self>(
+                        &self.path,
+                        EventMode::Once,
+                        next_timestamp,
+                        PpuEvent::VblankStart,
+                    );
                 }
-
-                let vblank_len =
-                    Period::from_num(TOTAL_SCANLINE_LENGTH as u128 * R::VBLANK_LENGTH as u128);
-
-                runtime.schedule_event::<Self>(
-                    &self.path,
-                    EventMode::Once,
-                    timestamp + self.period * vblank_len,
-                    PpuEvent::VblankEnd,
-                );
             }
-            PpuEvent::VblankEnd => {
-                self.state.entered_vblank = false;
-                self.state.odd_frame = !self.state.odd_frame;
-
-                runtime.schedule_event::<Mos6502>(
-                    &self.processor_path,
-                    EventMode::Once,
-                    timestamp,
-                    Mos6502Event::FlagChange {
-                        pin: Pin::Nmi,
-                        value: true,
-                    },
-                );
-
-                self.backend
-                    .as_mut()
-                    .unwrap()
-                    .commit_staging_buffer(self.staging_buffer.as_view());
-
-                let lines_until_next_vblank = R::TOTAL_SCANLINES - R::VBLANK_LENGTH;
-                let mut cycles_until_next_vblank =
-                    TOTAL_SCANLINE_LENGTH as u128 * lines_until_next_vblank as u128;
-
-                if self.state.odd_frame
-                    && (self.state.background.rendering_enabled || self.state.oam.rendering_enabled)
-                {
-                    cycles_until_next_vblank -= 1;
-                }
-
-                let next_timestamp = timestamp + self.period * cycles_until_next_vblank;
-                runtime.schedule_event::<Self>(
-                    &self.path,
-                    EventMode::Once,
-                    next_timestamp,
-                    PpuEvent::VblankStart,
-                );
-            }
-        }
+        });
     }
 
     fn synchronize(&mut self, mut context: SynchronizationContext) {

@@ -24,8 +24,8 @@ impl PageTable {
         previous_table: &Self,
         master: &RangeInclusiveMap<Address, MasterTableEntry>,
         dirty: &RangeInclusiveSet<Address>,
-        component_registry: &mut ComponentRegistry<'_>,
-        memory_registry: &mut MemoryRegistry<'_>,
+        component_registry: ComponentRegistry<'_>,
+        memory_registry: MemoryRegistry<'_>,
     ) {
         for page_index in 0..self.0.len() {
             let page_address_range =
@@ -183,8 +183,8 @@ impl PageTable {
     #[inline]
     fn resolve_mirror_target(
         master: &RangeInclusiveMap<Address, MasterTableEntry>,
-        component_registry: &ComponentRegistry,
-        memory_registry: &MemoryRegistry,
+        component_registry: ComponentRegistry,
+        memory_registry: MemoryRegistry,
         source_range: RangeInclusive<Address>,
         target_range: RangeInclusive<Address>,
         page: &mut Vec<PageTableEntry>,

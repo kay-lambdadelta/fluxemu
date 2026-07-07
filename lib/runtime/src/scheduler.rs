@@ -3,8 +3,7 @@ use std::{fmt::Debug, sync::Mutex};
 use fixed::{FixedU128, types::extra::U64};
 
 use crate::{
-    RuntimeApi, component::ComponentRegistry, event::EventManager, machine::Machine,
-    path::ComponentPath,
+    RuntimeHandle, component::ComponentRegistry, event::EventManager, path::ComponentPath,
 };
 
 #[derive(Debug)]
@@ -67,7 +66,7 @@ pub type Frequency = FixedU128<U64>;
 /// Context to begin the synchronization process
 #[derive(Debug)]
 pub struct SynchronizationContext<'a> {
-    pub(crate) runtime: RuntimeApi<&'a Machine>,
+    pub(crate) runtime: &'a RuntimeHandle,
     pub(crate) current_timestamp: &'a mut Period,
     pub(crate) target_timestamp: Period,
     pub(crate) last_attempted_allocation: &'a mut Period,
@@ -75,8 +74,8 @@ pub struct SynchronizationContext<'a> {
 
 impl<'a> SynchronizationContext<'a> {
     #[inline]
-    pub fn runtime(&self) -> RuntimeApi<&'a Machine> {
-        self.runtime.clone()
+    pub fn runtime(&self) -> &'a RuntimeHandle {
+        self.runtime
     }
 
     /// Create an iterator that continuously allocates an amount of time represented by period until either the target timestamp is reached
@@ -140,20 +139,19 @@ impl QuantaAllocator<'_, '_> {
             self.rebudget();
         }
 
-        if self.budget == 0 {
+        if self.budget != 0 {
+            self.budget -= 1;
+        } else {
             std::hint::cold_path();
 
             return None;
         }
-        self.budget -= 1;
 
         *self.context.current_timestamp += self.period;
 
         Some(self.context.current_timestamp)
     }
-}
 
-impl<'b, 'a> QuantaAllocator<'b, 'a> {
     #[cold]
     fn rebudget(&mut self) {
         let mut stop_time = self.context.target_timestamp;

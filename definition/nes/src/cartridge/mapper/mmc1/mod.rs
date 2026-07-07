@@ -2,7 +2,7 @@ use std::ops::RangeInclusive;
 
 use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
-    ComponentPath, RuntimeApi,
+    ComponentPath, RuntimeHandle,
     component::{
         Component,
         config::{ComponentConfig, LateContext},
@@ -56,7 +56,7 @@ pub struct Mmc1 {
 }
 
 impl Mmc1 {
-    fn update_banking(&mut self) {
+    fn update_banking(&mut self, runtime: &RuntimeHandle) {
         // Note that this is temporally sound to do both as seperate operations because
         //
         // 1: Remappings can only be triggered by the cpu
@@ -64,7 +64,6 @@ impl Mmc1 {
         //
         // Therefore the ppu can never observe stale mappings
 
-        let runtime = RuntimeApi::current();
         let timestamp = runtime.current_timestamp(&self.path);
 
         let mut cpu_commands = Vec::new();
@@ -156,8 +155,7 @@ impl Mmc1 {
         }
     }
 
-    fn update_nametables(&mut self) {
-        let runtime = RuntimeApi::current();
+    fn update_nametables(&mut self, runtime: &RuntimeHandle) {
         let timestamp = runtime.current_timestamp(&self.path);
 
         let [nametable_0, nametable_1] = &self.config.params.nametables;
@@ -307,86 +305,88 @@ impl Component for Mmc1 {
         _address_space: AddressSpaceId,
         buffer: &[u8],
     ) -> Result<(), MemoryError> {
-        for (address, byte) in
-            RangeInclusive::from_start_and_length(address, buffer.len()).zip(buffer.iter().copied())
-        {
-            if (0x8000..=0xffff).contains(&address) {
-                let shift_in_bit = byte & 0b0000_0001 != 0;
-                let reset = byte & 0b1000_0000 != 0;
+        RuntimeHandle::with_current(|runtime| {
+            for (address, byte) in RangeInclusive::from_start_and_length(address, buffer.len())
+                .zip(buffer.iter().copied())
+            {
+                if (0x8000..=0xffff).contains(&address) {
+                    let shift_in_bit = byte & 0b0000_0001 != 0;
+                    let reset = byte & 0b1000_0000 != 0;
 
-                if reset {
-                    self.shift_register = ShiftRegister::default();
-                    self.prg_rom_bank_mode = PrgRomBankMode::LockLastBank;
+                    if reset {
+                        self.shift_register = ShiftRegister::default();
+                        self.prg_rom_bank_mode = PrgRomBankMode::LockLastBank;
 
-                    self.update_banking();
-                    continue;
-                }
-
-                if let Some(value) = self.shift_register.shift(shift_in_bit) {
-                    let remap;
-
-                    match address {
-                        0x8000..=0x9fff => {
-                            let chr_rom_bank_mode = if value & 0b0001_0000 != 0 {
-                                ChrRomBankMode::Split4k
-                            } else {
-                                ChrRomBankMode::Unified8k
-                            };
-
-                            let prg_rom_bank_mode = match (value & 0b0000_1100) >> 2 {
-                                0 | 1 => PrgRomBankMode::Unified32k,
-                                2 => PrgRomBankMode::LockFirstBank,
-                                3 => PrgRomBankMode::LockLastBank,
-                                _ => unreachable!(),
-                            };
-
-                            let mirroring = match value & 0b0000_0011 {
-                                0 => Mirroring::OneScreenLower,
-                                1 => Mirroring::OneScreenUpper,
-                                2 => Mirroring::Vertical,
-                                3 => Mirroring::Horizontal,
-                                _ => unreachable!(),
-                            };
-
-                            remap = chr_rom_bank_mode != self.chr_rom_bank_mode
-                                || prg_rom_bank_mode != self.prg_rom_bank_mode
-                                || mirroring != self.mirroring;
-
-                            self.chr_rom_bank_mode = chr_rom_bank_mode;
-                            self.prg_rom_bank_mode = prg_rom_bank_mode;
-                            self.mirroring = mirroring;
-                        }
-                        0xa000..=0xbfff => {
-                            let index = value & 0b0001_1111;
-
-                            remap = index != self.chr_rom_bank_indexes[0];
-
-                            self.chr_rom_bank_indexes[0] = index;
-                        }
-                        0xc000..=0xdfff => {
-                            let index = value & 0b0001_1111;
-
-                            remap = index != self.chr_rom_bank_indexes[1];
-
-                            self.chr_rom_bank_indexes[1] = index;
-                        }
-                        0xe000..=0xffff => {
-                            let index = value & 0b0000_1111;
-
-                            remap = index != self.prg_rom_bank_index;
-
-                            self.prg_rom_bank_index = index;
-                        }
-                        _ => unreachable!(),
+                        self.update_banking(runtime);
+                        continue;
                     }
 
-                    if remap {
-                        self.update_banking();
-                        self.update_nametables();
+                    if let Some(value) = self.shift_register.shift(shift_in_bit) {
+                        let remap;
+
+                        match address {
+                            0x8000..=0x9fff => {
+                                let chr_rom_bank_mode = if value & 0b0001_0000 != 0 {
+                                    ChrRomBankMode::Split4k
+                                } else {
+                                    ChrRomBankMode::Unified8k
+                                };
+
+                                let prg_rom_bank_mode = match (value & 0b0000_1100) >> 2 {
+                                    0 | 1 => PrgRomBankMode::Unified32k,
+                                    2 => PrgRomBankMode::LockFirstBank,
+                                    3 => PrgRomBankMode::LockLastBank,
+                                    _ => unreachable!(),
+                                };
+
+                                let mirroring = match value & 0b0000_0011 {
+                                    0 => Mirroring::OneScreenLower,
+                                    1 => Mirroring::OneScreenUpper,
+                                    2 => Mirroring::Vertical,
+                                    3 => Mirroring::Horizontal,
+                                    _ => unreachable!(),
+                                };
+
+                                remap = chr_rom_bank_mode != self.chr_rom_bank_mode
+                                    || prg_rom_bank_mode != self.prg_rom_bank_mode
+                                    || mirroring != self.mirroring;
+
+                                self.chr_rom_bank_mode = chr_rom_bank_mode;
+                                self.prg_rom_bank_mode = prg_rom_bank_mode;
+                                self.mirroring = mirroring;
+                            }
+                            0xa000..=0xbfff => {
+                                let index = value & 0b0001_1111;
+
+                                remap = index != self.chr_rom_bank_indexes[0];
+
+                                self.chr_rom_bank_indexes[0] = index;
+                            }
+                            0xc000..=0xdfff => {
+                                let index = value & 0b0001_1111;
+
+                                remap = index != self.chr_rom_bank_indexes[1];
+
+                                self.chr_rom_bank_indexes[1] = index;
+                            }
+                            0xe000..=0xffff => {
+                                let index = value & 0b0000_1111;
+
+                                remap = index != self.prg_rom_bank_index;
+
+                                self.prg_rom_bank_index = index;
+                            }
+                            _ => unreachable!(),
+                        }
+
+                        if remap {
+                            self.update_banking(runtime);
+                            self.update_nametables(runtime);
+                        }
                     }
                 }
             }
-        }
+        });
 
         Ok(())
     }
@@ -402,7 +402,9 @@ impl<P: Platform> ComponentConfig<P> for Mmc1Config {
 
     fn late_initialize(component: &mut Self::Component, _data: &LateContext<P>) {
         // Force the system to adopt an initial mapping
-        component.update_banking();
+        RuntimeHandle::with_current(|runtime| {
+            component.update_banking(runtime);
+        });
     }
 
     fn build_component(

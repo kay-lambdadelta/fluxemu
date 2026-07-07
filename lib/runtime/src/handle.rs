@@ -1,4 +1,4 @@
-use std::{ops::Deref, rc::Rc, sync::Arc};
+use std::{rc::Rc, sync::Arc};
 
 use fluxemu_program::ProgramSpecification;
 
@@ -6,45 +6,34 @@ use crate::{
     ComponentPath,
     component::{Component, ComponentRegistry},
     event::EventMode,
-    machine::{Machine, THREAD_RUNTIME_API, ThreadLocalData},
+    machine::{CURRENT_THREAD_RUNTIME_HANDLE, Machine, ThreadLocalData},
     memory::{AddressSpace, AddressSpaceId},
     scheduler::Period,
 };
 
-#[derive(Debug, Clone)]
-pub struct RuntimeApi<M: Deref<Target = Machine>> {
-    machine: M,
-    local_data: Rc<ThreadLocalData>,
+#[derive(Debug)]
+pub struct RuntimeHandle {
+    machine: Arc<Machine>,
+    local_data: ThreadLocalData,
 }
 
-impl RuntimeApi<Arc<Machine>> {
+impl RuntimeHandle {
     #[inline]
-    pub fn current() -> Self {
-        THREAD_RUNTIME_API.with_borrow(|context| context.as_ref().unwrap().clone())
-    }
-}
+    pub fn with_current<T>(callback: impl FnOnce(&RuntimeHandle) -> T) -> T {
+        CURRENT_THREAD_RUNTIME_HANDLE.with_borrow(|handle| {
+            let handle = handle
+                .upgrade()
+                .expect("This was not called inside an active runtime");
 
-impl<M: Deref<Target = Machine>> RuntimeApi<M> {
-    pub(crate) fn new(machine: M) -> Self {
-        RuntimeApi {
-            local_data: Rc::new(ThreadLocalData::new(&machine)),
+            callback(&handle)
+        })
+    }
+
+    pub(crate) fn new(machine: Arc<Machine>) -> Rc<RuntimeHandle> {
+        Rc::new(RuntimeHandle {
+            local_data: ThreadLocalData::new(&machine),
             machine,
-        }
-    }
-
-    pub(crate) fn new_with_local_data(machine: M, local_data: Rc<ThreadLocalData>) -> Self {
-        RuntimeApi {
-            local_data,
-            machine,
-        }
-    }
-
-    #[inline]
-    pub fn as_ref(&self) -> RuntimeApi<&Machine> {
-        RuntimeApi {
-            local_data: self.local_data.clone(),
-            machine: &*self.machine,
-        }
+        })
     }
 
     #[inline]
@@ -53,7 +42,7 @@ impl<M: Deref<Target = Machine>> RuntimeApi<M> {
     }
 
     #[inline]
-    pub(crate) fn local_data(&self) -> &Rc<ThreadLocalData> {
+    pub(crate) fn local_data(&self) -> &ThreadLocalData {
         &self.local_data
     }
 
@@ -65,20 +54,14 @@ impl<M: Deref<Target = Machine>> RuntimeApi<M> {
     pub fn address_space(&self, address_space_id: AddressSpaceId) -> Option<AddressSpace<'_>> {
         self.machine.address_spaces.get(&address_space_id).map(
             #[inline]
-            |address_space_data| {
-                AddressSpace::new(
-                    self.memory_registry(),
-                    self.component_registry(),
-                    address_space_data,
-                )
-            },
+            |address_space_data| AddressSpace::new(self, address_space_data),
         )
     }
 
     /// Obtain a handle to the component registry
     #[inline]
     pub fn component_registry(&self) -> ComponentRegistry<'_> {
-        ComponentRegistry::new(self.as_ref(), &self.machine.component_registry_data)
+        ComponentRegistry::new(self)
     }
 
     /// Gain access to the program specification the [Machine] was created with

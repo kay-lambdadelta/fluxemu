@@ -1,5 +1,6 @@
 use std::{
     any::Any,
+    cell::UnsafeCell,
     collections::HashMap,
     fmt::Debug,
     ops::DerefMut,
@@ -9,9 +10,8 @@ use std::{
 use rustc_hash::FxBuildHasher;
 
 use crate::{
-    RuntimeApi,
+    RuntimeHandle,
     component::{Component, ComponentId},
-    machine::Machine,
     path::ComponentPath,
     scheduler::{Period, SynchronizationContext},
 };
@@ -83,16 +83,23 @@ impl ComponentRegistryData {
 /// A registry to interact with components participating in the machine it borrows from
 ///
 /// It has ID and Path based lookup, and cross thread concurrency with automatic synchronization
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct ComponentRegistry<'a> {
-    runtime: RuntimeApi<&'a Machine>,
-    data: &'a ComponentRegistryData,
+    runtime: &'a RuntimeHandle,
 }
 
 impl<'a> ComponentRegistry<'a> {
     #[inline]
-    pub(crate) fn new(runtime: RuntimeApi<&'a Machine>, data: &'a ComponentRegistryData) -> Self {
-        Self { runtime, data }
+    pub(crate) fn new(runtime: &'a RuntimeHandle) -> Self {
+        Self { runtime }
+    }
+
+    fn data(&self) -> &ComponentRegistryData {
+        &self.runtime.machine().component_registry_data
+    }
+
+    fn local_data(&self) -> &UnsafeCell<LocalComponentRegistryData> {
+        &self.runtime.local_data().component_registry_data
     }
 
     /// The interaction is performed the exact same way as [`interact_dyn`](Self::interact_dyn), except it downcasts the component to `C` before calling the callback.
@@ -100,7 +107,7 @@ impl<'a> ComponentRegistry<'a> {
     /// Prefer this if you are a component author and you need to directly interact with another component
     #[inline]
     pub fn interact<'b, C: Component, T>(
-        &'b mut self,
+        &'b self,
         id: impl Into<ComponentIdentifier<'b>>,
         target_timestamp: &Period,
         callback: impl FnOnce(&mut C) -> T,
@@ -122,7 +129,7 @@ impl<'a> ComponentRegistry<'a> {
     /// The ID must be valid for the registry instance.
     #[inline]
     pub(crate) unsafe fn interact_dyn_id_unchecked<T>(
-        &mut self,
+        &self,
         id: ComponentId,
         target_timestamp: &Period,
         callback: impl FnOnce(&mut dyn Component) -> T,
@@ -130,8 +137,7 @@ impl<'a> ComponentRegistry<'a> {
         // Move the component handle to our thread and check if it needs synchronization
         let needs_sync = {
             // SAFETY: No active borrows
-            let local_data =
-                unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
+            let local_data = unsafe { &mut *self.local_data().get() };
             let handle = self.fetch_or_acquire_component(id, local_data);
 
             if !handle.synchronize {
@@ -188,7 +194,7 @@ impl<'a> ComponentRegistry<'a> {
     /// Additionally, right before this function blocks, it is guaranteed to return the non-borrowed components in the local store to the global store.
     #[inline]
     pub fn interact_dyn<'b, T>(
-        &'b mut self,
+        &'b self,
         id: impl Into<ComponentIdentifier<'b>>,
         target_timestamp: &Period,
         callback: impl FnOnce(&mut dyn Component) -> T,
@@ -206,22 +212,21 @@ impl<'a> ComponentRegistry<'a> {
     ) -> Option<ComponentId> {
         match id.into() {
             ComponentIdentifier::Id(id) => {
-                if (id.0 as usize) < self.data.required_local_store_size() {
+                if (id.0 as usize) < self.data().required_local_store_size() {
                     Some(id)
                 } else {
                     None
                 }
             }
-            ComponentIdentifier::Path(path) => Some(self.data.metadata.get(path)?.id),
+            ComponentIdentifier::Path(path) => Some(self.data().metadata.get(path)?.id),
         }
     }
 
-    #[cold]
-    fn synchronize_component(&mut self, id: ComponentId, target_timestamp: &Period) {
+    fn synchronize_component(&self, id: ComponentId, target_timestamp: &Period) {
         let mut current_timestamp;
 
         let (delta, mut component) = {
-            let store = unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
+            let store = unsafe { &mut *self.local_data().get() };
             let handle = store.get_slot(id).as_mut().unwrap();
 
             let Some(delta) = target_timestamp.checked_sub(handle.current_timestamp) else {
@@ -230,7 +235,13 @@ impl<'a> ComponentRegistry<'a> {
 
             current_timestamp = handle.current_timestamp;
 
-            (delta, handle.component.take().unwrap())
+            (
+                delta,
+                handle
+                    .component
+                    .take()
+                    .expect("Component handle should be present"),
+            )
         };
 
         if delta == Period::ZERO || !component.needs_work(&current_timestamp, &delta) {
@@ -244,7 +255,7 @@ impl<'a> ComponentRegistry<'a> {
             let mut last_attempted_allocation = Period::ZERO;
 
             let context = SynchronizationContext {
-                runtime: self.runtime.clone(),
+                runtime: self.runtime,
                 current_timestamp: &mut current_timestamp,
                 target_timestamp: *target_timestamp,
                 last_attempted_allocation: &mut last_attempted_allocation,
@@ -276,8 +287,7 @@ impl<'a> ComponentRegistry<'a> {
                 return;
             }
 
-            let runtime = self.runtime.clone();
-            runtime
+            self.runtime
                 .machine()
                 .scheduler
                 .event_manager
@@ -296,7 +306,7 @@ impl<'a> ComponentRegistry<'a> {
 
     #[inline]
     fn fetch_or_acquire_component<'b>(
-        &mut self,
+        &self,
         id: ComponentId,
         local_data: &'b mut LocalComponentRegistryData,
     ) -> &'b mut ComponentHandle {
@@ -311,11 +321,11 @@ impl<'a> ComponentRegistry<'a> {
 
     #[cold]
     fn acquire_component_from_global_store<'b>(
-        &mut self,
+        &self,
         id: ComponentId,
         local_data: &'b mut LocalComponentRegistryData,
     ) -> &'b mut ComponentHandle {
-        let mut sync_state_guard = self.data.sync_state.lock().unwrap();
+        let mut sync_state_guard = self.data().sync_state.lock().unwrap();
 
         loop {
             let Some(handle) = sync_state_guard.global_component_store.remove(&id) else {
@@ -343,8 +353,8 @@ impl<'a> ComponentRegistry<'a> {
         }
     }
 
-    pub(crate) unsafe fn release_all(&mut self) {
-        let mut sync_state_guard = self.data.sync_state.lock().unwrap();
+    pub(crate) unsafe fn release_all(&self) {
+        let mut sync_state_guard = self.data().sync_state.lock().unwrap();
         let local_data = unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
 
         self.release_all_inner(&mut sync_state_guard, local_data);
@@ -352,7 +362,7 @@ impl<'a> ComponentRegistry<'a> {
 
     /// Release all components currently available for releasing
     fn release_all_inner(
-        &mut self,
+        &self,
         sync_state: &mut GlobalSyncState,
         local_data: &mut LocalComponentRegistryData,
     ) {
@@ -382,11 +392,11 @@ impl<'a> ComponentRegistry<'a> {
     }
 
     pub(crate) fn id_for_path(&self, path: &ComponentPath) -> Option<ComponentId> {
-        Some(self.data.metadata.get(path)?.id)
+        Some(self.data().metadata.get(path)?.id)
     }
 
     pub(crate) fn get_timestamp<'b>(
-        &'b mut self,
+        &'b self,
         id: impl Into<ComponentIdentifier<'b>>,
     ) -> Option<Period> {
         let id = self.convert_identifier(id)?;

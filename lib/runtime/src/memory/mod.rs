@@ -1,7 +1,7 @@
 use std::{
     fmt::Debug,
     hash::Hash,
-    ops::{Deref, RangeInclusive},
+    ops::RangeInclusive,
     sync::{Arc, Mutex, atomic::Ordering},
 };
 
@@ -15,12 +15,8 @@ use sdd::{AtomicOwned, Guard};
 use thiserror::Error;
 
 use crate::{
-    ResourcePath, RuntimeApi,
-    component::{ComponentId, ComponentRegistry},
-    machine::Machine,
-    memory::registry::MemoryRegistry,
-    path::ComponentPath,
-    scheduler::Period,
+    ResourcePath, RuntimeHandle, component::ComponentId, memory::registry::MemoryRegistry,
+    path::ComponentPath, scheduler::Period,
 };
 
 mod ops;
@@ -38,22 +34,16 @@ const MAX_MIRROR_DEPTH: usize = 4;
 /// This is the primary interface for accessing memory in the runtime
 #[derive(Debug)]
 pub struct AddressSpace<'a> {
-    memory_registry: MemoryRegistry<'a>,
-    component_registry: ComponentRegistry<'a>,
+    runtime: &'a RuntimeHandle,
     data: &'a AddressSpaceData,
     guard: Guard,
 }
 
 impl<'a> AddressSpace<'a> {
     #[inline]
-    pub(crate) fn new(
-        memory_registry: MemoryRegistry<'a>,
-        component_registry: ComponentRegistry<'a>,
-        data: &'a AddressSpaceData,
-    ) -> Self {
+    pub(crate) fn new(runtime: &'a RuntimeHandle, data: &'a AddressSpaceData) -> Self {
         Self {
-            memory_registry,
-            component_registry,
+            runtime,
             data,
             guard: Guard::new(),
         }
@@ -80,13 +70,8 @@ impl<'a> AddressSpace<'a> {
         // This informs `sdd` that cleanup should happen sooner rather than later
         self.guard.accelerate();
 
-        self.data.remap(
-            timestamp,
-            &self.guard,
-            &mut self.component_registry,
-            &mut self.memory_registry,
-            commands,
-        );
+        self.data
+            .remap(timestamp, &self.guard, self.runtime, commands);
     }
 }
 
@@ -369,10 +354,10 @@ impl Permissions {
     };
 }
 
-impl<M: Deref<Target = Machine>> RuntimeApi<M> {
+impl RuntimeHandle {
     /// Obtain a handle to the memory registry
     #[inline]
     pub(crate) fn memory_registry(&self) -> MemoryRegistry<'_> {
-        MemoryRegistry::new(self.as_ref(), &self.machine().memory_registry_data)
+        MemoryRegistry::new(self)
     }
 }

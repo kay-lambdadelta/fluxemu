@@ -5,7 +5,8 @@ use num::traits::{FromBytes, ToBytes, ops::bytes::NumBytes};
 
 use super::AddressSpace;
 use crate::{
-    component::{ComponentId, ComponentRegistry},
+    RuntimeHandle,
+    component::ComponentId,
     memory::{
         Address, AddressSpaceId, CHUNK_SIZE, MemoryError, MemoryErrorType, PageTableEntry,
         PageTableTarget,
@@ -55,7 +56,9 @@ impl<'a> AddressSpace<'a> {
                         } => {
                             let destination = destination_start + offset;
 
-                            self.memory_registry.read(*id, destination, adjusted);
+                            self.runtime
+                                .memory_registry()
+                                .read(*id, destination, adjusted);
                         }
                         PageTableTarget::Component {
                             offset: destination_start,
@@ -68,8 +71,8 @@ impl<'a> AddressSpace<'a> {
                                 timestamp,
                                 destination,
                                 self.data.id,
+                                self.runtime,
                                 adjusted,
-                                &mut self.component_registry,
                             )?;
                         }
                     }
@@ -214,7 +217,9 @@ impl<'a> AddressSpace<'a> {
                         } => {
                             let destination = destination_start + offset;
 
-                            self.memory_registry.write(*id, destination, adjusted);
+                            self.runtime
+                                .memory_registry()
+                                .write(*id, destination, adjusted);
                         }
                         PageTableTarget::Component {
                             offset: destination_start,
@@ -227,8 +232,8 @@ impl<'a> AddressSpace<'a> {
                                 timestamp,
                                 destination,
                                 self.data.id,
+                                self.runtime,
                                 adjusted,
-                                &mut self.component_registry,
                             )?;
                         }
                         PageTableTarget::ImmutableMemory(_) => unreachable!(),
@@ -451,15 +456,18 @@ fn visit_page_entries<BUFFER: SplitableBuffer>(
     Ok(())
 }
 
+#[cold]
+#[inline]
 fn virtual_memory_read<const AVOID_SIDE_EFFECTS: bool>(
     id: ComponentId,
     timestamp: &Period,
     destination: usize,
     address_space_id: AddressSpaceId,
+    runtime: &RuntimeHandle,
     buffer: &mut [u8],
-    component_registry: &mut ComponentRegistry,
 ) -> Result<(), MemoryError> {
-    component_registry
+    runtime
+        .component_registry()
         .interact_dyn(
             id,
             timestamp,
@@ -471,15 +479,18 @@ fn virtual_memory_read<const AVOID_SIDE_EFFECTS: bool>(
         .unwrap()
 }
 
+#[cold]
+#[inline]
 fn virtual_memory_write(
     id: ComponentId,
     timestamp: &Period,
     destination: usize,
     address_space_id: AddressSpaceId,
+    runtime: &RuntimeHandle,
     buffer: &[u8],
-    component_registry: &mut ComponentRegistry,
 ) -> Result<(), MemoryError> {
-    component_registry
+    runtime
+        .component_registry()
         .interact_dyn(
             id,
             timestamp,
@@ -490,6 +501,7 @@ fn virtual_memory_write(
 }
 
 #[cold]
+#[inline]
 fn form_error(access_range: RangeInclusive<usize>) -> MemoryError {
     MemoryError(std::iter::once((access_range.into(), MemoryErrorType::OutOfBus)).collect())
 }

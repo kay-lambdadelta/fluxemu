@@ -9,6 +9,7 @@ use std::{
     io::Read,
     marker::PhantomData,
     ops::Deref,
+    rc::{Rc, Weak},
     sync::Arc,
     time::Duration,
 };
@@ -20,7 +21,7 @@ use rustc_hash::FxBuildHasher;
 use tracing::Level;
 
 use crate::{
-    ComponentPath, RuntimeApi,
+    ComponentPath, RuntimeHandle,
     component::{ComponentRegistryData, LocalComponentRegistryData},
     input::LogicalInputDevice,
     machine::builder::MachineBuilder,
@@ -91,22 +92,20 @@ impl Machine {
     /// Panics if the runtime is already entered on this thread
     #[must_use]
     pub fn enter_runtime(self: &Arc<Self>) -> RuntimeGuard<'_> {
-        let local_data = THREAD_RUNTIME_API.with(|runtime_context| {
-            let mut runtime_context_guard = runtime_context.borrow_mut();
-
-            if runtime_context_guard.is_some() {
+        let runtime = CURRENT_THREAD_RUNTIME_HANDLE.with_borrow_mut(|handle| {
+            // The weak handle should not be valid by this point
+            if handle.upgrade().is_some() {
                 panic!("Runtime already entered");
             }
 
-            let runtime = RuntimeApi::new(self.clone());
+            let runtime = RuntimeHandle::new(self.clone());
+            *handle = Rc::downgrade(&runtime);
 
-            *runtime_context_guard = Some(runtime.clone());
-
-            runtime.local_data().clone()
+            runtime
         });
 
         RuntimeGuard {
-            runtime: RuntimeApi::new_with_local_data(self, local_data),
+            runtime,
             _phantom: PhantomData,
         }
     }
@@ -116,9 +115,8 @@ impl Machine {
 ///
 /// When this is dropped, the runtime is exited
 pub struct RuntimeGuard<'a> {
-    runtime: RuntimeApi<&'a Machine>,
-    // Make sure the lifetime is constrained, and do not allow this guard to cross thread boundaries
-    _phantom: PhantomData<*mut ()>,
+    runtime: Rc<RuntimeHandle>,
+    _phantom: PhantomData<&'a Machine>,
 }
 
 impl RuntimeGuard<'_> {
@@ -182,7 +180,7 @@ impl RuntimeGuard<'_> {
         _metadata: &SnapshotMetadata,
         mut component_section: impl Read,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let mut registry = self.component_registry();
+        let registry = self.component_registry();
 
         for (path, codec) in &self.runtime.machine().save_codecs {
             registry
@@ -215,7 +213,7 @@ impl RuntimeGuard<'_> {
 }
 
 impl<'a> Deref for RuntimeGuard<'a> {
-    type Target = RuntimeApi<&'a Machine>;
+    type Target = RuntimeHandle;
 
     fn deref(&self) -> &Self::Target {
         &self.runtime
@@ -224,22 +222,23 @@ impl<'a> Deref for RuntimeGuard<'a> {
 
 impl<'a> Drop for RuntimeGuard<'a> {
     fn drop(&mut self) {
-        THREAD_RUNTIME_API.with(|runtime_context| {
-            let runtime_context = runtime_context.borrow_mut().take();
-
-            // Clear the local context
-            if let Some(context) = runtime_context {
-                // Release all components
-                //
-                // SAFETY: This is in the drop impl of a !Send !Sync struct, we have exclusive ownership
-                unsafe { context.component_registry().release_all() };
-
-                // Release all memory regions
-                context.memory_registry().release_all();
-            } else {
-                unreachable!("Runtime exited without entering");
-            }
+        CURRENT_THREAD_RUNTIME_HANDLE.with_borrow_mut(|runtime| {
+            *runtime = Weak::new();
         });
+
+        assert_eq!(
+            Rc::strong_count(&self.runtime),
+            1,
+            "We should be the last owner of the local data"
+        );
+
+        // Release all components
+        //
+        // SAFETY: This is in the drop impl of a !Send !Sync struct, we have exclusive ownership
+        unsafe { self.component_registry().release_all() };
+
+        // Release all memory regions
+        self.memory_registry().release_all();
     }
 }
 
@@ -266,5 +265,5 @@ impl ThreadLocalData {
 }
 
 thread_local! {
-    pub(crate) static THREAD_RUNTIME_API: RefCell<Option<RuntimeApi<Arc<Machine>>>> = const { RefCell::new(None) };
+    pub(crate) static CURRENT_THREAD_RUNTIME_HANDLE: RefCell<Weak<RuntimeHandle>> = const { RefCell::new(Weak::new()) };
 }

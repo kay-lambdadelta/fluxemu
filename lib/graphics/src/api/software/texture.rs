@@ -1,18 +1,17 @@
+use alloc::boxed::Box;
 use core::{
     convert::identity,
     ops::{Bound, Deref, DerefMut, Index, IndexMut, RangeBounds, RangeInclusive},
 };
 
-use alloc::boxed::Box;
 use bytemuck::{AnyBitPattern, NoUninit};
+use fluxemu_range::ContiguousRange;
 use nalgebra::{Point2, Vector2};
 use rayon::{
     iter::{IndexedParallelIterator, ParallelIterator},
     slice::{ParallelSlice, ParallelSliceMut},
 };
 use serde::{Deserialize, Serialize};
-
-use fluxemu_range::ContiguousRange;
 
 pub type OwnedTexture<T> = Texture<Box<[T]>>;
 pub type RefTexture<'a, T> = Texture<&'a [T]>;

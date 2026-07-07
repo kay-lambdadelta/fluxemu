@@ -5,7 +5,6 @@ use fluxemu_graphics::api::GraphicsApi;
 use crate::{Platform, component::Component, machine::builder::ComponentBuilder};
 
 /// Factory config to construct a component
-#[allow(unused)]
 pub trait ComponentConfig<P: Platform>: Debug + Sized + Sync + Send {
     /// The component that this config will create
     type Component: Component;
@@ -17,6 +16,7 @@ pub trait ComponentConfig<P: Platform>: Debug + Sized + Sync + Send {
     ) -> Result<Self::Component, Box<dyn Error>>;
 
     /// Do setup for subsystems that cannot be initialized during [`Self::build_component`]
+    #[allow(unused)]
     fn late_initialize(component: &mut Self::Component, data: &LateContext<P>) {
         Default::default()
     }

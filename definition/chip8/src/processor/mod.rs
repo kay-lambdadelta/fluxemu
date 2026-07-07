@@ -127,7 +127,7 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
                         self.state.registers.program = self.state.registers.program.wrapping_add(2);
 
                         self.interpret_instruction(
-                            runtime.clone(),
+                            runtime,
                             &mut address_space,
                             timestamp,
                             instruction,
