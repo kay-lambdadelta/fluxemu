@@ -95,7 +95,7 @@ struct PageTableEntry {
     pub target: PageTableTarget,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct PageTable(Box<[Arc<[PageTableEntry]>]>);
 
 impl PageTable {
@@ -110,12 +110,6 @@ impl PageTable {
 /// Identifier for a address space
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct AddressSpaceId(pub(crate) u16);
-
-#[derive(Debug)]
-struct Members {
-    pub read: PageTable,
-    pub write: PageTable,
-}
 
 /// Why a memory operation failed
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -213,7 +207,8 @@ pub(crate) struct AddressSpaceData {
     width_mask: Address,
     address_space_width: u8,
     id: AddressSpaceId,
-    members: AtomicOwned<Members>,
+    read_table: AtomicOwned<PageTable>,
+    write_table: AtomicOwned<PageTable>,
     master: Mutex<MasterTables>,
 }
 
@@ -230,19 +225,28 @@ impl AddressSpaceData {
             id,
             width_mask,
             address_space_width: width,
-            members: AtomicOwned::new(Members {
-                read: PageTable::new(width),
-                write: PageTable::new(width),
-            }),
+            read_table: AtomicOwned::new(PageTable::new(width)),
+            write_table: AtomicOwned::new(PageTable::new(width)),
             master: Mutex::default(),
         }
     }
 
     #[inline]
-    fn get_members<'a>(&'a self, guard: &'a Guard) -> &'a Members {
+    fn get_read_table<'a>(&'a self, guard: &'a Guard) -> &'a PageTable {
         // SAFETY: We never set an null members mapping, and we don't set any tag bits
         unsafe {
-            self.members
+            self.read_table
+                .load(Ordering::Acquire, guard)
+                .as_ref_unchecked()
+                .unwrap_unchecked()
+        }
+    }
+
+    #[inline]
+    fn get_write<'a>(&'a self, guard: &'a Guard) -> &'a PageTable {
+        // SAFETY: We never set an null members mapping, and we don't set any tag bits
+        unsafe {
+            self.write_table
                 .load(Ordering::Acquire, guard)
                 .as_ref_unchecked()
                 .unwrap_unchecked()

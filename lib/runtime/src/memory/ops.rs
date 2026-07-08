@@ -22,7 +22,7 @@ impl<'a> AddressSpace<'a> {
         timestamp: &Period,
         buffer: &mut B,
     ) -> Result<(), MemoryError> {
-        let members = self.data.get_members(&self.guard);
+        let page_table = self.data.get_read_table(&self.guard);
 
         for Chunk {
             access_range,
@@ -32,7 +32,7 @@ impl<'a> AddressSpace<'a> {
             address,
             self.data.width_mask,
             buffer.as_mut(),
-            &members.read.0,
+            &page_table.0,
         ) {
             visit_page_entries(
                 page_table_slice,
@@ -192,7 +192,7 @@ impl<'a> AddressSpace<'a> {
         timestamp: &Period,
         buffer: &B,
     ) -> Result<(), MemoryError> {
-        let members = self.data.get_members(&self.guard);
+        let page_table = self.data.get_write(&self.guard);
 
         for Chunk {
             access_range,
@@ -202,7 +202,7 @@ impl<'a> AddressSpace<'a> {
             address,
             self.data.width_mask,
             buffer.as_ref(),
-            &members.write.0,
+            &page_table.0,
         ) {
             visit_page_entries(
                 page_table_slice,

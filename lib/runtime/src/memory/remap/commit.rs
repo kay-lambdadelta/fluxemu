@@ -4,10 +4,10 @@ use fluxemu_range::{ContiguousRange, RangeIntersection};
 use rangemap::{RangeInclusiveMap, RangeInclusiveSet};
 
 use crate::{
-    component::ComponentRegistry,
+    RuntimeHandle,
     memory::{
         Address, CHUNK_SIZE, MAX_MIRROR_DEPTH, MasterTableEntry, PageTable, PageTableEntry,
-        PageTableTarget, registry::MemoryRegistry,
+        PageTableTarget,
     },
 };
 
@@ -24,8 +24,7 @@ impl PageTable {
         previous_table: &Self,
         master: &RangeInclusiveMap<Address, MasterTableEntry>,
         dirty: &RangeInclusiveSet<Address>,
-        component_registry: ComponentRegistry<'_>,
-        memory_registry: MemoryRegistry<'_>,
+        runtime: &RuntimeHandle,
     ) {
         for page_index in 0..self.0.len() {
             let page_address_range =
@@ -41,7 +40,7 @@ impl PageTable {
                             page_contents.push(PageTableEntry {
                                 target: PageTableTarget::Component {
                                     offset: *source_range.start(),
-                                    id: component_registry.id_for_path(path).unwrap(),
+                                    id: runtime.component_registry().id_for_path(path).unwrap(),
                                 },
                                 range: source_range.clone().into(),
                             });
@@ -63,8 +62,7 @@ impl PageTable {
 
                             Self::resolve_mirror_target(
                                 master,
-                                component_registry,
-                                memory_registry,
+                                runtime,
                                 source_range.clone(),
                                 assigned_destination_range,
                                 &mut page_contents,
@@ -97,7 +95,7 @@ impl PageTable {
                                 range: source_range.clone().into(),
                                 target: PageTableTarget::Memory {
                                     offset: region_base + region_offset,
-                                    id: memory_registry.id_for_path(path).unwrap(),
+                                    id: runtime.memory_registry().id_for_path(path).unwrap(),
                                 },
                             });
                         }
@@ -105,65 +103,71 @@ impl PageTable {
                 }
 
                 // Make sure what we put in is sorted
-                page_contents.sort_by_key(|entry| entry.range.start);
+                page_contents.sort_unstable_by_key(
+                    #[inline]
+                    |entry| entry.range.start,
+                );
 
                 // Deduplicate
-                page_contents.dedup_by(|a, b| match (&a.target, &b.target) {
-                    (
-                        PageTableTarget::Component {
-                            offset: offset_a,
-                            id: id_a,
-                        },
-                        PageTableTarget::Component {
-                            offset: offset_b,
-                            id: id_b,
-                        },
-                    ) => {
-                        // Same component check
-                        if id_a != id_b {
-                            return false;
-                        }
+                page_contents.dedup_by(
+                    #[inline]
+                    |a, b| match (&a.target, &b.target) {
+                        (
+                            PageTableTarget::Component {
+                                offset: offset_a,
+                                id: id_a,
+                            },
+                            PageTableTarget::Component {
+                                offset: offset_b,
+                                id: id_b,
+                            },
+                        ) => {
+                            // Same component check
+                            if id_a != id_b {
+                                return false;
+                            }
 
-                        // Virtual contiguous check
-                        if !a.range.is_adjacent(&b.range) {
-                            return false;
-                        }
+                            // Virtual contiguous check
+                            if !a.range.is_adjacent(&b.range) {
+                                return false;
+                            }
 
-                        // Physical contiguous check
-                        if *offset_a != offset_b + b.range.len() {
-                            return false;
-                        }
+                            // Physical contiguous check
+                            if *offset_a != offset_b + b.range.len() {
+                                return false;
+                            }
 
-                        // Merge them
-                        b.range = (b.range.start..=a.range.last).into();
+                            // Merge them
+                            b.range = (b.range.start..=a.range.last).into();
 
-                        true
-                    }
-                    (
-                        PageTableTarget::Memory {
-                            offset: offset_a,
-                            id: id_a,
-                        },
-                        PageTableTarget::Memory {
-                            offset: offset_b,
-                            id: id_b,
-                        },
-                    ) => {
-                        if id_a != id_b {
-                            return false;
+                            true
                         }
-                        if !a.range.is_adjacent(&b.range) {
-                            return false;
-                        }
-                        if *offset_a != offset_b + b.range.len() {
-                            return false;
-                        }
-                        b.range = (b.range.start..=a.range.last).into();
+                        (
+                            PageTableTarget::Memory {
+                                offset: offset_a,
+                                id: id_a,
+                            },
+                            PageTableTarget::Memory {
+                                offset: offset_b,
+                                id: id_b,
+                            },
+                        ) => {
+                            if id_a != id_b {
+                                return false;
+                            }
+                            if !a.range.is_adjacent(&b.range) {
+                                return false;
+                            }
+                            if *offset_a != offset_b + b.range.len() {
+                                return false;
+                            }
+                            b.range = (b.range.start..=a.range.last).into();
 
-                        true
-                    }
-                    _ => false,
-                });
+                            true
+                        }
+                        _ => false,
+                    },
+                );
 
                 let previous_page = page_index.checked_sub(1).map(|index| &self.0[index]);
 
@@ -183,15 +187,14 @@ impl PageTable {
     #[inline]
     fn resolve_mirror_target(
         master: &RangeInclusiveMap<Address, MasterTableEntry>,
-        component_registry: ComponentRegistry,
-        memory_registry: MemoryRegistry,
+        runtime: &RuntimeHandle,
         source_range: RangeInclusive<Address>,
         target_range: RangeInclusive<Address>,
         page: &mut Vec<PageTableEntry>,
         depth: usize,
     ) {
         if depth > MAX_MIRROR_DEPTH {
-            panic!(
+            unreachable!(
                 "Max mirror depth hit at {} with source range {:?} and target range {:?}",
                 depth, source_range, target_range
             );
@@ -212,7 +215,7 @@ impl PageTable {
                         range: calculated_source_range.into(),
                         target: PageTableTarget::Component {
                             offset: *destination_overlap.start(),
-                            id: component_registry.id_for_path(path).unwrap(),
+                            id: runtime.component_registry().id_for_path(path).unwrap(),
                         },
                     });
                 }
@@ -251,7 +254,7 @@ impl PageTable {
                         range: calculated_source_range.into(),
                         target: PageTableTarget::Memory {
                             offset: region_base + region_offset,
-                            id: memory_registry.id_for_path(path).unwrap(),
+                            id: runtime.memory_registry().id_for_path(path).unwrap(),
                         },
                     });
                 }
@@ -272,50 +275,13 @@ impl PageTable {
 
                     Self::resolve_mirror_target(
                         master,
-                        component_registry,
-                        memory_registry,
+                        runtime,
                         calculated_source_range,
                         next_target_range,
                         page,
                         depth + 1,
                     );
                 }
-            }
-        }
-    }
-
-    #[inline]
-    pub fn mirror_dirtying_pass(
-        &mut self,
-        master: &RangeInclusiveMap<Address, MasterTableEntry>,
-        dirty: &mut RangeInclusiveSet<usize>,
-    ) {
-        loop {
-            let mut changed = false;
-
-            for (master_region, mapping_entry) in master.iter() {
-                if let MasterTableEntry::Mirror {
-                    source_base,
-                    destination_base,
-                } = mapping_entry
-                {
-                    let destination_range = RangeInclusive::from_start_and_length(
-                        *destination_base,
-                        master_region.len(),
-                    );
-
-                    let source_range =
-                        RangeInclusive::from_start_and_length(*source_base, master_region.len());
-
-                    if dirty.overlaps(&destination_range) && !dirty.overlaps(&source_range) {
-                        dirty.insert(source_range);
-                        changed = true;
-                    }
-                }
-            }
-
-            if !changed {
-                break;
             }
         }
     }

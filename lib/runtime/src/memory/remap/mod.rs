@@ -1,13 +1,13 @@
 use std::{ops::RangeInclusive, sync::atomic::Ordering};
 
 use fluxemu_range::ContiguousRange;
-use rangemap::RangeInclusiveSet;
+use rangemap::{RangeInclusiveMap, RangeInclusiveSet};
 use sdd::{Guard, Owned, Tag};
 
 use crate::{
     RuntimeHandle,
     memory::{
-        AddressSpaceData, MapTarget, MasterTableEntry, MasterTables, Members, MemoryMapCommand,
+        Address, AddressSpaceData, MapTarget, MasterTableEntry, MasterTables, MemoryMapCommand,
         PageTable,
     },
     scheduler::Period,
@@ -26,7 +26,6 @@ impl AddressSpaceData {
     ) {
         let max = 2usize.pow(u32::from(self.address_space_width)) - 1;
         let valid_range = 0..=max;
-        let commands: Vec<_> = commands.into_iter().collect();
 
         let mut dirty_read = RangeInclusiveSet::new();
         let mut dirty_write = RangeInclusiveSet::new();
@@ -38,13 +37,11 @@ impl AddressSpaceData {
             write: master_write,
         } = &mut *master_tables_guard;
 
-        let current = self.members.load(Ordering::Acquire, guard);
-        let current_members = current.as_ref().unwrap();
+        let current_read = self.read_table.load(Ordering::Acquire, guard);
+        let current_read_page_table = current_read.as_ref().unwrap();
 
-        let mut read_table =
-            PageTable(vec![Default::default(); current_members.read.0.len()].into_boxed_slice());
-        let mut write_table =
-            PageTable(vec![Default::default(); current_members.write.0.len()].into_boxed_slice());
+        let current_write = self.write_table.load(Ordering::Acquire, guard);
+        let current_write_page_table = current_write.as_ref().unwrap();
 
         for command in commands {
             match command {
@@ -178,31 +175,69 @@ impl AddressSpaceData {
             }
         }
 
-        read_table.mirror_dirtying_pass(master_read, &mut dirty_read);
-        write_table.mirror_dirtying_pass(master_write, &mut dirty_write);
+        mirror_dirtying_pass(master_read, &mut dirty_read);
+        mirror_dirtying_pass(master_write, &mut dirty_write);
 
-        read_table.commit(
-            &current_members.read,
-            master_read,
-            &dirty_read,
-            runtime.component_registry(),
-            runtime.memory_registry(),
-        );
-        write_table.commit(
-            &current_members.write,
-            master_write,
-            &dirty_write,
-            runtime.component_registry(),
-            runtime.memory_registry(),
-        );
+        if !dirty_read.is_empty() {
+            let mut read_table = PageTable(
+                vec![Default::default(); current_read_page_table.0.len()].into_boxed_slice(),
+            );
 
-        let members = Members {
-            read: read_table,
-            write: write_table,
+            read_table.commit(current_read_page_table, master_read, &dirty_read, runtime);
+
+            let _ = self
+                .read_table
+                .swap((Some(Owned::new(read_table)), Tag::None), Ordering::AcqRel);
         };
 
-        let _ = self
-            .members
-            .swap((Some(Owned::new(members)), Tag::None), Ordering::AcqRel);
+        if !dirty_write.is_empty() {
+            let mut write_table = PageTable(
+                vec![Default::default(); current_write_page_table.0.len()].into_boxed_slice(),
+            );
+
+            write_table.commit(
+                current_write_page_table,
+                master_write,
+                &dirty_write,
+                runtime,
+            );
+
+            let _ = self
+                .write_table
+                .swap((Some(Owned::new(write_table)), Tag::None), Ordering::AcqRel);
+        }
+    }
+}
+
+#[inline]
+fn mirror_dirtying_pass(
+    master: &RangeInclusiveMap<Address, MasterTableEntry>,
+    dirty: &mut RangeInclusiveSet<usize>,
+) {
+    loop {
+        let mut changed = false;
+
+        for (master_region, mapping_entry) in master.iter() {
+            if let MasterTableEntry::Mirror {
+                source_base,
+                destination_base,
+            } = mapping_entry
+            {
+                let destination_range =
+                    RangeInclusive::from_start_and_length(*destination_base, master_region.len());
+
+                let source_range =
+                    RangeInclusive::from_start_and_length(*source_base, master_region.len());
+
+                if dirty.overlaps(&destination_range) && !dirty.overlaps(&source_range) {
+                    dirty.insert(source_range);
+                    changed = true;
+                }
+            }
+        }
+
+        if !changed {
+            break;
+        }
     }
 }
