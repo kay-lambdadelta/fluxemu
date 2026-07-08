@@ -501,7 +501,6 @@ fn virtual_memory_write(
 }
 
 #[cold]
-#[inline]
 fn form_error(access_range: RangeInclusive<usize>) -> MemoryError {
     MemoryError(std::iter::once((access_range.into(), MemoryErrorType::OutOfBus)).collect())
 }
