@@ -317,7 +317,7 @@ checksum = "b71798fca2c1fe1086445a7258a4bc81e6e49dcd24c8d0dd9a1e57395b603f51"
 [[package]]
 name = "bit-vec"
 version = "0.10.0"
-source = "git+https://github.com/kay-lambdadelta/bit-vec#f7d7829518f4f03c79550307549e1a0507dedf9a"
+source = "git+https://github.com/contain-rs/bit-vec?rev=77ad0d619f059db385553bb09486d8b96c3b112e#77ad0d619f059db385553bb09486d8b96c3b112e"
 dependencies = [
  "borsh",
  "serde",
