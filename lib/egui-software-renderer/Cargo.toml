@@ -22,4 +22,4 @@ tracing = { workspace = true }
 
 [target.'cfg(any(target_family = "unix", target_os = "windows"))'.dev-dependencies]
 criterion = { workspace = true }
-egui_demo_lib = "0.34"
+egui_demo_lib = "0.35"

@@ -274,7 +274,7 @@ impl<P: FrontendPlatform> Frontend<P> {
 
             Panel::top("menu_selection")
                 .resizable(false)
-                .show_inside(ui, |ui| {
+                .show(ui, |ui| {
                     Frame::default().inner_margin(8.0).show(ui, |ui| {
                         ui.horizontal_centered(|ui| {
                             for tab in TabId::iter() {
@@ -292,7 +292,7 @@ impl<P: FrontendPlatform> Frontend<P> {
                     })
                 });
 
-            CentralPanel::default().show_inside(ui, |ui| {
+            CentralPanel::default().show(ui, |ui| {
                 ui.with_layout(Layout::top_down_justified(Align::LEFT), |ui| {
                     Frame::new().show(ui, |ui| match self.current_tab {
                         TabId::Library => {}

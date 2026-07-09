@@ -37,11 +37,11 @@ tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 
 # Webgpu required stuff
-egui-wgpu = { version = "0.34", optional = true }
+egui-wgpu = { version = "0.35", optional = true }
 wgpu = { workspace = true, optional = true }
 
 # Windowing required stuff
-egui-winit = { version = "0.34", optional = true }
+egui-winit = { version = "0.35", optional = true }
 softbuffer = { version = "0.4", optional = true }
 winit = { version = "0.30", optional = true }
 

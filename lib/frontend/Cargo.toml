@@ -7,13 +7,13 @@ license = "GPL-3.0-or-later"
 [dependencies]
 byte-unit = "5.2"
 egui = { workspace = true, features = ["rayon"] }
-egui_extras = "0.34"
+egui_extras = "0.35"
 egui_material_icons = {
-  version = "0.6",
+  version = "0.7",
   default-features = false,
   features = ["filled"]
 }
-egui-toast = "0.20"
+egui-toast = "0.21"
 fluxemu-audio = { workspace = true }
 fluxemu-environment = { workspace = true }
 fluxemu-graphics = { workspace = true }
