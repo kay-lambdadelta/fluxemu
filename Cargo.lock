@@ -316,8 +316,9 @@ checksum = "b71798fca2c1fe1086445a7258a4bc81e6e49dcd24c8d0dd9a1e57395b603f51"
 
 [[package]]
 name = "bit-vec"
-version = "0.10.0"
-source = "git+https://github.com/contain-rs/bit-vec?rev=77ad0d619f059db385553bb09486d8b96c3b112e#77ad0d619f059db385553bb09486d8b96c3b112e"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5727b15fa97d4f4fee0a3b7c3d550ed0269f54329207b86388de918604e31269"
 dependencies = [
  "borsh",
  "serde",
@@ -1852,7 +1853,7 @@ dependencies = [
 name = "fluxemu-runtime"
 version = "0.1.0"
 dependencies = [
- "bit-vec 0.10.0",
+ "bit-vec 0.10.1",
  "bytes",
  "criterion",
  "dyn-clone",

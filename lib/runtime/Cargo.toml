@@ -9,11 +9,7 @@ harness = false
 name = "memory"
 
 [dependencies]
-# FIXME: Keep this until this commit ends up in a release
-bit-vec = {
-  git = "https://github.com/contain-rs/bit-vec",
-  rev = "77ad0d619f059db385553bb09486d8b96c3b112e"
-}
+bit-vec = "0.10"
 bytes = { workspace = true }
 dyn-clone = "1.0"
 fixed = { workspace = true }
