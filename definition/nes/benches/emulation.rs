@@ -8,7 +8,6 @@ use fluxemu_runtime::machine::{Machine, builder::MachineFactory};
 use redb::Database;
 
 fn emulation_performance(c: &mut Criterion) {
-    // All from https://github.com/christopherpow/nes-test-roms
     let roms = [
         (
             "Pennant League!! - Home Run Nighter (Japan).nes",
