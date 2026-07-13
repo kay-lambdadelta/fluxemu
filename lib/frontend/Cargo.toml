@@ -27,6 +27,7 @@ nalgebra = { workspace = true }
 num = { workspace = true }
 palette = { workspace = true }
 pollster = { workspace = true }
+rand = { workspace = true }
 rfd = { version = "0.17", optional = true }
 ringbuffer = { workspace = true }
 ron = { workspace = true }

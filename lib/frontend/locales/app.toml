@@ -1,28 +1,19 @@
 _version = 2
 
 [simulation_controller.execution_timeslice]
-en = "Execution Timeslice"
+en = "Execution timeslice"
 
-[simulation_controller.sleep_threshold]
-en = "Sleep Threshold"
+[simulation_controller.target_timeslice]
+en = "Execution timeslice"
 
-[simulation_controller.error]
-en = "Accumulated Error"
-
-[simulation_controller.average_sleep_overshoot]
-en = "Average Sleep Overshoot"
+[simulation_controller.hardware_speed]
+en = "Realtime throughput factor"
 
 [simulation_controller.jitter_ratio]
 en = "Jitter Ratio"
 
-[simulation_controller.average_execution_time]
-en = "Average Execution Time"
-
-[simulation_controller.average_jitter]
-en = "Average Jitter"
-
-[simulation_controller.realtime_percentage]
-en = "Realtime Percentage"
+[simulation_controller.invalid_measurement]
+en = "Invalid time measurement taken from guest machine execution (for scheduling), is your OS's timer busted?"
 
 [browser.cannot_navigate_to_directory]
 en = "Not a directory that can accessed, check permissions"

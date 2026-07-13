@@ -314,12 +314,9 @@ impl<P: FrontendPlatform> Frontend<P> {
                             if let Some(MachineContext {
                                 simulation_controller,
                                 ..
-                            }) = &self.machine_context
+                            }) = &mut self.machine_context
                             {
-                                let state =
-                                    simulation_controller.snapshot_simulation_controller_state();
-
-                                ui.add(state);
+                                ui.add(simulation_controller);
                             }
                         }
                         TabId::About => {}
