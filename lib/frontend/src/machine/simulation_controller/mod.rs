@@ -19,13 +19,13 @@ use crate::{
 
 const UI_UPDATE_RATE: Duration = Duration::from_millis(200);
 const HISTORICAL_SAMPLE_WINDOW: usize = 32;
-const JITTER_CEILING: f32 = 0.2;
+const JITTER_CEILING: f32 = 0.4;
 const HARDWARE_SPEED_EMA: f32 = 0.9995;
 const COMFORTABLE_HEADROOM: f32 = 1.0 + Duration::from_millis(1).as_secs_f32();
 const EXPLORATION_CHANGE: Duration = Duration::from_micros(1);
 const MAX_SCHEDULE_DRIFT: Duration = Duration::from_millis(20);
 const OVERSHOOT_EMA_ALPHA: f32 = 0.9;
-const DIMINISHING_RETURNS_ELASTICITY: f32 = 0.5;
+const DIMINISHING_RETURNS_ELASTICITY: f32 = 0.4;
 const MIN_PROBE_DELTA: f32 = 0.05;
 const PROBE_WINDOW: usize = 64;
 

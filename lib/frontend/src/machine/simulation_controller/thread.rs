@@ -182,7 +182,7 @@ pub fn simulation_controller_loop(
                 }
             } else {
                 // Move randomly until we have more coherent data
-                rand::rng().random_range(-step..=step)
+                rand::rng().random_range(-step..=(step * 0.99))
             };
 
             target += walk;
