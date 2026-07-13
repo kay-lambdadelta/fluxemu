@@ -4,13 +4,13 @@ members = ["definition/*", "lib/*", "shell/*", "utils/"]
 
 [workspace.dependencies]
 bytemuck = { version = "1.25", features = ["derive"] }
-bytes = "1.11"
+bytes = "1.12"
 cfg-if = "1.0"
 clap = { version = "4.6", features = ["derive"] }
 criterion = "0.8"
 data-encoding = "2.11"
 egui = "0.35"
-fixed = { version = "1", features = ["num-traits", "serde"] }
+fixed = { version = "1.31", features = ["num-traits", "serde"] }
 fluxemu-audio = { path = "lib/audio" }
 fluxemu-definition-atari2600 = { path = "definition/atari2600" }
 fluxemu-definition-atarilynx = { path = "definition/atarilynx" }
@@ -55,7 +55,7 @@ sdd = { version = "4.8" }
 sealed = "0.6"
 serde = { version = "1.0", features = ["derive"] }
 serde-inline-default = "1.0"
-serde_with = "3.20"
+serde_with = "3.21"
 strum = { version = "0.28", features = ["derive"] }
 tempfile = "3.27"
 thiserror = "2.0"
