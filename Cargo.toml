@@ -65,6 +65,9 @@ uuid = { version = "1.23", features = ["rng-rand", "serde", "v4"] }
 versions = "7.0"
 wgpu = "29.0"
 
+[profile.bench]
+inherits = "profiling"
+
 [profile.dev]
 opt-level = 1
 
