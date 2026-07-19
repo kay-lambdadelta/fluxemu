@@ -12,12 +12,9 @@ use crate::display::{
 };
 
 impl RuntimeAssociatedDisplayContext<WebgpuGraphicsRuntime<Arc<Window>>> for Arc<Window> {
-    type ProduceDataArgs<'a> = ();
-
     fn produce_runtime(
         &self,
         graphics_requirements: GraphicsRequirements<Webgpu>,
-        _args: Self::ProduceDataArgs<'_>,
     ) -> WebgpuGraphicsRuntime<Arc<Window>> {
         let inner_size = self.inner_size();
 

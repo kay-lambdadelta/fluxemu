@@ -14,6 +14,7 @@ use egui_material_icons::icons::{
     ICON_ARROW_DOWNWARD, ICON_ARROW_UPWARD, ICON_DIRECTORY_SYNC, ICON_EDIT, ICON_FOLDER_OPEN,
     ICON_LOCK, ICON_VISIBILITY,
 };
+use egui_toast::ToastKind;
 use fluxemu_program::ProgramManager;
 use indexmap::IndexMap;
 use palette::{
@@ -153,8 +154,10 @@ impl<P: FrontendPlatform> Widget for FileBrowser<'_, P> {
                                 if is_accessible_dir {
                                     *directory_to_navigate_to = Some(pathbuf);
                                 } else {
-                                    self.toast_manager
-                                        .error(t!("browser.cannot_navigate_to_directory"));
+                                    self.toast_manager.toast(
+                                        ToastKind::Error,
+                                        t!("browser.cannot_navigate_to_directory"),
+                                    );
                                 }
                             }
                         });
@@ -214,8 +217,10 @@ impl<P: FrontendPlatform> Widget for FileBrowser<'_, P> {
                         *current_directory_contents = new_contents;
                     }
                     Err(err) => {
-                        self.toast_manager
-                            .error(format!("Could not refresh directory: {}", err));
+                        self.toast_manager.toast(
+                            ToastKind::Error,
+                            format!("Could not refresh directory: {}", err),
+                        );
                     }
                 }
             }

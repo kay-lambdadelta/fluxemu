@@ -21,7 +21,6 @@ use std::{
 use clap::Parser;
 use cli::{Cli, CliAction};
 use fluxemu_environment::{ENVIRONMENT_LOCATION, Environment, STORAGE_DIRECTORY};
-use fluxemu_input::physical::hotkey::default_hotkeys;
 use fluxemu_program::ProgramManager;
 use redb::Database;
 use ron::ser::PrettyConfig;
@@ -40,7 +39,7 @@ mod build_machine;
 mod cli;
 mod display;
 mod event_loop;
-mod input;
+mod gamepad;
 mod platform;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -56,7 +55,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .add_directive("winit=info".parse().unwrap()),
     );
 
-    let mut environment = if let Ok(environment_string) =
+    let environment = if let Ok(environment_string) =
         std::fs::read_to_string(ENVIRONMENT_LOCATION.deref())
         && let Ok(environment) = ron::from_str(&environment_string)
     {
@@ -64,10 +63,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         Environment::default()
     };
-
-    if environment.hotkeys.is_empty() {
-        environment.hotkeys = default_hotkeys().collect();
-    }
 
     if !ENVIRONMENT_LOCATION.is_file() {
         let environment_string = ron::ser::to_string_pretty(&environment, PrettyConfig::default())?;

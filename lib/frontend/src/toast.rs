@@ -18,10 +18,26 @@ impl Default for ToastManager {
 }
 
 impl ToastManager {
-    pub fn error(&mut self, message: impl Into<Cow<'static, str>>) {
+    pub fn toast(&mut self, kind: ToastKind, message: impl Into<Cow<'static, str>>) {
         let message = message.into();
 
-        tracing::error!("{}", message);
+        match kind {
+            ToastKind::Info => {
+                tracing::info!("{}", message);
+            }
+            ToastKind::Warning => {
+                tracing::warn!("{}", message);
+            }
+            ToastKind::Error => {
+                tracing::error!("{}", message);
+            }
+            ToastKind::Success => {
+                tracing::info!("{}", message);
+            }
+            ToastKind::Custom(_) => {
+                tracing::info!("{}", message);
+            }
+        };
 
         self.toasts.add(Toast {
             kind: ToastKind::Error,

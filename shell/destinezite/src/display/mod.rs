@@ -35,11 +35,8 @@ pub trait DisplayContext: Sized + 'static {
 }
 
 pub trait RuntimeAssociatedDisplayContext<R: GraphicsRuntime>: DisplayContext {
-    type ProduceDataArgs<'a>;
-
-    fn produce_runtime<'a>(
+    fn produce_runtime(
         &self,
         graphics_requirements: GraphicsRequirements<<R as GraphicsRuntime>::GraphicsApi>,
-        args: Self::ProduceDataArgs<'a>,
     ) -> R;
 }

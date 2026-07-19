@@ -33,46 +33,19 @@ impl InputId {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
-/// Represents the state as collected of a single input
-pub enum InputState {
-    /// 0 or 1
-    Digital(bool),
-    /// Clamped from 0.0 to 1.0
-    Analog(f32),
-}
-
-impl Default for InputState {
-    fn default() -> Self {
-        Self::Digital(false)
-    }
-}
+#[derive(Debug, Copy, Clone, PartialEq, Default)]
+pub struct InputState(pub f32);
 
 impl InputState {
     /// Digital press
-    pub const PRESSED: Self = Self::Digital(true);
+    pub const PRESSED: Self = Self(1.0);
     /// Digital release
-    pub const RELEASED: Self = Self::Digital(false);
+    pub const RELEASED: Self = Self(0.0);
 
     /// Interprets self as a digital input
     pub fn as_digital(&self, threshhold: Option<f32>) -> bool {
-        match self {
-            InputState::Digital(value) => *value,
-            InputState::Analog(value) => *value >= threshhold.unwrap_or(0.5),
-        }
-    }
+        let threshhold = threshhold.unwrap_or(0.5);
 
-    /// Interprets self as an analog input
-    pub fn as_analog(&self) -> f32 {
-        match self {
-            InputState::Digital(value) => {
-                if *value {
-                    1.0
-                } else {
-                    0.0
-                }
-            }
-            InputState::Analog(value) => *value,
-        }
+        self.0 >= threshhold
     }
 }

@@ -1,14 +1,13 @@
-use fluxemu_environment::input::PhysicalGamepadConfiguration;
+use std::borrow::Cow;
+
+use egui_toast::ToastKind;
 use fluxemu_input::{
     InputId, InputState,
     physical::{PhysicalInputDeviceId, hotkey::Hotkey},
 };
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 
-use crate::{
-    Frontend, FrontendPlatform, MachineContext, PhysicalInputDeviceMetadata,
-    PhysicalInputDeviceState,
-};
+use crate::{Frontend, FrontendPlatform, MachineContext, PhysicalInputDeviceState};
 
 impl<P: FrontendPlatform> Frontend<P> {
     pub fn insert_input(
@@ -17,30 +16,35 @@ impl<P: FrontendPlatform> Frontend<P> {
         input_id: InputId,
         state: InputState,
     ) {
-        let Some(device) = self.physical_input_devices.get_mut(&origin) else {
-            tracing::warn!("Ignoring unknown device {}", origin);
+        // Make sure our main loop is ran
+        self.egui_context.request_repaint();
+
+        let Some(physical_input_device_state) = self.physical_input_devices.get_mut(&origin) else {
+            tracing::error!("Ignoring unknown device {}", origin);
 
             return;
         };
 
-        if !device.metadata.present_inputs.contains(&input_id) {
-            tracing::warn!(
-                "Ignoring unknown input {:?} from device {} in state {:?}",
-                input_id,
-                origin,
-                state
-            );
+        tracing::trace!(
+            ?origin,
+            ?input_id,
+            ?state,
+            "{}",
+            physical_input_device_state.name
+        );
 
-            return;
-        }
+        let physical_gamepad_configuration = self.environment.gamepads.entry(origin).or_default();
 
-        device.gui_relevant_input_state.insert(input_id, state);
+        physical_input_device_state
+            .gui_relevant_input_state
+            .insert(input_id, state);
+
         let mut was_relevant_for_hotkeys = false;
 
         // Check for hotkeys
-        for (combinations, action) in self.environment.hotkeys.iter() {
+        for (combinations, hotkey_action) in &physical_gamepad_configuration.hotkey {
             let is_activated = combinations.iter().all(|input_id| {
-                device
+                physical_input_device_state
                     .gui_relevant_input_state
                     .get(input_id)
                     .copied()
@@ -51,7 +55,7 @@ impl<P: FrontendPlatform> Frontend<P> {
             if is_activated {
                 was_relevant_for_hotkeys = true;
 
-                match action {
+                match hotkey_action {
                     Hotkey::ToggleMenu => {
                         if self.frontend_overlay_active {
                             if let Some(MachineContext {
@@ -101,9 +105,25 @@ impl<P: FrontendPlatform> Frontend<P> {
                     Hotkey::StoreSnapshot => {}
                     Hotkey::IncrementSnapshotCounter => {
                         self.current_snapshot_slot += 1;
+
+                        self.toast_manager.toast(
+                            ToastKind::Info,
+                            format!(
+                                "Current snapshot slot is now {}",
+                                self.current_snapshot_slot
+                            ),
+                        );
                     }
                     Hotkey::DecrementSnapshotCounter => {
                         self.current_snapshot_slot -= 1;
+
+                        self.toast_manager.toast(
+                            ToastKind::Info,
+                            format!(
+                                "Current snapshot slot is now {}",
+                                self.current_snapshot_slot
+                            ),
+                        );
                     }
                 }
             }
@@ -112,95 +132,83 @@ impl<P: FrontendPlatform> Frontend<P> {
         // Ignore if that key participated in a hotkey(s)
         if !was_relevant_for_hotkeys
             && !self.frontend_overlay_active
-            && let Some(MachineContext {
-                machine,
-                physical_input_to_virtual_mapping,
-                ..
-            }) = &self.machine_context
+            && let Some(MachineContext { machine, .. }) = &self.machine_context
+            && let Some(program_specification) = machine.program_specification()
         {
             // Enter runtime
             let runtime_guard = machine.enter_runtime();
 
-            let Some(program_specification) = runtime_guard.program_specification() else {
-                return;
-            };
+            let program_specific_mappings = physical_gamepad_configuration
+                .program_specific_mappings
+                .entry(program_specification.id.clone())
+                .or_default();
 
-            let Some(input_path) = physical_input_to_virtual_mapping.get(&origin) else {
-                return;
-            };
-
-            let Some(logical_device) = runtime_guard.input_devices().get(input_path) else {
-                return;
-            };
-
-            let transformed = self
-                .environment
-                .physical_input_configs
-                .get(&origin)
-                .and_then(|physical_gamepad_configuration| {
-                    let PhysicalGamepadConfiguration {
-                        program_overrides, ..
-                    } = physical_gamepad_configuration;
-                    program_overrides
-                        .get(&program_specification.id)
-                        .and_then(|mapping| mapping.get(input_path))
-                        .and_then(|mapping| mapping.get(&input_id).copied())
-                })
-                .or_else(|| {
-                    logical_device
-                        .metadata()
-                        .default_mappings
-                        .get(&input_id)
-                        .copied()
-                });
-
-            let Some(transformed_input_id) = transformed else {
-                return;
-            };
-
-            if !logical_device
-                .metadata()
-                .present_inputs
-                .contains(&transformed_input_id)
+            for logical_input_device_path in &physical_input_device_state.controlling_input_devices
             {
-                tracing::error!(
-                    "Transformed input targets unknown emulated input: {:?} on {:?}",
-                    transformed_input_id,
-                    logical_device
-                );
-                return;
+                let logical_input_device_specific_mappings = program_specific_mappings
+                    .entry(logical_input_device_path.clone())
+                    .or_insert_with(|| {
+                        let logical_input_device = runtime_guard
+                            .input_devices()
+                            .get(logical_input_device_path)
+                            .unwrap();
+
+                        logical_input_device
+                            .metadata()
+                            .default_mappings
+                            .iter()
+                            .map(|(from, to)| (*from, *to))
+                            .collect()
+                    });
+
+                if let Some(transformed_input) =
+                    logical_input_device_specific_mappings.get(&input_id)
+                {
+                    runtime_guard
+                        .insert_inputs(logical_input_device_path, [(*transformed_input, state)]);
+                }
             }
-
-            if logical_device.get_state(transformed_input_id) == state {
-                return;
-            }
-
-            logical_device.set_state(transformed_input_id, state);
-
-            // Insert that input into the machine
-            runtime_guard.insert_inputs(input_path, [(transformed_input_id, state)]);
         }
     }
 
-    pub fn add_input_device(
+    pub fn register_gamepad(
         &mut self,
         id: PhysicalInputDeviceId,
-        metadata: PhysicalInputDeviceMetadata,
+        name: impl Into<Cow<'static, str>>,
         is_id_stable: bool,
         rely_on_frontend_input_handling: bool,
     ) {
+        let name = name.into();
+
+        tracing::info!("Gamepad with name {} attached ({})", name, id);
+
+        // Make sure our main loop is ran
+        self.egui_context.request_repaint();
+
+        let mut controlling_input_devices = IndexSet::default();
+
+        // HACK: Make sure this gamepad picks up a input device
+        if let Some(MachineContext { machine, .. }) = &self.machine_context {
+            let runtime_guard = machine.enter_runtime();
+
+            if let Some(input_device_path) = runtime_guard.input_devices().keys().next() {
+                controlling_input_devices.insert(input_device_path.clone());
+            }
+        }
+
         self.physical_input_devices.insert(
             id,
             PhysicalInputDeviceState {
                 is_id_stable,
-                metadata,
+                name,
                 rely_on_frontend_input_handling,
                 gui_relevant_input_state: IndexMap::default(),
+                controlling_input_devices,
             },
         );
     }
 
-    pub fn remove_input_device(&mut self, id: PhysicalInputDeviceId) {
+    pub fn unregister_gamepad(&mut self, id: PhysicalInputDeviceId) {
         self.physical_input_devices.remove(&id);
     }
 }

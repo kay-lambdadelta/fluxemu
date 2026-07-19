@@ -1,7 +1,5 @@
 use std::{rc::Rc, sync::Arc};
 
-use fluxemu_program::ProgramSpecification;
-
 use crate::{
     ComponentPath,
     component::{Component, ComponentRegistry},
@@ -62,12 +60,6 @@ impl RuntimeHandle {
     #[inline]
     pub fn component_registry(&self) -> ComponentRegistry<'_> {
         ComponentRegistry::new(self)
-    }
-
-    /// Gain access to the program specification the [Machine] was created with
-    #[inline]
-    pub fn program_specification(&self) -> Option<&ProgramSpecification> {
-        self.machine.program_specification.as_ref()
     }
 
     /// Schedule an event by the [Component]s event type

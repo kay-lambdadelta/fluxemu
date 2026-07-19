@@ -1,10 +1,7 @@
-use std::{collections::BTreeSet, path::PathBuf, sync::LazyLock};
+use std::{path::PathBuf, sync::LazyLock};
 
 use audio::AudioSettings;
-use fluxemu_input::{
-    InputId,
-    physical::{PhysicalInputDeviceId, hotkey::Hotkey},
-};
+use fluxemu_input::physical::PhysicalInputDeviceId;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_inline_default::serde_inline_default;
@@ -57,9 +54,7 @@ pub static ENVIRONMENT_LOCATION: LazyLock<PathBuf> = LazyLock::new(|| {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Environment {
     #[serde(default)]
-    pub physical_input_configs: IndexMap<PhysicalInputDeviceId, PhysicalGamepadConfiguration>,
-    #[serde(default)]
-    pub hotkeys: IndexMap<BTreeSet<InputId>, Hotkey>,
+    pub gamepads: IndexMap<PhysicalInputDeviceId, PhysicalGamepadConfiguration>,
     #[serde(default)]
     /// Graphics settings
     pub graphics_setting: GraphicsSettings,
@@ -89,7 +84,7 @@ pub struct Environment {
 impl Default for Environment {
     fn default() -> Self {
         Self {
-            physical_input_configs: Default::default(),
+            gamepads: Default::default(),
             graphics_setting: Default::default(),
             audio_settings: Default::default(),
             file_browser_home_directory: STORAGE_DIRECTORY.clone(),
@@ -98,7 +93,6 @@ impl Default for Environment {
             save_directory: STORAGE_DIRECTORY.join("saves"),
             snapshot_directory: STORAGE_DIRECTORY.join("snapshots"),
             rom_store: STORAGE_DIRECTORY.join("roms"),
-            hotkeys: Default::default(),
         }
     }
 }

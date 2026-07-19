@@ -1,11 +1,9 @@
 use std::{
     collections::HashMap,
     marker::PhantomData,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::{Duration, Instant},
+    os::fd::AsFd,
+    sync::{Arc, Mutex},
+    time::Instant,
 };
 
 use ::input::Libinput;
@@ -19,15 +17,11 @@ use fluxemu_frontend::{
 };
 use fluxemu_program::{ProgramManager, RomId};
 use fluxemu_runtime::graphics::GraphicsRequirements;
-use gilrs::{Gilrs, GilrsBuilder};
 use libseat::{Seat, SeatEvent};
 use nalgebra::Vector2;
 use nix::{
     poll::PollTimeout,
-    sys::{
-        epoll::{Epoll, EpollCreateFlags, EpollEvent, EpollFlags},
-        eventfd::{EfdFlags, EventFd},
-    },
+    sys::epoll::{Epoll, EpollCreateFlags, EpollEvent, EpollFlags},
 };
 use palette::named::BLACK;
 
@@ -36,11 +30,9 @@ use crate::{
     display::{DisplayContext, RuntimeAssociatedDisplayContext},
     event_loop::drm::{
         card::{Card, DrmParams},
-        input::{
-            EguiInputCollector, Interface, build_xkb_state, handle_gilrs_events,
-            handle_libinput_events,
-        },
+        input::{EguiInputCollector, Interface, build_xkb_state, handle_libinput_events},
     },
+    gamepad::GamepadContext,
     platform::DesktopPlatform,
 };
 
@@ -53,7 +45,7 @@ pub struct DrmEventLoop<R> {
 
 impl<R: GraphicsRuntime> DrmEventLoop<R>
 where
-    for<'a> Arc<DrmContext>: RuntimeAssociatedDisplayContext<R, ProduceDataArgs<'a> = &'a mut Seat>,
+    Arc<DrmContext>: RuntimeAssociatedDisplayContext<R>,
 {
     pub fn run(
         environment: Environment,
@@ -78,22 +70,11 @@ where
         });
         let (width, height) = context.params.mode.size();
 
-        // This is being used as a waker for gilrs events
-        let gilrs_event_fd = EventFd::from_value_and_flags(0, EfdFlags::EFD_CLOEXEC)?;
-
-        let gilrs_state = Mutex::new(GilrsState {
-            context: GilrsBuilder::new().build().unwrap(),
-            peeked_event: None,
-        });
-
-        let threads_should_exit = AtomicBool::new(false);
-
         // Set up our audio runtime so we can give it to the frontend
         let audio_runtime = CpalAudioRuntime::new().unwrap();
 
         // We can create the graphics runtime immediately (unlike with many window managers), it should also set up the DRM/KMS stuff for us
-        let mut graphics_runtime =
-            context.produce_runtime(GraphicsRequirements::default(), &mut seat);
+        let mut graphics_runtime = context.produce_runtime(GraphicsRequirements::default());
 
         let scale_factor = calculate_scale_factor(
             &context.card,
@@ -102,7 +83,7 @@ where
         );
 
         // Set up the input collector/translator and the frontend
-        let frontend = Frontend::new(
+        let mut frontend = Frontend::new(
             environment,
             machine_factories,
             program_manager,
@@ -111,6 +92,8 @@ where
             // No window manager, no external file dialog
             false,
         );
+        let gamepad_context = GamepadContext::new(&mut frontend);
+
         let egui_input_collector = EguiInputCollector::new(scale_factor);
         let frontend_state = Mutex::new(FrontendState {
             frontend,
@@ -123,37 +106,10 @@ where
 
         // Enter the scope so we can share state with the gilrs thread without refcounting
         std::thread::scope(|scope| {
-            std::thread::Builder::new()
-                .name("Gilrs Gamepad Poller".to_string())
-                .spawn_scoped(scope, || {
-                    while !threads_should_exit.load(Ordering::Acquire) {
-                        let mut had_events = false;
-
-                        let mut gilrs_state_guard = gilrs_state.lock().unwrap();
-
-                        // Scan for a event
-                        //
-                        // We have a timeout so exiting works as expected
-                        if let Some(event) = gilrs_state_guard
-                            .context
-                            .next_event_blocking(Some(Duration::from_millis(1)))
-                        {
-                            gilrs_state_guard.peeked_event = Some(event);
-                            had_events = true;
-                        }
-                        drop(gilrs_state_guard);
-
-                        // Only wake up the event loop if anything actually changed
-                        if had_events {
-                            gilrs_event_fd.write(1).unwrap();
-                        }
-                    }
-                })
-                .unwrap();
-
             let seat_name = seat.name();
+
             std::thread::Builder::new()
-                .name("Input Handler".to_string())
+                .name("Input Poll Thread".to_string())
                 .spawn_scoped(scope, || {
                     // Set up libinput for input reading and xkb for keyboard input interpretation
                     let mut libinput = Libinput::new_with_udev(Interface);
@@ -162,16 +118,16 @@ where
                     // Assign the seat
                     libinput.udev_assign_seat(seat_name).unwrap();
 
-                    let epoll = make_epoll(&libinput, &gilrs_event_fd).unwrap();
+                    let epoll = Epoll::new(EpollCreateFlags::EPOLL_CLOEXEC).unwrap();
 
-                    while !threads_should_exit.load(Ordering::Acquire) {
-                        let mut ready_events = [EpollEvent::empty(); 2];
+                    epoll
+                        .add(libinput.as_fd(), EpollEvent::new(EpollFlags::EPOLLIN, 0))
+                        .unwrap();
 
-                        match epoll.wait::<PollTimeout>(
-                            &mut ready_events,
-                            // Wake up sometimes in order to poll the should exit flag
-                            Duration::from_millis(1).try_into().unwrap(),
-                        ) {
+                    loop {
+                        let mut ready_events = [EpollEvent::empty(); 1];
+
+                        match epoll.wait(&mut ready_events, PollTimeout::NONE) {
                             Ok(num_events) if num_events > 0 => {
                                 let mut frontend_state = frontend_state.lock().unwrap();
                                 let FrontendState {
@@ -180,26 +136,16 @@ where
                                 } = &mut *frontend_state;
 
                                 for event in &ready_events[..num_events] {
-                                    match event.data() {
-                                        0 => {
-                                            handle_libinput_events(
-                                                frontend,
-                                                egui_input_collector,
-                                                &mut libinput,
-                                                &mut xkb_state,
-                                                &mut added_keyboard,
-                                                width,
-                                                height,
-                                            );
-                                        }
-                                        1 => {
-                                            let mut gilrs_state_guard = gilrs_state.lock().unwrap();
-                                            gilrs_event_fd.read().unwrap();
-
-                                            handle_gilrs_events(frontend, &mut gilrs_state_guard);
-                                            drop(gilrs_state_guard);
-                                        }
-                                        _ => {}
+                                    if event.data() == 0 {
+                                        handle_libinput_events(
+                                            frontend,
+                                            egui_input_collector,
+                                            &mut libinput,
+                                            &mut xkb_state,
+                                            &mut added_keyboard,
+                                            width,
+                                            height,
+                                        );
                                     }
                                 }
                             }
@@ -208,6 +154,25 @@ where
                             }
                             _ => {}
                         }
+                    }
+                })
+                .unwrap();
+
+            std::thread::Builder::new()
+                .name("Gamepad Poll Thread".to_string())
+                .spawn_scoped(scope, || match gamepad_context {
+                    Ok(mut context) => loop {
+                        if let Some(callback) = context.poll_gamepad_events(None) {
+                            let mut frontend_state = frontend_state.lock().unwrap();
+                            callback(&mut frontend_state.frontend);
+                        }
+                    },
+                    Err(err) => {
+                        tracing::error!(
+                            "Gamepad context could not be created: {}, you will not have gamepad \
+                             support",
+                            err
+                        );
                     }
                 })
                 .unwrap();
@@ -291,15 +256,6 @@ pub fn mode_refresh_millihertz(mode: &drm::control::Mode) -> u32 {
     ((numerator + denominator / 2) / denominator) as u32
 }
 
-fn make_epoll(libinput: &Libinput, gilrs_event_fd: &EventFd) -> Result<Epoll, nix::Error> {
-    let epoll = Epoll::new(EpollCreateFlags::EPOLL_CLOEXEC)?;
-
-    epoll.add(libinput, EpollEvent::new(EpollFlags::EPOLLIN, 0))?;
-    epoll.add(gilrs_event_fd, EpollEvent::new(EpollFlags::EPOLLIN, 1))?;
-
-    Ok(epoll)
-}
-
 fn calculate_scale_factor(
     card: &Card,
     mode: &drm::control::Mode,
@@ -317,11 +273,6 @@ fn calculate_scale_factor(
     let pixel_dimensions = Vector2::new(width, height);
 
     crate::display::calculate_scale_factor(pixel_dimensions.cast(), physical_dimensions.cast())
-}
-
-struct GilrsState {
-    context: Gilrs,
-    peeked_event: Option<gilrs::Event>,
 }
 
 struct FrontendState<R: GraphicsRuntime> {

@@ -10,7 +10,7 @@ mod platform;
 mod settings;
 mod toast;
 
-use std::{collections::HashMap, num::Wrapping, sync::Arc, thread::JoinHandle};
+use std::{borrow::Cow, collections::HashMap, num::Wrapping, sync::Arc, thread::JoinHandle};
 
 use egui::{
     Align, CentralPanel, Color32, Context, FontFamily, Frame, FullOutput, Layout, Panel, RawInput,
@@ -23,17 +23,17 @@ use egui_material_icons::{
         ICON_VIDEO_LIBRARY,
     },
 };
-use fluxemu_environment::Environment;
+use egui_toast::ToastKind;
+use fluxemu_environment::{ENVIRONMENT_LOCATION, Environment};
 use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_input::{InputId, InputState, physical::PhysicalInputDeviceId};
 use fluxemu_program::{ProgramManager, ProgramSpecification, RomId};
 use fluxemu_runtime::{
+    ResourcePath,
     machine::{Machine, builder::SealedMachineBuilder},
-    path::ResourcePath,
     platform::Platform,
 };
-use indexmap::IndexMap;
-pub use input::PhysicalInputDeviceMetadata;
+use indexmap::{IndexMap, IndexSet};
 use palette::Srgba;
 pub use platform::*;
 use strum::{AsRefStr, EnumIter, IntoEnumIterator};
@@ -74,17 +74,17 @@ impl TabId {
 
 struct MachineContext {
     machine: Arc<Machine>,
-    physical_input_to_virtual_mapping: HashMap<PhysicalInputDeviceId, ResourcePath>,
     simulation_controller: SimulationController,
 }
 
 #[derive(Debug, Clone)]
 struct PhysicalInputDeviceState {
     pub is_id_stable: bool,
-    pub metadata: PhysicalInputDeviceMetadata,
     // Should the runtime translate this input device into something egui can understand
     pub rely_on_frontend_input_handling: bool,
+    pub name: Cow<'static, str>,
     pub gui_relevant_input_state: IndexMap<InputId, InputState>,
+    pub controlling_input_devices: IndexSet<ResourcePath>,
 }
 
 #[derive(Debug)]
@@ -186,17 +186,10 @@ impl<P: FrontendPlatform> Frontend<P> {
     }
 
     fn bring_down_current_machine(&mut self) {
-        if let Some(MachineContext {
-            machine,
-            physical_input_to_virtual_mapping: _,
-            simulation_controller,
-        }) = self.machine_context.take()
-        {
-            // Hang up and await destruction of simulation thread
-            drop(simulation_controller);
+        self.machine_context = None;
 
-            // Destroy old machine
-            drop(machine);
+        for physical_gamepad_state in self.physical_input_devices.values_mut() {
+            physical_gamepad_state.controlling_input_devices.clear();
         }
     }
 
@@ -233,16 +226,14 @@ impl<P: FrontendPlatform> Frontend<P> {
             let machine = sealed_machine_builder.build(graphics_initialization_data);
             let runtime_guard = machine.enter_runtime();
 
-            // FIXME: Actually reference the environment and add a input mapping ui
-            let default_physical_input_to_virtual_mapping =
-                if let Some(input_device) = runtime_guard.input_devices().keys().next() {
-                    HashMap::from([(
-                        PhysicalInputDeviceId::PLATFORM_RESERVED,
-                        input_device.clone(),
-                    )])
-                } else {
-                    HashMap::default()
-                };
+            // HACK: Assign the first input device to all gamepads
+            if let Some(logical_input_device_path) = runtime_guard.input_devices().keys().next() {
+                for physical_input_device_state in self.physical_input_devices.values_mut() {
+                    physical_input_device_state
+                        .controlling_input_devices
+                        .insert(logical_input_device_path.clone());
+                }
+            }
 
             // Exit runtime
             drop(runtime_guard);
@@ -256,7 +247,6 @@ impl<P: FrontendPlatform> Frontend<P> {
             self.machine_context = Some(MachineContext {
                 simulation_controller,
                 machine,
-                physical_input_to_virtual_mapping: default_physical_input_to_virtual_mapping,
             });
 
             self.machine_loading = false;
@@ -356,7 +346,7 @@ impl<P: FrontendPlatform> Frontend<P> {
                                 self.program_manager.auto_generate_specification(roms[0])
                             else {
                                 self.toast_manager
-                                    .error("Could not properly identify program");
+                                    .toast(ToastKind::Error, "Could not properly identify program");
 
                                 return;
                             };
@@ -367,8 +357,10 @@ impl<P: FrontendPlatform> Frontend<P> {
                         self.build_machine_for_specification(specification);
                     }
                     Err(err) => {
-                        self.toast_manager
-                            .error(format!("Failed to find matching specification: {}", err));
+                        self.toast_manager.toast(
+                            ToastKind::Error,
+                            format!("Failed to find matching specification: {}", err),
+                        );
                     }
                 }
             }
@@ -377,10 +369,25 @@ impl<P: FrontendPlatform> Frontend<P> {
                     self.pending_machine = Some(sealed);
                 } else {
                     self.toast_manager
-                        .error("Could not construct machine for program");
+                        .toast(ToastKind::Error, "Could not construct machine for program");
                 }
             }
             unfinished => self.machine_initialization_step = Some(unfinished),
+        }
+    }
+}
+
+impl<P: FrontendPlatform> Drop for Frontend<P> {
+    // Save on exit
+    fn drop(&mut self) {
+        if let Ok(environment) = ron::to_string(&self.environment).map_err(|err| {
+            tracing::error!("Could not serialize environment: {}", err);
+        }) {
+            let Err(err) = std::fs::write(ENVIRONMENT_LOCATION.as_path(), environment) else {
+                return;
+            };
+
+            tracing::error!("Could not save environment: {}", err);
         }
     }
 }

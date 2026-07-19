@@ -2,7 +2,6 @@ use std::{os::fd::AsRawFd, sync::Arc};
 
 use fluxemu_graphics::api::webgpu::Webgpu;
 use fluxemu_runtime::graphics::GraphicsRequirements;
-use libseat::Seat;
 use nalgebra::Vector2;
 use wgpu::{Backends, Instance, InstanceDescriptor, SurfaceTargetUnsafe};
 
@@ -17,12 +16,9 @@ use crate::{
 };
 
 impl RuntimeAssociatedDisplayContext<WebgpuGraphicsRuntime<Self>> for Arc<DrmContext> {
-    type ProduceDataArgs<'a> = &'a mut Seat;
-
     fn produce_runtime(
         &self,
         graphics_requirements: GraphicsRequirements<Webgpu>,
-        _seat: &mut Seat,
     ) -> WebgpuGraphicsRuntime<Self> {
         let (width, height) = self.params.mode.size();
 

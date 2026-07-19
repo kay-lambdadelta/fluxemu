@@ -13,7 +13,6 @@ use fluxemu_graphics::api::software::{
     texture::{AsViewTexture, AsViewTextureMut, RefMutTexture, RefTexture},
 };
 use fluxemu_runtime::graphics::GraphicsRequirements;
-use libseat::Seat;
 use nalgebra::Vector2;
 use nix::{
     poll::PollTimeout,
@@ -65,12 +64,9 @@ impl AsViewTextureMut<Packed<Bgra, [u8; 4]>> for SurfaceBufferGuard<'_> {
 }
 
 impl RuntimeAssociatedDisplayContext<SoftwareGraphicsRuntime<Self>> for Arc<DrmContext> {
-    type ProduceDataArgs<'a> = &'a mut Seat;
-
     fn produce_runtime(
         &self,
         _graphics_requirements: GraphicsRequirements<Software>,
-        _seat: &mut Seat,
     ) -> SoftwareGraphicsRuntime<Self> {
         let (width, height) = self.params.mode.size();
 

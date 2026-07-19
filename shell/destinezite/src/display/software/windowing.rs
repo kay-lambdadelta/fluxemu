@@ -38,12 +38,9 @@ impl AsViewTextureMut<Packed<Bgra, [u8; 4]>> for SurfaceBufferGuard<'_> {
 }
 
 impl RuntimeAssociatedDisplayContext<SoftwareGraphicsRuntime<Self>> for Arc<Window> {
-    type ProduceDataArgs<'a> = ();
-
     fn produce_runtime(
         &self,
         _graphics_requirements: GraphicsRequirements<Software>,
-        _seat: (),
     ) -> SoftwareGraphicsRuntime<Self> {
         let context = Context::new(self.clone()).unwrap();
         let mut surface = Surface::new(&context, self.clone()).unwrap();

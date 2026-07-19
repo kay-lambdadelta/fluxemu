@@ -1,6 +1,5 @@
 use std::{
-    borrow::Cow,
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fs::{File, OpenOptions},
     os::{fd::OwnedFd, unix::fs::OpenOptionsExt},
     path::Path,
@@ -10,10 +9,8 @@ use egui::{
     Event, Modifiers, MouseWheelUnit, PointerButton, Pos2, TouchDeviceId, TouchId, TouchPhase,
 };
 use evdev::KeyCode;
-use fluxemu_frontend::{Frontend, PhysicalInputDeviceMetadata, graphics::GraphicsRuntime};
-use fluxemu_input::{
-    GamepadInputId, InputId, InputState, KeyboardInputId, physical::PhysicalInputDeviceId,
-};
+use fluxemu_frontend::{Frontend, graphics::GraphicsRuntime};
+use fluxemu_input::{InputId, InputState, KeyboardInputId, physical::PhysicalInputDeviceId};
 use input::{
     Libinput, LibinputInterface,
     event::{
@@ -24,11 +21,9 @@ use input::{
     },
 };
 use nalgebra::Point2;
-use strum::IntoEnumIterator;
-use uuid::{NonNilUuid, Uuid};
 use xkbcommon::xkb::Keysym;
 
-use crate::{event_loop::drm::GilrsState, platform::DesktopPlatform};
+use crate::platform::DesktopPlatform;
 
 const TOUCH_DEVICE: TouchDeviceId = TouchDeviceId(0);
 
@@ -375,65 +370,6 @@ pub fn build_xkb_state() -> xkbcommon::xkb::State {
     xkbcommon::xkb::State::new(&keymap)
 }
 
-pub fn handle_gilrs_events<R: GraphicsRuntime>(
-    frontend: &mut Frontend<DesktopPlatform<R>>,
-    gilrs_state_guard: &mut GilrsState,
-) {
-    let mut events = Vec::new();
-
-    if let Some(event) = gilrs_state_guard.peeked_event.take() {
-        events.push(event);
-    }
-    while let Some(event) = gilrs_state_guard.context.next_event() {
-        events.push(event);
-    }
-
-    for gilrs::Event { id, event, .. } in events.drain(..) {
-        match event {
-            gilrs::EventType::Connected => {
-                let gamepad = gilrs_state_guard.context.gamepad(id);
-
-                if let Some(uuid) = NonNilUuid::new(Uuid::from_bytes(gamepad.uuid())) {
-                    let physical_id = PhysicalInputDeviceId::new(uuid);
-
-                    frontend.add_input_device(
-                        physical_id,
-                        PhysicalInputDeviceMetadata {
-                            name: Cow::Owned(gamepad.name().to_string()),
-                            present_inputs: HashSet::from_iter(
-                                GamepadInputId::iter().map(InputId::Gamepad),
-                            ),
-                        },
-                        true,
-                        true,
-                    );
-                } else {
-                    todo!()
-                }
-            }
-            gilrs::EventType::Disconnected => {
-                let gamepad = gilrs_state_guard.context.gamepad(id);
-
-                if let Some(uuid) = NonNilUuid::new(Uuid::from_bytes(gamepad.uuid())) {
-                    let physical_id = PhysicalInputDeviceId::new(uuid);
-
-                    frontend.remove_input_device(physical_id);
-                } else {
-                    todo!()
-                }
-            }
-            gilrs::EventType::ButtonPressed(_, _)
-            | gilrs::EventType::ButtonRepeated(_, _)
-            | gilrs::EventType::ButtonReleased(_, _)
-            | gilrs::EventType::ButtonChanged(_, _, _)
-            | gilrs::EventType::AxisChanged(_, _, _)
-            | gilrs::EventType::ForceFeedbackEffectCompleted
-            | gilrs::EventType::Dropped => {}
-            _ => {}
-        }
-    }
-}
-
 pub fn handle_libinput_events<R: GraphicsRuntime>(
     frontend: &mut Frontend<DesktopPlatform<R>>,
     egui_input_collector: &mut EguiInputCollector,
@@ -452,14 +388,9 @@ pub fn handle_libinput_events<R: GraphicsRuntime>(
                 if !*added_keyboard {
                     *added_keyboard = true;
 
-                    frontend.add_input_device(
+                    frontend.register_gamepad(
                         PhysicalInputDeviceId::PLATFORM_RESERVED,
-                        PhysicalInputDeviceMetadata {
-                            name: Cow::Borrowed("Keyboard"),
-                            present_inputs: KeyboardInputId::iter()
-                                .map(InputId::Keyboard)
-                                .collect(),
-                        },
+                        "Keyboard",
                         true,
                         true,
                     );

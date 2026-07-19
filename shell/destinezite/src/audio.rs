@@ -56,7 +56,7 @@ impl CpalAudioRuntime {
 
         let mixer: Arc<OnceLock<_>> = Arc::default();
 
-        let stream = create_stream::<f32, 2>(&device, config.clone(), mixer.clone());
+        let stream = create_stream::<f32, 2>(&device, config, mixer.clone());
 
         Ok(Self {
             stream,

@@ -109,6 +109,10 @@ impl Machine {
             _phantom: PhantomData,
         }
     }
+
+    pub fn program_specification(&self) -> Option<&ProgramSpecification> {
+        self.program_specification.as_ref()
+    }
 }
 
 /// Guard for being inside the context of a runtime

@@ -14,7 +14,7 @@ use wgpu::{
     BufferDescriptor, BufferUsages, ColorTargetState, ColorWrites, CommandEncoderDescriptor,
     CreateSurfaceError, CurrentSurfaceTexture, Device, DeviceDescriptor, DownlevelCapabilities,
     DownlevelFlags, ExperimentalFeatures, FilterMode, FragmentState, Instance, LoadOp, MemoryHints,
-    MultisampleState, Operations, PipelineCompilationOptions, PipelineLayoutDescriptor, PollType,
+    MultisampleState, Operations, PipelineCompilationOptions, PipelineLayoutDescriptor,
     PrimitiveState, Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
     RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor,
     ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, Surface, TextureFormat,
@@ -255,17 +255,10 @@ impl<H: WebgpuCompatibleDisplayContext> GraphicsRuntime for WebgpuGraphicsRuntim
                 }
 
                 let command_buffer = encoder.finish();
-                let submission_index = queue.submit([command_buffer]);
+                queue.submit([command_buffer]);
 
                 self.display_handle.pre_present_notify();
                 surface_texture.present();
-
-                device
-                    .poll(PollType::Wait {
-                        submission_index: Some(submission_index),
-                        timeout: None,
-                    })
-                    .unwrap();
             }
             _ => {
                 self.refresh_surface();
