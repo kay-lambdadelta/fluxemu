@@ -16,7 +16,6 @@ fluxemu-program = { workspace = true }
 quick-xml = { version = "0.41", features = ["serialize"] }
 rayon = { workspace = true }
 redb = { workspace = true }
-ron = { workspace = true }
 rustc-hash = { workspace = true }
 scc = { workspace = true }
 serde = { workspace = true }

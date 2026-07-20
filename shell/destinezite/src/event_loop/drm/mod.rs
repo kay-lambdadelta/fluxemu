@@ -1,7 +1,9 @@
 use std::{
+    borrow::Cow,
     collections::HashMap,
     marker::PhantomData,
     os::fd::AsFd,
+    path::Path,
     sync::{Arc, Mutex},
     time::Instant,
 };
@@ -49,8 +51,9 @@ where
 {
     pub fn run(
         environment: Environment,
+        user_environment_location: Cow<'static, Path>,
         program_manager: Arc<ProgramManager>,
-        machine_factories: FactoryManager<DesktopPlatform<R>>,
+        machine_factories: FactoryManager<DesktopPlatform<R, false>>,
         initial_program: Option<Vec<RomId>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // Open the seat we need
@@ -85,12 +88,11 @@ where
         // Set up the input collector/translator and the frontend
         let mut frontend = Frontend::new(
             environment,
+            user_environment_location,
             machine_factories,
             program_manager,
             audio_runtime,
             initial_program,
-            // No window manager, no external file dialog
-            false,
         );
         let gamepad_context = GamepadContext::new(&mut frontend);
 
@@ -276,7 +278,7 @@ fn calculate_scale_factor(
 }
 
 struct FrontendState<R: GraphicsRuntime> {
-    frontend: Frontend<DesktopPlatform<R>>,
+    frontend: Frontend<DesktopPlatform<R, false>>,
     egui_input_collector: EguiInputCollector,
 }
 

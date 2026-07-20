@@ -371,7 +371,7 @@ pub fn build_xkb_state() -> xkbcommon::xkb::State {
 }
 
 pub fn handle_libinput_events<R: GraphicsRuntime>(
-    frontend: &mut Frontend<DesktopPlatform<R>>,
+    frontend: &mut Frontend<DesktopPlatform<R, false>>,
     egui_input_collector: &mut EguiInputCollector,
     libinput: &mut Libinput,
     xkb_state: &mut xkbcommon::xkb::State,

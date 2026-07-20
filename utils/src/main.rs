@@ -1,18 +1,10 @@
-use std::{
-    error::Error,
-    fmt::Display,
-    fs::{File, create_dir_all},
-    io::BufReader,
-    ops::Deref,
-    path::PathBuf,
-};
+use std::{error::Error, fmt::Display, fs::File, io::BufReader, path::PathBuf};
 
 use clap::{Parser, ValueEnum};
-use fluxemu_environment::{ENVIRONMENT_LOCATION, Environment, STORAGE_DIRECTORY};
+use fluxemu_environment::find_and_load_environment;
 use fluxemu_program::{MachineId, PROGRAM_INFORMATION_TABLE, ProgramManager};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use redb::{Database, ReadOnlyDatabase, ReadableDatabase, ReadableMultimapTable};
-use ron::ser::PrettyConfig;
 
 use crate::{
     redump::{RedumpSystem, download_and_import_redump_system},
@@ -87,33 +79,15 @@ pub enum Cli {
 }
 
 fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
+    let (_, environment) = find_and_load_environment();
+
     tracing_subscriber::fmt().init();
 
     let args = Cli::parse();
 
-    let _ = create_dir_all(STORAGE_DIRECTORY.deref());
-    let _ = create_dir_all(ENVIRONMENT_LOCATION.parent().unwrap());
-
-    let environment = if let Ok(environment_string) =
-        std::fs::read_to_string(ENVIRONMENT_LOCATION.deref())
-        && let Ok(environment) = ron::from_str(&environment_string)
-    {
-        environment
-    } else {
-        Environment::default()
-    };
-
-    if !ENVIRONMENT_LOCATION.is_file() {
-        let environment_string = ron::ser::to_string_pretty(&environment, PrettyConfig::default())?;
-
-        if let Err(error) = std::fs::write(ENVIRONMENT_LOCATION.deref(), environment_string) {
-            tracing::error!("Failed to write environment file: {}", error);
-        }
-    }
-
     let program_manager = ProgramManager::new(
         Database::create(&environment.database_location)?,
-        [environment.rom_store.clone()],
+        environment.rom_store_directories.clone(),
     )?;
 
     match args {
@@ -178,7 +152,12 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             }
         }
         Cli::ImportRoms { paths, symlink } => {
-            rom_import(paths, program_manager, &environment.rom_store, symlink);
+            rom_import(
+                paths,
+                program_manager,
+                &environment.rom_store_directories[0],
+                symlink,
+            );
         }
         Cli::ExportRoms {
             symlink,
@@ -188,7 +167,7 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             rom_export(
                 destination,
                 program_manager,
-                &environment.rom_store,
+                &environment.rom_store_directories,
                 symlink,
                 style,
             );

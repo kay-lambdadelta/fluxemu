@@ -30,10 +30,6 @@ pub enum Error {
     Redb(#[from] redb::Error),
     #[error("{0}")]
     Io(#[from] std::io::Error),
-    #[error("{0}")]
-    Ron(#[from] ron::Error),
-    #[error("{0}")]
-    RonSpanned(#[from] ron::error::SpannedError),
 }
 
 /// Program id -> Program info mapping

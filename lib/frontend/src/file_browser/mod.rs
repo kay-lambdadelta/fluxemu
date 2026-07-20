@@ -37,7 +37,6 @@ pub struct FileBrowser<'a, P: FrontendPlatform> {
     pub machine_initialization_step: &'a mut Option<MachineInitializationStep<P>>,
     pub program_manager: &'a Arc<ProgramManager>,
     pub toast_manager: &'a mut ToastManager,
-    pub external_file_dialog_supported: bool,
 }
 
 impl<P: FrontendPlatform> Widget for FileBrowser<'_, P> {
@@ -57,7 +56,7 @@ impl<P: FrontendPlatform> Widget for FileBrowser<'_, P> {
 
         ui.horizontal_top(|ui| {
             #[cfg(feature = "external-file-dialog")]
-            if self.external_file_dialog_supported {
+            if P::EXTERNAL_FILE_DIALOGS_SUPPORTED {
                 use egui_material_icons::icons::ICON_OPEN_IN_NEW;
 
                 let clicked = ui

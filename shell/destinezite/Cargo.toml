@@ -30,7 +30,6 @@ nalgebra = { workspace = true }
 palette = { workspace = true }
 pollster = { workspace = true }
 redb = { workspace = true }
-ron = { workspace = true }
 strum = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

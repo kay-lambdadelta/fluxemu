@@ -12,18 +12,13 @@ compile_error!(
 #[cfg(all(feature = "drm", not(target_os = "linux")))]
 compile_error!("The DRM/KMS backend is only compatible with Linux");
 
-use std::{
-    fs::{File, create_dir_all},
-    ops::Deref,
-    sync::Arc,
-};
+use std::{fs::File, sync::Arc};
 
 use clap::Parser;
 use cli::{Cli, CliAction};
-use fluxemu_environment::{ENVIRONMENT_LOCATION, Environment, STORAGE_DIRECTORY};
+use fluxemu_environment::find_and_load_environment;
 use fluxemu_program::ProgramManager;
 use redb::Database;
-use ron::ser::PrettyConfig;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{
     EnvFilter, Layer,
@@ -43,8 +38,7 @@ mod gamepad;
 mod platform;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _ = create_dir_all(STORAGE_DIRECTORY.deref());
-    let _ = create_dir_all(ENVIRONMENT_LOCATION.parent().unwrap());
+    let (environment_location, environment) = find_and_load_environment();
 
     let filter = Arc::new(
         EnvFilter::builder()
@@ -54,23 +48,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .add_directive("cosmic_text=info".parse().unwrap())
             .add_directive("winit=info".parse().unwrap()),
     );
-
-    let environment = if let Ok(environment_string) =
-        std::fs::read_to_string(ENVIRONMENT_LOCATION.deref())
-        && let Ok(environment) = ron::from_str(&environment_string)
-    {
-        environment
-    } else {
-        Environment::default()
-    };
-
-    if !ENVIRONMENT_LOCATION.is_file() {
-        let environment_string = ron::ser::to_string_pretty(&environment, PrettyConfig::default())?;
-
-        if let Err(error) = std::fs::write(ENVIRONMENT_LOCATION.deref(), environment_string) {
-            tracing::error!("Failed to write environment file: {}", error);
-        }
-    }
 
     let stderr_layer = tracing_subscriber::fmt::layer()
         .with_writer(std::io::stderr)
@@ -102,7 +79,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("FluxEMU v{}", env!("CARGO_PKG_VERSION"));
 
     let database = Database::create(&environment.database_location)?;
-    let program_manager = ProgramManager::new(database, [environment.rom_store.clone()])?;
+    let program_manager = ProgramManager::new(database, environment.rom_store_directories.clone())?;
 
     let cli = Cli::parse();
 
@@ -122,7 +99,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
     }
 
-    match environment.graphics_setting.api {
+    match environment.graphics.api {
         // Software backend is always available
         fluxemu_environment::graphics::GraphicsApi::Software => match cli.display_backend {
             #[cfg(feature = "windowing")]
@@ -131,6 +108,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 WindowingEventLoop::<SoftwareGraphicsRuntime<_>>::run(
                     environment.clone(),
+                    environment_location.into(),
                     program_manager.clone(),
                     build_machine::get_software_factories(),
                     initial_program.clone(),
@@ -142,6 +120,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 DrmEventLoop::<SoftwareGraphicsRuntime<_>>::run(
                     environment.clone(),
+                    environment_location.into(),
                     program_manager.clone(),
                     build_machine::get_software_factories(),
                     initial_program.clone(),
@@ -159,6 +138,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     WindowingEventLoop::<WebgpuGraphicsRuntime<_>>::run(
                         environment.clone(),
+                        environment_location.into(),
                         program_manager.clone(),
                         build_machine::get_webgpu_factories(),
                         initial_program.clone(),
@@ -170,6 +150,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     DrmEventLoop::<WebgpuGraphicsRuntime<_>>::run(
                         environment.clone(),
+                        environment_location.into(),
                         program_manager.clone(),
                         build_machine::get_webgpu_factories(),
                         initial_program.clone(),

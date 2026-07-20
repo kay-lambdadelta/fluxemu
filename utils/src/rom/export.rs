@@ -1,7 +1,4 @@
-use std::{
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{path::PathBuf, sync::Arc};
 
 use fluxemu_program::{PROGRAM_INFORMATION_TABLE, ProgramManager};
 use redb::{ReadableDatabase, ReadableMultimapTable};
@@ -11,7 +8,7 @@ use crate::ExportStyle;
 pub fn rom_export(
     destination_path: PathBuf,
     program_manager: Arc<ProgramManager>,
-    rom_store: &Path,
+    rom_stores: &[PathBuf],
     symlink: bool,
     style: ExportStyle,
 ) {
@@ -75,11 +72,13 @@ pub fn rom_export(
                             file_names.iter().map(|file_name| (*rom_id, file_name))
                         })
                 {
-                    let source_rom_path = rom_store.join(rom_id.to_string());
-
-                    if !source_rom_path.exists() {
+                    let Some(source_rom_path) = rom_stores
+                        .iter()
+                        .map(|store| store.join(rom_id.to_string()))
+                        .find(|rom_path| rom_path.exists())
+                    else {
                         continue;
-                    }
+                    };
 
                     let destination_rom_path = match style {
                         ExportStyle::NoIntro => {

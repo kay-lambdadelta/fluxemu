@@ -35,7 +35,6 @@ wgpu = { workspace = true, optional = true }
 criterion = { workspace = true }
 fluxemu-environment = { workspace = true }
 redb = { workspace = true }
-ron = { workspace = true }
 
 [features]
 webgpu = ["dep:wgpu", "fluxemu-graphics/webgpu"]

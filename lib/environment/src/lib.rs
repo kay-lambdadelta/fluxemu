@@ -1,11 +1,10 @@
-use std::{path::PathBuf, sync::LazyLock};
+use std::{collections::BTreeMap, num::Wrapping, path::PathBuf};
 
 use audio::AudioSettings;
+use confique::Config;
 use fluxemu_input::physical::PhysicalInputDeviceId;
-use indexmap::IndexMap;
+use ron::{Options, extensions::Extensions};
 use serde::{Deserialize, Serialize};
-use serde_inline_default::serde_inline_default;
-use serde_with::serde_as;
 
 use crate::{graphics::GraphicsSettings, input::PhysicalGamepadConfiguration};
 
@@ -16,83 +15,62 @@ pub mod graphics;
 /// Input configuration
 pub mod input;
 
-/// Directory that fluxemu will use as a "home" folder
-pub static STORAGE_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| {
-    cfg_if::cfg_if! {
-        if #[cfg(target_os = "espidf")] {
-            PathBuf::from("/fluxemu")
-        } else if #[cfg(target_os = "nuttx")] {
-            PathBuf::from("/mnt/fluxemu")
-        } else if #[cfg(target_os = "horizon")] {
-            PathBuf::from("sdmc:/fluxemu")
-        } else if #[cfg(target_os = "psp")] {
-            PathBuf::from("ms0:/fluxemu")
-        } else if #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))] {
-            dirs::data_dir().unwrap().join("fluxemu")
-        } else {
-            compile_error!("Unsupported target");
-        }
-    }
-});
-
-/// Config location
-pub static ENVIRONMENT_LOCATION: LazyLock<PathBuf> = LazyLock::new(|| {
-    cfg_if::cfg_if! {
-        if #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))] {
-            dirs::config_dir().map(|directory| {
-                directory.join("fluxemu")
-            })
-            .unwrap_or_else(|| STORAGE_DIRECTORY.clone()).join("config.ron")
-        } else {
-            STORAGE_DIRECTORY.join("config.ron")
-        }
-    }
-});
-
-#[serde_as]
-#[serde_inline_default]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Config, Serialize, Deserialize, Debug, Clone)]
 pub struct Environment {
-    #[serde(default)]
-    pub gamepads: IndexMap<PhysicalInputDeviceId, PhysicalGamepadConfiguration>,
-    #[serde(default)]
-    /// Graphics settings
-    pub graphics_setting: GraphicsSettings,
-    #[serde(default)]
-    /// Audio settings
-    pub audio_settings: AudioSettings,
-    #[serde_inline_default(Environment::default().file_browser_home_directory)]
-    /// The folder that the gui will show initially
+    pub gamepads: BTreeMap<PhysicalInputDeviceId, PhysicalGamepadConfiguration>,
+    pub graphics: GraphicsSettings,
+    pub audio: AudioSettings,
     pub file_browser_home_directory: PathBuf,
-    #[serde_inline_default(Environment::default().log_location)]
-    /// Location where logs will be written
+    #[config(env = "FLUXEMU_LOG_LOCATION")]
     pub log_location: PathBuf,
-    #[serde_inline_default(Environment::default().database_location)]
-    /// [redb] database location
+    #[config(env = "FLUXEMU_DATABASE_LOCATION")]
     pub database_location: PathBuf,
-    #[serde_inline_default(Environment::default().save_directory)]
-    /// Directory where saves will be stored
+    #[config(env = "FLUXEMU_SAVE_DIRECTORY")]
     pub save_directory: PathBuf,
-    #[serde_inline_default(Environment::default().snapshot_directory)]
-    /// Directory where snapshots will be stored
+    #[config(env = "FLUXEMU_SNAPSHOT_DIRECTORY")]
     pub snapshot_directory: PathBuf,
-    #[serde_inline_default(Environment::default().rom_store)]
-    /// Directory where emulator will store imported roms
-    pub rom_store: PathBuf,
+    #[config(env = "FLUXEMU_ROM_STORE_DIRECTORIES")]
+    pub rom_store_directories: Vec<PathBuf>,
+    pub active_snapshot_slot: Wrapping<u8>,
 }
 
-impl Default for Environment {
-    fn default() -> Self {
-        Self {
-            gamepads: Default::default(),
-            graphics_setting: Default::default(),
-            audio_settings: Default::default(),
-            file_browser_home_directory: STORAGE_DIRECTORY.clone(),
-            log_location: STORAGE_DIRECTORY.join("log"),
-            database_location: STORAGE_DIRECTORY.join("database.redb"),
-            save_directory: STORAGE_DIRECTORY.join("saves"),
-            snapshot_directory: STORAGE_DIRECTORY.join("snapshots"),
-            rom_store: STORAGE_DIRECTORY.join("roms"),
-        }
-    }
+pub fn find_and_load_environment() -> (PathBuf, Environment) {
+    let storage_directory = dirs::data_dir()
+        .expect("Could not lookup data directory")
+        .join("fluxemu");
+
+    let environment_location = dirs::config_dir()
+        .map(|path| path.join("fluxemu"))
+        .unwrap_or(storage_directory.clone())
+        .join("environment.ron");
+
+    let _ = std::fs::create_dir_all(&storage_directory);
+    let _ = std::fs::create_dir_all(environment_location.parent().unwrap());
+
+    let default_environment_string = ron::to_string(&Environment {
+        gamepads: BTreeMap::default(),
+        graphics: GraphicsSettings::default(),
+        audio: AudioSettings::default(),
+        file_browser_home_directory: std::env::home_dir().unwrap_or(storage_directory.clone()),
+        log_location: storage_directory.join("log"),
+        database_location: storage_directory.join("database.redb"),
+        save_directory: storage_directory.join("saves"),
+        snapshot_directory: storage_directory.join("snapshot"),
+        rom_store_directories: vec![storage_directory.join("roms")],
+        active_snapshot_slot: Wrapping(0),
+    })
+    .unwrap();
+
+    let config_builder = Environment::builder()
+        .preloaded(
+            Options::default()
+                .with_default_extension(Extensions::IMPLICIT_SOME)
+                .from_str(&default_environment_string)
+                .unwrap(),
+        )
+        .env();
+
+    let environment = config_builder.load().unwrap();
+
+    (environment_location, environment)
 }

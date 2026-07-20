@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use serde_inline_default::serde_inline_default;
 use serde_with::serde_as;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -7,8 +6,8 @@ use serde_with::serde_as;
 pub enum Interpolation {
     /// Linear interpolation, lowest quality
     Linear,
-    #[default]
     /// Cubic interpolation, mid quality
+    #[default]
     Cubic,
     /// Sinc interpolation, highest quality
     Sinc {
@@ -18,9 +17,7 @@ pub enum Interpolation {
 }
 
 #[serde_as]
-#[serde_inline_default]
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
-/// Audio settings
 pub struct AudioSettings {
     /// Interpolation settings
     pub interpolation: Interpolation,

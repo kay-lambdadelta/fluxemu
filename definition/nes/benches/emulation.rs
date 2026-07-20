@@ -1,8 +1,8 @@
-use std::{ops::Deref, time::Duration};
+use std::time::Duration;
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use fluxemu_definition_nes::Nes;
-use fluxemu_environment::{ENVIRONMENT_LOCATION, Environment};
+use fluxemu_environment::find_and_load_environment;
 use fluxemu_program::ProgramManager;
 use fluxemu_runtime::machine::{Machine, builder::MachineFactory};
 use redb::Database;
@@ -39,17 +39,11 @@ fn emulation_performance(c: &mut Criterion) {
         ),
     ];
 
-    let environment = if let Ok(environment_string) =
-        std::fs::read_to_string(ENVIRONMENT_LOCATION.deref())
-        && let Ok(environment) = ron::from_str(&environment_string)
-    {
-        environment
-    } else {
-        Environment::default()
-    };
+    let (_, environment) = find_and_load_environment();
 
     let database = Database::create(environment.database_location).unwrap();
-    let program_manager = ProgramManager::new(database, [environment.rom_store]).unwrap();
+    let program_manager =
+        ProgramManager::new(database, environment.rom_store_directories.clone()).unwrap();
 
     let mut group = c.benchmark_group(format!("{}/emulation_performance", env!("CARGO_PKG_NAME")));
     group.throughput(Throughput::Elements(1));

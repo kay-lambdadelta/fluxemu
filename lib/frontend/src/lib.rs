@@ -10,7 +10,7 @@ mod platform;
 mod settings;
 mod toast;
 
-use std::{borrow::Cow, collections::HashMap, num::Wrapping, sync::Arc, thread::JoinHandle};
+use std::{borrow::Cow, collections::HashMap, path::Path, sync::Arc, thread::JoinHandle};
 
 use egui::{
     Align, CentralPanel, Color32, Context, FontFamily, Frame, FullOutput, Layout, Panel, RawInput,
@@ -24,7 +24,7 @@ use egui_material_icons::{
     },
 };
 use egui_toast::ToastKind;
-use fluxemu_environment::{ENVIRONMENT_LOCATION, Environment};
+use fluxemu_environment::Environment;
 use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_input::{InputId, InputState, physical::PhysicalInputDeviceId};
 use fluxemu_program::{ProgramManager, ProgramSpecification, RomId};
@@ -36,6 +36,7 @@ use fluxemu_runtime::{
 use indexmap::{IndexMap, IndexSet};
 use palette::Srgba;
 pub use platform::*;
+use ron::ser::PrettyConfig;
 use strum::{AsRefStr, EnumIter, IntoEnumIterator};
 
 use crate::{
@@ -107,11 +108,11 @@ enum MachineInitializationStep<P: Platform> {
 /// Frontend for the emulator
 #[allow(clippy::type_complexity)]
 pub struct Frontend<P: FrontendPlatform> {
-    pub environment: Environment,
+    environment: Environment,
+    user_environment_location: Cow<'static, Path>,
     machine_context: Option<MachineContext>,
     pending_machine: Option<SealedMachineBuilder<P>>,
     audio_runtime: P::AudioRuntime,
-    current_snapshot_slot: Wrapping<u8>,
     machine_factory_manager: Arc<FactoryManager<P>>,
     program_manager: Arc<ProgramManager>,
     machine_loading: bool,
@@ -123,17 +124,16 @@ pub struct Frontend<P: FrontendPlatform> {
     machine_initialization_step: Option<MachineInitializationStep<P>>,
     toast_manager: ToastManager,
     audio_mixer: Arc<AudioMixer>,
-    external_file_dialog_supported: bool,
 }
 
 impl<P: FrontendPlatform> Frontend<P> {
     pub fn new(
         environment: Environment,
+        user_environment_location: Cow<'static, Path>,
         machine_factories: FactoryManager<P>,
         program_manager: Arc<ProgramManager>,
         mut audio_runtime: P::AudioRuntime,
         initial_program: Option<Vec<RomId>>,
-        external_file_dialog_supported: bool,
     ) -> Self {
         let initial_program_initialization_step = initial_program.map(|roms| {
             let program_manager = program_manager.clone();
@@ -151,9 +151,9 @@ impl<P: FrontendPlatform> Frontend<P> {
         Self {
             machine_context: None,
             pending_machine: None,
+            user_environment_location,
             audio_runtime,
             machine_factory_manager: Arc::new(machine_factories),
-            current_snapshot_slot: Wrapping(0),
             program_manager,
             machine_loading: false,
             frontend_overlay_active: true,
@@ -167,7 +167,6 @@ impl<P: FrontendPlatform> Frontend<P> {
             toast_manager: ToastManager::default(),
             machine_initialization_step: initial_program_initialization_step,
             environment,
-            external_file_dialog_supported,
         }
     }
 
@@ -292,7 +291,6 @@ impl<P: FrontendPlatform> Frontend<P> {
                                 machine_initialization_step: &mut self.machine_initialization_step,
                                 program_manager: &self.program_manager,
                                 toast_manager: &mut self.toast_manager,
-                                external_file_dialog_supported: self.external_file_dialog_supported,
                             });
                         }
                         TabId::Settings => {
@@ -375,20 +373,27 @@ impl<P: FrontendPlatform> Frontend<P> {
             unfinished => self.machine_initialization_step = Some(unfinished),
         }
     }
-}
 
-impl<P: FrontendPlatform> Drop for Frontend<P> {
-    // Save on exit
-    fn drop(&mut self) {
-        if let Ok(environment) = ron::to_string(&self.environment).map_err(|err| {
-            tracing::error!("Could not serialize environment: {}", err);
-        }) {
-            let Err(err) = std::fs::write(ENVIRONMENT_LOCATION.as_path(), environment) else {
+    pub fn save_environment(&mut self) {
+        if let Ok(environment) = ron::Options::default()
+            .to_string_pretty(&self.environment, PrettyConfig::new())
+            .map_err(|err| {
+                tracing::error!("Could not serialize environment: {}", err);
+            })
+        {
+            let Err(err) = std::fs::write(&self.user_environment_location, environment) else {
                 return;
             };
 
             tracing::error!("Could not save environment: {}", err);
         }
+    }
+}
+
+impl<P: FrontendPlatform> Drop for Frontend<P> {
+    // Save on exit
+    fn drop(&mut self) {
+        self.save_environment();
     }
 }
 

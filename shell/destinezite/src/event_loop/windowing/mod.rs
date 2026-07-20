@@ -1,11 +1,12 @@
 use std::{
-    ops::Deref,
+    borrow::Cow,
+    path::Path,
     sync::{Arc, Mutex},
     time::Instant,
 };
 
 use egui::{Context, ViewportId};
-use fluxemu_environment::{ENVIRONMENT_LOCATION, Environment};
+use fluxemu_environment::Environment;
 use fluxemu_frontend::{
     Frontend,
     graphics::{DrawTarget, GraphicsRuntime},
@@ -16,7 +17,6 @@ use fluxemu_program::{ProgramManager, RomId};
 use fluxemu_runtime::graphics::GraphicsRequirements;
 use nalgebra::Vector2;
 use palette::named::BLACK;
-use ron::ser::PrettyConfig;
 use winit::{
     application::ApplicationHandler,
     event::{ElementState, StartCause, WindowEvent},
@@ -47,7 +47,7 @@ struct WindowingContext<R> {
 
 pub struct WindowingEventLoop<R: GraphicsRuntime> {
     windowing_context: Option<WindowingContext<R>>,
-    frontend: Arc<Mutex<Frontend<DesktopPlatform<R>>>>,
+    frontend: Arc<Mutex<Frontend<DesktopPlatform<R, true>>>>,
     event_loop_proxy: EventLoopProxy<Message>,
     refresh_surface: bool,
     added_keyboard: bool,
@@ -59,8 +59,9 @@ where
 {
     pub fn run(
         environment: Environment,
+        user_environment_location: Cow<'static, Path>,
         program_manager: Arc<ProgramManager>,
-        machine_factories: FactoryManager<DesktopPlatform<R>>,
+        machine_factories: FactoryManager<DesktopPlatform<R, true>>,
         initial_program: Option<Vec<RomId>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let event_loop = EventLoop::with_user_event().build()?;
@@ -68,11 +69,11 @@ where
 
         let mut frontend = Frontend::new(
             environment,
+            user_environment_location,
             machine_factories,
             program_manager,
             audio_runtime,
             initial_program,
-            true,
         );
 
         let gamepad_context = GamepadContext::new(&mut frontend);
@@ -277,14 +278,7 @@ where
     }
 
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
-        let frontend = self.frontend.lock().unwrap();
-
-        let environment_string =
-            ron::ser::to_string_pretty(&frontend.environment, PrettyConfig::default()).unwrap();
-
-        if let Err(error) = std::fs::write(ENVIRONMENT_LOCATION.deref(), environment_string) {
-            tracing::error!("Failed to write environment file: {}", error);
-        }
+        self.frontend.lock().unwrap().save_environment();
     }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Message) {

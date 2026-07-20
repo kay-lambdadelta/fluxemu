@@ -104,24 +104,24 @@ impl<P: FrontendPlatform> Frontend<P> {
                     Hotkey::LoadSnapshot => {}
                     Hotkey::StoreSnapshot => {}
                     Hotkey::IncrementSnapshotCounter => {
-                        self.current_snapshot_slot += 1;
+                        self.environment.active_snapshot_slot += 1;
 
                         self.toast_manager.toast(
                             ToastKind::Info,
                             format!(
-                                "Current snapshot slot is now {}",
-                                self.current_snapshot_slot
+                                "Active snapshot slot is now {}",
+                                self.environment.active_snapshot_slot
                             ),
                         );
                     }
                     Hotkey::DecrementSnapshotCounter => {
-                        self.current_snapshot_slot -= 1;
+                        self.environment.active_snapshot_slot -= 1;
 
                         self.toast_manager.toast(
                             ToastKind::Info,
                             format!(
                                 "Current snapshot slot is now {}",
-                                self.current_snapshot_slot
+                                self.environment.active_snapshot_slot
                             ),
                         );
                     }

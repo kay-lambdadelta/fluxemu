@@ -1,8 +1,6 @@
-use std::ops::Deref;
-
 use egui::{ComboBox, RichText};
 use egui_material_icons::icons::ICON_SAVE;
-use fluxemu_environment::{ENVIRONMENT_LOCATION, graphics::GraphicsApi};
+use fluxemu_environment::graphics::GraphicsApi;
 use ron::ser::PrettyConfig;
 use strum::IntoEnumIterator;
 
@@ -18,13 +16,13 @@ impl<P: FrontendPlatform> Frontend<P> {
                 .on_hover_text("Save environment to disk")
                 .clicked()
             {
+                let environment_location = self.user_environment_location.clone();
+
                 let environment_string =
                     ron::ser::to_string_pretty(&self.environment, PrettyConfig::default()).unwrap();
 
                 std::thread::spawn(|| {
-                    if let Err(err) =
-                        std::fs::write(ENVIRONMENT_LOCATION.deref(), environment_string)
-                    {
+                    if let Err(err) = std::fs::write(environment_location, environment_string) {
                         tracing::error!("Failed to save environment: {}", err);
                     }
                 });
@@ -32,14 +30,10 @@ impl<P: FrontendPlatform> Frontend<P> {
         });
 
         ComboBox::from_label("Graphics Api")
-            .selected_text(self.environment.graphics_setting.api.to_string())
+            .selected_text(self.environment.graphics.api.to_string())
             .show_ui(ui, |ui| {
                 for api in GraphicsApi::iter() {
-                    ui.selectable_value(
-                        &mut self.environment.graphics_setting.api,
-                        api,
-                        api.to_string(),
-                    );
+                    ui.selectable_value(&mut self.environment.graphics.api, api, api.to_string());
                 }
             });
     }

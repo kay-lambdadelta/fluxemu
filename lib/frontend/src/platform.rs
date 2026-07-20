@@ -9,4 +9,6 @@ pub trait FrontendPlatform: Platform + Sized + 'static {
 
     /// Graphics runtime
     type GraphicsRuntime: GraphicsRuntime<GraphicsApi = Self::GraphicsApi>;
+
+    const EXTERNAL_FILE_DIALOGS_SUPPORTED: bool;
 }
