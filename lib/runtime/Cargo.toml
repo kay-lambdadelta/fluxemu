@@ -18,7 +18,7 @@ fluxemu-input = { workspace = true }
 fluxemu-program = { workspace = true }
 fluxemu-range = { workspace = true }
 itertools = { workspace = true }
-lz4_flex = "0.13"
+lz4_flex = "0.14"
 nalgebra = { workspace = true }
 num = { workspace = true }
 rand = { workspace = true }

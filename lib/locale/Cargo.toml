@@ -12,4 +12,4 @@ csv = "1.4"
 proc-macro2 = "1.0"
 quote = "1.0"
 serde = { workspace = true }
-syn = { version = "2.0", features = ["full"] }
+syn = { version = "3.0", features = ["full"] }
