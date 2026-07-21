@@ -73,7 +73,7 @@ inherits = "profiling"
 opt-level = 1
 
 [profile.release]
-lto = "thin"
+lto = true
 panic = "abort"
 codegen-units = 1
 
