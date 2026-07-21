@@ -1,4 +1,4 @@
-use std::{range::RangeInclusive, sync::Arc};
+use std::{hint::black_box, range::RangeInclusive, sync::Arc};
 
 use fluxemu_range::{ContiguousRange, RangeIntersection};
 use num::traits::{FromBytes, ToBytes, ops::bytes::NumBytes};
@@ -8,36 +8,39 @@ use crate::{
     RuntimeHandle,
     component::ComponentId,
     memory::{
-        Address, AddressSpaceId, CHUNK_SIZE, MemoryError, MemoryErrorType, PageTableEntry,
-        PageTableTarget,
+        Address, AddressSpaceId, CHUNK_SIZE, MemoryError, MemoryErrorType, PageTable,
+        PageTableEntry, PageTableTarget,
     },
     scheduler::Period,
 };
 
 impl<'a> AddressSpace<'a> {
+    /// Read a buffer from an address
+    ///
+    /// If the target is a component, the component will be advanced to the timestamp before the operation
+    ///
+    /// # Error Behavior
+    ///
+    /// It is completely unspecified what the buffer will contain if an error occurs during an read operation
     #[inline]
-    pub(super) fn read_internal<B: NumBytes + ?Sized, const AVOID_SIDE_EFFECTS: bool>(
+    pub fn read<B: NumBytes + ?Sized, const AVOID_SIDE_EFFECTS: bool>(
         &mut self,
         address: Address,
-        timestamp: &Period,
+        current_timestamp: &Period,
         buffer: &mut B,
     ) -> Result<(), MemoryError> {
         let page_table = self.data.get_read_table(&self.guard);
 
         for Chunk {
-            access_range,
+            address,
             page_table_slice,
             buffer: chunk_buffer,
-        } in ChunkIter::new(
-            address,
-            self.data.width_mask,
-            buffer.as_mut(),
-            &page_table.0,
-        ) {
+        } in ChunkIter::new(address, self.data.width_mask, buffer.as_mut(), page_table)
+        {
             visit_page_entries(
-                page_table_slice,
-                access_range,
+                address,
                 chunk_buffer,
+                page_table_slice,
                 #[inline]
                 |target, offset, adjusted| {
                     match target {
@@ -59,6 +62,13 @@ impl<'a> AddressSpace<'a> {
                             self.runtime
                                 .memory_registry()
                                 .read(*id, destination, adjusted);
+
+                            // HACK:
+                            //
+                            // Do not allow the copy at the end of both of these blocks to be merged
+                            //
+                            // LLVM often gets confused and generates a actual memcpy
+                            black_box(());
                         }
                         PageTableTarget::Component {
                             offset: destination_start,
@@ -68,7 +78,7 @@ impl<'a> AddressSpace<'a> {
 
                             virtual_memory_read::<AVOID_SIDE_EFFECTS>(
                                 *id,
-                                timestamp,
+                                current_timestamp,
                                 destination,
                                 self.data.id,
                                 self.runtime,
@@ -84,44 +94,11 @@ impl<'a> AddressSpace<'a> {
         Ok(())
     }
 
-    /// Read a buffer from an address
-    ///
-    /// If the target is a component, the component will be advanced to the timestamp before the operation
-    ///
-    /// # Error Behavior
-    ///
-    /// It is completely unspecified what the buffer will contain if an error occurs during an read operation
-    #[inline]
-    pub fn read<B: NumBytes + ?Sized>(
-        &mut self,
-        address: Address,
-        current_timestamp: &Period,
-        buffer: &mut B,
-    ) -> Result<(), MemoryError> {
-        self.read_internal::<_, false>(address, current_timestamp, buffer)
-    }
-
-    /// Read a buffer from an address
-    ///
-    /// If the target is a component, the component will be advanced to the timestamp before the operation
-    /// Additionally, the component will be informed it should not change state as a result of the operation (such as a flag clear)
-    ///
-    /// It is completely unspecified what the buffer will contain if an error occurs during an read operation
-    #[inline]
-    pub fn read_pure<B: NumBytes + ?Sized>(
-        &mut self,
-        address: Address,
-        current_timestamp: &Period,
-        buffer: &mut B,
-    ) -> Result<(), MemoryError> {
-        self.read_internal::<_, true>(address, current_timestamp, buffer)
-    }
-
     /// Convenience method for reading a little endian value from an address
     ///
     /// Has the same behavior as [`read`](Self::read)
     #[inline]
-    pub fn read_le_value<T: FromBytes>(
+    pub fn read_le_value<T: FromBytes, const AVOID_SIDE_EFFECTS: bool>(
         &mut self,
         address: Address,
         current_timestamp: &Period,
@@ -130,24 +107,7 @@ impl<'a> AddressSpace<'a> {
         T::Bytes: Default,
     {
         let mut buffer = T::Bytes::default();
-        self.read_internal::<_, false>(address, current_timestamp, &mut buffer)?;
-        Ok(T::from_le_bytes(&buffer))
-    }
-
-    /// Convenience method for reading a little endian value from an address
-    ///
-    /// Has the same behavior as [`read_pure`](Self::read_pure)
-    #[inline]
-    pub fn read_le_value_pure<T: FromBytes>(
-        &mut self,
-        address: Address,
-        current_timestamp: &Period,
-    ) -> Result<T, MemoryError>
-    where
-        T::Bytes: Default,
-    {
-        let mut buffer = T::Bytes::default();
-        self.read_internal::<_, true>(address, current_timestamp, &mut buffer)?;
+        self.read::<_, AVOID_SIDE_EFFECTS>(address, current_timestamp, &mut buffer)?;
         Ok(T::from_le_bytes(&buffer))
     }
 
@@ -155,7 +115,7 @@ impl<'a> AddressSpace<'a> {
     ///
     /// Has the same behavior as [`read`](Self::read)
     #[inline]
-    pub fn read_be_value<T: FromBytes>(
+    pub fn read_be_value<T: FromBytes, const AVOID_SIDE_EFFECTS: bool>(
         &mut self,
         address: Address,
         current_timestamp: &Period,
@@ -164,50 +124,34 @@ impl<'a> AddressSpace<'a> {
         T::Bytes: Default,
     {
         let mut buffer = T::Bytes::default();
-        self.read_internal::<_, false>(address, current_timestamp, &mut buffer)?;
+        self.read::<_, AVOID_SIDE_EFFECTS>(address, current_timestamp, &mut buffer)?;
         Ok(T::from_be_bytes(&buffer))
     }
 
-    /// Convenience method for reading a big endian value from an address
+    /// Write a buffer to an address
     ///
-    /// Has the same behavior as [`read_pure`](Self::read_pure)
+    /// If the target is a component, the component will be advanced to the timestamp before the operation
+    ///
+    /// It is completely unspecified what parts of the buffer will be written if an error occurs midway through the operation
     #[inline]
-    pub fn read_be_value_pure<T: FromBytes>(
+    pub fn write<B: NumBytes + ?Sized>(
         &mut self,
         address: Address,
         current_timestamp: &Period,
-    ) -> Result<T, MemoryError>
-    where
-        T::Bytes: Default,
-    {
-        let mut buffer = T::Bytes::default();
-        self.read_internal::<_, true>(address, current_timestamp, &mut buffer)?;
-        Ok(T::from_be_bytes(&buffer))
-    }
-
-    #[inline]
-    pub(super) fn write_internal<B: NumBytes + ?Sized>(
-        &mut self,
-        address: Address,
-        timestamp: &Period,
         buffer: &B,
     ) -> Result<(), MemoryError> {
         let page_table = self.data.get_write(&self.guard);
 
         for Chunk {
-            access_range,
+            address,
             page_table_slice,
             buffer: chunk_buffer,
-        } in ChunkIter::new(
-            address,
-            self.data.width_mask,
-            buffer.as_ref(),
-            &page_table.0,
-        ) {
+        } in ChunkIter::new(address, self.data.width_mask, buffer.as_ref(), page_table)
+        {
             visit_page_entries(
-                page_table_slice,
-                access_range,
+                address,
                 chunk_buffer,
+                page_table_slice,
                 #[inline]
                 |target, offset, adjusted| {
                     match target {
@@ -229,7 +173,7 @@ impl<'a> AddressSpace<'a> {
 
                             virtual_memory_write(
                                 *id,
-                                timestamp,
+                                current_timestamp,
                                 destination,
                                 self.data.id,
                                 self.runtime,
@@ -247,21 +191,6 @@ impl<'a> AddressSpace<'a> {
         Ok(())
     }
 
-    /// Write a buffer to an address
-    ///
-    /// If the target is a component, the component will be advanced to the timestamp before the operation
-    ///
-    /// It is completely unspecified what parts of the buffer will be written if an error occurs midway through the operation
-    #[inline]
-    pub fn write<B: NumBytes + ?Sized>(
-        &mut self,
-        address: Address,
-        current_timestamp: &Period,
-        buffer: &B,
-    ) -> Result<(), MemoryError> {
-        self.write_internal(address, current_timestamp, buffer)
-    }
-
     /// Convenience method for writing a little endian value to an address
     ///
     /// Has the same behavior as [`write`](Self::write)
@@ -272,7 +201,7 @@ impl<'a> AddressSpace<'a> {
         current_timestamp: &Period,
         value: T,
     ) -> Result<(), MemoryError> {
-        self.write_internal(address, current_timestamp, &value.to_le_bytes())
+        self.write(address, current_timestamp, &value.to_le_bytes())
     }
 
     /// Convenience method for writing a big endian value to an address
@@ -285,7 +214,7 @@ impl<'a> AddressSpace<'a> {
         current_timestamp: &Period,
         value: T,
     ) -> Result<(), MemoryError> {
-        self.write_internal(address, current_timestamp, &value.to_be_bytes())
+        self.write(address, current_timestamp, &value.to_be_bytes())
     }
 }
 
@@ -330,7 +259,7 @@ impl SplitableBuffer for &mut [u8] {
 }
 
 struct Chunk<'a, BUFFER> {
-    access_range: RangeInclusive<usize>,
+    address: Address,
     buffer: BUFFER,
     page_table_slice: &'a [Arc<[PageTableEntry]>],
 }
@@ -339,17 +268,12 @@ struct ChunkIter<'a, BUFFER> {
     address: Address,
     width_mask: usize,
     buffer: BUFFER,
-    page_table: &'a [Arc<[PageTableEntry]>],
+    page_table: &'a PageTable,
 }
 
 impl<'a, BUFFER: SplitableBuffer> ChunkIter<'a, BUFFER> {
     #[inline]
-    fn new(
-        address: Address,
-        width_mask: usize,
-        buffer: BUFFER,
-        page_table: &'a [Arc<[PageTableEntry]>],
-    ) -> Self {
+    fn new(address: Address, width_mask: usize, buffer: BUFFER, page_table: &'a PageTable) -> Self {
         Self {
             address: address & width_mask,
             width_mask,
@@ -383,9 +307,9 @@ impl<'a, BUFFER: SplitableBuffer> Iterator for ChunkIter<'a, BUFFER> {
         let page_range = (access_range.start / CHUNK_SIZE)..=(access_range.last / CHUNK_SIZE);
 
         let chunk = Chunk {
-            access_range,
+            address: self.address,
             // SAFETY: The start and end pages are bounded by the width mask, they fall into the table constructed by `commit`
-            page_table_slice: unsafe { self.page_table.get_unchecked(page_range) },
+            page_table_slice: unsafe { self.page_table.0.get_unchecked(page_range) },
             buffer: chunk_buffer,
         };
 
@@ -397,32 +321,33 @@ impl<'a, BUFFER: SplitableBuffer> Iterator for ChunkIter<'a, BUFFER> {
 
 #[inline]
 fn visit_page_entries<BUFFER: SplitableBuffer>(
-    page_table_slice: &[Arc<[PageTableEntry]>],
-    access_range: RangeInclusive<usize>,
+    address: Address,
     buffer: BUFFER,
+    page_table_slice: &[Arc<[PageTableEntry]>],
     mut callback: impl FnMut(&PageTableTarget, usize, BUFFER) -> Result<(), MemoryError>,
 ) -> Result<(), MemoryError> {
-    let initial_buffer_len = buffer.len();
+    let access_range = RangeInclusive::from_start_and_length(address, buffer.len());
     let mut remaining = buffer;
 
-    for page in page_table_slice {
+    'outer: for page in page_table_slice {
         for PageTableEntry {
             range: entry_assigned_range,
             target,
-        } in page.iter().filter(|entry| {
-            entry.range.last >= access_range.start && entry.range.start <= access_range.last
-        }) {
+        } in page.iter()
+        {
+            if entry_assigned_range.last < access_range.start {
+                continue;
+            }
+
+            if entry_assigned_range.start > access_range.last {
+                break;
+            }
+
             let entry_access_range = entry_assigned_range.intersection(&access_range);
             let buffer_range = (entry_access_range.start - access_range.start)
                 ..=(entry_access_range.last - access_range.start);
 
-            let consumed = initial_buffer_len - remaining.len();
-
-            // Potentially skip the duplicate entry for the last entry we processed that is on the next page
-            if *buffer_range.end() < consumed {
-                continue;
-            }
-
+            let consumed = access_range.len() - remaining.len();
             let gap = buffer_range.start() - consumed;
             if gap > 0 {
                 return Err(form_error(RangeInclusive::from_start_and_length(
@@ -439,13 +364,13 @@ fn visit_page_entries<BUFFER: SplitableBuffer>(
             callback(target, offset, adjusted_buffer)?;
 
             if entry_access_range.last == access_range.last {
-                break;
+                break 'outer;
             }
         }
     }
 
     if remaining.len() > 0 {
-        let consumed = initial_buffer_len - remaining.len();
+        let consumed = access_range.len() - remaining.len();
 
         return Err(form_error(RangeInclusive::from_start_and_length(
             access_range.start + consumed,
@@ -501,6 +426,7 @@ fn virtual_memory_write(
 }
 
 #[cold]
+#[inline]
 fn form_error(access_range: RangeInclusive<usize>) -> MemoryError {
     MemoryError(std::iter::once((access_range.into(), MemoryErrorType::OutOfBus)).collect())
 }

@@ -309,7 +309,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
                         );
 
                         let pattern_table_low = ppu_address_space
-                            .read_le_value(address as usize, timestamp)
+                            .read_le_value::<_, false>(address as usize, timestamp)
                             .unwrap();
 
                         self.state.sprite_pipeline_state =
@@ -331,7 +331,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
                         );
 
                         let pattern_table_high = ppu_address_space
-                            .read_le_value(address as usize, timestamp)
+                            .read_le_value::<_, false>(address as usize, timestamp)
                             .unwrap();
 
                         self.state
@@ -390,7 +390,9 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
                     + (usize::from(vram_address_pointer_contents.coarse.y) * 32)
                     + usize::from(vram_address_pointer_contents.coarse.x);
 
-                let nametable = ppu_address_space.read_le_value(address, timestamp).unwrap();
+                let nametable = ppu_address_space
+                    .read_le_value::<_, false>(address, timestamp)
+                    .unwrap();
 
                 self.state.background_pipeline_state =
                     BackgroundPipelineState::FetchingAttribute { nametable };
@@ -406,7 +408,9 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
                     + (coarse.y / 4) * 8
                     + (coarse.x / 4);
 
-                let attribute: u8 = ppu_address_space.read_le_value(address, timestamp).unwrap();
+                let attribute: u8 = ppu_address_space
+                    .read_le_value::<_, false>(address, timestamp)
+                    .unwrap();
 
                 let attribute_quadrant = Point2::new(coarse.x % 4, coarse.y % 4) / 2;
                 let shift = (attribute_quadrant.y * 2 + attribute_quadrant.x) * 2;
@@ -430,7 +434,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
                     + u16::from(vram_address_pointer_contents.fine_y);
 
                 let pattern_table_low = ppu_address_space
-                    .read_le_value(address as usize, timestamp)
+                    .read_le_value::<_, false>(address as usize, timestamp)
                     .unwrap();
 
                 self.state.background_pipeline_state =
@@ -454,7 +458,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
                     + 8;
 
                 let pattern_table_high: u8 = ppu_address_space
-                    .read_le_value(address as usize, timestamp)
+                    .read_le_value::<_, false>(address as usize, timestamp)
                     .unwrap();
 
                 self.state.background.pattern_low_shift <<= 8;
@@ -498,7 +502,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
         let palette_index = color_bits | (attribute << 2);
 
         ppu_address_space
-            .read_le_value::<u8>(
+            .read_le_value::<u8, false>(
                 BACKGROUND_PALETTE_BASE_ADDRESS + palette_index as usize,
                 timestamp,
             )
@@ -517,7 +521,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
         let color_bits = color & 0b11;
 
         ppu_address_space
-            .read_le_value::<u8>(
+            .read_le_value::<u8, false>(
                 SPRITE_PALETTE_BASE_ADDRESS
                     + (usize::from(sprite.palette_index) * 4)
                     + usize::from(color_bits),

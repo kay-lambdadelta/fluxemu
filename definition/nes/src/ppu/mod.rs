@@ -283,12 +283,12 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                             runtime.address_space(self.ppu_address_space).unwrap();
 
                         if avoid_side_effects {
-                            *buffer = ppu_address_space.read_le_value_pure(
+                            *buffer = ppu_address_space.read_le_value::<_, true>(
                                 self.state.vram_address_pointer as usize,
                                 &timestamp,
                             )?;
                         } else {
-                            let new_value = ppu_address_space.read_le_value(
+                            let new_value = ppu_address_space.read_le_value::<_, false>(
                                 self.state.vram_address_pointer as usize,
                                 &timestamp,
                             )?;
@@ -456,7 +456,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
 
                         // Read off OAM data immediately, this is done for performance and should not
                         // have any side effects
-                        let _ = cpu_address_space.read(
+                        let _ = cpu_address_space.read::<_, false>(
                             page as usize,
                             &timestamp,
                             &mut self.state.oam.data,

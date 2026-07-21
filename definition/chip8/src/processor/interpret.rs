@@ -239,7 +239,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
 
                     for buffer_section in buffer.chunks_mut(2) {
                         address_space
-                            .read(
+                            .read::<_, false>(
                                 self.state.registers.index as usize + cursor,
                                 timestamp,
                                 buffer_section,
@@ -264,7 +264,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
 
                     for buffer_section in buffer.chunks_mut(2) {
                         address_space
-                            .read(
+                            .read::<_, false>(
                                 self.state.registers.index as usize + cursor,
                                 timestamp,
                                 buffer_section,
@@ -387,7 +387,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
             Chip8InstructionSet::Chip8(InstructionSetChip8::Restore { count }) => {
                 for i in 0..=count {
                     address_space
-                        .read(
+                        .read::<_, false>(
                             self.state.registers.index as usize + i as usize,
                             timestamp,
                             &mut self.state.registers.work_registers[i as usize..=i as usize],

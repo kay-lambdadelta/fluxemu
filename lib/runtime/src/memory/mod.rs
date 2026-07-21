@@ -12,6 +12,7 @@ pub(crate) use registry::{
     LocalMemoryRegistryData, MemoryId, MemoryRegistryData, RegionInitializationData,
 };
 use sdd::{AtomicOwned, Guard};
+use thin_vec::ThinVec;
 use thiserror::Error;
 
 use crate::{
@@ -127,7 +128,7 @@ pub enum MemoryErrorType {
 /// Wrapper around the error type in order to specify ranges
 #[derive(Error)]
 #[error("Memory operation failed: {0:#x?}")]
-pub struct MemoryError(pub Box<[(RangeInclusive<Address>, MemoryErrorType)]>);
+pub struct MemoryError(pub ThinVec<(RangeInclusive<Address>, MemoryErrorType)>);
 
 impl Debug for MemoryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

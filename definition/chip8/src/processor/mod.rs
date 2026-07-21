@@ -114,7 +114,7 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
                         let mut instruction = [0; 2];
 
                         address_space
-                            .read(
+                            .read::<_, false>(
                                 self.state.registers.program as usize,
                                 timestamp,
                                 &mut instruction,

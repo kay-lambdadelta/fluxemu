@@ -37,7 +37,7 @@ fn reads_and_writes_sanity() {
 
     let mut buffer = [0; CHUNK_SIZE * 2];
     address_space
-        .read(0x0000, &Period::ZERO, &mut buffer)
+        .read::<_, false>(0x0000, &Period::ZERO, &mut buffer)
         .unwrap();
     assert_eq!(buffer, [34; CHUNK_SIZE * 2]);
 }
@@ -73,7 +73,7 @@ fn wraparound() {
 
     let mut buffer = [0; 2];
     address_space
-        .read(0xff, &Period::ZERO, &mut buffer)
+        .read::<_, false>(0xff, &Period::ZERO, &mut buffer)
         .unwrap();
     assert_eq!(buffer, [0x00, 34]);
 }
@@ -92,7 +92,9 @@ fn immutable_memory_is_read_only() {
     let runtime_guard = machine.enter_runtime();
     let mut address_space = runtime_guard.address_space(address_space).unwrap();
 
-    let value: u8 = address_space.read_le_value(0x0000, &Period::ZERO).unwrap();
+    let value: u8 = address_space
+        .read_le_value::<_, false>(0x0000, &Period::ZERO)
+        .unwrap();
     assert_eq!(value, 34);
 
     let error = address_space
@@ -132,13 +134,17 @@ fn mirror_redirects() {
     address_space
         .write_le_value::<u8>(0x0100, &Period::ZERO, 34)
         .unwrap();
-    let value: u8 = address_space.read_le_value(0x0000, &Period::ZERO).unwrap();
+    let value: u8 = address_space
+        .read_le_value::<_, false>(0x0000, &Period::ZERO)
+        .unwrap();
     assert_eq!(value, 34);
 
     address_space
         .write_le_value::<u8>(0x0001, &Period::ZERO, 0x34)
         .unwrap();
-    let mirrored_value: u8 = address_space.read_le_value(0x0101, &Period::ZERO).unwrap();
+    let mirrored_value: u8 = address_space
+        .read_le_value::<_, false>(0x0101, &Period::ZERO)
+        .unwrap();
     assert_eq!(mirrored_value, 0x34);
 }
 
@@ -176,7 +182,7 @@ fn unmap() {
     );
 
     let error = address_space
-        .read_le_value::<u8>(0x0000, &Period::ZERO)
+        .read_le_value::<u8, false>(0x0000, &Period::ZERO)
         .unwrap_err();
     assert_eq!(error.0[0].1, MemoryErrorType::OutOfBus);
 }
@@ -218,7 +224,7 @@ fn permissions_are_enforced() {
         .write_le_value::<u8>(0x0000, &Period::ZERO, 34)
         .unwrap();
     let read_error = address_space
-        .read_le_value::<u8>(0x0000, &Period::ZERO)
+        .read_le_value::<u8, false>(0x0000, &Period::ZERO)
         .unwrap_err();
     assert_eq!(read_error.0[0].1, MemoryErrorType::OutOfBus);
 
@@ -259,7 +265,7 @@ fn initial_contents_are_applied() {
 
     let mut buffer = [0; 8];
     address_space
-        .read(0x0000, &Period::ZERO, &mut buffer)
+        .read::<_, false>(0x0000, &Period::ZERO, &mut buffer)
         .unwrap();
 
     assert_eq!(buffer, [1, 2, 3, 4, 0, 0, 0, 0]);

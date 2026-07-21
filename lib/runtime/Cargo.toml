@@ -36,6 +36,7 @@ strum = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 versions = { workspace = true }
+thin-vec = "0.2"
 
 [target.'cfg(any(target_family = "unix", target_os = "windows"))'.dev-dependencies]
 criterion = { workspace = true }

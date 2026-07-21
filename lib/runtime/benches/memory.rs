@@ -49,7 +49,7 @@ fn bench_reads(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u8>(black_box(0x0000), &Period::default())
+                    .read_le_value::<u8, false>(black_box(0x0000), &Period::default())
                     .unwrap(),
             )
         });
@@ -59,7 +59,7 @@ fn bench_reads(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u16>(black_box(0x0000), &Period::default())
+                    .read_le_value::<u16, false>(black_box(0x0000), &Period::default())
                     .unwrap(),
             )
         });
@@ -69,7 +69,7 @@ fn bench_reads(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u32>(black_box(0x0000), &Period::default())
+                    .read_le_value::<u32, false>(black_box(0x0000), &Period::default())
                     .unwrap(),
             )
         });
@@ -79,7 +79,7 @@ fn bench_reads(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u64>(black_box(0x0000), &Period::default())
+                    .read_le_value::<u64, false>(black_box(0x0000), &Period::default())
                     .unwrap(),
             )
         });
@@ -89,7 +89,7 @@ fn bench_reads(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u8>(black_box(0x1000), &Period::default())
+                    .read_le_value::<u8, false>(black_box(0x1000), &Period::default())
                     .unwrap(),
             )
         });
@@ -99,7 +99,7 @@ fn bench_reads(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u16>(black_box(0x1000), &Period::default())
+                    .read_le_value::<u16, false>(black_box(0x1000), &Period::default())
                     .unwrap(),
             )
         });
@@ -109,7 +109,7 @@ fn bench_reads(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u32>(black_box(0x1000), &Period::default())
+                    .read_le_value::<u32, false>(black_box(0x1000), &Period::default())
                     .unwrap(),
             )
         });
@@ -119,7 +119,7 @@ fn bench_reads(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 address_space
-                    .read_le_value::<u64>(black_box(0x1000), &Period::default())
+                    .read_le_value::<u64, false>(black_box(0x1000), &Period::default())
                     .unwrap(),
             )
         });

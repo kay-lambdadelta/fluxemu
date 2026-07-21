@@ -212,7 +212,7 @@ impl Component for Mos6502 {
             let is_read_cycle = match current_cycle.bus_mode {
                 BusMode::Read => {
                     self.state.bus.data = address_space
-                        .read_le_value(self.state.bus.address as Address, timestamp)
+                        .read_le_value::<_, false>(self.state.bus.address as Address, timestamp)
                         .unwrap_or_default();
 
                     true
