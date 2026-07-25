@@ -53,7 +53,6 @@ rust-i18n = "4.2"
 rustc-hash = "2.1"
 scc = "3.8"
 sdd = { version = "4.8" }
-sealed = "0.6"
 serde = { version = "1.0", features = ["derive"] }
 serde-inline-default = "1.0"
 serde_with = "3.21"
