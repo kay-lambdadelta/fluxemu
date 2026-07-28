@@ -244,7 +244,7 @@ impl AddressSpaceData {
     }
 
     #[inline]
-    fn get_write<'a>(&'a self, guard: &'a Guard) -> &'a PageTable {
+    fn get_write_table<'a>(&'a self, guard: &'a Guard) -> &'a PageTable {
         // SAFETY: We never set an null members mapping, and we don't set any tag bits
         unsafe {
             self.write_table

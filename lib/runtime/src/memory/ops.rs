@@ -140,7 +140,7 @@ impl<'a> AddressSpace<'a> {
         current_timestamp: &Period,
         buffer: &B,
     ) -> Result<(), MemoryError> {
-        let page_table = self.data.get_write(&self.guard);
+        let page_table = self.data.get_write_table(&self.guard);
 
         for Chunk {
             address,
