@@ -54,7 +54,7 @@ udev = { version = "0.9", optional = true }
 xkbcommon = { version = "0.9", optional = true }
 
 [features]
-default = ["webgpu", "windowing"]
+default = ["drm", "webgpu", "windowing"]
 drm = [
   "dep:drm",
   "dep:evdev",
