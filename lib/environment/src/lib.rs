@@ -61,16 +61,28 @@ pub fn find_and_load_environment() -> (PathBuf, Environment) {
     })
     .unwrap();
 
-    let config_builder = Environment::builder()
+    let config_builder = Environment::builder().env();
+
+    let config_builder = if let Ok(loaded_environment) =
+        std::fs::read_to_string(&environment_location)
+        && let Ok(loaded_environment) = Options::default()
+            .with_default_extension(Extensions::IMPLICIT_SOME)
+            .from_str(&loaded_environment)
+    {
+        config_builder.preloaded(loaded_environment)
+    } else {
+        config_builder
+    };
+
+    let environment = config_builder
         .preloaded(
             Options::default()
                 .with_default_extension(Extensions::IMPLICIT_SOME)
                 .from_str(&default_environment_string)
                 .unwrap(),
         )
-        .env();
-
-    let environment = config_builder.load().unwrap();
+        .load()
+        .unwrap();
 
     (environment_location, environment)
 }
