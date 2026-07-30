@@ -27,27 +27,39 @@ pub(crate) struct RegionInitializationData {
 
 #[derive(Debug)]
 struct LocalMemoryRegionData {
-    base_ptr: NonNull<u8>,
-    // Actual length of the region in bytes
-    length: usize,
-    // Chunks this thread currently owns and implicitly how large this region is in chunks
+    /// Pointer to the allocation
+    base_ptr: NonNull<[u8]>,
+    /// Chunks this thread currently owns and implicitly how large this region is in chunks
     owned_chunks: BitVec<usize>,
 }
 
 #[derive(Debug)]
 struct MemoryRegion {
-    base_ptr: NonNull<u8>,
-    layout: Layout,
-    size: usize,
-    chunk_count: usize,
+    /// Pointer to the allocation
+    base_ptr: NonNull<[u8]>,
+    /// Chunk borrowed tracker
+    ///
+    /// Note that the last chunk can be smaller than [CHUNK_SIZE]
     borrowed_chunks: Mutex<BitVec<usize>>,
     condvar: Condvar,
+}
+
+impl MemoryRegion {
+    /// Get the number of chunks required to store this region
+    ///
+    /// Note that the length of all chunks * [CHUNK_SIZE] is often larger than the actual region sizes
+    fn chunk_count(&self) -> usize {
+        self.base_ptr.len().div_ceil(CHUNK_SIZE)
+    }
 }
 
 impl Drop for MemoryRegion {
     fn drop(&mut self) {
         unsafe {
-            std::alloc::dealloc(self.base_ptr.as_ptr(), self.layout);
+            std::alloc::dealloc(
+                self.base_ptr.cast().as_ptr(),
+                Layout::array::<u8>(self.base_ptr.len()).unwrap(),
+            );
         }
     }
 }
@@ -73,26 +85,21 @@ impl MemoryRegistryData {
             },
         ) in required_regions
         {
-            assert!(size > 0, "Region {path} requested with zero size");
-
             let id = next_id;
             next_id = next_id.checked_add(1).expect("Too many regions");
 
             let region_chunk_count = size.div_ceil(CHUNK_SIZE);
-            let allocation_size = region_chunk_count * CHUNK_SIZE;
-
-            let layout =
-                Layout::from_size_align(allocation_size, 1).expect("Invalid memory region layout");
+            let layout = Layout::array::<u8>(size).expect("Invalid memory region layout");
 
             let allocation = unsafe { std::alloc::alloc_zeroed(layout) };
-
-            let base_ptr =
-                NonNull::new(allocation).unwrap_or_else(|| std::alloc::handle_alloc_error(layout));
+            let mut base_ptr = NonNull::slice_from_raw_parts(
+                NonNull::new(allocation).unwrap_or_else(|| std::alloc::handle_alloc_error(layout)),
+                size,
+            );
 
             if !initial_contents.is_empty() {
-                // SAFETY: size is equal to or less than allocation_size
-                let representation_slice =
-                    unsafe { std::slice::from_raw_parts_mut(allocation, size) };
+                // SAFETY: We validated that this pointer is a valid allocation
+                let representation_slice = unsafe { base_ptr.as_mut() };
 
                 for (addresses, bytes) in initial_contents {
                     representation_slice[addresses].copy_from_slice(&bytes);
@@ -103,9 +110,6 @@ impl MemoryRegistryData {
                 id,
                 MemoryRegion {
                     base_ptr,
-                    layout,
-                    size,
-                    chunk_count: region_chunk_count,
                     borrowed_chunks: Mutex::new(BitVec::from_elem_general(
                         region_chunk_count,
                         false,
@@ -169,7 +173,7 @@ impl<'a> MemoryRegistry<'a> {
         let region_data = local_data.region_data_cache.get_mut(id as usize).unwrap();
 
         // This check is sufficient because we assert earlier that the range is a valid range in which "last" is larger or equal to "start"
-        assert!(range.last < region_data.length);
+        assert!(range.last < region_data.base_ptr.len());
 
         let chunk_range = RangeInclusive {
             start: range.start / CHUNK_SIZE,
@@ -186,14 +190,14 @@ impl<'a> MemoryRegistry<'a> {
         }
 
         // SAFETY: The start offset is within a chunk that we own, and within the allocation we made
-        let slice_base_ptr = unsafe { region_data.base_ptr.add(range.start) };
+        let slice_base_ptr = unsafe { region_data.base_ptr.cast::<u8>().as_ptr().add(range.start) };
 
         // SAFETY: The slice is valid for the region and we own the chunks in the range
         //
         // The range length is additionally guaranteed to be equal to or smaller than the chunks
         //
         // The lifetime of the slice is constrained to the lifetime of the callback
-        callback(unsafe { std::slice::from_raw_parts_mut(slice_base_ptr.as_ptr(), range.len()) })
+        callback(unsafe { std::slice::from_raw_parts_mut(slice_base_ptr.cast(), range.len()) })
     }
 
     #[cold]
@@ -304,7 +308,7 @@ impl<'a> MemoryRegistry<'a> {
     pub fn region_size(&self, path: &ResourcePath) -> Option<usize> {
         let id = self.id_for_path(path)?;
 
-        Some(self.data().regions[&id].size)
+        Some(self.data().regions[&id].base_ptr.len())
     }
 }
 
@@ -321,8 +325,7 @@ impl LocalMemoryRegistryData {
                     .sorted_by_key(|(id, _)| *id)
                     .map(|(_, region)| LocalMemoryRegionData {
                         base_ptr: region.base_ptr,
-                        length: region.size,
-                        owned_chunks: BitVec::from_elem_general(region.chunk_count, false),
+                        owned_chunks: BitVec::from_elem_general(region.chunk_count(), false),
                     }),
             ),
         }
