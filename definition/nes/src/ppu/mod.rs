@@ -208,6 +208,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
                     awaiting_memory_access: true,
                     sprite_zero_hit: false,
                     sprite_8x16_mode: false,
+                    overflow: false,
                 },
                 background: BackgroundState {
                     pattern_table_index: 0x0000,
@@ -264,9 +265,10 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         std::mem::take(&mut self.state.entered_vblank)
                     };
 
-                    *buffer = (*buffer & 0b0011_1111)
+                    *buffer = (*buffer & 0b0001_1111)
                         | ((vblank as u8) << 7)
-                        | ((self.state.oam.sprite_zero_hit as u8) << 6);
+                        | ((self.state.oam.sprite_zero_hit as u8) << 6)
+                        | ((self.state.oam.overflow as u8) << 5);
                 }
                 CpuAccessibleRegister::OamAddr => {
                     *buffer = self.state.oam.oam_addr;

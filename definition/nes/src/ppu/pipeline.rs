@@ -23,6 +23,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
     ) {
         if self.state.cycle_counter.x == 1 {
             self.state.oam.sprite_zero_hit = false;
+            self.state.oam.overflow = false;
         }
 
         if let 280..=304 = self.state.cycle_counter.x
@@ -178,7 +179,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
                             }
 
                             if self.state.oam.secondary_data.push(sprite).is_err() {
-                                // TODO: Handle sprite overflow flag
+                                self.state.oam.overflow = true;
                             }
                         }
 
@@ -252,7 +253,11 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
             })
             .is_some();
 
-        if is_background_opaque && sprite_zero_hit && scanline_position_x != 255 {
+        if is_background_opaque
+            && sprite_zero_hit
+            && scanline_position_x != 255
+            && self.state.oam.rendering_enabled
+        {
             self.state.oam.sprite_zero_hit = true;
         }
     }

@@ -80,6 +80,7 @@ pub struct OamState {
     pub awaiting_memory_access: bool,
     pub sprite_zero_hit: bool,
     pub sprite_8x16_mode: bool,
+    pub overflow: bool,
 }
 
 impl OamState {
