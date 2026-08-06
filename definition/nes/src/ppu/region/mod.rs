@@ -15,6 +15,7 @@ pub trait Region: Send + Sync + Debug + 'static {
     const TOTAL_SCANLINES: u16 =
         Self::VISIBLE_SCANLINES + Self::VBLANK_LENGTH + DUMMY_SCANLINE_COUNT;
     const COLOR_PALETTE: [Srgb<u8>; 64];
+    const BYPASS_READ_BUFFER_FOR_PPUDATA_PALETTE_READS: bool;
 
     fn master_clock() -> Frequency;
 }

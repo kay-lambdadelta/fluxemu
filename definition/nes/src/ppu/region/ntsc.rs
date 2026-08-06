@@ -77,6 +77,7 @@ impl Region for Ntsc {
     const COLOR_PALETTE: [Srgb<u8>; 64] = COLOR_PALETTE;
     const VBLANK_LENGTH: u16 = 20;
     const VISIBLE_SCANLINES: u16 = 240;
+    const BYPASS_READ_BUFFER_FOR_PPUDATA_PALETTE_READS: bool = true;
 
     #[inline]
     fn master_clock() -> Frequency {

@@ -20,7 +20,7 @@ use crate::{
     },
     gamepad::standard_controllers::NesControllerConfig,
     ppu::{
-        BACKGROUND_PALETTE_BASE_ADDRESS, NAMETABLE_ADDRESSES,
+        BACKGROUND_PALETTE_BASE_ADDRESS, NAMETABLE_ADDRESSES, PALETTE_RAM_ADDRESSES,
         backend::SupportedGraphicsApiPpu,
         region::{Region, ntsc::Ntsc},
     },
@@ -73,7 +73,7 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> MachineFactory<P>
         let machine = machine.map_memory(
             ppu_address_space,
             [MemoryMapCommand::Map {
-                range: RangeInclusive::from_start_and_length(BACKGROUND_PALETTE_BASE_ADDRESS, 0x20),
+                range: PALETTE_RAM_ADDRESSES,
                 permissions: Permissions::ALL,
                 target: MapTarget::Memory {
                     path: palette_ram_path,
@@ -127,7 +127,7 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> MachineFactory<P>
             .map_memory(
                 ppu_address_space,
                 MemoryMapCommand::with_mirrors_to_destination(
-                    RangeInclusive::from_start_and_length(BACKGROUND_PALETTE_BASE_ADDRESS, 0x20),
+                    PALETTE_RAM_ADDRESSES,
                     RangeInclusive::from_start_and_length(BACKGROUND_PALETTE_BASE_ADDRESS, 0x100)
                         .step_by(0x20)
                         .skip(1)
