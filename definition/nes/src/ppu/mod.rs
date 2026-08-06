@@ -296,7 +296,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                                 // Cover the ENTIRE range, including the mirrors
                                 && RangeInclusive::from_start_and_length(
                                     *PALETTE_RAM_ADDRESSES.start(),
-                                    0x0fff,
+                                    0x1000,
                                 )
                                 .contains(&vram_address_pointer);
 
