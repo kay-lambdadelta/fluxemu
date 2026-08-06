@@ -3,7 +3,7 @@ use core::fmt::Display;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    Mos6502, Mos6502Kind,
+    IRQ_VECTOR, Mos6502, Mos6502Kind,
     cycle::{
         AddToPointerLikeRegisterSource, ArithmeticOperandInterpretation, BusMode, Cycle, Flag,
         GeneralPurposeRegister, IncrementOperand, MoveDestination, MoveSource, Phi1, Phi2,
@@ -488,7 +488,85 @@ impl Mos6502 {
                 );
             }
             Opcode::Mos6502(Mos6502Opcode::Brk) => {
-                todo!()
+                tracing::debug!("BRK occurred");
+
+                self.state.cycle_queue.clear();
+
+                self.state.cycle_queue.extend([
+                    Cycle::new(
+                        BusMode::Read,
+                        Some(Phi1::SetAddressBus {
+                            source: SetAddressBusSource::InstructionPointer,
+                        }),
+                        [Phi2::IncrementInstructionPointer],
+                    ),
+                    Cycle::new(
+                        BusMode::Write,
+                        Some(Phi1::SetAddressBus {
+                            source: SetAddressBusSource::Stack,
+                        }),
+                        [
+                            Phi2::Move {
+                                source: MoveSource::InstructionPointer { offset: 1 },
+                                destination: MoveDestination::Data,
+                            },
+                            Phi2::IncrementStack { subtract: true },
+                        ],
+                    ),
+                    Cycle::new(
+                        BusMode::Write,
+                        Some(Phi1::SetAddressBus {
+                            source: SetAddressBusSource::Stack,
+                        }),
+                        [
+                            Phi2::Move {
+                                source: MoveSource::InstructionPointer { offset: 0 },
+                                destination: MoveDestination::Data,
+                            },
+                            Phi2::IncrementStack { subtract: true },
+                        ],
+                    ),
+                    Cycle::new(
+                        BusMode::Write,
+                        Some(Phi1::SetAddressBus {
+                            source: SetAddressBusSource::Stack,
+                        }),
+                        [
+                            Phi2::Move {
+                                source: MoveSource::Flags { break_: true },
+                                destination: MoveDestination::Data,
+                            },
+                            Phi2::IncrementStack { subtract: true },
+                        ],
+                    ),
+                    Cycle::new(
+                        BusMode::Read,
+                        Some(Phi1::SetAddressBus {
+                            source: SetAddressBusSource::Constant(IRQ_VECTOR),
+                        }),
+                        [Phi2::Move {
+                            source: MoveSource::Data,
+                            destination: MoveDestination::EffectiveAddress,
+                        }],
+                    ),
+                    Cycle::new(
+                        BusMode::Read,
+                        Some(Phi1::SetAddressBus {
+                            source: SetAddressBusSource::Constant(IRQ_VECTOR + 1),
+                        }),
+                        [
+                            Phi2::Move {
+                                source: MoveSource::Data,
+                                destination: MoveDestination::EffectiveAddress,
+                            },
+                            Phi2::LoadInstructionPointerFromEffectiveAddress,
+                            Phi2::SetFlag {
+                                flag: Flag::InterruptDisable,
+                                value: true,
+                            },
+                        ],
+                    ),
+                ]);
             }
             Opcode::Mos6502(Mos6502Opcode::Clc) => {
                 self.patch_read_maybe_effective_address_dependent(
