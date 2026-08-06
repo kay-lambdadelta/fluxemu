@@ -291,27 +291,31 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         } else {
                             // RGB models do not have this quirk
                             let bypass_read_buffer = R::BYPASS_READ_BUFFER_FOR_PPUDATA_PALETTE_READS
-                                && PALETTE_RAM_ADDRESSES.contains(&vram_address_pointer);
+                                // Cover the ENTIRE range, including the mirrors
+                                && RangeInclusive::from_start_and_length(
+                                    *PALETTE_RAM_ADDRESSES.start(),
+                                    0x0fff,
+                                )
+                                .contains(&vram_address_pointer);
 
                             if bypass_read_buffer {
-                                // Bypass the read buffer for the read
-                                *buffer = ppu_address_space
+                                let data: u8 = ppu_address_space
                                     .read_le_value::<_, false>(vram_address_pointer, &timestamp)?;
+
+                                *buffer = (*buffer & 0b1100_0000) | (data & 0b0011_1111);
 
                                 // HACK: The memory subsystem does not (yet) support dealing with memory shadowing
                                 //
                                 // This should work, but it is a hack
                                 let underlying_address = (vram_address_pointer & 0x0fff) | 0x2000;
-
                                 self.state.vram_read_buffer = ppu_address_space
                                     .read_le_value::<_, false>(underlying_address, &timestamp)?;
                             } else {
-                                let new_value = ppu_address_space
+                                let data = ppu_address_space
                                     .read_le_value::<_, false>(vram_address_pointer, &timestamp)?;
 
                                 // Delay the read through the buffer
-                                *buffer =
-                                    std::mem::replace(&mut self.state.vram_read_buffer, new_value);
+                                *buffer = std::mem::replace(&mut self.state.vram_read_buffer, data);
                             }
 
                             self.state.vram_address_pointer =
