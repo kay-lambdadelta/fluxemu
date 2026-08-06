@@ -270,7 +270,6 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
             .oam
             .currently_rendering_sprites
             .iter()
-            .rev()
             .copied()
             .find_map(|sprite| {
                 let color_index = calculate_sprite_color_index(scanline_position_x, &sprite)?;
