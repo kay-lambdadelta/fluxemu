@@ -54,14 +54,7 @@ impl<R: Region> PpuDisplayBackend<R> for State {
         }
     }
 
-    fn framebuffer(&self) -> &<Self::GraphicsApi as GraphicsApi>::Framebuffer {
-        &self.framebuffer
-    }
-
-    #[inline]
-    fn commit_staging_buffer(&mut self, staging_buffer: RefTexture<PpuColorIndex>) {
-        convert_paletted_staging_buffer::<R>(staging_buffer, self.staging_texture.as_view_mut());
-
+    fn framebuffer(&mut self) -> &<Self::GraphicsApi as GraphicsApi>::Framebuffer {
         self.queue.write_texture(
             TexelCopyTextureInfo {
                 texture: &self.framebuffer,
@@ -72,11 +65,18 @@ impl<R: Region> PpuDisplayBackend<R> for State {
             bytemuck::cast_slice(self.staging_texture.as_slice().unwrap()),
             TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some((staging_buffer.width() * size_of::<Srgba<u8>>()) as u32),
+                bytes_per_row: Some((self.staging_texture.width() * size_of::<Srgba<u8>>()) as u32),
                 rows_per_image: None,
             },
             self.framebuffer.size(),
         );
+
+        &self.framebuffer
+    }
+
+    #[inline]
+    fn commit_staging_buffer(&mut self, staging_buffer: RefTexture<PpuColorIndex>) {
+        convert_paletted_staging_buffer::<R>(staging_buffer, self.staging_texture.as_view_mut());
     }
 }
 

@@ -186,7 +186,7 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Display<G> {
     }
 
     fn get_framebuffer(&mut self, _name: &str) -> &dyn Any {
-        self.backend.as_ref().unwrap().framebuffer()
+        self.backend.as_mut().unwrap().framebuffer()
     }
 }
 
@@ -194,7 +194,7 @@ pub(crate) trait Chip8DisplayBackend: Send + Sync + Debug + 'static {
     type GraphicsApi: GraphicsApi;
 
     fn new(initialization_data: <Self::GraphicsApi as GraphicsApi>::InitializationData) -> Self;
-    fn framebuffer(&self) -> &<Self::GraphicsApi as GraphicsApi>::Framebuffer;
+    fn framebuffer(&mut self) -> &<Self::GraphicsApi as GraphicsApi>::Framebuffer;
     fn commit_staging_buffer(&mut self, staging_buffer: &OwnedTexture<Srgba<u8>>);
 }
 

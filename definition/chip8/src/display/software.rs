@@ -24,7 +24,7 @@ impl Chip8DisplayBackend for SoftwareState {
         }
     }
 
-    fn framebuffer(&self) -> &<Self::GraphicsApi as GraphicsApi>::Framebuffer {
+    fn framebuffer(&mut self) -> &<Self::GraphicsApi as GraphicsApi>::Framebuffer {
         &self.framebuffer
     }
 

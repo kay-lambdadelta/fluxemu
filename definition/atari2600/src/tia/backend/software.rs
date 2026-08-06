@@ -37,7 +37,7 @@ impl<R: Region> TiaDisplayBackend<R> for SoftwareState {
         }
     }
 
-    fn framebuffer(&self) -> &<Self::GraphicsApi as GraphicsApi>::Framebuffer {
+    fn framebuffer(&mut self) -> &<Self::GraphicsApi as GraphicsApi>::Framebuffer {
         &self.framebuffer
     }
 

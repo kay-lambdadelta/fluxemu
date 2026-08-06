@@ -15,7 +15,7 @@ pub(crate) trait TiaDisplayBackend<R: Region>:
     type GraphicsApi: GraphicsApi;
 
     fn new(initialization_data: <Self::GraphicsApi as GraphicsApi>::InitializationData) -> Self;
-    fn framebuffer(&self) -> &<Self::GraphicsApi as GraphicsApi>::Framebuffer;
+    fn framebuffer(&mut self) -> &<Self::GraphicsApi as GraphicsApi>::Framebuffer;
     fn commit_staging_buffer(&mut self, staging_buffer: &OwnedTexture<Srgba<u8>>);
 }
 

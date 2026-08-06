@@ -235,7 +235,7 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
     }
 
     fn get_framebuffer(&mut self, _name: &str) -> &dyn Any {
-        self.backend.as_ref().unwrap().framebuffer()
+        self.backend.as_mut().unwrap().framebuffer()
     }
 }
 

@@ -610,7 +610,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
     }
 
     fn get_framebuffer(&mut self, _name: &str) -> &dyn Any {
-        self.backend.as_ref().unwrap().framebuffer()
+        self.backend.as_mut().unwrap().framebuffer()
     }
 }
 

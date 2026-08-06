@@ -1,6 +1,6 @@
 use fluxemu_graphics::api::{
     GraphicsApi,
-    software::texture::OwnedTexture,
+    software::texture::{CopyMode, OwnedTexture},
     webgpu::{InitializationData, Webgpu, suggested_framebuffer_texture_usages},
 };
 use palette::Srgba;
@@ -15,8 +15,9 @@ use crate::tia::{
 
 #[derive(Debug)]
 pub struct State {
-    pub queue: Queue,
-    pub framebuffer: Texture,
+    queue: Queue,
+    framebuffer: Texture,
+    staging_texture: OwnedTexture<Srgba<u8>>,
 }
 
 impl<R: Region> TiaDisplayBackend<R> for State {
@@ -43,14 +44,14 @@ impl<R: Region> TiaDisplayBackend<R> for State {
         State {
             queue: initialization_data.queue,
             framebuffer,
+            staging_texture: OwnedTexture::new(
+                VISIBLE_SCANLINE_LENGTH as usize,
+                R::TOTAL_SCANLINES as usize,
+            ),
         }
     }
 
-    fn framebuffer(&self) -> &<Self::GraphicsApi as GraphicsApi>::Framebuffer {
-        &self.framebuffer
-    }
-
-    fn commit_staging_buffer(&mut self, staging_buffer: &OwnedTexture<Srgba<u8>>) {
+    fn framebuffer(&mut self) -> &<Self::GraphicsApi as GraphicsApi>::Framebuffer {
         self.queue.write_texture(
             TexelCopyTextureInfo {
                 texture: &self.framebuffer,
@@ -58,14 +59,21 @@ impl<R: Region> TiaDisplayBackend<R> for State {
                 origin: Origin3d::default(),
                 aspect: TextureAspect::All,
             },
-            bytemuck::cast_slice(staging_buffer.as_slice().unwrap()),
+            bytemuck::cast_slice(self.staging_texture.as_slice().unwrap()),
             TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some((staging_buffer.width() * size_of::<Srgba<u8>>()) as u32),
+                bytes_per_row: Some((self.staging_texture.width() * size_of::<Srgba<u8>>()) as u32),
                 rows_per_image: None,
             },
             self.framebuffer.size(),
         );
+
+        &self.framebuffer
+    }
+
+    fn commit_staging_buffer(&mut self, staging_buffer: &OwnedTexture<Srgba<u8>>) {
+        self.staging_texture
+            .copy_from(staging_buffer, CopyMode::Nearest);
     }
 }
 
