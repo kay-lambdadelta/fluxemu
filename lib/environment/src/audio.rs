@@ -17,8 +17,18 @@ pub enum Interpolation {
 }
 
 #[serde_as]
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AudioSettings {
     /// Interpolation settings
     pub interpolation: Interpolation,
+    pub volume: f32,
+}
+
+impl Default for AudioSettings {
+    fn default() -> Self {
+        Self {
+            interpolation: Interpolation::default(),
+            volume: 1.0,
+        }
+    }
 }

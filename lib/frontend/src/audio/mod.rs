@@ -10,8 +10,4 @@ pub trait AudioRuntime: Sized + Debug {
     fn sample_rate(&mut self) -> f32;
     /// Set the audio mixer
     fn set_audio_mixer(&mut self, audio_mixer: Arc<AudioMixer>);
-    /// Pause audio playback
-    fn pause(&mut self);
-    /// Play audio
-    fn play(&mut self);
 }

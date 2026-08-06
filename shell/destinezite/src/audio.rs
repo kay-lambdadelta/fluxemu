@@ -58,6 +58,8 @@ impl CpalAudioRuntime {
 
         let stream = create_stream::<f32, 2>(&device, config, mixer.clone());
 
+        stream.play().unwrap();
+
         Ok(Self {
             stream,
             config,
@@ -69,14 +71,6 @@ impl CpalAudioRuntime {
 impl AudioRuntime for CpalAudioRuntime {
     fn sample_rate(&mut self) -> f32 {
         self.config.sample_rate() as f32
-    }
-
-    fn pause(&mut self) {
-        self.stream.pause().unwrap();
-    }
-
-    fn play(&mut self) {
-        self.stream.play().unwrap();
     }
 
     fn set_audio_mixer(&mut self, audio_mixer: Arc<AudioMixer>) {

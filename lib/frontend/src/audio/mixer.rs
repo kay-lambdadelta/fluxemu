@@ -9,6 +9,7 @@ use ringbuffer::{AllocRingBuffer, RingBuffer};
 struct State {
     audio_ring: AllocRingBuffer<SVector<f32, 2>>,
     interpolaters: HashMap<ResourcePath, Nearest<f32, 1>>,
+    volume: f32,
 }
 
 #[derive(Debug)]
@@ -18,14 +19,20 @@ pub struct AudioMixer {
 }
 
 impl AudioMixer {
-    pub fn new(sample_rate: f32) -> Self {
+    pub fn new(sample_rate: f32, volume: f32) -> Self {
         Self {
             output_sample_rate: sample_rate,
             state: Mutex::new(State {
                 audio_ring: AllocRingBuffer::new(sample_rate as usize * 10),
                 interpolaters: HashMap::default(),
+                volume,
             }),
         }
+    }
+
+    pub fn set_volume(&self, volume: f32) {
+        let mut state_guard = self.state.lock().unwrap();
+        state_guard.volume = volume;
     }
 
     pub fn extract_machine_samples(&self, runtime_guard: &RuntimeGuard<'_>) {
@@ -78,10 +85,12 @@ impl AudioMixer {
         buffer.fill(SVector::from_element(S::equilibrium()));
 
         let mut state_guard = self.state.lock().unwrap();
+        let volume = state_guard.volume;
 
         for (src, dst) in state_guard
             .audio_ring
             .drain()
+            .amplify(volume.max(0.0))
             .pad()
             .rescale::<S>()
             .remix()

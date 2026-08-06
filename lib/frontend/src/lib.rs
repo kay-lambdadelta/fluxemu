@@ -112,6 +112,7 @@ pub struct Frontend<P: FrontendPlatform> {
     user_environment_location: Cow<'static, Path>,
     machine_context: Option<MachineContext>,
     pending_machine: Option<SealedMachineBuilder<P>>,
+    #[allow(unused)]
     audio_runtime: P::AudioRuntime,
     machine_factory_manager: Arc<FactoryManager<P>>,
     program_manager: Arc<ProgramManager>,
@@ -145,7 +146,7 @@ impl<P: FrontendPlatform> Frontend<P> {
         });
 
         let sample_rate = audio_runtime.sample_rate();
-        let audio_mixer = Arc::new(AudioMixer::new(sample_rate));
+        let audio_mixer = Arc::new(AudioMixer::new(sample_rate, environment.audio.volume));
         audio_runtime.set_audio_mixer(audio_mixer.clone());
 
         Self {
@@ -187,6 +188,7 @@ impl<P: FrontendPlatform> Frontend<P> {
     fn bring_down_current_machine(&mut self) {
         self.machine_context = None;
 
+        // Let go of any registered input devices
         for physical_gamepad_state in self.physical_input_devices.values_mut() {
             physical_gamepad_state.controlling_input_devices.clear();
         }
