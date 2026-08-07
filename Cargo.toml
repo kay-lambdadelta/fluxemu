@@ -10,7 +10,7 @@ clap = { version = "4.6", features = ["derive"] }
 confique = "0.4"
 criterion = "0.8"
 data-encoding = "2.11"
-egui = "0.35"
+egui = "0.36"
 fixed = { version = "1.31", features = ["num-traits", "serde"] }
 heapless = { version = "0.9", features = ["serde"] }
 indexmap = { version = "2.14", features = ["serde"] }
@@ -37,7 +37,6 @@ rustc-hash = "2.1"
 scc = "3.8"
 sdd = { version = "4.8" }
 serde = { version = "1.0", features = ["derive"] }
-serde-inline-default = "1.0"
 serde_with = "3.21"
 strum = { version = "0.28", features = ["derive"] }
 tempfile = "3.27"
@@ -46,7 +45,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1.24", features = ["rng-rand", "serde", "v4"] }
 versions = "7.0"
-wgpu = "29.0"
+wgpu = "30.0"
 
 fluxemu-audio = { path = "lib/audio" }
 fluxemu-egui-software-renderer = { path = "lib/egui-software-renderer" }

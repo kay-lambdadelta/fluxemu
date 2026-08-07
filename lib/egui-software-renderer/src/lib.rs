@@ -36,12 +36,12 @@ impl Renderer {
     >(
         &mut self,
         context: &egui::Context,
-        full_output: FullOutput,
+        mut full_output: FullOutput,
         mut target_texture: impl AsViewTextureMut<P> + 'a,
     ) {
         assert!(BATCH_SIZE <= 32, "Batch size is too large to be useful");
 
-        self.update_textures(&full_output);
+        self.update_textures(&mut full_output);
         let to_free = full_output.textures_delta.free.clone();
 
         let target_texture = target_texture.as_view_mut();
@@ -104,18 +104,23 @@ impl Renderer {
         }
     }
 
-    fn update_textures(&mut self, full_output: &FullOutput) {
-        for (new_texture_id, image_delta) in &full_output.textures_delta.set {
+    fn update_textures(&mut self, full_output: &mut FullOutput) {
+        for (new_texture_id, image_delta) in full_output
+            .textures_delta
+            .set
+            .drain()
+            .flat_map(|(id, deltas)| deltas.into_iter().map(move |delta| (id, delta)))
+        {
             assert!(
-                image_delta.is_whole() || self.textures.contains_key(new_texture_id),
+                image_delta.is_whole() || self.textures.contains_key(&new_texture_id),
                 "Texture not found: {new_texture_id:?}"
             );
 
             if image_delta.is_whole() {
-                self.textures.remove(new_texture_id);
+                self.textures.remove(&new_texture_id);
             }
 
-            let destination_texture = self.textures.entry(*new_texture_id).or_insert_with(|| {
+            let destination_texture = self.textures.entry(new_texture_id).or_insert_with(|| {
                 let image_size = image_delta.image.size();
 
                 Texture::from_value(image_size[0], image_size[1], BLACK.into_format().into())

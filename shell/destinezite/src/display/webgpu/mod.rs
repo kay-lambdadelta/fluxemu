@@ -91,7 +91,7 @@ impl<H: WebgpuCompatibleDisplayContext> GraphicsRuntime for WebgpuGraphicsRuntim
                     match target {
                         DrawTarget::Egui {
                             context,
-                            full_output,
+                            mut full_output,
                         } => {
                             let surface_texture_view =
                                 surface_texture.texture.create_view(&TextureViewDescriptor {
@@ -124,7 +124,14 @@ impl<H: WebgpuCompatibleDisplayContext> GraphicsRuntime for WebgpuGraphicsRuntim
                             let primitives = context
                                 .tessellate(full_output.shapes, full_output.pixels_per_point);
 
-                            for (new_texture_id, image_delta) in full_output.textures_delta.set {
+                            for (new_texture_id, image_delta) in full_output
+                                .textures_delta
+                                .set
+                                .drain()
+                                .flat_map(|(id, deltas)| {
+                                    deltas.into_iter().map(move |delta| (id, delta))
+                                })
+                            {
                                 renderer.update_texture(
                                     device,
                                     queue,
@@ -157,9 +164,9 @@ impl<H: WebgpuCompatibleDisplayContext> GraphicsRuntime for WebgpuGraphicsRuntim
                                 &screen_descriptor,
                             );
 
-                            for remove_texture_id in full_output.textures_delta.free {
+                            for remove_texture_id in full_output.textures_delta.free.iter() {
                                 tracing::trace!("Freeing egui texture {:?}", remove_texture_id);
-                                renderer.free_texture(&remove_texture_id);
+                                renderer.free_texture(remove_texture_id);
                             }
                         }
                         DrawTarget::Machine { machine } => {
@@ -258,7 +265,7 @@ impl<H: WebgpuCompatibleDisplayContext> GraphicsRuntime for WebgpuGraphicsRuntim
                 queue.submit([command_buffer]);
 
                 self.display_handle.pre_present_notify();
-                surface_texture.present();
+                queue.present(surface_texture);
             }
             _ => {
                 self.refresh_surface();

@@ -7,13 +7,16 @@ license = "GPL-3.0-or-later"
 [dependencies]
 byte-unit = "5.2"
 egui = { workspace = true, features = ["rayon"] }
-egui_extras = "0.35"
+egui_extras = "0.36"
 egui_material_icons = {
-  version = "0.7",
+  version = "0.8",
   default-features = false,
   features = ["filled"]
 }
-egui-toast = "0.21"
+egui-toast = {
+  git = "https://github.com/kay-lambdadelta/egui-toast",
+  rev = "94ca396b4cdf6287eb273fab983cc27ac2bdcf9f"
+}
 fluxemu-audio = { workspace = true }
 fluxemu-environment = { workspace = true }
 fluxemu-graphics = { workspace = true }
