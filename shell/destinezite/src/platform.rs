@@ -30,5 +30,6 @@ impl<R: GraphicsRuntime, const EXTERNAL_FILE_DIALOGS_SUPPORTED: bool> FrontendPl
 {
     type AudioRuntime = CpalAudioRuntime;
     type GraphicsRuntime = R;
+
     const EXTERNAL_FILE_DIALOGS_SUPPORTED: bool = EXTERNAL_FILE_DIALOGS_SUPPORTED;
 }

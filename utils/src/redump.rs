@@ -5,7 +5,7 @@ use std::{
 };
 
 use clap::Subcommand;
-use fluxemu_program::{MachineId, NintendoSystem, ProgramManager, SegaSystem, SonySystem};
+use fluxemu_program::{NintendoSystem, ProgramManager, SegaSystem, SonySystem, SystemId};
 use strum::{Display, EnumIter};
 use zip::ZipArchive;
 
@@ -22,18 +22,18 @@ pub enum RedumpSystem {
     Mcd,
 }
 
-impl TryFrom<MachineId> for RedumpSystem {
+impl TryFrom<SystemId> for RedumpSystem {
     type Error = ();
 
-    fn try_from(value: MachineId) -> Result<Self, Self::Error> {
+    fn try_from(value: SystemId) -> Result<Self, Self::Error> {
         match value {
-            MachineId::Nintendo(NintendoSystem::GameCube) => Ok(Self::Gc),
-            MachineId::Nintendo(NintendoSystem::Wii) => Ok(Self::Wii),
-            MachineId::Sony(SonySystem::Playstation) => Ok(Self::Psx),
-            MachineId::Sony(SonySystem::Playstation2) => Ok(Self::Ps2),
-            MachineId::Sony(SonySystem::Playstation3) => Ok(Self::Ps3),
-            MachineId::Sony(SonySystem::PlaystationPortable) => Ok(Self::Psp),
-            MachineId::Sega(SegaSystem::SegaCD) => Ok(Self::Mcd),
+            SystemId::Nintendo(NintendoSystem::GameCube) => Ok(Self::Gc),
+            SystemId::Nintendo(NintendoSystem::Wii) => Ok(Self::Wii),
+            SystemId::Sony(SonySystem::Playstation) => Ok(Self::Psx),
+            SystemId::Sony(SonySystem::Playstation2) => Ok(Self::Ps2),
+            SystemId::Sony(SonySystem::Playstation3) => Ok(Self::Ps3),
+            SystemId::Sony(SonySystem::PlaystationPortable) => Ok(Self::Psp),
+            SystemId::Sega(SegaSystem::SegaCD) => Ok(Self::Mcd),
             _ => Err(()),
         }
     }

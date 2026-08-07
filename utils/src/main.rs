@@ -2,7 +2,7 @@ use std::{error::Error, fmt::Display, fs::File, io::BufReader, path::PathBuf};
 
 use clap::{Parser, ValueEnum};
 use fluxemu_environment::find_and_load_environment;
-use fluxemu_program::{MachineId, PROGRAM_INFORMATION_TABLE, ProgramManager};
+use fluxemu_program::{PROGRAM_INFORMATION_TABLE, ProgramManager, SystemId};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use redb::{Database, ReadOnlyDatabase, ReadableDatabase, ReadableMultimapTable};
 
@@ -52,7 +52,7 @@ pub enum Cli {
     /// Download Redump datasheets (logiqx format)
     DownloadRedumpDatasheet {
         #[clap(long, num_args=1..)]
-        system_filter: Vec<MachineId>,
+        system_filter: Vec<SystemId>,
     },
     /// Import roms into a rom store
     ImportRoms {
@@ -136,7 +136,7 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         }
         Cli::DownloadRedumpDatasheet { system_filter } => {
             if system_filter.is_empty() {
-                for machine_id in MachineId::iter() {
+                for machine_id in SystemId::iter() {
                     if !system_filter.contains(&machine_id)
                         && let Ok(redump_system) = RedumpSystem::try_from(machine_id)
                     {

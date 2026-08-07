@@ -1,0 +1,41 @@
+[package]
+name = "fluxemu-system-nintendo-nes"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+[[bench]]
+harness = false
+name = "emulation"
+
+[dependencies]
+bitstream-io = "4.10"
+bytemuck = { workspace = true }
+bytes = { workspace = true }
+fluxemu-audio = { workspace = true }
+fluxemu-definition-mos6502 = { workspace = true }
+fluxemu-graphics = { workspace = true }
+fluxemu-input = { workspace = true }
+fluxemu-program = { workspace = true }
+fluxemu-range = { workspace = true }
+fluxemu-runtime = { workspace = true }
+fluxemu-system = { workspace = true }
+heapless = { workspace = true }
+nalgebra = { workspace = true }
+palette = { workspace = true }
+rand = { workspace = true }
+ringbuffer = { workspace = true }
+serde = { workspace = true }
+serde_with = { workspace = true }
+strum = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+wgpu = { workspace = true, optional = true }
+
+[target.'cfg(any(target_family = "unix", target_os = "windows"))'.dev-dependencies]
+criterion = { workspace = true }
+fluxemu-environment = { workspace = true }
+redb = { workspace = true }
+
+[features]
+webgpu = ["dep:wgpu", "fluxemu-graphics/webgpu"]

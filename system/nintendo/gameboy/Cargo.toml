@@ -1,0 +1,11 @@
+[package]
+name = "fluxemu-system-nintendo-gameboy"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+fluxemu-definition-intel8080 = { workspace = true }
+wgpu = { workspace = true, optional = true }
+
+[features]
+webgpu = ["dep:wgpu"]

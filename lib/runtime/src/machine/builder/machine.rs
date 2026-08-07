@@ -7,7 +7,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use fluxemu_program::{MachineId, ProgramManager, ProgramSpecification, RomId};
+use fluxemu_program::{ProgramManager, ProgramSpecification, RomId, SystemId};
 use rustc_hash::FxBuildHasher;
 
 use crate::{
@@ -76,10 +76,10 @@ impl<P: Platform> MachineBuilder<P> {
         }
     }
 
-    pub fn machine_id(&self) -> Option<MachineId> {
+    pub fn system_id(&self) -> Option<SystemId> {
         self.program_specification
             .as_ref()
-            .map(|program_specification| program_specification.id.machine)
+            .map(|program_specification| program_specification.id.system)
     }
 
     pub fn program_specification(&self) -> Option<&ProgramSpecification> {

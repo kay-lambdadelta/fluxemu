@@ -201,7 +201,7 @@ impl<P: FrontendPlatform> Frontend<P> {
         let machine_builder = Machine::build(Some(specification), program_manager);
 
         let handle = std::thread::spawn(move || {
-            Some(machine_factories.construct_machine(machine_builder)?.seal())
+            machine_factories.construct_machine(ron::Value::from(()), machine_builder)
         });
 
         self.machine_initialization_step =

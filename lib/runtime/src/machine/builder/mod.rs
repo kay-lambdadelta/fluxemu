@@ -74,8 +74,3 @@ impl<P: Platform> SealedMachineBuilder<P> {
         self.machine
     }
 }
-
-pub trait MachineFactory<P: Platform>: Send + Sync + 'static {
-    /// Construct a new machine given the parameters
-    fn construct(&self, machine_builder: MachineBuilder<P>) -> MachineBuilder<P>;
-}

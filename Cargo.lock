@@ -1622,74 +1622,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fluxemu-definition-atari2600"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "bytes",
- "criterion",
- "fluxemu-definition-mos6502",
- "fluxemu-definition-mos6532",
- "fluxemu-environment",
- "fluxemu-graphics",
- "fluxemu-input",
- "fluxemu-program",
- "fluxemu-range",
- "fluxemu-runtime",
- "itertools 0.15.0",
- "nalgebra",
- "palette",
- "redb",
- "serde",
- "strum",
- "tracing",
- "wgpu",
-]
-
-[[package]]
-name = "fluxemu-definition-atarilynx"
-version = "0.1.0"
-dependencies = [
- "fluxemu-definition-mos6502",
- "fluxemu-graphics",
- "fluxemu-program",
- "fluxemu-range",
- "fluxemu-runtime",
- "nalgebra",
- "num",
- "palette",
- "serde",
- "strum",
- "thiserror 2.0.19",
- "tracing",
- "wgpu",
-]
-
-[[package]]
-name = "fluxemu-definition-chip8"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "bytes",
- "fluxemu-audio",
- "fluxemu-graphics",
- "fluxemu-input",
- "fluxemu-program",
- "fluxemu-range",
- "fluxemu-runtime",
- "heapless",
- "nalgebra",
- "palette",
- "rand 0.10.2",
- "rangemap",
- "ringbuffer",
- "serde",
- "strum",
- "tracing",
- "wgpu",
-]
-
-[[package]]
 name = "fluxemu-definition-intel8080"
 version = "0.1.0"
 dependencies = [
@@ -1717,36 +1649,6 @@ dependencies = [
  "fluxemu-runtime",
  "serde",
  "strum",
-]
-
-[[package]]
-name = "fluxemu-definition-nes"
-version = "0.1.0"
-dependencies = [
- "bitstream-io",
- "bytemuck",
- "bytes",
- "criterion",
- "fluxemu-audio",
- "fluxemu-definition-mos6502",
- "fluxemu-environment",
- "fluxemu-graphics",
- "fluxemu-input",
- "fluxemu-program",
- "fluxemu-range",
- "fluxemu-runtime",
- "heapless",
- "nalgebra",
- "palette",
- "rand 0.10.2",
- "redb",
- "ringbuffer",
- "serde",
- "serde_with",
- "strum",
- "thiserror 2.0.19",
- "tracing",
- "wgpu",
 ]
 
 [[package]]
@@ -1799,6 +1701,7 @@ dependencies = [
  "fluxemu-program",
  "fluxemu-range",
  "fluxemu-runtime",
+ "fluxemu-system",
  "indexmap 2.14.0",
  "itertools 0.15.0",
  "nalgebra",
@@ -1935,10 +1838,6 @@ dependencies = [
  "egui-winit",
  "evdev",
  "fluxemu-audio",
- "fluxemu-definition-atari2600",
- "fluxemu-definition-atarilynx",
- "fluxemu-definition-chip8",
- "fluxemu-definition-nes",
  "fluxemu-egui-software-renderer",
  "fluxemu-environment",
  "fluxemu-frontend",
@@ -1946,6 +1845,11 @@ dependencies = [
  "fluxemu-input",
  "fluxemu-program",
  "fluxemu-runtime",
+ "fluxemu-system-atari-2600",
+ "fluxemu-system-atari-lynx",
+ "fluxemu-system-nintendo-gameboy",
+ "fluxemu-system-nintendo-nes",
+ "fluxemu-system-other-chip8",
  "gilrs",
  "input",
  "libseat",
@@ -1963,6 +1867,125 @@ dependencies = [
  "wgpu",
  "winit",
  "xkbcommon",
+]
+
+[[package]]
+name = "fluxemu-system"
+version = "0.1.0"
+dependencies = [
+ "fluxemu-program",
+ "fluxemu-runtime",
+ "serde",
+]
+
+[[package]]
+name = "fluxemu-system-atari-2600"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "bytes",
+ "criterion",
+ "fluxemu-definition-mos6502",
+ "fluxemu-definition-mos6532",
+ "fluxemu-environment",
+ "fluxemu-graphics",
+ "fluxemu-input",
+ "fluxemu-program",
+ "fluxemu-range",
+ "fluxemu-runtime",
+ "fluxemu-system",
+ "itertools 0.15.0",
+ "nalgebra",
+ "palette",
+ "redb",
+ "serde",
+ "strum",
+ "tracing",
+ "wgpu",
+]
+
+[[package]]
+name = "fluxemu-system-atari-lynx"
+version = "0.1.0"
+dependencies = [
+ "fluxemu-definition-mos6502",
+ "fluxemu-graphics",
+ "fluxemu-program",
+ "fluxemu-range",
+ "fluxemu-runtime",
+ "fluxemu-system",
+ "nalgebra",
+ "num",
+ "palette",
+ "serde",
+ "strum",
+ "thiserror 2.0.19",
+ "tracing",
+ "wgpu",
+]
+
+[[package]]
+name = "fluxemu-system-nintendo-gameboy"
+version = "0.1.0"
+dependencies = [
+ "fluxemu-definition-intel8080",
+ "wgpu",
+]
+
+[[package]]
+name = "fluxemu-system-nintendo-nes"
+version = "0.1.0"
+dependencies = [
+ "bitstream-io",
+ "bytemuck",
+ "bytes",
+ "criterion",
+ "fluxemu-audio",
+ "fluxemu-definition-mos6502",
+ "fluxemu-environment",
+ "fluxemu-graphics",
+ "fluxemu-input",
+ "fluxemu-program",
+ "fluxemu-range",
+ "fluxemu-runtime",
+ "fluxemu-system",
+ "heapless",
+ "nalgebra",
+ "palette",
+ "rand 0.10.2",
+ "redb",
+ "ringbuffer",
+ "serde",
+ "serde_with",
+ "strum",
+ "thiserror 2.0.19",
+ "tracing",
+ "wgpu",
+]
+
+[[package]]
+name = "fluxemu-system-other-chip8"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "bytes",
+ "fluxemu-audio",
+ "fluxemu-graphics",
+ "fluxemu-input",
+ "fluxemu-program",
+ "fluxemu-range",
+ "fluxemu-runtime",
+ "fluxemu-system",
+ "heapless",
+ "nalgebra",
+ "palette",
+ "rand 0.10.2",
+ "rangemap",
+ "ringbuffer",
+ "serde",
+ "strum",
+ "tracing",
+ "wgpu",
 ]
 
 [[package]]

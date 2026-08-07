@@ -8,8 +8,8 @@ use std::{
 
 use fluxemu_locale::{Iso639Alpha2, Iso639Alpha3};
 use fluxemu_program::{
-    HASH_ALIAS_TABLE, MachineId, PROGRAM_INFORMATION_TABLE, ProgramId, ProgramInfo, ProgramManager,
-    RomId,
+    HASH_ALIAS_TABLE, PROGRAM_INFORMATION_TABLE, ProgramId, ProgramInfo, ProgramManager, RomId,
+    SystemId,
 };
 use serde::{Deserialize, Deserializer};
 use serde_with::{DisplayFromStr, serde_as};
@@ -26,7 +26,7 @@ pub struct Datafile {
 pub struct Header {
     #[serde(deserialize_with = "deserialize_nointro_machine_id")]
     #[serde(rename = "name")]
-    pub machine_id: MachineId,
+    pub machine_id: SystemId,
 }
 
 #[derive(Debug, Deserialize)]
@@ -128,7 +128,7 @@ pub fn import(
 
     for game in data_file.game {
         let program_id = ProgramId {
-            machine: data_file.header.machine_id,
+            system: data_file.header.machine_id,
             name: game.name.to_string(),
         };
 
@@ -166,12 +166,12 @@ pub fn import(
     Ok(())
 }
 
-pub fn deserialize_nointro_machine_id<'de, D>(deserializer: D) -> Result<MachineId, D::Error>
+pub fn deserialize_nointro_machine_id<'de, D>(deserializer: D) -> Result<SystemId, D::Error>
 where
     D: Deserializer<'de>,
 {
     let s = String::deserialize(deserializer)?;
-    MachineId::from_nointro_str(&s).map_err(serde::de::Error::custom)
+    SystemId::from_nointro_str(&s).map_err(serde::de::Error::custom)
 }
 
 static LANGUAGE_OVERRIDES: LazyLock<HashMap<&'static str, Iso639Alpha2>> = LazyLock::new(|| {

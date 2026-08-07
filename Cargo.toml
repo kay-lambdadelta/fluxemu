@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["definition/*", "lib/*", "shell/*", "utils/"]
+members = ["definition/*", "lib/*", "shell/*", "system/*/*", "utils/"]
 
 [workspace.dependencies]
 bytemuck = { version = "1.25", features = ["derive"] }
@@ -12,23 +12,6 @@ criterion = "0.8"
 data-encoding = "2.11"
 egui = "0.35"
 fixed = { version = "1.31", features = ["num-traits", "serde"] }
-fluxemu-audio = { path = "lib/audio" }
-fluxemu-definition-atari2600 = { path = "definition/atari2600" }
-fluxemu-definition-atarilynx = { path = "definition/atarilynx" }
-fluxemu-definition-chip8 = { path = "definition/chip8" }
-fluxemu-definition-intel8080 = { path = "definition/intel8080" }
-fluxemu-definition-mos6502 = { path = "definition/mos6502" }
-fluxemu-definition-mos6532 = { path = "definition/mos6532" }
-fluxemu-definition-nes = { path = "definition/nes" }
-fluxemu-egui-software-renderer = { path = "lib/egui-software-renderer" }
-fluxemu-environment = { path = "lib/environment" }
-fluxemu-frontend = { path = "lib/frontend" }
-fluxemu-graphics = { path = "lib/graphics" }
-fluxemu-input = { path = "lib/input" }
-fluxemu-locale = { path = "lib/locale" }
-fluxemu-program = { path = "lib/program" }
-fluxemu-range = { path = "lib/range" }
-fluxemu-runtime = { path = "lib/runtime" }
 heapless = { version = "0.9", features = ["serde"] }
 indexmap = { version = "2.14", features = ["serde"] }
 itertools = "0.15"
@@ -64,6 +47,28 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1.24", features = ["rng-rand", "serde", "v4"] }
 versions = "7.0"
 wgpu = "29.0"
+
+fluxemu-audio = { path = "lib/audio" }
+fluxemu-egui-software-renderer = { path = "lib/egui-software-renderer" }
+fluxemu-environment = { path = "lib/environment" }
+fluxemu-frontend = { path = "lib/frontend" }
+fluxemu-graphics = { path = "lib/graphics" }
+fluxemu-input = { path = "lib/input" }
+fluxemu-locale = { path = "lib/locale" }
+fluxemu-program = { path = "lib/program" }
+fluxemu-range = { path = "lib/range" }
+fluxemu-runtime = { path = "lib/runtime" }
+fluxemu-system = { path = "lib/system" }
+
+fluxemu-definition-intel8080 = { path = "definition/intel8080" }
+fluxemu-definition-mos6502 = { path = "definition/mos6502" }
+fluxemu-definition-mos6532 = { path = "definition/mos6532" }
+
+fluxemu-system-atari-2600 = { path = "system/atari/2600" }
+fluxemu-system-atari-lynx = { path = "system/atari/lynx" }
+fluxemu-system-nintendo-gameboy = { path = "system/nintendo/gameboy" }
+fluxemu-system-nintendo-nes = { path = "system/nintendo/nes" }
+fluxemu-system-other-chip8 = { path = "system/other/chip8" }
 
 [profile.bench]
 inherits = "profiling"

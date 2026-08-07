@@ -14,10 +14,6 @@ clap = { workspace = true }
 cpal = "0.18"
 egui = { workspace = true }
 fluxemu-audio = { workspace = true }
-fluxemu-definition-atari2600 = { workspace = true }
-fluxemu-definition-atarilynx = { workspace = true }
-fluxemu-definition-chip8 = { workspace = true }
-fluxemu-definition-nes = { workspace = true }
 fluxemu-egui-software-renderer = { workspace = true }
 fluxemu-environment = { workspace = true }
 fluxemu-frontend = { workspace = true }
@@ -53,6 +49,13 @@ nix = { version = "0.31", features = ["event", "poll"], optional = true }
 udev = { version = "0.9", optional = true }
 xkbcommon = { version = "0.9", optional = true }
 
+# Machines
+fluxemu-system-atari-2600 = { workspace = true, optional = true }
+fluxemu-system-atari-lynx = { workspace = true, optional = true }
+fluxemu-system-nintendo-gameboy = { workspace = true, optional = true }
+fluxemu-system-nintendo-nes = { workspace = true, optional = true }
+fluxemu-system-other-chip8 = { workspace = true, optional = true }
+
 [features]
 default = ["webgpu", "windowing"]
 drm = [
@@ -67,11 +70,12 @@ drm = [
 webgpu = [
   "dep:egui-wgpu",
   "dep:wgpu",
-  "fluxemu-definition-atari2600/webgpu",
-  "fluxemu-definition-atarilynx/webgpu",
-  "fluxemu-definition-chip8/webgpu",
-  "fluxemu-definition-nes/webgpu",
   "fluxemu-graphics/webgpu",
+  "fluxemu-system-atari-2600/webgpu",
+  "fluxemu-system-atari-lynx/webgpu",
+  "fluxemu-system-nintendo-gameboy/webgpu",
+  "fluxemu-system-nintendo-nes/webgpu",
+  "fluxemu-system-other-chip8/webgpu",
 ]
 windowing = [
   "dep:egui-winit",

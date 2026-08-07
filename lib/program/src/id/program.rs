@@ -3,20 +3,20 @@ use std::fmt::Display;
 use redb::{Key, TypeName, Value};
 use serde::{Deserialize, Serialize};
 
-use crate::MachineId;
+use crate::SystemId;
 
 /// A identifier for a program
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct ProgramId {
-    /// The machine this program was produced for
-    pub machine: MachineId,
+    /// The system this program was produced for
+    pub system: SystemId,
     /// A identifiable name for the program
     pub name: String,
 }
 
 impl Display for ProgramId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {}", self.machine, self.name)
+        write!(f, "{} {}", self.system, self.name)
     }
 }
 

@@ -14,7 +14,7 @@ use rustc_hash::FxBuildHasher;
 use sha1::{Digest, Sha1};
 use thiserror::Error;
 
-use crate::{MachineId, ProgramId, ProgramInfo, ProgramSpecification, RomId};
+use crate::{ProgramId, ProgramInfo, ProgramSpecification, RomId, SystemId};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -179,7 +179,7 @@ impl ProgramManager {
         let external_path = self.external_roms.get_sync(&rom_id);
         let rom = self.load(rom_id)?;
 
-        let Some(machine) = MachineId::guess(
+        let Some(machine) = SystemId::guess(
             external_path.as_deref().map(|path| path.as_path()),
             rom.as_deref(),
         ) else {
@@ -205,7 +205,7 @@ impl ProgramManager {
             .unwrap_or_else(|| (rom_id.to_string(), rom_id.to_string()));
 
         let program_id = ProgramId {
-            machine,
+            system: machine,
             name: name.clone(),
         };
 

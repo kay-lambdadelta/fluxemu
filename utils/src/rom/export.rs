@@ -82,7 +82,7 @@ pub fn rom_export(
 
                     let destination_rom_path = match style {
                         ExportStyle::NoIntro => {
-                            let machine_folder_name = program_id.machine.to_nointro_string();
+                            let machine_folder_name = program_id.system.to_nointro_string();
                             let machine_folder = destination_path.join(machine_folder_name);
                             let program_folder = machine_folder.join(&program_id.name);
                             let final_path = program_folder.join(file_name);
