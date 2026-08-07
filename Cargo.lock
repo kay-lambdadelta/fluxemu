@@ -6410,6 +6410,7 @@ dependencies = [
  "bytemuck",
  "cfg-if",
  "cfg_aliases",
+ "drm 0.15.0",
  "glow",
  "glutin_wgl_sys",
  "gpu-allocator",

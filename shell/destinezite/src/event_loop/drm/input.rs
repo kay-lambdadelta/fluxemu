@@ -69,10 +69,6 @@ impl EguiInputCollector {
         std::mem::take(&mut self.pending_events)
     }
 
-    pub fn modifiers(&self) -> Modifiers {
-        self.modifiers
-    }
-
     pub fn handle_keyboard(
         &mut self,
         event: &input::event::KeyboardEvent,
@@ -91,7 +87,7 @@ impl EguiInputCollector {
             },
         );
 
-        self.modifiers = Modifiers {
+        let modifiers = Modifiers {
             alt: xkb_state.mod_name_is_active(
                 xkbcommon::xkb::MOD_NAME_ALT,
                 xkbcommon::xkb::STATE_MODS_EFFECTIVE,
@@ -111,6 +107,7 @@ impl EguiInputCollector {
             // We are on linux
             mac_cmd: false,
         };
+        self.modifiers = modifiers;
 
         let keysym = xkb_state.key_get_one_sym(xkbcommon::xkb::Keycode::new(keycode));
         if let Some(key) = keysym_to_egui_key(keysym) {
@@ -119,11 +116,11 @@ impl EguiInputCollector {
                 physical_key: None,
                 pressed,
                 repeat: false,
-                modifiers: self.modifiers,
+                modifiers,
             });
         }
 
-        if pressed && !self.modifiers.ctrl && !self.modifiers.alt {
+        if pressed && !modifiers.ctrl && !modifiers.alt {
             let text = xkb_state.key_get_utf8(xkbcommon::xkb::Keycode::new(keycode));
 
             if !text.is_empty() && text.chars().all(|c| !c.is_control()) {

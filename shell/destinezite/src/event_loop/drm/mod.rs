@@ -215,7 +215,6 @@ where
                             min: [0.0, 0.0].into(),
                             max: [width as f32 / scale_factor, height as f32 / scale_factor].into(),
                         }),
-                        modifiers: egui_input_collector.modifiers(),
                         time: Some(start_time.elapsed().as_secs_f64()),
                         focused: true,
                         events,

@@ -66,6 +66,7 @@ drm = [
   "dep:nix",
   "dep:udev",
   "dep:xkbcommon",
+  "wgpu/drm"
 ]
 webgpu = [
   "dep:egui-wgpu",
