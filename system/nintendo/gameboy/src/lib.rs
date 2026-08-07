@@ -1,14 +1,22 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+use fluxemu_program::{NintendoSystem, SystemId};
+use fluxemu_runtime::{
+    Platform,
+    machine::builder::{MachineBuilder, SealedMachineBuilder},
+};
+use fluxemu_system::System;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[derive(Debug, Default)]
+pub struct Gameboy;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+impl<P: Platform> System<P> for Gameboy {
+    type Quirks = ();
+    const ID: SystemId = SystemId::Nintendo(NintendoSystem::GameBoy);
+
+    fn build(
+        &self,
+        quirks: Self::Quirks,
+        machine_builder: MachineBuilder<P>,
+    ) -> SealedMachineBuilder<P> {
+        todo!()
     }
 }

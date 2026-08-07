@@ -5,6 +5,9 @@ edition = "2024"
 
 [dependencies]
 fluxemu-definition-intel8080 = { workspace = true }
+fluxemu-program = { workspace = true }
+fluxemu-runtime = { workspace = true }
+fluxemu-system = { workspace = true }
 wgpu = { workspace = true, optional = true }
 
 [features]

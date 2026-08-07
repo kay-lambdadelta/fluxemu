@@ -1929,6 +1929,9 @@ name = "fluxemu-system-nintendo-gameboy"
 version = "0.1.0"
 dependencies = [
  "fluxemu-definition-intel8080",
+ "fluxemu-program",
+ "fluxemu-runtime",
+ "fluxemu-system",
  "wgpu",
 ]
 
