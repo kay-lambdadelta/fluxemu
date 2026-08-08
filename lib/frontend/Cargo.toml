@@ -13,10 +13,7 @@ egui_material_icons = {
   default-features = false,
   features = ["filled"]
 }
-egui-toast = {
-  git = "https://github.com/kay-lambdadelta/egui-toast",
-  rev = "94ca396b4cdf6287eb273fab983cc27ac2bdcf9f"
-}
+egui-toast = "0.22"
 fluxemu-audio = { workspace = true }
 fluxemu-environment = { workspace = true }
 fluxemu-graphics = { workspace = true }
