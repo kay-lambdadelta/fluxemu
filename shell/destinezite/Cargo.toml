@@ -2,11 +2,34 @@
 name = "fluxemu-shell-destinezite"
 version = "0.1.0"
 edition = "2024"
-description = "Port of the FluxEMU framework to desktop platforms"
+description = "Desktop port of the FluxEMU emulation framework"
 license = "GPL-3.0-or-later"
 
 [package.metadata.deb]
 maintainer = "Kay <lambdadeltakay@proton.me>"
+license-file = ["../../LICENSE", "0"]
+assets = [
+  ["target/release/fluxemu-shell-destinezite", "usr/bin/", "755"],
+  [
+    "assets/linux/launch.desktop",
+    "usr/share/applications/fluxemu-shell-destinezite-launch.desktop",
+    "644"
+  ],
+  [
+    "assets/linux/run.desktop",
+    "usr/share/applications/fluxemu-shell-destinezite-run.desktop",
+    "644"
+  ],
+  [
+    "assets/linux/mime.xml",
+    "usr/share/mime/packages/fluxemu-shell-destinezite.xml",
+    "644"
+  ],
+]
+section = "games"
+priority = "optional"
+depends = "$auto"
+maintainer-scripts = "assets/linux/debian"
 
 [dependencies]
 bytemuck = { workspace = true }

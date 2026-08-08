@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Fluxemu Shell Destinezite (run program directory)
+Comment=Desktop port of the FluxEMU emulation framework
+NoDisplay=true
+
+Exec=fluxemu-shell-destinezite -d windowing run %f
+Icon=fluxemu-shell-destinezite
+MimeType=application/x-nes-rom;application/x-atari2600-rom;application/x-chip8-rom;

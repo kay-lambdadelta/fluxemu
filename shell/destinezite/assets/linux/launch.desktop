@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Fluxemu Shell Destinezite
+Comment=Desktop port of the FluxEMU emulation framework
+Categories=Game;Emulator;
+Keywords=NES;Atari;CHIP-8;Emulator;
+
+Exec=fluxemu-shell-destinezite -d windowing run %f
+Icon=fluxemu-shell-destinezite

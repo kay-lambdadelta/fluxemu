@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-chip8-rom">
+    <comment>CHIP-8 ROM</comment>
+    <glob pattern="*.ch8" />
+  </mime-type>
+</mime-info>
