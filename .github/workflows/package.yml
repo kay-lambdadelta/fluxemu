@@ -1,7 +1,6 @@
-name: "test"
+name: "package"
 on:
   push:
-  pull_request:
 
 jobs:
   debian-trixie:
@@ -34,5 +33,15 @@ jobs:
         with:
           rustflags: ""
 
-      - name: Run tests
-        run: cargo test --all-features
+      - name: Install cargo-deb
+        run: cargo install cargo-deb --locked
+
+      - name: Build Debian package
+        run: cargo deb -p fluxemu-shell-destinezite --features drm
+
+      - name: Upload Debian package
+        uses: actions/upload-artifact@v7
+        with:
+          name: fluxemu-shell-destinezite-deb
+          path: target/debian/*.deb
+          if-no-files-found: error
