@@ -6,7 +6,6 @@ use std::{
     cell::{RefCell, UnsafeCell},
     collections::{HashMap, HashSet},
     fmt::Debug,
-    io::Read,
     marker::PhantomData,
     ops::Deref,
     rc::{Rc, Weak},
@@ -21,13 +20,12 @@ use rustc_hash::FxBuildHasher;
 use tracing::Level;
 
 use crate::{
-    ComponentPath, RuntimeHandle,
+    RuntimeHandle,
     component::{ComponentRegistryData, LocalComponentRegistryData},
     input::LogicalInputDevice,
     machine::builder::MachineBuilder,
     memory::{AddressSpaceData, AddressSpaceId, LocalMemoryRegistryData, MemoryRegistryData},
     path::ResourcePath,
-    persistence::{ErasedCodec, SnapshotMetadata},
     platform::{Platform, TestPlatform},
     scheduler::{Period, Scheduler},
 };
@@ -56,8 +54,6 @@ where
     pub(crate) audio_channels: HashSet<ResourcePath>,
     /// The program that this machine was set up with, if any
     pub(crate) program_specification: Option<ProgramSpecification>,
-    pub(crate) save_codecs: HashMap<ComponentPath, Box<dyn ErasedCodec>>,
-    pub(crate) snapshot_codecs: HashMap<ComponentPath, Box<dyn ErasedCodec>>,
 }
 
 impl Machine {
@@ -177,24 +173,6 @@ impl RuntimeGuard<'_> {
                 },
             )
             .unwrap();
-    }
-
-    pub fn load_snapshot(
-        &self,
-        _metadata: &SnapshotMetadata,
-        mut component_section: impl Read,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let registry = self.component_registry();
-
-        for (path, codec) in &self.runtime.machine().save_codecs {
-            registry
-                .interact_dyn(path, &Period::default(), |component| {
-                    codec.deserialize(component, &mut component_section)
-                })
-                .unwrap()?;
-        }
-
-        Ok(())
     }
 
     /// List of paths to any audio outputs this machine was created with

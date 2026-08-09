@@ -21,6 +21,7 @@ pub type MemoryId = u16;
 #[derive(Debug)]
 pub(crate) struct RegionInitializationData {
     pub size: usize,
+    #[allow(unused)]
     pub sram: bool,
     pub initial_contents: RangeInclusiveMap<usize, Bytes>,
 }

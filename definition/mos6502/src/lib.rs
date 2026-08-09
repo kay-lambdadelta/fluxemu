@@ -2,7 +2,7 @@
 
 extern crate alloc;
 
-use alloc::{borrow::ToOwned, boxed::Box};
+use alloc::boxed::Box;
 use core::fmt::Debug;
 
 use fluxemu_runtime::{
@@ -10,7 +10,6 @@ use fluxemu_runtime::{
     event::{Event, downcast_event},
     machine::builder::{ComponentBuilder, SchedulerParticipation},
     memory::{Address, AddressSpaceId},
-    persistence::{AutoSerializableComponent, MessagePackCodec, PersistanceFormatVersion},
     platform::Platform,
     scheduler::{Frequency, Period, SynchronizationContext},
 };
@@ -272,29 +271,6 @@ impl Component for Mos6502 {
     }
 }
 
-impl AutoSerializableComponent for Mos6502 {
-    type SaveState<'a> = ();
-    type SnapshotState<'a> = State;
-
-    const VERSION: PersistanceFormatVersion = 0;
-
-    fn read_save(&self) -> Self::SaveState<'_> {
-        unreachable!()
-    }
-
-    fn read_snapshot(&self) -> Self::SnapshotState<'_> {
-        self.state.clone()
-    }
-
-    fn write_save(&mut self, _save: <Self::SaveState<'_> as ToOwned>::Owned) {
-        unreachable!()
-    }
-
-    fn write_snapshot(&mut self, snapshot: <Self::SnapshotState<'_> as ToOwned>::Owned) {
-        self.state = snapshot;
-    }
-}
-
 impl<P: Platform> ComponentConfig<P> for Mos6502Config {
     type Component = Mos6502;
 
@@ -302,9 +278,7 @@ impl<P: Platform> ComponentConfig<P> for Mos6502Config {
         self,
         component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn core::error::Error>> {
-        component_builder
-            .scheduler_participation(Some(SchedulerParticipation::SchedulerDriven))
-            .snapshot_codec(MessagePackCodec::default());
+        component_builder.scheduler_participation(Some(SchedulerParticipation::SchedulerDriven));
 
         let mut component = Mos6502 {
             state: State {

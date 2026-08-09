@@ -14,7 +14,6 @@ use crate::{
     },
     memory::{AddressSpaceId, MemoryMapCommand, RegionInitializationData},
     path::{ComponentPath, ResourcePath},
-    persistence::{Codec, ErasedCodec, ErasedCodecWrapper},
     platform::Platform,
     scheduler::Period,
 };
@@ -22,8 +21,6 @@ use crate::{
 /// Overall data extracted from components needed for machine initialization
 pub(super) struct ComponentData<P: Platform> {
     pub late_initializer: ComponentLateInitializer<P>,
-    pub save_codec: Option<Box<dyn ErasedCodec>>,
-    pub snapshot_codec: Option<Box<dyn ErasedCodec>>,
     pub graphics_requirements: GraphicsRequirements<P::GraphicsApi>,
     pub scheduler_participation: Option<SchedulerParticipation>,
 }
@@ -37,8 +34,6 @@ impl<P: Platform> ComponentData<P> {
 
                 B::late_initialize(component, data)
             }),
-            save_codec: None,
-            snapshot_codec: None,
             graphics_requirements: GraphicsRequirements::default(),
             scheduler_participation: None,
         }
@@ -236,22 +231,6 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
     ) -> Self {
         self.component_data.graphics_requirements =
             self.component_data.graphics_requirements.clone() | requirements;
-
-        self
-    }
-
-    pub fn save_codec<CO: Codec<Component = C>>(self, codec: CO) -> Self {
-        let erased = ErasedCodecWrapper::new(codec);
-
-        self.component_data.save_codec = Some(Box::new(erased));
-
-        self
-    }
-
-    pub fn snapshot_codec<CO: Codec<Component = C>>(self, codec: CO) -> Self {
-        let erased = ErasedCodecWrapper::new(codec);
-
-        self.component_data.snapshot_codec = Some(Box::new(erased));
 
         self
     }

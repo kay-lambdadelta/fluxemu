@@ -260,21 +260,11 @@ impl<P: Platform> MachineBuilder<P> {
         let mut graphics_requirements = GraphicsRequirements::default();
         let mut remapping_commands = HashMap::new();
         let mut address_spaces = HashMap::default();
-        let mut save_codecs = HashMap::default();
-        let mut snapshot_codecs = HashMap::default();
 
         for (path, component_data) in self.component_data {
             component_late_initializers.insert(path.clone(), component_data.late_initializer);
 
             graphics_requirements = component_data.graphics_requirements | graphics_requirements;
-
-            if let Some(save_codec) = component_data.save_codec {
-                save_codecs.insert(path.clone(), save_codec);
-            }
-
-            if let Some(snapshot_codec) = component_data.snapshot_codec {
-                snapshot_codecs.insert(path, snapshot_codec);
-            }
         }
 
         for (id, AddressSpaceSetupData { data, commands }) in self.address_spaces {
@@ -291,8 +281,6 @@ impl<P: Platform> MachineBuilder<P> {
             framebuffers: self.framebuffers,
             program_specification: self.program_specification,
             audio_channels: self.audio_channels,
-            save_codecs,
-            snapshot_codecs,
             component_registry_data: self.component_registry_data,
             memory_registry_data: MemoryRegistryData::new(required_memory_regions),
         });

@@ -10,7 +10,6 @@ pub mod input;
 pub mod machine;
 pub mod memory;
 pub mod path;
-pub mod persistence;
 pub mod platform;
 pub mod scheduler;
 
