@@ -147,6 +147,7 @@ impl GamepadContext {
             match event {
                 gilrs::EventType::Connected => {
                     let (physical_id, is_stable) = calculate_gamepad_id(gamepad);
+                    self.id_mappings.0.insert(id, physical_id);
 
                     frontend.register_gamepad(
                         physical_id,
