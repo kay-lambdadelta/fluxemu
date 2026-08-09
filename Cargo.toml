@@ -37,7 +37,7 @@ rustc-hash = "2.1"
 scc = "3.8"
 sdd = { version = "4.8" }
 serde = { version = "1.0", features = ["derive"] }
-serde_with = "3.21"
+serde_with = "3.22"
 strum = { version = "0.28", features = ["derive"] }
 tempfile = "3.27"
 thiserror = "2.0"
