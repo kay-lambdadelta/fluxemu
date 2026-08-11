@@ -73,11 +73,21 @@ udev = { version = "0.9", optional = true }
 xkbcommon = { version = "0.9", optional = true }
 
 # Machines
-fluxemu-system-atari-2600 = { workspace = true, optional = true }
-fluxemu-system-atari-lynx = { workspace = true, optional = true }
-fluxemu-system-nintendo-gameboy = { workspace = true, optional = true }
-fluxemu-system-nintendo-nes = { workspace = true, optional = true }
-fluxemu-system-other-chip8 = { workspace = true, optional = true }
+fluxemu-system-atari-2600 = {
+  workspace = true,
+}
+fluxemu-system-atari-lynx = {
+  workspace = true,
+}
+fluxemu-system-nintendo-gameboy = {
+  workspace = true,
+}
+fluxemu-system-nintendo-nes = {
+  workspace = true,
+}
+fluxemu-system-other-chip8 = {
+  workspace = true,
+}
 
 [features]
 default = ["webgpu", "windowing"]
