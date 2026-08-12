@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["definition/*", "lib/*", "shell/*", "system/*/*", "utils/"]
+members = ["definition/*", "lib/*", "shell/*", "system/*/*", "utils/", "xtask"]
 
 [workspace.dependencies]
 bytemuck = { version = "1.25", features = ["derive"] }
@@ -10,6 +10,8 @@ clap = { version = "4.6", features = ["derive"] }
 confique = "0.4"
 criterion = "0.8"
 data-encoding = "2.11"
+digest-io = "0.1"
+dirs = "6.0"
 egui = "0.36"
 fixed = { version = "1.31", features = ["num-traits", "serde"] }
 heapless = { version = "0.9", features = ["serde"] }
@@ -43,6 +45,8 @@ tempfile = "3.27"
 thiserror = "2.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+ureq = "3.4"
+url = "2.5"
 uuid = { version = "1.24", features = ["rng-rand", "serde", "v4"] }
 versions = "7.0"
 wgpu = "30.0"
@@ -68,6 +72,13 @@ fluxemu-system-atari-lynx = { path = "system/atari/lynx" }
 fluxemu-system-nintendo-gameboy = { path = "system/nintendo/gameboy" }
 fluxemu-system-nintendo-nes = { path = "system/nintendo/nes" }
 fluxemu-system-other-chip8 = { path = "system/other/chip8" }
+
+# FIXME: Remove when getrandom 0.4.4 comes out
+[patch.crates-io]
+getrandom = {
+  git = "https://github.com/rust-random/getrandom",
+  rev = "4fbc7bc02b9a65beee4c72d4523010f388affce8"
+}
 
 [profile.bench]
 inherits = "profiling"

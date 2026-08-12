@@ -1,0 +1,53 @@
+include $(APPDIR)/tools/Rust.mk
+
+CRATE     := fluxemu_shell_nuttallite
+WORKSPACE_DIR := $(APPDIR)/external/fluxemu
+
+# Remove the target specifier so it doesn't break cargo
+strip_target = $(shell echo '$1' | sed -E 's/--target[=[:space:]]+[^[:space:]]+//g')
+
+define CARGO_TARGET_DIR
+	$(shell cargo metadata  --manifest-path $(1)/Cargo.toml --no-deps --format-version 1 | jq -r '.target_directory')
+endef
+
+# We need to fork these because the normal versions are not workspace compatible
+define RUST_GET_BINDIR
+	$(call CARGO_TARGET_DIR,$(2))/$(strip $(if $(findstring .json,$(call RUST_TARGET_TRIPLE)), \
+    	$(basename $(notdir $(call RUST_TARGET_TRIPLE))), \
+     $(call RUST_TARGET_TRIPLE)))/$(if $(CONFIG_DEBUG_FULLOPT),release,debug)/lib$(1).a
+endef
+
+define RUST_CARGO_SRCS
+	$(shell find $(2) -type f -not -path '$(2)/target/*' 2>/dev/null)
+endef
+
+define RUST_CARGO_CLEAN
+    cargo clean --manifest-path $(1)/Cargo.toml
+endef
+
+ifeq ($(CONFIG_DEBUG_FULLOPT),y)
+define RUST_CARGO_BUILD
+    NUTTX_INCLUDE_DIR=$(TOPDIR)/include:$(TOPDIR)/include/arch \
+    RUSTFLAGS="$(call strip_target,$(RUSTFLAGS)) -Zunstable-options -Cpanic=immediate-abort" \
+    cargo build --release -Zbuild-std=std,panic_abort -Zjson-target-spec \
+        --manifest-path $(2)/Cargo.toml \
+        --package $(1) \
+        --target $(call RUST_TARGET_TRIPLE) \
+        $(if $(strip $(3)),--features $(3),)
+endef
+else
+define RUST_CARGO_BUILD
+	NUTTX_INCLUDE_DIR=$(TOPDIR)/include:$(TOPDIR)/include/arch \
+    RUSTFLAGS="$(call strip_target,$(RUSTFLAGS)) -Zunstable-options -Cpanic=immediate-abort" \
+    cargo build -Zbuild-std=std,panic_abort -Zjson-target-spec \
+        --manifest-path $(2)/Cargo.toml \
+        --package $(1) \
+        --target $(call RUST_TARGET_TRIPLE) \
+        $(if $(strip $(3)),--features $(3),)
+endef
+endif
+
+ifneq ($(CONFIG_FLUXEMU_SHELL_NUTTALLITE),)
+	CONFIGURED_APPS += $(APPDIR)/external/fluxemu
+	EXTRA_LIBS += $(call RUST_GET_BINDIR,fluxemu_shell_nuttallite,$(WORKSPACE_DIR))
+endif

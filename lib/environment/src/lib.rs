@@ -35,14 +35,25 @@ pub struct Environment {
 }
 
 pub fn find_and_load_environment() -> (PathBuf, Environment) {
-    let storage_directory = dirs::data_dir()
-        .expect("Could not lookup data directory")
-        .join("fluxemu");
+    cfg_select! {
+        all(
+            any(target_family = "unix", target_os = "windows"),
+            not(target_os = "nuttx")
+        ) => {
+            let storage_directory = dirs::data_dir()
+                .expect("Could not lookup data directory")
+                .join("fluxemu");
 
-    let environment_location = dirs::config_dir()
-        .map(|path| path.join("fluxemu"))
-        .unwrap_or(storage_directory.clone())
-        .join("environment.ron");
+            let environment_location = dirs::config_dir()
+                .map(|path| path.join("fluxemu"))
+                .unwrap_or(storage_directory.clone())
+                .join("environment.ron");
+        }
+        target_os = "nuttx" => {
+            let storage_directory = PathBuf::from("/var/lib/fluxemu");
+            let environment_location = PathBuf::from("/etc/fluxemu/environment.ron");
+        }
+    }
 
     let _ = std::fs::create_dir_all(&storage_directory);
     let _ = std::fs::create_dir_all(environment_location.parent().unwrap());

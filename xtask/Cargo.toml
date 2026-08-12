@@ -1,0 +1,16 @@
+[package]
+name = "xtask"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+clap = { workspace = true }
+dirs = { workspace = true }
+flate2 = "1.1"
+tar = "0.4"
+tempfile = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+ureq = { workspace = true }
+url = { workspace = true }
