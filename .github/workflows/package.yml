@@ -38,11 +38,11 @@ jobs:
         run: cargo install cargo-deb --locked
 
       - name: Build Debian package
-        run: cargo deb -p fluxemu-shell-destinezite --features drm
+        run: cargo deb -p fluxemu-shell-destinezite --features drm --target x86_64-unknown-linux-gnu
 
       - name: Upload Debian package
         uses: actions/upload-artifact@v7
         with:
-          name: fluxemu-shell-destinezite-deb
-          path: target/debian/*.deb
+          name: fluxemu-shell-destinezite-x86_64-unknown-linux-gnu-deb
+          path: target/debian/fluxemu-shell-destinezite_*_amd64.deb
           if-no-files-found: error
