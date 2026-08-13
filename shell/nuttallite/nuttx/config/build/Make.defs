@@ -28,7 +28,7 @@ endef
 ifeq ($(CONFIG_DEBUG_FULLOPT),y)
 define RUST_CARGO_BUILD
     NUTTX_INCLUDE_DIR=$(TOPDIR)/include:$(TOPDIR)/include/arch \
-    RUSTFLAGS="$(call strip_target,$(RUSTFLAGS)) -Zunstable-options -Cpanic=immediate-abort" \
+    RUSTFLAGS="$(call strip_target,$(RUSTFLAGS)) -Zunstable-options -Cpanic=abort" \
     cargo build --release -Zbuild-std=std,panic_abort -Zjson-target-spec \
         --manifest-path $(2)/Cargo.toml \
         --package $(1) \
@@ -38,7 +38,7 @@ endef
 else
 define RUST_CARGO_BUILD
 	NUTTX_INCLUDE_DIR=$(TOPDIR)/include:$(TOPDIR)/include/arch \
-    RUSTFLAGS="$(call strip_target,$(RUSTFLAGS)) -Zunstable-options -Cpanic=immediate-abort" \
+    RUSTFLAGS="$(call strip_target,$(RUSTFLAGS)) -Zunstable-options -Cpanic=abort" \
     cargo build -Zbuild-std=std,panic_abort -Zjson-target-spec \
         --manifest-path $(2)/Cargo.toml \
         --package $(1) \

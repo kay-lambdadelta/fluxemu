@@ -35,12 +35,6 @@ uuid = { workspace = true }
 fluxemu-system-atari-2600 = {
   workspace = true,
 }
-fluxemu-system-atari-lynx = {
-  workspace = true,
-}
-fluxemu-system-nintendo-gameboy = {
-  workspace = true,
-}
 fluxemu-system-nintendo-nes = {
   workspace = true,
 }

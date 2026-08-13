@@ -7,9 +7,9 @@ use std::{
 };
 
 use flate2::read::GzDecoder;
-use tempfile::tempdir;
+use url::Url;
 
-use crate::{NuttxLocation, nuttx_apps_url, nuttx_url};
+use crate::NuttxLocation;
 
 pub fn build(
     board: String,
@@ -27,7 +27,6 @@ pub fn build(
     let nuttx_apps_directory = root.join("apps");
 
     register_app(&nuttx_apps_directory);
-    write_boot_script(&nuttx_apps_directory);
 
     if clean {
         sh(&nuttx_directory, "make", ["distclean"]);
@@ -38,6 +37,7 @@ pub fn build(
         "./tools/configure.sh",
         [format!("{board}:{board_config}").as_str()],
     );
+    sh(&nuttx_directory, "make", ["context"]);
 
     {
         let config_path = nuttx_directory.join(".config");
@@ -71,7 +71,6 @@ pub fn build(
     }
 
     sh(&nuttx_directory, "make", ["olddefconfig"]);
-    sh(&nuttx_directory, "make", ["context"]);
     sh(&nuttx_directory, "make", make_args);
 
     tracing::info!(
@@ -139,7 +138,7 @@ fn copy_cargo_workspace(destination: &Path) {
         .arg(destination));
 }
 
-fn register_app(nuttx_apps_directory: &Path) {
+fn register_app(nuttx_apps_directory: &Path) -> PathBuf {
     let nuttx_external_directory = nuttx_apps_directory.join("external");
     fs::create_dir_all(&nuttx_external_directory).unwrap();
 
@@ -171,6 +170,7 @@ fn register_app(nuttx_apps_directory: &Path) {
         .join("nuttx")
         .join("config")
         .join("build");
+
     for entry in fs::read_dir(&build_glue)
         .expect("Failed to enumerate NuttX build glue files")
         .flatten()
@@ -197,6 +197,8 @@ fn register_app(nuttx_apps_directory: &Path) {
         workspace_copy.join("rust-toolchain.toml"),
     )
     .unwrap();
+
+    workspace_copy
 }
 
 fn sh(
@@ -218,26 +220,20 @@ fn run(command: &mut Command) {
     assert!(status.success(), "command failed: {:?}", command);
 }
 
-fn write_boot_script(nuttx_apps_directory: &Path) {
-    let staging = tempdir().unwrap();
-    let init_directory = staging.path().join("etc").join("init.d");
+fn nuttx_url(version: &str) -> Url {
+    format!(
+        "https://dlcdn.apache.org/nuttx/{}/apache-nuttx-{}.tar.gz",
+        version, version
+    )
+    .parse()
+    .unwrap()
+}
 
-    fs::create_dir_all(&init_directory).unwrap();
-    fs::write(init_directory.join("rcS"), "fluxemu_shell_nuttallite").unwrap();
-
-    sh(
-        staging.path(),
-        "genromfs",
-        ["-f", "romfs_img", "-d", "etc", "-V", "NSHBOOT"],
-    );
-
-    let xxd_output = Command::new("xxd")
-        .current_dir(staging.path())
-        .args(["-i", "romfs_img"])
-        .output()
-        .unwrap();
-    assert!(xxd_output.status.success(), "xxd failed");
-
-    let header_path = nuttx_apps_directory.join("nshlib").join("nsh_romfsimg.h");
-    fs::write(&header_path, xxd_output.stdout).unwrap();
+fn nuttx_apps_url(version: &str) -> Url {
+    format!(
+        "https://dlcdn.apache.org/nuttx/{}/apache-nuttx-apps-{}.tar.gz",
+        version, version
+    )
+    .parse()
+    .unwrap()
 }

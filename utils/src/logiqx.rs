@@ -121,7 +121,7 @@ pub fn import(
         data_file.header.machine_id
     );
 
-    let database_transaction = program_manager.database().begin_write()?;
+    let database_transaction = program_manager.database().unwrap().begin_write()?;
     let mut program_information =
         database_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
     let mut hash_alias = database_transaction.open_multimap_table(HASH_ALIAS_TABLE)?;

@@ -4,7 +4,6 @@
 use std::{ffi::OsString, path::PathBuf};
 
 use clap::{Args, Parser, Subcommand};
-use url::Url;
 
 mod build_nuttallite;
 
@@ -75,22 +74,4 @@ fn main() {
             build_nuttallite::build(board, board_config, nuttx_location.into(), clean, make_args);
         }
     }
-}
-
-fn nuttx_url(version: &str) -> Url {
-    format!(
-        "https://dlcdn.apache.org/nuttx/{}/apache-nuttx-{}.tar.gz",
-        version, version
-    )
-    .parse()
-    .unwrap()
-}
-
-fn nuttx_apps_url(version: &str) -> Url {
-    format!(
-        "https://dlcdn.apache.org/nuttx/{}/apache-nuttx-apps-{}.tar.gz",
-        version, version
-    )
-    .parse()
-    .unwrap()
 }

@@ -26,9 +26,7 @@ impl fluxemu_frontend::graphics::GraphicsRuntime for GraphicsRuntime {
 
     fn reconfigure(&mut self, _graphics_requirements: GraphicsRequirements<Self::GraphicsApi>) {}
 
-    fn refresh_surface(&mut self) {
-        todo!()
-    }
+    fn refresh_surface(&mut self) {}
 
     fn present<'a>(
         &'a mut self,
@@ -44,7 +42,7 @@ impl fluxemu_frontend::graphics::GraphicsRuntime for GraphicsRuntime {
                     full_output,
                 } => {
                     self.egui_renderer
-                        .render::<_, 8>(context, full_output, &mut self.texture);
+                        .render::<_, 2>(context, full_output, &mut self.texture);
                 }
                 DrawTarget::Machine { machine } => {
                     present_machine_software(machine, &mut self.texture);

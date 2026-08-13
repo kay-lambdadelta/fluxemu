@@ -5,11 +5,11 @@ use std::{
     io::Read,
     ops::Deref,
     path::{Path, PathBuf},
-    sync::{Arc, LazyLock},
+    sync::Arc,
 };
 
 use bytes::Bytes;
-use redb::{Database, MultimapTableDefinition, ReadableDatabase, backends::InMemoryBackend};
+use redb::{Database, MultimapTableDefinition, ReadableDatabase};
 use rustc_hash::FxBuildHasher;
 use sha1::{Digest, Sha1};
 use thiserror::Error;
@@ -42,29 +42,38 @@ pub const HASH_ALIAS_TABLE: MultimapTableDefinition<RomId, ProgramId> =
 /// The ROM manager which contains the database and information about the roms that were loaded
 #[derive(Debug)]
 pub struct ProgramManager {
-    database: Arc<Database>,
+    database: Option<Database>,
     external_roms: scc::HashMap<RomId, PathBuf, FxBuildHasher>,
+    embedded_roms: scc::HashMap<RomId, &'static [u8], FxBuildHasher>,
     rom_cache: scc::HashCache<RomId, Bytes>,
     rom_stores: Vec<PathBuf>,
 }
 
 impl ProgramManager {
     /// Opens and loads the default database
+    #[inline]
     pub fn new(
-        database: impl Into<Arc<Database>>,
+        database: Option<Database>,
         rom_stores: impl IntoIterator<Item = PathBuf>,
     ) -> Result<Arc<Self>, Error> {
-        let database = database.into();
+        let database = if let Some(database) = database {
+            let mut database_transaction = database.begin_write()?;
+            database_transaction.set_quick_repair(true);
+            database_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
+            database_transaction.open_multimap_table(HASH_ALIAS_TABLE)?;
+            database_transaction.commit()?;
 
-        let mut database_transaction = database.begin_write()?;
-        database_transaction.set_quick_repair(true);
-        database_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
-        database_transaction.open_multimap_table(HASH_ALIAS_TABLE)?;
-        database_transaction.commit()?;
+            Some(database)
+        } else {
+            tracing::warn!("Continuing without database");
+
+            None
+        };
 
         Ok(Arc::new(Self {
             database,
             external_roms: scc::HashMap::default(),
+            embedded_roms: scc::HashMap::default(),
             rom_cache: scc::HashCache::with_capacity(0, 16),
             rom_stores: rom_stores.into_iter().collect(),
         }))
@@ -88,6 +97,10 @@ impl ProgramManager {
     }
 
     pub fn load(&self, id: RomId) -> Result<Option<Bytes>, Error> {
+        if let Some(rom_bytes) = self.embedded_roms.get_sync(&id) {
+            return Ok(Some(Bytes::from_static(&rom_bytes)));
+        }
+
         match self.rom_cache.entry_sync(id) {
             scc::hash_cache::Entry::Occupied(bytes) => Ok(Some(bytes.clone())),
             scc::hash_cache::Entry::Vacant(vacant_entry) => {
@@ -126,50 +139,42 @@ impl ProgramManager {
         }
     }
 
-    /// For testing purposes
-    pub fn dummy() -> Result<Arc<Self>, Error> {
-        // This function is used for tests, it can share a dummy database to use as a placeholder
-        static DUMMY_DATABASE: LazyLock<Arc<Database>> = LazyLock::new(|| {
-            let database = Database::builder()
-                .create_with_backend(InMemoryBackend::default())
-                .unwrap();
-
-            Arc::new(database)
-        });
-
-        Self::new(DUMMY_DATABASE.clone(), [])
-    }
-
     /// Attempts to identify a program from its program ids
     pub fn identify_program(&self, roms: &[RomId]) -> Result<Vec<ProgramSpecification>, Error> {
-        let read_transaction = self.database().begin_read()?;
-        let hash_alias_table = read_transaction.open_multimap_table(HASH_ALIAS_TABLE)?;
-        let program_info_table = read_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
+        if let Some(database) = self.database() {
+            let read_transaction = database.begin_read()?;
 
-        let mut possible_programs = Vec::default();
+            let hash_alias_table = read_transaction.open_multimap_table(HASH_ALIAS_TABLE)?;
+            let program_info_table =
+                read_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
 
-        for rom_id in roms {
-            for access_guard in hash_alias_table.get(rom_id)? {
-                let program_id = access_guard?.value();
+            let mut possible_programs = Vec::default();
 
-                for access_guard in program_info_table.get(&program_id)? {
-                    let program_info = access_guard?.value();
+            for rom_id in roms {
+                for access_guard in hash_alias_table.get(rom_id)? {
+                    let program_id = access_guard?.value();
 
-                    let found_all = roms
-                        .iter()
-                        .all(|id| program_info.filesystem().contains_key(id));
+                    for access_guard in program_info_table.get(&program_id)? {
+                        let program_info = access_guard?.value();
 
-                    if found_all {
-                        possible_programs.push(ProgramSpecification {
-                            id: program_id.clone(),
-                            info: program_info,
-                        });
+                        let found_all = roms
+                            .iter()
+                            .all(|id| program_info.filesystem().contains_key(id));
+
+                        if found_all {
+                            possible_programs.push(ProgramSpecification {
+                                id: program_id.clone(),
+                                info: program_info,
+                            });
+                        }
                     }
                 }
             }
-        }
 
-        Ok(possible_programs)
+            Ok(possible_programs)
+        } else {
+            Ok(Vec::new())
+        }
     }
 
     pub fn auto_generate_specification(
@@ -220,8 +225,20 @@ impl ProgramManager {
         }))
     }
 
-    pub fn database(&self) -> &Database {
-        &self.database
+    pub fn database(&self) -> Option<&Database> {
+        self.database.as_ref()
+    }
+
+    pub fn register_embedded_rom(&mut self, bytes: &'static [u8]) -> RomId {
+        let rom_id = RomId::new_sha1(bytes).unwrap();
+
+        self.embedded_roms.upsert_sync(rom_id, bytes);
+
+        // No need to cache a rom permanently bolted in
+        self.rom_cache.remove_sync(&rom_id);
+        self.external_roms.remove_sync(&rom_id);
+
+        rom_id
     }
 }
 

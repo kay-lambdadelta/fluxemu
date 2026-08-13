@@ -1,4 +1,13 @@
-use std::{collections::HashMap, fs::File, sync::Arc, time::Instant};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::LineWriter,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Instant,
+};
 
 use egui::{RawInput, Rect, ViewportId, ViewportInfo};
 use fluxemu_environment::find_and_load_environment;
@@ -8,7 +17,6 @@ use fluxemu_frontend::{
 };
 use fluxemu_program::ProgramManager;
 use palette::named::BLACK;
-use redb::Database;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{
     EnvFilter, Layer,
@@ -30,12 +38,20 @@ mod runtime;
 #[cfg(target_os = "nuttx")]
 mod sys;
 
+static ALREADY_RAN: AtomicBool = AtomicBool::new(false);
+
 #[unsafe(no_mangle)]
-pub extern "C" fn fluxemu_shell_nuttallite_main(_argc: i32, _argv: *const *const u8) -> i32 {
+unsafe extern "C" fn fluxemu_shell_nuttallite_main(_argc: i32, _argv: *const *const u8) -> i32 {
+    if ALREADY_RAN.swap(true, Ordering::AcqRel) {
+        println!("Cannot run again");
+
+        return 1;
+    }
+
     match main() {
         Ok(_) => 0,
         Err(err) => {
-            tracing::error!("{}", err);
+            println!("{}", err);
 
             1
         }
@@ -53,7 +69,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let stderr_layer = tracing_subscriber::fmt::layer()
-        .with_writer(std::io::stderr)
+        .with_writer(|| LineWriter::new(std::io::stderr()))
         .with_ansi(true)
         .with_span_events(FmtSpan::CLOSE)
         .with_thread_names(true)
@@ -81,8 +97,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!("FluxEMU v{}", env!("CARGO_PKG_VERSION"));
 
-    let database = Database::create(&environment.database_location)?;
-    let program_manager = ProgramManager::new(database, environment.rom_store_directories.clone())?;
+    let program_manager = ProgramManager::new(None, environment.rom_store_directories.clone())?;
 
     let mut frontend = Frontend::<Platform>::new(
         environment,

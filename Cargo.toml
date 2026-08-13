@@ -12,7 +12,7 @@ criterion = "0.8"
 data-encoding = "2.11"
 digest-io = "0.1"
 dirs = "6.0"
-egui = "0.36"
+egui = { version = "0.36", default-features = false }
 fixed = { version = "1.31", features = ["num-traits", "serde"] }
 heapless = { version = "0.9", features = ["serde"] }
 indexmap = { version = "2.14", features = ["serde"] }
@@ -75,10 +75,7 @@ fluxemu-system-other-chip8 = { path = "system/other/chip8" }
 
 # FIXME: Remove when getrandom 0.4.4 comes out
 [patch.crates-io]
-getrandom = {
-  git = "https://github.com/rust-random/getrandom",
-  rev = "4fbc7bc02b9a65beee4c72d4523010f388affce8"
-}
+getrandom = { git = "https://github.com/rust-random/getrandom", rev = "4fbc7bc02b9a65beee4c72d4523010f388affce8" }
 
 [profile.bench]
 inherits = "profiling"
