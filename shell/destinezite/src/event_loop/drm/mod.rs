@@ -10,7 +10,7 @@ use std::{
 
 use ::input::Libinput;
 use drm::control::Device;
-use egui::{RawInput, Rect, ViewportId, ViewportInfo};
+use egui::{FontDefinitions, RawInput, Rect, ViewportId, ViewportInfo};
 use fluxemu_environment::Environment;
 use fluxemu_frontend::{
     Frontend,
@@ -93,6 +93,7 @@ where
             program_manager,
             audio_runtime,
             initial_program,
+            FontDefinitions::default(),
         );
         let gamepad_context = GamepadContext::new(&mut frontend);
 
