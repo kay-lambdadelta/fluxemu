@@ -13,8 +13,8 @@ mod toast;
 use std::{borrow::Cow, collections::HashMap, path::Path, sync::Arc, thread::JoinHandle};
 
 use egui::{
-    Align, CentralPanel, Color32, Context, FontFamily, Frame, FullOutput, Layout, Panel, RawInput,
-    RichText, TextStyle,
+    Align, CentralPanel, Color32, Context, FontDefinitions, FontFamily, Frame, FullOutput, Layout,
+    Panel, RawInput, RichText, TextStyle,
 };
 use egui_material_icons::{
     MaterialIcon,
@@ -125,6 +125,7 @@ pub struct Frontend<P: FrontendPlatform> {
     machine_initialization_step: Option<MachineInitializationStep<P>>,
     toast_manager: ToastManager,
     audio_mixer: Arc<AudioMixer>,
+    font_definitions: FontDefinitions,
 }
 
 impl<P: FrontendPlatform> Frontend<P> {
@@ -135,6 +136,7 @@ impl<P: FrontendPlatform> Frontend<P> {
         program_manager: Arc<ProgramManager>,
         mut audio_runtime: P::AudioRuntime,
         initial_program: Option<Vec<RomId>>,
+        font_definitions: FontDefinitions,
     ) -> Self {
         let initial_program_initialization_step = initial_program.map(|roms| {
             let program_manager = program_manager.clone();
@@ -160,7 +162,7 @@ impl<P: FrontendPlatform> Frontend<P> {
             frontend_overlay_active: true,
             current_tab: TabId::Library,
             physical_input_devices: HashMap::default(),
-            egui_context: setup_egui_context(),
+            egui_context: setup_egui_context(font_definitions.clone()),
             audio_mixer,
             file_browser_state: FileBrowserState::new(
                 environment.file_browser_home_directory.clone(),
@@ -168,6 +170,7 @@ impl<P: FrontendPlatform> Frontend<P> {
             toast_manager: ToastManager::default(),
             machine_initialization_step: initial_program_initialization_step,
             environment,
+            font_definitions,
         }
     }
 
@@ -216,7 +219,7 @@ impl<P: FrontendPlatform> Frontend<P> {
         ) -> <P::GraphicsApi as GraphicsApi>::InitializationData,
     ) {
         if let Some(sealed_machine_builder) = self.pending_machine.take() {
-            self.egui_context = setup_egui_context();
+            self.egui_context = setup_egui_context(self.font_definitions.clone());
 
             // NOTE: This will block the ui
             self.bring_down_current_machine();
@@ -399,10 +402,10 @@ impl<P: FrontendPlatform> Drop for Frontend<P> {
     }
 }
 
-fn setup_egui_context() -> Context {
+fn setup_egui_context(font_definitions: FontDefinitions) -> Context {
     let egui_context = Context::default();
-    egui_material_icons::initialize(&egui_context);
 
+    egui_material_icons::initialize(&egui_context);
     egui_context.global_style_mut(|style| {
         style.text_styles.insert(
             TextStyle::Body,
@@ -417,6 +420,8 @@ fn setup_egui_context() -> Context {
             egui::FontId::new(24.0, FontFamily::Proportional),
         );
     });
+
+    egui_context.set_fonts(font_definitions);
 
     egui_context
 }

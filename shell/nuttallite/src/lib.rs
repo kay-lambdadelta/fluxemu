@@ -9,7 +9,7 @@ use std::{
     time::Instant,
 };
 
-use egui::{RawInput, Rect, ViewportId, ViewportInfo};
+use egui::{FontDefinitions, RawInput, Rect, ViewportId, ViewportInfo};
 use fluxemu_environment::find_and_load_environment;
 use fluxemu_frontend::{
     Frontend,
@@ -106,6 +106,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         program_manager,
         AudioRuntime,
         None,
+        FontDefinitions::default(),
     );
 
     let mut graphics_runtime = GraphicsRuntime::default();

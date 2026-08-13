@@ -5,7 +5,7 @@ use std::{
     time::Instant,
 };
 
-use egui::{Context, ViewportId};
+use egui::{Context, FontDefinitions, ViewportId};
 use fluxemu_environment::Environment;
 use fluxemu_frontend::{
     Frontend,
@@ -74,6 +74,7 @@ where
             program_manager,
             audio_runtime,
             initial_program,
+            FontDefinitions::default(),
         );
 
         let gamepad_context = GamepadContext::new(&mut frontend);
