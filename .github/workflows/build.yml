@@ -1,0 +1,69 @@
+name: "build"
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  debian-trixie-x86_64:
+    name: Debian Trixie (x86_64-unknown-linux-gnu)
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    steps:
+      - name: Install Linux dependencies
+        run: |
+          apt update
+          apt install -y --no-install-recommends \
+            rustup \
+            ca-certificates \
+            curl \
+            git \
+            build-essential \
+            pkg-config \
+            libasound2-dev \
+            libudev-dev \
+            libvulkan-dev \
+            libgl-dev \
+            libx11-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libinput-dev \
+            libseat-dev \
+            libbz2-dev
+
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: rustup default stable
+
+      - name: Build
+        run: cargo build --all-features
+
+      - name: Test
+        run: cargo test --all-features
+
+#  apache-nuttx-thumbv8m-main-nuttx-eabihf:
+#    name: Apache NuttX Raspberry Pi Pico 2 (thumbv8m.main-nuttx-eabihf)
+#    runs-on: ubuntu-latest
+#    container: debian:trixie
+#    steps:
+#      - name: Install Linux dependencies
+#        run: |
+#          apt update
+#          apt install -y --no-install-recommends \
+#            rustup \
+#            libclang-dev \
+#            build-essential \
+#            rsync \
+#            jq \
+#            kconfig-frontends \
+#            gcc-arm-none-eabi \
+#            picotool
+#
+#      - uses: actions/checkout@v7
+#
+#      - name: Force a rustup default default
+#        run: rustup default stable
+#
+#      - name: Run tests
+#        run: cargo xtask build-nuttallite --download --board raspberrypi-pico-2 --board-config nsh -- -j$(nproc)

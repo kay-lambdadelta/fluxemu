@@ -4,7 +4,7 @@ on:
     - cron: "0 0 * * *"
 
 jobs:
-  debian-trixie:
+  debian-trixie-x86_64:
     runs-on: ubuntu-latest
     container: debian:trixie
     steps:
@@ -12,6 +12,7 @@ jobs:
         run: |
           apt update
           apt install -y --no-install-recommends \
+            rustup \
             ca-certificates \
             curl \
             git \
@@ -30,9 +31,8 @@ jobs:
 
       - uses: actions/checkout@v7
 
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
+      - name: Force a rustup default default
+        run: rustup default stable
 
       - name: Install cargo-deb
         run: cargo install cargo-deb --locked
