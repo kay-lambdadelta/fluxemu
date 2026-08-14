@@ -1,0 +1,3 @@
+[submodule "external/unscii"]
+path = external/unscii
+url = https://github.com/kay-lambdadelta/unscii

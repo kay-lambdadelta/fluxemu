@@ -9,7 +9,7 @@ use std::{
     time::Instant,
 };
 
-use egui::{FontDefinitions, RawInput, Rect, ViewportId, ViewportInfo};
+use egui::{FontData, FontDefinitions, FontFamily, RawInput, Rect, ViewportId, ViewportInfo};
 use fluxemu_environment::find_and_load_environment;
 use fluxemu_frontend::{
     Frontend,
@@ -35,6 +35,8 @@ use crate::{
 mod build_machine;
 mod platform;
 mod runtime;
+
+const UNSCII_FONT: &[u8] = include_bytes!("../../../external/unscii/fontfiles/unscii-16.otf");
 
 #[cfg(target_os = "nuttx")]
 mod sys;
@@ -101,6 +103,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database = Database::builder().create_with_backend(InMemoryBackend::default())?;
     let program_manager = ProgramManager::new(database, environment.rom_store_directories.clone())?;
 
+    let font_definitions = FontDefinitions {
+        font_data: [(
+            "unscii".to_string(),
+            Arc::new(FontData::from_static(UNSCII_FONT)),
+        )]
+        .into_iter()
+        .collect(),
+        families: [
+            (FontFamily::Proportional, vec!["unscii".to_string()]),
+            (FontFamily::Monospace, vec!["unscii".to_string()]),
+        ]
+        .into_iter()
+        .collect(),
+    };
     let mut frontend = Frontend::<Platform>::new(
         environment,
         environment_location.into(),
@@ -108,7 +124,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         program_manager,
         AudioRuntime,
         None,
-        FontDefinitions::default(),
+        font_definitions,
     );
 
     let mut graphics_runtime = GraphicsRuntime::default();

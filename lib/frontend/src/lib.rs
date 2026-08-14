@@ -16,13 +16,6 @@ use egui::{
     Align, CentralPanel, Color32, Context, FontDefinitions, FontFamily, Frame, FullOutput, Layout,
     Panel, RawInput, RichText, TextStyle,
 };
-use egui_material_icons::{
-    MaterialIcon,
-    icons::{
-        ICON_ARTICLE, ICON_BUG_REPORT, ICON_FOLDER, ICON_GAMEPAD, ICON_INFO, ICON_SETTINGS,
-        ICON_VIDEO_LIBRARY,
-    },
-};
 use egui_toast::ToastKind;
 use fluxemu_environment::Environment;
 use fluxemu_graphics::api::GraphicsApi;
@@ -60,15 +53,15 @@ pub enum TabId {
 }
 
 impl TabId {
-    fn icon(self) -> MaterialIcon {
+    fn icon(self) -> &'static str {
         match self {
-            Self::FileBrowser => ICON_FOLDER,
-            Self::Library => ICON_VIDEO_LIBRARY,
-            Self::Settings => ICON_SETTINGS,
-            Self::Log => ICON_ARTICLE,
-            Self::Controller => ICON_GAMEPAD,
-            Self::Debug => ICON_BUG_REPORT,
-            Self::About => ICON_INFO,
+            Self::FileBrowser => "📁",
+            Self::Library => "📚",
+            Self::Settings => "⚙️",
+            Self::Log => "📝",
+            Self::Controller => "🎮",
+            Self::Debug => "🐞",
+            Self::About => "ℹ️",
         }
     }
 }
@@ -405,7 +398,6 @@ impl<P: FrontendPlatform> Drop for Frontend<P> {
 fn setup_egui_context(font_definitions: FontDefinitions) -> Context {
     let egui_context = Context::default();
 
-    egui_material_icons::initialize(&egui_context);
     egui_context.global_style_mut(|style| {
         style.text_styles.insert(
             TextStyle::Body,

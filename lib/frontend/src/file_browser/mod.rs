@@ -10,10 +10,6 @@ use egui::{
     Align, Button, ComboBox, Frame, Layout, Response, ScrollArea, Sense, TextEdit, TextWrapMode,
     Widget,
 };
-use egui_material_icons::icons::{
-    ICON_ARROW_DOWNWARD, ICON_ARROW_UPWARD, ICON_DIRECTORY_SYNC, ICON_EDIT, ICON_FOLDER_OPEN,
-    ICON_LOCK, ICON_VISIBILITY,
-};
 use egui_toast::ToastKind;
 use fluxemu_program::ProgramManager;
 use indexmap::IndexMap;
@@ -57,10 +53,8 @@ impl<P: FrontendPlatform> Widget for FileBrowser<'_, P> {
         ui.horizontal_top(|ui| {
             #[cfg(feature = "external-file-dialog")]
             if P::EXTERNAL_FILE_DIALOGS_SUPPORTED {
-                use egui_material_icons::icons::ICON_OPEN_IN_NEW;
-
                 let clicked = ui
-                    .button(ICON_OPEN_IN_NEW)
+                    .button("📂")
                     .on_hover_text(t!("browser.open_native_file_dialog"))
                     .clicked();
 
@@ -123,7 +117,7 @@ impl<P: FrontendPlatform> Widget for FileBrowser<'_, P> {
                     }
 
                     if ui
-                        .button(ICON_EDIT)
+                        .button("✏️")
                         .on_hover_text("Manually edit path bar")
                         .clicked()
                     {
@@ -168,7 +162,7 @@ impl<P: FrontendPlatform> Widget for FileBrowser<'_, P> {
 
         ui.horizontal_top(|ui| {
             if ui
-                .button(ICON_DIRECTORY_SYNC)
+                .button("🔄")
                 .on_hover_text("Refresh file browser file listings")
                 .clicked()
                 && let PathBarState::Normal(path) = &pathbar_state
@@ -179,11 +173,7 @@ impl<P: FrontendPlatform> Widget for FileBrowser<'_, P> {
             let old_settings = (*sorting_method, *reverse_sorting, *show_hidden);
 
             if ui
-                .button(if *reverse_sorting {
-                    ICON_ARROW_UPWARD
-                } else {
-                    ICON_ARROW_DOWNWARD
-                })
+                .button(if *reverse_sorting { "⬆️" } else { "⬇️" })
                 .on_hover_text("Toggle sort order")
                 .clicked()
             {
@@ -199,7 +189,7 @@ impl<P: FrontendPlatform> Widget for FileBrowser<'_, P> {
                 .response
                 .on_hover_text("Swap the file browser sorting method");
 
-            ui.toggle_value(show_hidden, ICON_VISIBILITY)
+            ui.toggle_value(show_hidden, "👁️")
                 .on_hover_text("Toggle hidden file visiblity");
 
             if old_settings != (*sorting_method, *reverse_sorting, *show_hidden) {
@@ -245,9 +235,9 @@ impl<P: FrontendPlatform> Widget for FileBrowser<'_, P> {
                         }
 
                         let label = if *is_directory {
-                            format!("{} {}", ICON_FOLDER_OPEN.codepoint, name_str)
+                            format!("📁 {}", name_str)
                         } else if !*readable {
-                            format!("{} {}", name_str, ICON_LOCK.codepoint)
+                            format!("{} 🔒", name_str)
                         } else {
                             name_str.to_string()
                         };
