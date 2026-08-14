@@ -6,7 +6,7 @@ description = "A multi system emulator"
 license = "GPL-3.0-or-later"
 
 [lib]
-crate-type = ["staticlib"]
+crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
 bytemuck = { workspace = true }

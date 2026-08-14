@@ -86,7 +86,7 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let args = Cli::parse();
 
     let program_manager = ProgramManager::new(
-        Some(Database::create(&environment.database_location)?),
+        Database::create(&environment.database_location)?,
         environment.rom_store_directories.clone(),
     )?;
 
@@ -114,7 +114,7 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
                 let external_database_table =
                     external_database_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
 
-                let internal_database_transaction = internal_database.unwrap().begin_write()?;
+                let internal_database_transaction = internal_database.begin_write()?;
                 let mut internal_database_table =
                     internal_database_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
 

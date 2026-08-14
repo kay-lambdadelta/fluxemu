@@ -17,6 +17,7 @@ use fluxemu_frontend::{
 };
 use fluxemu_program::ProgramManager;
 use palette::named::BLACK;
+use redb::{Database, backends::InMemoryBackend};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{
     EnvFilter, Layer,
@@ -97,7 +98,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!("FluxEMU v{}", env!("CARGO_PKG_VERSION"));
 
-    let program_manager = ProgramManager::new(None, environment.rom_store_directories.clone())?;
+    let database = Database::builder().create_with_backend(InMemoryBackend::default())?;
+    let program_manager = ProgramManager::new(database, environment.rom_store_directories.clone())?;
 
     let mut frontend = Frontend::<Platform>::new(
         environment,

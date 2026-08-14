@@ -14,7 +14,7 @@ pub fn rom_export(
 ) {
     let _ = std::fs::create_dir_all(&destination_path);
 
-    let read_transaction = match program_manager.database().unwrap().begin_read() {
+    let read_transaction = match program_manager.database().begin_read() {
         Ok(read_transaction) => read_transaction,
         Err(err) => {
             tracing::error!(

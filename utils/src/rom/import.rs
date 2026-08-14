@@ -25,7 +25,7 @@ pub fn rom_import(
     rom_store: &Path,
     symlink: bool,
 ) {
-    let read_transaction = match program_manager.database().unwrap().begin_read() {
+    let read_transaction = match program_manager.database().begin_read() {
         Ok(read_transaction) => read_transaction,
         Err(err) => {
             tracing::error!(

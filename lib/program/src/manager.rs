@@ -40,9 +40,8 @@ pub const HASH_ALIAS_TABLE: MultimapTableDefinition<RomId, ProgramId> =
     MultimapTableDefinition::new("hash_alias");
 
 /// The ROM manager which contains the database and information about the roms that were loaded
-#[derive(Debug)]
 pub struct ProgramManager {
-    database: Option<Database>,
+    database: Database,
     external_roms: scc::HashMap<RomId, PathBuf, FxBuildHasher>,
     embedded_roms: scc::HashMap<RomId, &'static [u8], FxBuildHasher>,
     rom_cache: scc::HashCache<RomId, Bytes>,
@@ -53,22 +52,14 @@ impl ProgramManager {
     /// Opens and loads the default database
     #[inline]
     pub fn new(
-        database: Option<Database>,
+        database: Database,
         rom_stores: impl IntoIterator<Item = PathBuf>,
     ) -> Result<Arc<Self>, Error> {
-        let database = if let Some(database) = database {
-            let mut database_transaction = database.begin_write()?;
-            database_transaction.set_quick_repair(true);
-            database_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
-            database_transaction.open_multimap_table(HASH_ALIAS_TABLE)?;
-            database_transaction.commit()?;
-
-            Some(database)
-        } else {
-            tracing::warn!("Continuing without database");
-
-            None
-        };
+        let mut database_transaction = database.begin_write()?;
+        database_transaction.set_quick_repair(true);
+        database_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
+        database_transaction.open_multimap_table(HASH_ALIAS_TABLE)?;
+        database_transaction.commit()?;
 
         Ok(Arc::new(Self {
             database,
@@ -141,40 +132,35 @@ impl ProgramManager {
 
     /// Attempts to identify a program from its program ids
     pub fn identify_program(&self, roms: &[RomId]) -> Result<Vec<ProgramSpecification>, Error> {
-        if let Some(database) = self.database() {
-            let read_transaction = database.begin_read()?;
+        let read_transaction = self.database.begin_read()?;
 
-            let hash_alias_table = read_transaction.open_multimap_table(HASH_ALIAS_TABLE)?;
-            let program_info_table =
-                read_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
+        let hash_alias_table = read_transaction.open_multimap_table(HASH_ALIAS_TABLE)?;
+        let program_info_table = read_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
 
-            let mut possible_programs = Vec::default();
+        let mut possible_programs = Vec::default();
 
-            for rom_id in roms {
-                for access_guard in hash_alias_table.get(rom_id)? {
-                    let program_id = access_guard?.value();
+        for rom_id in roms {
+            for access_guard in hash_alias_table.get(rom_id)? {
+                let program_id = access_guard?.value();
 
-                    for access_guard in program_info_table.get(&program_id)? {
-                        let program_info = access_guard?.value();
+                for access_guard in program_info_table.get(&program_id)? {
+                    let program_info = access_guard?.value();
 
-                        let found_all = roms
-                            .iter()
-                            .all(|id| program_info.filesystem().contains_key(id));
+                    let found_all = roms
+                        .iter()
+                        .all(|id| program_info.filesystem().contains_key(id));
 
-                        if found_all {
-                            possible_programs.push(ProgramSpecification {
-                                id: program_id.clone(),
-                                info: program_info,
-                            });
-                        }
+                    if found_all {
+                        possible_programs.push(ProgramSpecification {
+                            id: program_id.clone(),
+                            info: program_info,
+                        });
                     }
                 }
             }
-
-            Ok(possible_programs)
-        } else {
-            Ok(Vec::new())
         }
+
+        Ok(possible_programs)
     }
 
     pub fn auto_generate_specification(
@@ -225,10 +211,6 @@ impl ProgramManager {
         }))
     }
 
-    pub fn database(&self) -> Option<&Database> {
-        self.database.as_ref()
-    }
-
     pub fn register_embedded_rom(&mut self, bytes: &'static [u8]) -> RomId {
         let rom_id = RomId::new_sha1(bytes).unwrap();
 
@@ -239,6 +221,10 @@ impl ProgramManager {
         self.external_roms.remove_sync(&rom_id);
 
         rom_id
+    }
+
+    pub fn database(&self) -> &Database {
+        &self.database
     }
 }
 
