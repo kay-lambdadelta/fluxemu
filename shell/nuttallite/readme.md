@@ -4,11 +4,17 @@ This is the shell implementation for Apache NuttX supported boards
 
 These dependencies are required.
 
-| Distro | Development Package Name                                                       |
-| ------ | ------------------------------------------------------------------------------ |
-| Debian | `rustup python3-kconfiglib genromfs xxd libclang-dev build-essential rsync jq` |
+| Distro | Development Package Name                                         |
+| ------ | ---------------------------------------------------------------- |
+| Debian | `rustup libclang-dev build-essential rsync jq kconfig-frontends` |
 
 You may need other dependencies depending on your board, and will almost certainly need a matching C toolchain.
+
+For example, to build for the Raspberr Pi Pico/Pico 2 you will need
+
+| Distro | Development Package Name     |
+| ------ | ---------------------------- |
+| Debian | `gcc-arm-none-eabi picotool` |
 
 ## Building
 
