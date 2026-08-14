@@ -74,5 +74,5 @@ jobs:
       - name: Force a rustup default
         run: rustup default stable
 
-      - name: Run tests
+      - name: Build nuttallite
         run: cargo xtask build-nuttallite --download --board raspberrypi-pico-2 --board-config nsh -- -j$(nproc)
