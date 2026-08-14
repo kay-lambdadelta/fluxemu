@@ -33,8 +33,11 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      - name: Build
-        run: cargo build --all-features
+      - name: Build Destinezite
+        run: cargo build -p fluxemu-shell-destinezite --all-features
+
+      - name: Build utils
+        run: cargo build -p fluxemu-utils
 
       - name: Test
         run: cargo test --all-features
