@@ -47,3 +47,42 @@ jobs:
           name: fluxemu-shell-destinezite-x86_64-unknown-linux-gnu-deb
           path: target/debian/fluxemu-shell-destinezite_*_amd64.deb
           if-no-files-found: error
+
+  apache-nuttx-raspberrypi-pico-2:
+    name: Apache NuttX Raspberry Pi Pico 2 (thumbv8m.main-nuttx-eabihf)
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    steps:
+      - name: Install Linux dependencies
+        run: |
+          apt update
+          apt install -y --no-install-recommends \
+            rustup \
+            ca-certificates \
+            curl \
+            unzip \
+            git \
+            libclang-dev \
+            build-essential \
+            rsync \
+            jq \
+            kconfig-frontends \
+            gcc-arm-none-eabi \
+            picotool
+
+      - uses: actions/checkout@v7
+        with:
+          submodules: "true"
+
+      - name: Force a rustup default
+        run: rustup default stable
+
+      - name: Build nuttallite
+        run: cargo xtask build-nuttallite --download --board raspberrypi-pico-2 --board-config nsh -- -j$(nproc)
+
+      - name: Upload NuttX firmware image
+        uses: actions/upload-artifact@v7
+        with:
+          name: fluxemu-shell-nuttallite-raspberrypi-pico-2
+          path: ${{ env.HOME }}/.cache/fluxemu/nuttx-builds/13.0.0/nuttx/nuttx.uf2
+          if-no-files-found: error

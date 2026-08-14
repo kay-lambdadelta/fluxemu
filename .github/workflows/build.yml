@@ -32,7 +32,7 @@ jobs:
             libbz2-dev \
             libfontconfig-dev
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: "true"
 
@@ -45,7 +45,7 @@ jobs:
       - name: Test
         run: cargo test --all-features
 
-  apache-nuttx-thumbv8m-main-nuttx-eabihf:
+  apache-nuttx-raspberrypi-pico-2:
     name: Apache NuttX Raspberry Pi Pico 2 (thumbv8m.main-nuttx-eabihf)
     runs-on: ubuntu-latest
     container: debian:trixie
