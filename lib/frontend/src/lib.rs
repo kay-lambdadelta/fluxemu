@@ -13,8 +13,8 @@ mod toast;
 use std::{borrow::Cow, collections::HashMap, path::Path, sync::Arc, thread::JoinHandle};
 
 use egui::{
-    Align, CentralPanel, Color32, Context, FontDefinitions, FontFamily, Frame, FullOutput, Layout,
-    Panel, RawInput, RichText, TextStyle,
+    Align, Button, CentralPanel, Color32, Context, FontDefinitions, FontFamily, Frame, FullOutput,
+    Layout, Panel, RawInput, RichText, TextStyle,
 };
 use egui_toast::ToastKind;
 use fluxemu_environment::Environment;
@@ -271,7 +271,8 @@ impl<P: FrontendPlatform> Frontend<P> {
                                     item_icon = item_icon.strong();
                                 }
 
-                                if ui.button(item_icon).on_hover_text(tab.as_ref()).clicked() {
+                                let button = Button::new(item_icon).min_size([32.0, 32.0].into());
+                                if ui.add(button).clicked() {
                                     self.current_tab = tab;
                                 }
                             }

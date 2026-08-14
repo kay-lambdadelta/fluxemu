@@ -12,6 +12,8 @@ compile_error!(
 #[cfg(all(feature = "drm", not(target_os = "linux")))]
 compile_error!("The DRM/KMS backend is only compatible with Linux");
 
+mod font;
+
 use std::{fs::File, sync::Arc};
 
 use clap::Parser;

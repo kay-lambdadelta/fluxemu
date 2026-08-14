@@ -5,7 +5,7 @@ use std::{
     time::Instant,
 };
 
-use egui::{Context, FontDefinitions, ViewportId};
+use egui::{Context, ViewportId};
 use fluxemu_environment::Environment;
 use fluxemu_frontend::{
     Frontend,
@@ -28,6 +28,7 @@ use crate::{
     audio::CpalAudioRuntime,
     display::{DisplayContext, RuntimeAssociatedDisplayContext},
     event_loop::windowing::key::winit2key,
+    font::load_fonts,
     gamepad::GamepadContext,
     platform::DesktopPlatform,
 };
@@ -74,7 +75,7 @@ where
             program_manager,
             audio_runtime,
             initial_program,
-            FontDefinitions::default(),
+            load_fonts(),
         );
 
         let gamepad_context = GamepadContext::new(&mut frontend);

@@ -29,7 +29,8 @@ jobs:
             libwayland-dev \
             libinput-dev \
             libseat-dev \
-            libbz2-dev
+            libbz2-dev \
+            libfontconfig-dev
 
       - uses: actions/checkout@v4
         with:

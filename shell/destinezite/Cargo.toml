@@ -16,14 +16,14 @@ assets = [
 ]
 section = "games"
 priority = "optional"
-depends = "$auto"
+depends = ["$auto", "fonts-noto"]
 maintainer-scripts = "assets/linux/debian"
 
 [dependencies]
 bytemuck = { workspace = true }
 clap = { workspace = true }
 cpal = "0.18"
-egui = { workspace = true, features = ["default_fonts"] }
+egui = { workspace = true }
 fluxemu-audio = { workspace = true }
 fluxemu-egui-software-renderer = { workspace = true }
 fluxemu-environment = { workspace = true }
@@ -32,6 +32,7 @@ fluxemu-graphics = { workspace = true }
 fluxemu-input = { workspace = true }
 fluxemu-program = { workspace = true, features = ["mmap"] }
 fluxemu-runtime = { workspace = true }
+fontique = "0.11"
 gilrs = "0.11"
 nalgebra = { workspace = true }
 palette = { workspace = true }

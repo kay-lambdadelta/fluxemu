@@ -18,12 +18,12 @@ This program should not have any further dependencies on these platforms, apart 
 
 The instructions for listed distros should work for downstream distros also (ie: the Debian instructions operate for Ubuntu).
 
-| Distro   | Development Package Name                                             |
-| -------- | -------------------------------------------------------------------- |
-| Debian   | `libasound2-dev libudev-dev pkg-config build-essential`              |
-| Fedora   | `alsa-lib-devel systemd-devel pkgconf-pkg-config @development-tools` |
-| Arch     | `alsa-lib systemd base-devel`                                        |
-| openSUSE | `alsa-lib-devel libudev-devel pkg-config`                            |
+| Distro   | Development Package Name                                                                                     |
+| -------- | ------------------------------------------------------------------------------------------------------------ |
+| Debian   | `libasound2-dev libudev-dev pkg-config build-essential libfontconfig-dev fonts-noto-core`                    |
+| Fedora   | `alsa-lib-devel systemd-devel pkgconf-pkg-config @development-tools fontconfig-devel google-noto-sans-fonts` |
+| Arch     | `alsa-lib systemd base-devel fontconfig noto-fonts `                                                         |
+| openSUSE | `alsa-lib-devel libudev-devel pkg-config noto-sans-fonts`                                                    |
 
 Feature specific dependencies (`webgpu` and `windowing` are on by default, `drm` is not):
 
