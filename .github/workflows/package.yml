@@ -31,6 +31,8 @@ jobs:
             libbz2-dev
 
       - uses: actions/checkout@v7
+        with:
+          submodules: "true"
 
       - name: Install cargo-deb
         run: cargo install cargo-deb --locked

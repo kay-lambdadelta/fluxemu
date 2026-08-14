@@ -32,6 +32,8 @@ jobs:
             libbz2-dev
 
       - uses: actions/checkout@v4
+        with:
+          submodules: "true"
 
       - name: Build Destinezite
         run: cargo build -p fluxemu-shell-destinezite --all-features
