@@ -1,5 +1,10 @@
 name: "package"
+
 on:
+  push:
+    paths:
+      - ".github/workflows/package.yml"
+
   schedule:
     - cron: "0 0 * * *"
 
@@ -80,9 +85,12 @@ jobs:
       - name: Build nuttallite
         run: cargo xtask build-nuttallite --download --board raspberrypi-pico-2 --board-config nsh -- -j$(nproc)
 
+      - name: Move firmware to easier to access location
+        run: mv ~/.cache/fluxemu/nuttx-builds/13.0.0/nuttx/nuttx.uf2 ./nuttx.uf2
+
       - name: Upload NuttX firmware image
         uses: actions/upload-artifact@v7
         with:
           name: fluxemu-shell-nuttallite-raspberrypi-pico-2
-          path: ${{ env.HOME }}/.cache/fluxemu/nuttx-builds/13.0.0/nuttx/nuttx.uf2
+          path: ./nuttx.uf2
           if-no-files-found: error
