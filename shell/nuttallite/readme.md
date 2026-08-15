@@ -10,7 +10,7 @@ These dependencies are required.
 
 You may need other dependencies depending on your board, and will almost certainly need a matching C toolchain.
 
-For example, to build for the Raspberr Pi Pico/Pico 2 you will need
+For example, to build for the Raspberry Pi Pico/Pico 2 you will need
 
 | Distro | Development Package Name     |
 | ------ | ---------------------------- |
