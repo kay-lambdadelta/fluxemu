@@ -5,6 +5,24 @@ edition = "2024"
 description = "A multi system emulator"
 license = "GPL-3.0-or-later"
 
+[package.metadata.nuttx]
+priority = 100
+stack-size = 16384
+config = "shell/nuttallite/nuttx/config"
+board-config-directory = "shell/nuttallite/nuttx/config/board"
+
+[package.metadata.nuttx.boards.raspberrypi-pico-2]
+target = "thumbv8m.main-nuttx-eabihf"
+target-cpu = "cortex-m33"
+opt-level = "s"
+firmware-file = "nuttx.uf2"
+
+[package.metadata.nuttx.boards.raspberrypi-pico]
+target = "thumbv6m-nuttx-eabi"
+target-cpu = "cortex-m0plus"
+opt-level = "z"
+firmware-file = "nuttx.uf2"
+
 [lib]
 crate-type = ["staticlib"]
 

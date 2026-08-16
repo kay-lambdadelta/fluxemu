@@ -74,5 +74,13 @@ jobs:
       - name: Force a rustup default
         run: rustup default stable
 
+      - name: Setup rust nightly
+        run: |
+          rustup install nightly
+          rustup component add rust-src --toolchain nightly
+
+      - name: Install cargo-nuttx
+        run: cargo install --git https://github.com/kay-lambdadelta/cargo-nuttx
+
       - name: Build nuttallite
-        run: cargo xtask build-nuttallite --download --board raspberrypi-pico-2 --board-config nsh -- -j$(nproc)
+        run: cargo +nightly nuttx --board raspberrypi-pico-2 --board-config nsh build -p fluxemu-shell-nuttallite --download --release -- -j$(nproc)

@@ -82,15 +82,20 @@ jobs:
       - name: Force a rustup default
         run: rustup default stable
 
-      - name: Build nuttallite
-        run: cargo xtask build-nuttallite --download --board raspberrypi-pico-2 --board-config nsh -- -j$(nproc)
+      - name: Setup rust nightly
+        run: |
+          rustup install nightly
+          rustup component add rust-src --toolchain nightly
 
-      - name: Move firmware to easier to access location
-        run: mv ~/.cache/fluxemu/nuttx-builds/13.0.0/nuttx/nuttx.uf2 ./nuttx.uf2
+      - name: Install cargo-nuttx
+        run: cargo install --git https://github.com/kay-lambdadelta/cargo-nuttx
+
+      - name: Build nuttallite
+        run: cargo +nightly nuttx --board raspberrypi-pico-2 --board-config nsh build -p fluxemu-shell-nuttallite --download --release -- -j$(nproc)
 
       - name: Upload NuttX firmware image
         uses: actions/upload-artifact@v7
         with:
           name: fluxemu-shell-nuttallite-raspberrypi-pico-2
-          path: ./nuttx.uf2
+          path: target/nuttx/raspberrypi-pico-2/release/nuttx.uf2
           if-no-files-found: error

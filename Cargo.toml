@@ -1,6 +1,12 @@
 [workspace]
 resolver = "3"
-members = ["definition/*", "lib/*", "shell/*", "system/*/*", "utils/", "xtask"]
+members = [
+  "definition/*",
+  "lib/*",
+  "shell/*",
+  "system/*/*",
+  "utils/",
+]
 
 [workspace.dependencies]
 bytemuck = { version = "1.25", features = ["derive"] }
