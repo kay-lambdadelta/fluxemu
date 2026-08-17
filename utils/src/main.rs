@@ -1,7 +1,7 @@
 use std::{error::Error, fmt::Display, fs::File, io::BufReader, path::PathBuf};
 
 use clap::{Parser, ValueEnum};
-use fluxemu_environment::find_and_load_environment;
+use fluxemu_environment::load_environment;
 use fluxemu_program::{PROGRAM_INFORMATION_TABLE, ProgramManager, SystemId};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use redb::{Database, ReadOnlyDatabase, ReadableDatabase, ReadableMultimapTable};
@@ -79,7 +79,7 @@ pub enum Cli {
 }
 
 fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    let (_, environment) = find_and_load_environment();
+    let environment = load_environment();
 
     tracing_subscriber::fmt().init();
 

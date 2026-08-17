@@ -9,7 +9,7 @@ license = "GPL-3.0-or-later"
 priority = 100
 stack-size = 16384
 config = "shell/nuttallite/nuttx/config"
-board-config-directory = "shell/nuttallite/nuttx/config/board"
+board-config-directory = "shell/nuttallite/nuttx/board"
 
 [package.metadata.nuttx.boards.raspberrypi-pico-2]
 target = "thumbv8m.main-nuttx-eabihf"
@@ -39,12 +39,14 @@ fluxemu-input = { workspace = true }
 fluxemu-program = { workspace = true }
 fluxemu-runtime = { workspace = true }
 itertools = { workspace = true }
+libc = "0.2"
 nalgebra = { workspace = true }
 palette = { workspace = true }
 redb = { workspace = true }
 ringbuffer = { workspace = true }
 ron = { workspace = true }
 strum = { workspace = true }
+thiserror = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }

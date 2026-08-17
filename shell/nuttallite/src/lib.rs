@@ -10,14 +10,14 @@ use std::{
 };
 
 use egui::{FontData, FontDefinitions, FontFamily, RawInput, Rect, ViewportId, ViewportInfo};
-use fluxemu_environment::find_and_load_environment;
+use fluxemu_environment::load_environment;
 use fluxemu_frontend::{
     Frontend,
     graphics::{DrawTarget, GraphicsRuntime as _},
 };
 use fluxemu_program::ProgramManager;
 use palette::named::BLACK;
-use redb::{Database, backends::InMemoryBackend};
+use redb::Database;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{
     EnvFilter, Layer,
@@ -36,11 +36,12 @@ mod build_machine;
 mod platform;
 mod runtime;
 
-const UNSCII_FONT: &[u8] = include_bytes!("../../../external/unscii/fontfiles/unscii-16.otf");
-
+#[cfg(target_os = "nuttx")]
+mod storage;
 #[cfg(target_os = "nuttx")]
 mod sys;
 
+const UNSCII_FONT: &[u8] = include_bytes!("../../../external/unscii/fontfiles/unscii-16.otf");
 static ALREADY_RAN: AtomicBool = AtomicBool::new(false);
 
 #[unsafe(no_mangle)]
@@ -62,7 +63,12 @@ unsafe extern "C" fn fluxemu_shell_nuttallite_main(_argc: i32, _argv: *const *co
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (environment_location, environment) = find_and_load_environment();
+    #[cfg(target_os = "nuttx")]
+    {
+        storage::mount_storage_partition()?;
+    }
+
+    let environment = load_environment();
 
     let filter = Arc::new(
         EnvFilter::builder()
@@ -78,8 +84,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_thread_names(true)
         .with_thread_ids(false);
 
-    let subscriber_builder = tracing_subscriber::registry()
-        .with(stderr_layer.with_filter(filter.clone() as Arc<dyn Filter<_> + Send + Sync>));
+    let subscriber_builder =
+        tracing_subscriber::registry().with(stderr_layer.with_filter(filter.clone() as Arc<_>));
 
     if let Ok(file) = File::create(&environment.log_location) {
         let file_layer = tracing_subscriber::fmt::layer()
@@ -100,7 +106,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!("FluxEMU v{}", env!("CARGO_PKG_VERSION"));
 
-    let database = Database::builder().create_with_backend(InMemoryBackend::default())?;
+    let database = Database::create(&environment.database_location)?;
     let program_manager = ProgramManager::new(database, environment.rom_store_directories.clone())?;
 
     let font_definitions = FontDefinitions {
@@ -119,7 +125,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let mut frontend = Frontend::<Platform>::new(
         environment,
-        environment_location.into(),
         get_software_factories(),
         program_manager,
         AudioRuntime,

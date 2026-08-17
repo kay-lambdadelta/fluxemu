@@ -1,5 +1,7 @@
+use std::ops::Deref;
+
 use egui::{ComboBox, RichText, Slider};
-use fluxemu_environment::graphics::GraphicsApi;
+use fluxemu_environment::{ENVIRONMENT_LOCATION, graphics::GraphicsApi};
 use ron::ser::PrettyConfig;
 use strum::IntoEnumIterator;
 
@@ -15,13 +17,13 @@ impl<P: FrontendPlatform> Frontend<P> {
                 .on_hover_text("Save environment to disk")
                 .clicked()
             {
-                let environment_location = self.user_environment_location.clone();
-
                 let environment_string =
                     ron::ser::to_string_pretty(&self.environment, PrettyConfig::default()).unwrap();
 
                 std::thread::spawn(|| {
-                    if let Err(err) = std::fs::write(environment_location, environment_string) {
+                    if let Err(err) =
+                        std::fs::write(ENVIRONMENT_LOCATION.deref(), environment_string)
+                    {
                         tracing::error!("Failed to save environment: {}", err);
                     }
                 });

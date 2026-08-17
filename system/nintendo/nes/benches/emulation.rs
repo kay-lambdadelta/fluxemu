@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
-use fluxemu_environment::find_and_load_environment;
+use fluxemu_environment::load_environment;
 use fluxemu_program::ProgramManager;
 use fluxemu_runtime::machine::Machine;
 use fluxemu_system::System;
@@ -40,7 +40,7 @@ fn emulation_performance(c: &mut Criterion) {
         ),
     ];
 
-    let (_, environment) = find_and_load_environment();
+    let environment = load_environment();
 
     let database = Database::create(environment.database_location).unwrap();
     let program_manager =

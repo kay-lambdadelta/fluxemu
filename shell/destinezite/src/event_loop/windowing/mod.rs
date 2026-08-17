@@ -1,6 +1,4 @@
 use std::{
-    borrow::Cow,
-    path::Path,
     sync::{Arc, Mutex},
     time::Instant,
 };
@@ -60,7 +58,6 @@ where
 {
     pub fn run(
         environment: Environment,
-        user_environment_location: Cow<'static, Path>,
         program_manager: Arc<ProgramManager>,
         machine_factories: FactoryManager<DesktopPlatform<R, true>>,
         initial_program: Option<Vec<RomId>>,
@@ -70,7 +67,6 @@ where
 
         let mut frontend = Frontend::new(
             environment,
-            user_environment_location,
             machine_factories,
             program_manager,
             audio_runtime,

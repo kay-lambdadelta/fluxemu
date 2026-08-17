@@ -18,7 +18,7 @@ use std::{fs::File, sync::Arc};
 
 use clap::Parser;
 use cli::{Cli, CliAction};
-use fluxemu_environment::find_and_load_environment;
+use fluxemu_environment::load_environment;
 use fluxemu_program::ProgramManager;
 use redb::Database;
 use tracing::level_filters::LevelFilter;
@@ -40,7 +40,7 @@ mod gamepad;
 mod platform;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (environment_location, environment) = find_and_load_environment();
+    let environment = load_environment();
 
     let filter = Arc::new(
         EnvFilter::builder()
@@ -110,7 +110,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 WindowingEventLoop::<SoftwareGraphicsRuntime<_>>::run(
                     environment.clone(),
-                    environment_location.into(),
                     program_manager.clone(),
                     build_machine::get_software_factories(),
                     initial_program.clone(),
@@ -122,7 +121,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 DrmEventLoop::<SoftwareGraphicsRuntime<_>>::run(
                     environment.clone(),
-                    environment_location.into(),
                     program_manager.clone(),
                     build_machine::get_software_factories(),
                     initial_program.clone(),
@@ -140,7 +138,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     WindowingEventLoop::<WebgpuGraphicsRuntime<_>>::run(
                         environment.clone(),
-                        environment_location.into(),
                         program_manager.clone(),
                         build_machine::get_webgpu_factories(),
                         initial_program.clone(),
@@ -152,7 +149,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     DrmEventLoop::<WebgpuGraphicsRuntime<_>>::run(
                         environment.clone(),
-                        environment_location.into(),
                         program_manager.clone(),
                         build_machine::get_webgpu_factories(),
                         initial_program.clone(),

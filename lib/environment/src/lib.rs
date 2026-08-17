@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, num::Wrapping, path::PathBuf};
+use std::{collections::BTreeMap, num::Wrapping, ops::Deref, path::PathBuf, sync::LazyLock};
 
 use audio::AudioSettings;
 use confique::Config;
@@ -34,40 +34,53 @@ pub struct Environment {
     pub active_snapshot_slot: Wrapping<u8>,
 }
 
-pub fn find_and_load_environment() -> (PathBuf, Environment) {
+pub static STORAGE_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| {
     cfg_select! {
+        target_os = "nuttx" => {
+            PathBuf::from("/data/fluxemu")
+        }
         all(
             any(target_family = "unix", target_os = "windows"),
-            not(target_os = "nuttx")
         ) => {
-            let storage_directory = dirs::data_dir()
+            dirs::data_dir()
                 .expect("Could not lookup data directory")
-                .join("fluxemu");
+                .join("fluxemu")
+        }
 
-            let environment_location = dirs::config_dir()
-                .map(|path| path.join("fluxemu"))
-                .unwrap_or(storage_directory.clone())
-                .join("environment.ron");
-        }
-        target_os = "nuttx" => {
-            let storage_directory = PathBuf::from("/var/lib/fluxemu");
-            let environment_location = PathBuf::from("/etc/fluxemu/environment.ron");
-        }
     }
+});
 
-    let _ = std::fs::create_dir_all(&storage_directory);
-    let _ = std::fs::create_dir_all(environment_location.parent().unwrap());
+pub static ENVIRONMENT_LOCATION: LazyLock<PathBuf> = LazyLock::new(|| {
+    cfg_select! {
+        target_os = "nuttx" => {
+            STORAGE_DIRECTORY.join("environment.ron")
+        }
+        all(
+            any(target_family = "unix", target_os = "windows"),
+        ) => {
+            dirs::config_dir()
+                .map(|path| path.join("fluxemu"))
+                .unwrap_or(STORAGE_DIRECTORY.clone())
+                .join("environment.ron")
+        }
+
+    }
+});
+
+pub fn load_environment() -> Environment {
+    let _ = std::fs::create_dir_all(STORAGE_DIRECTORY.deref());
+    let _ = std::fs::create_dir_all(ENVIRONMENT_LOCATION.deref().parent().unwrap());
 
     let default_environment_string = ron::to_string(&Environment {
         gamepads: BTreeMap::default(),
         graphics: GraphicsSettings::default(),
         audio: AudioSettings::default(),
-        file_browser_home_directory: std::env::home_dir().unwrap_or(storage_directory.clone()),
-        log_location: storage_directory.join("log"),
-        database_location: storage_directory.join("database.redb"),
-        save_directory: storage_directory.join("saves"),
-        snapshot_directory: storage_directory.join("snapshot"),
-        rom_store_directories: vec![storage_directory.join("roms")],
+        file_browser_home_directory: std::env::home_dir().unwrap_or(STORAGE_DIRECTORY.clone()),
+        log_location: STORAGE_DIRECTORY.join("log"),
+        database_location: STORAGE_DIRECTORY.join("database.redb"),
+        save_directory: STORAGE_DIRECTORY.join("saves"),
+        snapshot_directory: STORAGE_DIRECTORY.join("snapshot"),
+        rom_store_directories: vec![STORAGE_DIRECTORY.join("roms")],
         active_snapshot_slot: Wrapping(0),
     })
     .unwrap();
@@ -75,7 +88,7 @@ pub fn find_and_load_environment() -> (PathBuf, Environment) {
     let config_builder = Environment::builder().env();
 
     let config_builder = if let Ok(loaded_environment) =
-        std::fs::read_to_string(&environment_location)
+        std::fs::read_to_string(ENVIRONMENT_LOCATION.deref())
         && let Ok(loaded_environment) = Options::default()
             .with_default_extension(Extensions::IMPLICIT_SOME)
             .from_str(&loaded_environment)
@@ -85,7 +98,7 @@ pub fn find_and_load_environment() -> (PathBuf, Environment) {
         config_builder
     };
 
-    let environment = config_builder
+    config_builder
         .preloaded(
             Options::default()
                 .with_default_extension(Extensions::IMPLICIT_SOME)
@@ -93,7 +106,5 @@ pub fn find_and_load_environment() -> (PathBuf, Environment) {
                 .unwrap(),
         )
         .load()
-        .unwrap();
-
-    (environment_location, environment)
+        .unwrap()
 }

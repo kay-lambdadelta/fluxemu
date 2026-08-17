@@ -10,14 +10,14 @@ mod platform;
 mod settings;
 mod toast;
 
-use std::{borrow::Cow, collections::HashMap, path::Path, sync::Arc, thread::JoinHandle};
+use std::{borrow::Cow, collections::HashMap, ops::Deref, sync::Arc, thread::JoinHandle};
 
 use egui::{
     Align, Button, CentralPanel, Color32, Context, FontDefinitions, FontFamily, Frame, FullOutput,
     Layout, Panel, RawInput, RichText, TextStyle,
 };
 use egui_toast::ToastKind;
-use fluxemu_environment::Environment;
+use fluxemu_environment::{ENVIRONMENT_LOCATION, Environment};
 use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_input::{InputId, InputState, physical::PhysicalInputDeviceId};
 use fluxemu_program::{ProgramManager, ProgramSpecification, RomId};
@@ -102,7 +102,6 @@ enum MachineInitializationStep<P: Platform> {
 #[allow(clippy::type_complexity)]
 pub struct Frontend<P: FrontendPlatform> {
     environment: Environment,
-    user_environment_location: Cow<'static, Path>,
     machine_context: Option<MachineContext>,
     pending_machine: Option<SealedMachineBuilder<P>>,
     #[allow(unused)]
@@ -124,7 +123,6 @@ pub struct Frontend<P: FrontendPlatform> {
 impl<P: FrontendPlatform> Frontend<P> {
     pub fn new(
         environment: Environment,
-        user_environment_location: Cow<'static, Path>,
         machine_factories: FactoryManager<P>,
         program_manager: Arc<ProgramManager>,
         mut audio_runtime: P::AudioRuntime,
@@ -147,7 +145,6 @@ impl<P: FrontendPlatform> Frontend<P> {
         Self {
             machine_context: None,
             pending_machine: None,
-            user_environment_location,
             audio_runtime,
             machine_factory_manager: Arc::new(machine_factories),
             program_manager,
@@ -380,7 +377,7 @@ impl<P: FrontendPlatform> Frontend<P> {
                 tracing::error!("Could not serialize environment: {}", err);
             })
         {
-            let Err(err) = std::fs::write(&self.user_environment_location, environment) else {
+            let Err(err) = std::fs::write(ENVIRONMENT_LOCATION.deref(), environment) else {
                 return;
             };
 
