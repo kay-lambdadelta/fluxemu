@@ -22,7 +22,7 @@ maintainer-scripts = "assets/linux/debian"
 [dependencies]
 bytemuck = { workspace = true }
 clap = { workspace = true }
-cpal = "0.18"
+cpal = { workspace = true }
 digest-io = { workspace = true }
 egui = { workspace = true }
 fluxemu-audio = { workspace = true }
@@ -33,8 +33,8 @@ fluxemu-graphics = { workspace = true }
 fluxemu-input = { workspace = true }
 fluxemu-program = { workspace = true, features = ["mmap"] }
 fluxemu-runtime = { workspace = true }
-fontique = "0.11"
-gilrs = "0.11"
+fontique = { workspace = true }
+gilrs = { workspace = true }
 nalgebra = { workspace = true }
 palette = { workspace = true }
 pollster = { workspace = true }
