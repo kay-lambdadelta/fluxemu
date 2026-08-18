@@ -130,42 +130,52 @@ impl<P: FrontendPlatform> Frontend<P> {
         }
 
         // Ignore if that key participated in a hotkey(s)
-        if !was_relevant_for_hotkeys
-            && !self.frontend_overlay_active
-            && let Some(MachineContext { machine, .. }) = &self.machine_context
-            && let Some(program_specification) = machine.program_specification()
-        {
-            // Enter runtime
-            let runtime_guard = machine.enter_runtime();
-
-            let program_specific_mappings = physical_gamepad_configuration
-                .program_specific_mappings
-                .entry(program_specification.id.clone())
-                .or_default();
-
-            for logical_input_device_path in &physical_input_device_state.controlling_input_devices
-            {
-                let logical_input_device_specific_mappings = program_specific_mappings
-                    .entry(logical_input_device_path.clone())
-                    .or_insert_with(|| {
-                        let logical_input_device = runtime_guard
-                            .input_devices()
-                            .get(logical_input_device_path)
-                            .unwrap();
-
-                        logical_input_device
-                            .metadata()
-                            .default_mappings
-                            .iter()
-                            .map(|(from, to)| (*from, *to))
-                            .collect()
-                    });
-
-                if let Some(transformed_input) =
-                    logical_input_device_specific_mappings.get(&input_id)
+        if !was_relevant_for_hotkeys {
+            if !self.frontend_overlay_active {
+                if let Some(MachineContext { machine, .. }) = &self.machine_context
+                    && let Some(program_specification) = machine.program_specification()
                 {
-                    runtime_guard
-                        .insert_inputs(logical_input_device_path, [(*transformed_input, state)]);
+                    // Enter runtime
+                    let runtime_guard = machine.enter_runtime();
+
+                    let program_specific_mappings = physical_gamepad_configuration
+                        .program_specific_mappings
+                        .entry(program_specification.id.clone())
+                        .or_default();
+
+                    for logical_input_device_path in
+                        &physical_input_device_state.controlling_input_devices
+                    {
+                        let logical_input_device_specific_mappings = program_specific_mappings
+                            .entry(logical_input_device_path.clone())
+                            .or_insert_with(|| {
+                                let logical_input_device = runtime_guard
+                                    .input_devices()
+                                    .get(logical_input_device_path)
+                                    .unwrap();
+
+                                logical_input_device
+                                    .metadata()
+                                    .default_mappings
+                                    .iter()
+                                    .map(|(from, to)| (*from, *to))
+                                    .collect()
+                            });
+
+                        if let Some(transformed_input) =
+                            logical_input_device_specific_mappings.get(&input_id)
+                        {
+                            runtime_guard.insert_inputs(
+                                logical_input_device_path,
+                                [(*transformed_input, state)],
+                            );
+                        }
+                    }
+                }
+            } else {
+                if physical_input_device_state.rely_on_frontend_input_handling {
+                    self.egui_input_translator
+                        .insert_input(&self.egui_context, input_id, state);
                 }
             }
         }
@@ -175,7 +185,6 @@ impl<P: FrontendPlatform> Frontend<P> {
         &mut self,
         id: PhysicalInputDeviceId,
         name: impl Into<Cow<'static, str>>,
-        is_id_stable: bool,
         rely_on_frontend_input_handling: bool,
     ) {
         let name = name.into();
@@ -199,7 +208,6 @@ impl<P: FrontendPlatform> Frontend<P> {
         self.physical_input_devices.insert(
             id,
             PhysicalInputDeviceState {
-                is_id_stable,
                 name,
                 rely_on_frontend_input_handling,
                 gui_relevant_input_state: IndexMap::default(),

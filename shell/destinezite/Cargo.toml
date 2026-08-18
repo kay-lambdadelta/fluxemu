@@ -23,6 +23,7 @@ maintainer-scripts = "assets/linux/debian"
 bytemuck = { workspace = true }
 clap = { workspace = true }
 cpal = "0.18"
+digest-io = { workspace = true }
 egui = { workspace = true }
 fluxemu-audio = { workspace = true }
 fluxemu-egui-software-renderer = { workspace = true }
@@ -38,6 +39,7 @@ nalgebra = { workspace = true }
 palette = { workspace = true }
 pollster = { workspace = true }
 redb = { workspace = true }
+sha2 = { workspace = true }
 strum = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

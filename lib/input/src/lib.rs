@@ -34,13 +34,21 @@ impl InputId {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Default)]
-pub struct InputState(pub f32);
+pub struct InputState(f32);
 
 impl InputState {
     /// Digital press
     pub const PRESSED: Self = Self(1.0);
     /// Digital release
     pub const RELEASED: Self = Self(0.0);
+
+    pub fn new(value: f32) -> Self {
+        Self(value.clamp(0.0, 1.0))
+    }
+
+    pub fn as_analog(&self) -> f32 {
+        self.0
+    }
 
     /// Interprets self as a digital input
     pub fn as_digital(&self, threshhold: Option<f32>) -> bool {

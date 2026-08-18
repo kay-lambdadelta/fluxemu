@@ -1759,6 +1759,7 @@ dependencies = [
  "fluxemu-environment",
  "fluxemu-graphics",
  "fluxemu-input",
+ "fluxemu-math",
  "fluxemu-program",
  "fluxemu-range",
  "fluxemu-runtime",
@@ -1819,6 +1820,14 @@ dependencies = [
  "quote",
  "serde",
  "syn 3.0.3",
+]
+
+[[package]]
+name = "fluxemu-math"
+version = "0.1.0"
+dependencies = [
+ "nalgebra",
+ "serde",
 ]
 
 [[package]]
@@ -1893,6 +1902,7 @@ dependencies = [
  "bytemuck",
  "clap",
  "cpal",
+ "digest-io",
  "drm 0.15.0",
  "egui",
  "egui-wgpu",
@@ -1920,6 +1930,7 @@ dependencies = [
  "palette",
  "pollster 1.0.1",
  "redb",
+ "sha2",
  "softbuffer",
  "strum",
  "tracing",

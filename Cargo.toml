@@ -46,6 +46,7 @@ scc = "3.8"
 sdd = { version = "4.8" }
 serde = { version = "1.0", features = ["derive"] }
 serde_with = "3.22"
+sha2 = "0.11"
 strum = { version = "0.28", features = ["derive"] }
 tempfile = "3.27"
 thiserror = "2.0"
@@ -64,6 +65,7 @@ fluxemu-frontend = { path = "lib/frontend" }
 fluxemu-graphics = { path = "lib/graphics" }
 fluxemu-input = { path = "lib/input" }
 fluxemu-locale = { path = "lib/locale" }
+fluxemu-math = { path = "lib/math" }
 fluxemu-program = { path = "lib/program" }
 fluxemu-range = { path = "lib/range" }
 fluxemu-runtime = { path = "lib/runtime" }

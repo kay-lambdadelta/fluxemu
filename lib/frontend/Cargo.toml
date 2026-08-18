@@ -13,6 +13,7 @@ fluxemu-audio = { workspace = true }
 fluxemu-environment = { workspace = true }
 fluxemu-graphics = { workspace = true }
 fluxemu-input = { workspace = true }
+fluxemu-math = { workspace = true }
 fluxemu-program = { workspace = true }
 fluxemu-range = { workspace = true }
 fluxemu-runtime = { workspace = true }

@@ -35,6 +35,7 @@ use strum::{AsRefStr, EnumIter, IntoEnumIterator};
 use crate::{
     audio::{AudioRuntime, mixer::AudioMixer},
     file_browser::{FileBrowser, state::FileBrowserState},
+    input::translator::EguiInputTranslator,
     machine::{FactoryManager, SimulationController},
     toast::ToastManager,
 };
@@ -73,7 +74,6 @@ struct MachineContext {
 
 #[derive(Debug, Clone)]
 struct PhysicalInputDeviceState {
-    pub is_id_stable: bool,
     // Should the runtime translate this input device into something egui can understand
     pub rely_on_frontend_input_handling: bool,
     pub name: Cow<'static, str>,
@@ -104,8 +104,6 @@ pub struct Frontend<P: FrontendPlatform> {
     environment: Environment,
     machine_context: Option<MachineContext>,
     pending_machine: Option<SealedMachineBuilder<P>>,
-    #[allow(unused)]
-    audio_runtime: P::AudioRuntime,
     machine_factory_manager: Arc<FactoryManager<P>>,
     program_manager: Arc<ProgramManager>,
     machine_loading: bool,
@@ -116,8 +114,11 @@ pub struct Frontend<P: FrontendPlatform> {
     file_browser_state: FileBrowserState,
     machine_initialization_step: Option<MachineInitializationStep<P>>,
     toast_manager: ToastManager,
-    audio_mixer: Arc<AudioMixer>,
     font_definitions: FontDefinitions,
+    egui_input_translator: EguiInputTranslator,
+    #[allow(unused)]
+    audio_runtime: P::AudioRuntime,
+    audio_mixer: Arc<AudioMixer>,
 }
 
 impl<P: FrontendPlatform> Frontend<P> {
@@ -161,6 +162,7 @@ impl<P: FrontendPlatform> Frontend<P> {
             machine_initialization_step: initial_program_initialization_step,
             environment,
             font_definitions,
+            egui_input_translator: EguiInputTranslator::default(),
         }
     }
 
@@ -248,7 +250,11 @@ impl<P: FrontendPlatform> Frontend<P> {
         }
     }
 
-    pub fn run_menu(&mut self, external_input: RawInput) -> FullOutput {
+    pub fn run_menu(&mut self, mut external_input: RawInput) -> FullOutput {
+        external_input
+            .events
+            .extend(self.egui_input_translator.drain_events());
+
         self.egui_context.clone().run_ui(external_input, |ui| {
             if let Some(machine_initialization_step) = self.machine_initialization_step.take() {
                 self.service_machine_initialization_step(machine_initialization_step);

@@ -210,8 +210,6 @@ where
                     frontend.register_gamepad(
                         PhysicalInputDeviceId::PLATFORM_RESERVED,
                         "Keyboard",
-                        true,
-                        // egui winit takes care of this for us
                         false,
                     );
 

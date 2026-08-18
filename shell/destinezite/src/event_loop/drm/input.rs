@@ -388,8 +388,7 @@ pub fn handle_libinput_events<R: GraphicsRuntime>(
                     frontend.register_gamepad(
                         PhysicalInputDeviceId::PLATFORM_RESERVED,
                         "Keyboard",
-                        true,
-                        true,
+                        false,
                     );
                 }
 

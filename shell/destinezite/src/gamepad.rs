@@ -1,8 +1,10 @@
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, io::Write, time::Duration};
 
+use digest_io::IoWrapper;
 use fluxemu_frontend::{Frontend, FrontendPlatform};
 use fluxemu_input::{GamepadInputId, InputId, InputState, physical::PhysicalInputDeviceId};
 use gilrs::{Axis, Button, Event, GamepadId, Gilrs, GilrsBuilder};
+use sha2::{Digest, Sha256};
 use uuid::{NonNilUuid, Uuid};
 
 #[inline]
@@ -40,7 +42,7 @@ fn convert_gilrs2axis(axis: Axis, value: f32) -> Option<(InputId, InputState)> {
             } else {
                 GamepadInputId::LeftStickRight
             }),
-            InputState(value.abs().clamp(0.0, 1.0)),
+            InputState::new(value.abs()),
         )),
         Axis::LeftStickY => Some((
             InputId::Gamepad(if value < 0.0 {
@@ -48,7 +50,7 @@ fn convert_gilrs2axis(axis: Axis, value: f32) -> Option<(InputId, InputState)> {
             } else {
                 GamepadInputId::LeftStickUp
             }),
-            InputState(value.abs().clamp(0.0, 1.0)),
+            InputState::new(value.abs()),
         )),
         Axis::RightStickX => Some((
             InputId::Gamepad(if value < 0.0 {
@@ -56,7 +58,7 @@ fn convert_gilrs2axis(axis: Axis, value: f32) -> Option<(InputId, InputState)> {
             } else {
                 GamepadInputId::RightStickRight
             }),
-            InputState(value.abs().clamp(0.0, 1.0)),
+            InputState::new(value.abs()),
         )),
         Axis::RightStickY => Some((
             InputId::Gamepad(if value < 0.0 {
@@ -64,7 +66,7 @@ fn convert_gilrs2axis(axis: Axis, value: f32) -> Option<(InputId, InputState)> {
             } else {
                 GamepadInputId::RightStickUp
             }),
-            InputState(value.abs().clamp(0.0, 1.0)),
+            InputState::new(value.abs()),
         )),
         // Needs investigation what this actually means
         Axis::LeftZ => todo!(),
@@ -75,7 +77,7 @@ fn convert_gilrs2axis(axis: Axis, value: f32) -> Option<(InputId, InputState)> {
             } else {
                 GamepadInputId::DPadRight
             }),
-            InputState(value.abs().clamp(0.0, 1.0)),
+            InputState::new(value.abs()),
         )),
         Axis::DPadY => Some((
             InputId::Gamepad(if value < 0.0 {
@@ -83,23 +85,29 @@ fn convert_gilrs2axis(axis: Axis, value: f32) -> Option<(InputId, InputState)> {
             } else {
                 GamepadInputId::DPadDown
             }),
-            InputState(value.abs().clamp(0.0, 1.0)),
+            InputState::new(value.abs()),
         )),
         Axis::Unknown => None,
     }
 }
 
 #[inline]
-fn calculate_gamepad_id(gamepad: gilrs::Gamepad<'_>) -> (PhysicalInputDeviceId, bool) {
+fn calculate_gamepad_id(gamepad: gilrs::Gamepad<'_>) -> PhysicalInputDeviceId {
     if let Some(uuid) = NonNilUuid::new(Uuid::from_bytes(gamepad.uuid())) {
-        (PhysicalInputDeviceId::new(uuid), true)
+        PhysicalInputDeviceId::new(uuid)
     } else {
         tracing::warn!(
-            "Gamepad {} is not giving us an ID, assigning it a arbitary one",
+            "Gamepad {} is not giving us an ID, assigning it one",
             gamepad.name()
         );
 
-        (PhysicalInputDeviceId(Uuid::new_v4()), false)
+        let mut hasher = IoWrapper(Sha256::default());
+        hasher.write_all(gamepad.name().as_bytes()).unwrap();
+        let hash: [u8; 32] = hasher.0.finalize().into();
+
+        let uuid = Uuid::from_slice(&hash[..16]).unwrap();
+
+        PhysicalInputDeviceId(uuid)
     }
 }
 
@@ -125,10 +133,10 @@ impl GamepadContext {
 
         // Register existing gamepads
         for (gamepad_id, gamepad) in gilrs.gamepads() {
-            let (physical_id, is_stable) = calculate_gamepad_id(gamepad);
+            let physical_id = calculate_gamepad_id(gamepad);
             id_mappings.0.insert(gamepad_id, physical_id);
 
-            frontend.register_gamepad(physical_id, gamepad.name().to_string(), is_stable, true);
+            frontend.register_gamepad(physical_id, gamepad.name().to_string(), true);
         }
 
         Ok(Self { id_mappings, gilrs })
@@ -146,15 +154,10 @@ impl GamepadContext {
 
             match event {
                 gilrs::EventType::Connected => {
-                    let (physical_id, is_stable) = calculate_gamepad_id(gamepad);
+                    let physical_id = calculate_gamepad_id(gamepad);
                     self.id_mappings.0.insert(id, physical_id);
 
-                    frontend.register_gamepad(
-                        physical_id,
-                        gamepad.name().to_string(),
-                        is_stable,
-                        true,
-                    );
+                    frontend.register_gamepad(physical_id, gamepad.name().to_string(), true);
                 }
                 gilrs::EventType::Disconnected => {
                     let physical_id = self.id_mappings.0[&id];
@@ -165,9 +168,9 @@ impl GamepadContext {
                     if let Some(button) = convert_gilrs2input(button) {
                         let physical_id = self.id_mappings.0[&id];
 
-                        frontend.insert_input(physical_id, button, InputState(value));
+                        frontend.insert_input(physical_id, button, InputState::new(value));
                     } else {
-                        tracing::warn!("Did not recognize button: {:?}", button);
+                        tracing::debug!("Did not recognize button: {:?}", button);
                     }
                 }
                 gilrs::EventType::AxisChanged(axis, value, _) => {
@@ -176,7 +179,7 @@ impl GamepadContext {
 
                         frontend.insert_input(physical_id, input_id, state);
                     } else {
-                        tracing::warn!("Did not recognize axis: {:?}", axis);
+                        tracing::debug!("Did not recognize axis: {:?}", axis);
                     }
                 }
                 _ => {}
