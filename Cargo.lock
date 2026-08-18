@@ -660,7 +660,7 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6fac387a98bb7c37292057cffc56d62ecb629900026402633ae9160df93a8766"
 dependencies = [
- "nom 7.1.3",
+ "nom",
 ]
 
 [[package]]
@@ -1735,7 +1735,6 @@ dependencies = [
 name = "fluxemu-environment"
 version = "0.1.0"
 dependencies = [
- "cfg-if",
  "confique",
  "dirs",
  "fluxemu-input",
@@ -1764,9 +1763,7 @@ dependencies = [
  "fluxemu-runtime",
  "fluxemu-system",
  "indexmap 2.14.0",
- "itertools 0.15.0",
  "nalgebra",
- "num",
  "palette",
  "pollster 1.0.1",
  "rand 0.10.2",
@@ -1775,13 +1772,11 @@ dependencies = [
  "ron",
  "rust-i18n",
  "rustc-hash 2.1.3",
- "scc",
  "serde",
  "strum",
  "sysinfo",
  "tracing",
  "uuid",
- "versions",
 ]
 
 [[package]]
@@ -1790,14 +1785,10 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "fluxemu-math",
- "heapless",
- "itertools 0.15.0",
  "nalgebra",
  "palette",
  "rayon",
- "rustc-hash 2.1.3",
  "serde",
- "tracing",
  "wgpu",
 ]
 
@@ -1851,7 +1842,6 @@ dependencies = [
  "strum",
  "thiserror 2.0.20",
  "tracing",
- "versions",
 ]
 
 [[package]]
@@ -1885,7 +1875,6 @@ dependencies = [
  "thin-vec",
  "thiserror 2.0.20",
  "tracing",
- "versions",
 ]
 
 [[package]]
@@ -1940,8 +1929,6 @@ name = "fluxemu-shell-nuttallite"
 version = "0.1.0"
 dependencies = [
  "bindgen",
- "bytemuck",
- "clap",
  "egui",
  "fluxemu-audio",
  "fluxemu-egui-software-renderer",
@@ -1954,14 +1941,11 @@ dependencies = [
  "fluxemu-system-atari-2600",
  "fluxemu-system-nintendo-nes",
  "fluxemu-system-other-chip8",
- "itertools 0.15.0",
  "libc",
  "nalgebra",
  "palette",
  "redb",
  "ringbuffer",
- "ron",
- "strum",
  "thiserror 2.0.20",
  "tracing",
  "tracing-subscriber",
@@ -2082,7 +2066,6 @@ dependencies = [
  "nalgebra",
  "palette",
  "rand 0.10.2",
- "rangemap",
  "ringbuffer",
  "serde",
  "strum",
@@ -2851,15 +2834,6 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b4baf93f58d4425749ca49a51c50ebab072c5df6994d08fed93541c331481dc"
@@ -3452,15 +3426,6 @@ checksum = "d273983c5a657a70a3e8f2a01329822f3b8c8172b73826411a55751e404a0a4a"
 dependencies = [
  "memchr",
  "minimal-lexical",
-]
-
-[[package]]
-name = "nom"
-version = "8.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df9761775871bdef83bee530e60050f7e54b1105350d6884eb0fb4f46c2f9405"
-dependencies = [
- "memchr",
 ]
 
 [[package]]
@@ -6193,21 +6158,9 @@ version = "1.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2cefc03fd367c0c6d4305de1b312cf00248c4114f4a0418ce6a6af769e3b0bd9"
 dependencies = [
- "getrandom 0.4.3",
  "js-sys",
- "rand 0.10.2",
  "serde_core",
- "uuid-rng-internal",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "uuid-rng-internal"
-version = "1.24.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbb6e4d912010d7646ef4e5a0ba89bafc6d9f8fd617c53433fe2aa86d26a3b77"
-dependencies = [
- "rand 0.10.2",
 ]
 
 [[package]]
@@ -6254,16 +6207,6 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
-
-[[package]]
-name = "versions"
-version = "7.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80a7e511ce1795821207a837b7b1c8d8aca0c648810966ad200446ae58f6667f"
-dependencies = [
- "itertools 0.14.0",
- "nom 8.0.0",
-]
 
 [[package]]
 name = "walkdir"
@@ -7373,9 +7316,9 @@ dependencies = [
 
 [[package]]
 name = "zerovec-derive"
-version = "0.11.4"
+version = "0.11.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47402523226a02bfe5230160dc3ccc089aa6f6f19e7fcbb4e6f824bbb1b4aa62"
+checksum = "9f212a141d820099d57ffafb9569be9617a6f27d3dc881fbee8fb56642f917a9"
 dependencies = [
  "proc-macro2",
  "quote",

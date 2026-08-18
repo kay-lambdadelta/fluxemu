@@ -3,8 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use fluxemu_locale::Iso639Alpha3;
 use redb::{Key, TypeName, Value};
 use serde::{Deserialize, Serialize};
-use serde_with::{DisplayFromStr, serde_as};
-use versions::Versioning;
+use serde_with::serde_as;
 
 use crate::RomId;
 
@@ -28,8 +27,7 @@ pub enum ProgramInfo {
         /// If alternate files are required a different database entry is required
         languages: BTreeSet<Iso639Alpha3>,
         /// The version or revision of the program
-        #[serde_as(as = "Option<DisplayFromStr>")]
-        version: Option<Versioning>,
+        version: Option<String>,
     },
 }
 

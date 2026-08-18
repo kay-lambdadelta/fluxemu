@@ -27,8 +27,6 @@ firmware-file = "nuttx.uf2"
 crate-type = ["staticlib"]
 
 [dependencies]
-bytemuck = { workspace = true }
-clap = { workspace = true }
 egui = { workspace = true }
 fluxemu-audio = { workspace = true }
 fluxemu-egui-software-renderer = { workspace = true }
@@ -38,14 +36,11 @@ fluxemu-graphics = { workspace = true }
 fluxemu-input = { workspace = true }
 fluxemu-program = { workspace = true }
 fluxemu-runtime = { workspace = true }
-itertools = { workspace = true }
-libc = "0.2"
+libc = { workspace = true }
 nalgebra = { workspace = true }
 palette = { workspace = true }
 redb = { workspace = true }
 ringbuffer = { workspace = true }
-ron = { workspace = true }
-strum = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

@@ -9,7 +9,7 @@ harness = false
 name = "emulation"
 
 [dependencies]
-bitstream-io = "4.10"
+bitstream-io = { workspace = true }
 bytemuck = { workspace = true }
 bytes = { workspace = true }
 fluxemu-audio = { workspace = true }

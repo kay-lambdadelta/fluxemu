@@ -5,10 +5,10 @@ edition = "2024"
 license = "GPL-3.0-or-later"
 
 [dependencies]
-byte-unit = "5.2"
+byte-unit = { workspace = true }
 egui = { workspace = true, features = ["rayon"] }
-egui_extras = "0.36"
-egui-toast = "0.22"
+egui_extras = { workspace = true }
+egui-toast = { workspace = true }
 fluxemu-audio = { workspace = true }
 fluxemu-environment = { workspace = true }
 fluxemu-graphics = { workspace = true }
@@ -18,24 +18,20 @@ fluxemu-program = { workspace = true }
 fluxemu-runtime = { workspace = true }
 fluxemu-system = { workspace = true }
 indexmap = { workspace = true }
-itertools = { workspace = true }
 nalgebra = { workspace = true }
-num = { workspace = true }
 palette = { workspace = true }
 pollster = { workspace = true }
 rand = { workspace = true }
-rfd = { version = "0.17", optional = true }
+rfd = { workspace = true, optional = true }
 ringbuffer = { workspace = true }
 ron = { workspace = true }
 rust-i18n = { workspace = true }
 rustc-hash = { workspace = true }
-scc = { workspace = true }
 serde = { workspace = true }
 strum = { workspace = true }
-sysinfo = "0.39"
+sysinfo = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
-versions = { workspace = true }
 
 [features]
 external-file-dialog = ["dep:rfd"]

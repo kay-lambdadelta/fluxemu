@@ -18,7 +18,6 @@ heapless = { workspace = true }
 nalgebra = { workspace = true }
 palette = { workspace = true }
 rand = { workspace = true }
-rangemap = { workspace = true }
 ringbuffer = { workspace = true }
 serde = { workspace = true }
 strum = { workspace = true }

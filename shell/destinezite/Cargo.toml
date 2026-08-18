@@ -46,22 +46,22 @@ tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 
 # Webgpu required stuff
-egui-wgpu = { version = "0.36", optional = true }
+egui-wgpu = { workspace = true, optional = true }
 wgpu = { workspace = true, optional = true }
 
 # Windowing required stuff
-egui-winit = { version = "0.36", optional = true }
-softbuffer = { version = "0.4", optional = true }
-winit = { version = "0.30", optional = true }
+egui-winit = { workspace = true, optional = true }
+softbuffer = { workspace = true, optional = true }
+winit = { workspace = true, optional = true }
 
 # DRM required stuff
-drm = { version = "0.15", optional = true }
-evdev = { version = "0.13", optional = true }
-input = { version = "0.10", features = ["log"], optional = true }
-libseat = { version = "0.2", optional = true }
-nix = { version = "0.31", features = ["event", "poll"], optional = true }
-udev = { version = "0.9", optional = true }
-xkbcommon = { version = "0.9", optional = true }
+drm = { workspace = true, optional = true }
+evdev = { workspace = true, optional = true }
+input = { workspace = true, optional = true }
+libseat = { workspace = true, optional = true }
+nix = { workspace = true, features = ["event", "poll"], optional = true }
+udev = { workspace = true, optional = true }
+xkbcommon = { workspace = true, optional = true }
 
 # Machines
 fluxemu-system-atari-2600 = {
