@@ -2,7 +2,7 @@ use std::sync::Once;
 
 use egui::{Context, Event, Key, Modifiers, PointerButton, ViewportId};
 use fluxemu_input::{GamepadInputId, InputId, InputState, KeyboardInputId};
-use fluxemu_math::Rectangle;
+use fluxemu_math::rectangle::Rectangle;
 use nalgebra::{Point2, Vector2};
 
 const POINTER_SENSITIVITY: f32 = 2.0;
@@ -28,7 +28,7 @@ impl EguiInputTranslator {
         let rectangle = egui_context.input_for(ViewportId::ROOT, |state| {
             let rectangle = state.content_rect();
 
-            Rectangle::from_start_and_end(
+            Rectangle::from_min_and_max(
                 Point2::new(rectangle.min.x, rectangle.min.y),
                 Point2::new(rectangle.max.x, rectangle.max.y),
             )
@@ -348,8 +348,8 @@ impl EguiInputTranslator {
         if let Some(rectangle) = self.screen_rectangle {
             self.pointer_position = self
                 .pointer_position
-                .inf(&rectangle.end())
-                .sup(&rectangle.start);
+                .inf(&rectangle.max())
+                .sup(&rectangle.min);
         }
 
         self.events.push(Event::PointerMoved(

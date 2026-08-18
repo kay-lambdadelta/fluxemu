@@ -1,6 +1,6 @@
 use std::{hint::black_box, range::RangeInclusive, sync::Arc};
 
-use fluxemu_range::{ContiguousRange, RangeIntersection};
+use fluxemu_math::range::{ContiguousRange, RangeIntersection};
 use num::traits::{FromBytes, ToBytes, ops::bytes::NumBytes};
 
 use super::AddressSpace;

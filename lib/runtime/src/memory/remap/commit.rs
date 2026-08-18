@@ -1,6 +1,6 @@
 use std::{ops::RangeInclusive, sync::Arc};
 
-use fluxemu_range::{ContiguousRange, RangeIntersection};
+use fluxemu_math::range::{ContiguousRange, RangeIntersection};
 use rangemap::{RangeInclusiveMap, RangeInclusiveSet};
 
 use crate::{

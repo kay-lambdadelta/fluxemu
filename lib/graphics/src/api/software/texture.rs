@@ -5,7 +5,7 @@ use core::{
 };
 
 use bytemuck::{AnyBitPattern, NoUninit};
-use fluxemu_range::ContiguousRange;
+use fluxemu_math::range::ContiguousRange;
 use nalgebra::{Point2, Vector2};
 use rayon::{
     iter::{IndexedParallelIterator, ParallelIterator},

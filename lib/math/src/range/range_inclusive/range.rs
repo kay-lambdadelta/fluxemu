@@ -3,7 +3,7 @@ use core::range::RangeInclusive;
 use num::{Integer, ToPrimitive};
 use rangemap::{RangeInclusiveSet, StepLite};
 
-use crate::{ContiguousRange, RangeBase, RangeDifference, RangeIntersection};
+use crate::range::{ContiguousRange, RangeBase, RangeDifference, RangeIntersection};
 
 impl<Idx: Integer + Clone> RangeBase<Idx> for RangeInclusive<Idx> {
     #[inline]

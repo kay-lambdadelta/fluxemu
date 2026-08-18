@@ -1,4 +1,5 @@
 use egui::TextureId;
+use fluxemu_math::rectangle::Rectangle;
 use nalgebra::{Point2, Vector2};
 use palette::Srgba;
 
@@ -30,8 +31,7 @@ pub struct Triangle {
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct SolidQuad {
-    pub min: Point2<f32>,
-    pub max: Point2<f32>,
+    pub rectangle: Rectangle<f32>,
     // This is only for single color quads
     pub color: Srgba<f32>,
 }

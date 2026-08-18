@@ -1,7 +1,7 @@
 use std::{collections::HashMap, marker::PhantomData, ops::RangeInclusive};
 
 use fluxemu_graphics::api::software::texture::Texture;
-use fluxemu_range::ContiguousRange;
+use fluxemu_math::range::ContiguousRange;
 use fluxemu_runtime::{
     component::config::{ComponentConfig, LateContext},
     machine::builder::{ComponentBuilder, SchedulerParticipation},

@@ -2,7 +2,7 @@ use std::{any::Any, marker::PhantomData, ops::RangeInclusive};
 
 use fluxemu_definition_mos6502::{Mos6502, Mos6502Event, Pin};
 use fluxemu_graphics::api::software::texture::{AsViewTexture, OwnedTexture, Texture};
-use fluxemu_range::ContiguousRange;
+use fluxemu_math::range::ContiguousRange;
 use fluxemu_runtime::{
     RuntimeHandle,
     component::{

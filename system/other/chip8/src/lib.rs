@@ -3,8 +3,8 @@ use std::{marker::PhantomData, ops::RangeInclusive};
 use audio::Chip8AudioConfig;
 use bytes::Bytes;
 use display::Chip8DisplayConfig;
+use fluxemu_math::range::ContiguousRange;
 use fluxemu_program::{OtherSystem, SystemId};
-use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
     machine::builder::{MachineBuilder, RomRequirement, SealedMachineBuilder},
     memory::{MapTarget, MemoryMapCommand, Permissions},

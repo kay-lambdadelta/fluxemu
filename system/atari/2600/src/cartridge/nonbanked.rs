@@ -1,7 +1,7 @@
 use std::ops::RangeInclusive;
 
 use bytes::Bytes;
-use fluxemu_range::ContiguousRange;
+use fluxemu_math::range::ContiguousRange;
 use fluxemu_runtime::{
     Platform,
     component::{Component, config::ComponentConfig},

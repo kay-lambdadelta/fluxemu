@@ -6,7 +6,7 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 bytemuck = { workspace = true }
-fluxemu-range = { workspace = true }
+fluxemu-math = { workspace = true }
 heapless = { workspace = true }
 itertools = { workspace = true }
 nalgebra = { workspace = true }

@@ -1,6 +1,6 @@
 use std::{ops::RangeInclusive, sync::atomic::Ordering};
 
-use fluxemu_range::ContiguousRange;
+use fluxemu_math::range::ContiguousRange;
 use rangemap::{RangeInclusiveMap, RangeInclusiveSet};
 use sdd::{Guard, Owned, Tag};
 

@@ -1,7 +1,7 @@
 use std::{ops::RangeInclusive, str::FromStr};
 
+use fluxemu_math::range::ContiguousRange;
 use fluxemu_program::{AtariSystem, RomId, SystemId};
-use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
     machine::builder::{MachineBuilder, SealedMachineBuilder},
     memory::{Address, MapTarget, MemoryMapCommand, Permissions},

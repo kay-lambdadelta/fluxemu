@@ -9,7 +9,7 @@ use std::{
 
 use bit_vec::BitVec;
 use bytes::Bytes;
-use fluxemu_range::ContiguousRange;
+use fluxemu_math::range::ContiguousRange;
 use itertools::Itertools;
 use rangemap::RangeInclusiveMap;
 use rustc_hash::FxBuildHasher;

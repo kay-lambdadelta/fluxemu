@@ -1,4 +1,5 @@
 use egui::{Context, epaint::ClippedShape};
+use fluxemu_math::rectangle::Rectangle;
 use itertools::Itertools;
 use nalgebra::Point2;
 use palette::Srgba;
@@ -204,8 +205,7 @@ impl SolidQuad {
         }
 
         Some(SolidQuad {
-            min,
-            max,
+            rectangle: Rectangle::from_min_and_max(min, max),
             color: potential_color,
         })
     }

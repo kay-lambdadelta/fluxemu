@@ -1,7 +1,7 @@
 use std::{ops::RangeInclusive, sync::Arc};
 
 use fluxemu_input::{GamepadInputId, InputId, KeyboardInputId};
-use fluxemu_range::ContiguousRange;
+use fluxemu_math::range::ContiguousRange;
 use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     input::LogicalInputDevice,

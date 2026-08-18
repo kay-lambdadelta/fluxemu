@@ -67,7 +67,6 @@ fluxemu-input = { path = "lib/input" }
 fluxemu-locale = { path = "lib/locale" }
 fluxemu-math = { path = "lib/math" }
 fluxemu-program = { path = "lib/program" }
-fluxemu-range = { path = "lib/range" }
 fluxemu-runtime = { path = "lib/runtime" }
 fluxemu-system = { path = "lib/system" }
 

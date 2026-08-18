@@ -1,7 +1,7 @@
 use std::ops::RangeInclusive;
 
 use fluxemu_graphics::api::software::texture::{OwnedTexture, StorageMut, Texture};
-use fluxemu_range::ContiguousRange;
+use fluxemu_math::range::ContiguousRange;
 use nalgebra::{Point2, SMatrix, Vector2, Vector3};
 use palette::{
     Srgb, Srgba,
@@ -22,13 +22,15 @@ pub fn fill_quad<P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'st
     let texture_max = Point2::from(target_texture.size() - Vector2::from_element(1));
 
     let min = solid_quad
+        .rectangle
         .min
         .sup(&shape.min)
         .map(|c| c as usize)
         .inf(&texture_max);
 
     let max = solid_quad
-        .max
+        .rectangle
+        .max()
         .inf(&shape.max)
         .map(|c| c as usize)
         .inf(&texture_max);

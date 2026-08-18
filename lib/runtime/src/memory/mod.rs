@@ -6,7 +6,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use fluxemu_range::ContiguousRange;
+use fluxemu_math::range::ContiguousRange;
 use rangemap::RangeInclusiveMap;
 pub(crate) use registry::{
     LocalMemoryRegistryData, MemoryId, MemoryRegistryData, RegionInitializationData,

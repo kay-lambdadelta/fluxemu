@@ -1,7 +1,7 @@
 use std::{any::Any, fmt::Debug, ops::RangeInclusive};
 
 use fluxemu_input::{InputId, InputState};
-use fluxemu_range::ContiguousRange;
+use fluxemu_math::range::ContiguousRange;
 use nalgebra::SVector;
 use ringbuffer::AllocRingBuffer;
 

@@ -11,7 +11,7 @@ name = "egui_software"
 [dependencies]
 egui = { workspace = true }
 fluxemu-graphics = { workspace = true }
-fluxemu-range = { workspace = true }
+fluxemu-math = { workspace = true }
 heapless = { workspace = true }
 itertools = { workspace = true }
 multiversion = "0.8"

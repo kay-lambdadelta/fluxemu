@@ -3,7 +3,7 @@ use std::{fmt::Debug, io::Cursor, ops::RangeInclusive};
 use bitstream_io::{BigEndian, BitRead2, BitReader};
 use bytes::Bytes;
 use expansion_device::DefaultExpansionDevice;
-use fluxemu_range::ContiguousRange;
+use fluxemu_math::range::ContiguousRange;
 use thiserror::Error;
 
 pub mod expansion_device;

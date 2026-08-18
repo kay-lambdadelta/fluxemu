@@ -1,8 +1,8 @@
 use std::{collections::HashMap, ops::RangeInclusive, path::Path, sync::LazyLock};
 
-use fluxemu_range::ContiguousRange;
-
 use super::{AtariSystem, NintendoSystem, OtherSystem, SegaSystem, SystemId};
+
+use fluxemu_math::range::ContiguousRange;
 
 #[derive(Debug)]
 struct MagicTableEntry {

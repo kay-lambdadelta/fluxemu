@@ -3,8 +3,8 @@ use std::{marker::PhantomData, ops::RangeInclusive};
 pub use cartridge::ines::INes;
 use cartridge::{CartParams, ines::TimingMode};
 use fluxemu_definition_mos6502::{Mos6502Config, Mos6502Kind};
+use fluxemu_math::range::ContiguousRange;
 use fluxemu_program::{NintendoSystem, SystemId};
-use fluxemu_range::ContiguousRange;
 use fluxemu_runtime::{
     ResourcePath,
     machine::builder::{MachineBuilder, RomRequirement, SealedMachineBuilder},

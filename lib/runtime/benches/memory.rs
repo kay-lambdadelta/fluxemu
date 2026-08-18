@@ -1,7 +1,7 @@
 use std::{hint::black_box, ops::RangeInclusive, sync::Arc};
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use fluxemu_range::ContiguousRange;
+use fluxemu_math::range::ContiguousRange;
 use fluxemu_runtime::{
     machine::Machine,
     memory::{AddressSpaceId, MapTarget, MemoryMapCommand, Permissions},

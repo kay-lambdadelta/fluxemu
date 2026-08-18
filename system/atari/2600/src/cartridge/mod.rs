@@ -1,6 +1,6 @@
 use std::ops::RangeInclusive;
 
-use fluxemu_range::ContiguousRange;
+use fluxemu_math::range::ContiguousRange;
 use fluxemu_runtime::memory::Address;
 
 pub mod banked;
