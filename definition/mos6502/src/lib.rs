@@ -2,11 +2,9 @@
 
 extern crate alloc;
 
-use core::fmt::Debug;
-
-use serde::{Deserialize, Serialize};
-
 use crate::cycle::Cycle;
+use core::fmt::Debug;
+use serde::{Deserialize, Serialize};
 
 mod component;
 mod cycle;
@@ -24,24 +22,24 @@ pub const STACK_BASE_ADDRESS: u16 = 0x0100;
 pub use component::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Bus {
+struct Bus {
     pub address: u16,
     pub data: u8,
 }
 
 /// We don't store this in memory bitpacked for performance reasons
 #[derive(Copy, Clone, PartialEq, Serialize, Deserialize, Debug, Default)]
-pub struct FlagRegister {
-    negative: bool,
-    overflow: bool,
-    decimal: bool,
-    interrupt_disable: bool,
-    zero: bool,
-    carry: bool,
+struct FlagRegister {
+    pub negative: bool,
+    pub overflow: bool,
+    pub decimal: bool,
+    pub interrupt_disable: bool,
+    pub zero: bool,
+    pub carry: bool,
 }
 
 impl FlagRegister {
-    pub fn to_byte(&self, break_: bool) -> u8 {
+    pub fn to_byte(self, break_: bool) -> u8 {
         (self.negative as u8) << 7
             | (self.overflow as u8) << 6
             | 1 << 5
