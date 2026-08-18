@@ -1,4 +1,4 @@
-use std::{ffi::CString, ops::Deref, os::unix::ffi::OsStrExt};
+use std::{ffi::CString, os::unix::ffi::OsStrExt};
 
 use fluxemu_environment::STORAGE_DIRECTORY;
 
