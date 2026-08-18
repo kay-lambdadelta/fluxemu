@@ -1,5 +1,6 @@
 use crate::{
-    FlagRegister, Mos6502,
+    FlagRegister,
+    component::Mos6502,
     cycle::{
         AddToPointerLikeRegisterSource, ArithmeticOperandInterpretation, BusMode, Cycle, Flag,
         GeneralPurposeRegister, IncrementOperand, MoveDestination, MoveSource, Phi2,
@@ -10,9 +11,10 @@ use crate::{
         decode_group3_space_instruction, decode_undocumented_space_instruction,
     },
     instruction::Mos6502InstructionSet,
+    variant::Variant,
 };
 
-impl Mos6502 {
+impl<V: Variant> Mos6502<V> {
     #[inline]
     pub(super) fn handle_phi2(&mut self, current_cycle: &Cycle) {
         for &step in current_cycle.phi2.iter() {
@@ -383,25 +385,18 @@ impl Mos6502 {
         let argument = (self.state.bus.data >> 2) & 0b111;
 
         let (opcode, addressing_mode) = match instruction_identifier {
-            InstructionGroup::Group3 => decode_group3_space_instruction(
+            InstructionGroup::Group3 => {
+                decode_group3_space_instruction(secondary_instruction_identifier, argument)
+            }
+            InstructionGroup::Group1 => {
+                decode_group1_space_instruction::<V>(secondary_instruction_identifier, argument)
+            }
+            InstructionGroup::Group2 => {
+                decode_group2_space_instruction::<V>(secondary_instruction_identifier, argument)
+            }
+            InstructionGroup::Undocumented => decode_undocumented_space_instruction::<V>(
                 secondary_instruction_identifier,
                 argument,
-                self.config.kind,
-            ),
-            InstructionGroup::Group1 => decode_group1_space_instruction(
-                secondary_instruction_identifier,
-                argument,
-                self.config.kind,
-            ),
-            InstructionGroup::Group2 => decode_group2_space_instruction(
-                secondary_instruction_identifier,
-                argument,
-                self.config.kind,
-            ),
-            InstructionGroup::Undocumented => decode_undocumented_space_instruction(
-                secondary_instruction_identifier,
-                argument,
-                self.config.kind,
             ),
         };
 
@@ -411,11 +406,10 @@ impl Mos6502 {
         };
 
         assert!(
-            instruction.addressing_mode.is_none_or(|addressing_mode| {
-                addressing_mode.is_valid_for_mode(self.config.kind)
-            }),
-            "Invalid addressing mode for instruction for mode {:?}: {:?}",
-            self.config.kind,
+            instruction
+                .addressing_mode
+                .is_none_or(|addressing_mode| { V::is_addressing_mode_valid(&addressing_mode) }),
+            "Invalid addressing mode for instruction for mode: {:?}",
             instruction,
         );
 

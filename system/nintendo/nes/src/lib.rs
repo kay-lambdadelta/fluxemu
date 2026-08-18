@@ -2,7 +2,7 @@ use std::{marker::PhantomData, ops::RangeInclusive};
 
 pub use cartridge::ines::INes;
 use cartridge::{CartParams, ines::TimingMode};
-use fluxemu_definition_mos6502::{Mos6502Config, Mos6502Kind};
+use fluxemu_definition_mos6502::variant::Ricoh2A0x;
 use fluxemu_math::range::ContiguousRange;
 use fluxemu_program::{NintendoSystem, SystemId};
 use fluxemu_runtime::{
@@ -306,12 +306,10 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> System<P> for Nes
 
                 let (machine_builder, processor) = machine_builder.component(
                     "cpu",
-                    Mos6502Config {
-                        frequency: processor_frequency,
-                        assigned_address_space: cpu_address_space,
-                        kind: Mos6502Kind::Ricoh2A0x,
-                        broken_ror: false,
-                    },
+                    fluxemu_definition_mos6502::Config::<Ricoh2A0x>::new(
+                        processor_frequency,
+                        cpu_address_space,
+                    ),
                 );
 
                 let (machine_builder, _) = machine_builder.component(

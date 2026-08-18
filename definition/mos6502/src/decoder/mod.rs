@@ -6,8 +6,8 @@ pub use undocumented::decode_undocumented_space_instruction;
 
 use super::instruction::AddressingMode;
 use crate::{
-    Mos6502Kind,
     instruction::{Mos6502AddressingMode, Wdc65C02AddressingMode},
+    variant::Variant,
 };
 
 mod group1;
@@ -48,14 +48,14 @@ impl AddressingMode {
     }
 
     #[inline]
-    pub fn from_group2_addressing(addressing_mode: u8, kind: Mos6502Kind) -> Option<Self> {
+    pub fn from_group2_addressing<V: Variant>(addressing_mode: u8) -> Option<Self> {
         Some(match addressing_mode {
             0b000 => AddressingMode::Mos6502(Mos6502AddressingMode::Immediate),
             0b001 => AddressingMode::Mos6502(Mos6502AddressingMode::ZeroPage),
             0b010 => AddressingMode::Mos6502(Mos6502AddressingMode::Accumulator),
             0b011 => AddressingMode::Mos6502(Mos6502AddressingMode::Absolute),
             0b100 => {
-                if kind == Mos6502Kind::Wdc65C02 {
+                if V::WDC_VARIANT {
                     AddressingMode::Wdc65C02(Wdc65C02AddressingMode::ZeroPageIndirect)
                 } else {
                     // Above parsing code should turn this into a JAM

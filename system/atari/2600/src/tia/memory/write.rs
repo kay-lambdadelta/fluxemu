@@ -1,4 +1,4 @@
-use fluxemu_definition_mos6502::{Mos6502, Mos6502Event, Pin};
+use fluxemu_definition_mos6502::{Mos6502, Mos6502Event, Pin, variant::Mos6507};
 use fluxemu_runtime::{RuntimeHandle, event::EventMode, scheduler::Period};
 use nalgebra::Point2;
 
@@ -56,7 +56,7 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
                     let until = Period::from_num(SCANLINE_LENGTH - self.state.electron_beam.x)
                         / R::frequency();
 
-                    runtime.schedule_event::<Mos6502>(
+                    runtime.schedule_event::<Mos6502<Mos6507>>(
                         &self.cpu_path,
                         EventMode::Once,
                         timestamp,
@@ -65,7 +65,7 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
                             value: false,
                         },
                     );
-                    runtime.schedule_event::<Mos6502>(
+                    runtime.schedule_event::<Mos6502<Mos6507>>(
                         &self.cpu_path,
                         EventMode::Once,
                         timestamp + until,

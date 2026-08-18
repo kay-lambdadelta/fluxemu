@@ -1,6 +1,6 @@
 use std::{any::Any, marker::PhantomData, ops::RangeInclusive};
 
-use fluxemu_definition_mos6502::{Mos6502, Mos6502Event, Pin};
+use fluxemu_definition_mos6502::{Mos6502, Mos6502Event, Pin, variant::Ricoh2A0x};
 use fluxemu_graphics::api::software::texture::{AsViewTexture, OwnedTexture, Texture};
 use fluxemu_math::range::ContiguousRange;
 use fluxemu_runtime::{
@@ -451,7 +451,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
 
                         let page = u16::from(*buffer) << 8;
 
-                        runtime.schedule_event::<Mos6502>(
+                        runtime.schedule_event::<Mos6502<Ricoh2A0x>>(
                             &self.processor_path,
                             EventMode::Once,
                             timestamp,
@@ -468,7 +468,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                             timestamp + (processor_frequency.recip() * 514);
 
                         // Make sure the cpu wakes up
-                        runtime.schedule_event::<Mos6502>(
+                        runtime.schedule_event::<Mos6502<Ricoh2A0x>>(
                             &self.processor_path,
                             EventMode::Once,
                             next_processor_rdy_high,
@@ -509,7 +509,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     self.state.entered_vblank = true;
 
                     if self.state.vblank_nmi_enabled {
-                        runtime.schedule_event::<Mos6502>(
+                        runtime.schedule_event::<Mos6502<Ricoh2A0x>>(
                             &self.processor_path,
                             EventMode::Once,
                             timestamp,
@@ -534,7 +534,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     self.state.entered_vblank = false;
                     self.state.odd_frame = !self.state.odd_frame;
 
-                    runtime.schedule_event::<Mos6502>(
+                    runtime.schedule_event::<Mos6502<Ricoh2A0x>>(
                         &self.processor_path,
                         EventMode::Once,
                         timestamp,

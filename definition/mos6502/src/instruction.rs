@@ -3,12 +3,14 @@ use core::fmt::Display;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    IRQ_VECTOR, Mos6502, Mos6502Kind,
+    IRQ_VECTOR,
+    component::Mos6502,
     cycle::{
         AddToPointerLikeRegisterSource, ArithmeticOperandInterpretation, BusMode, Cycle, Flag,
         GeneralPurposeRegister, IncrementOperand, MoveDestination, MoveSource, Phi1, Phi2,
         PointerLikeRegister, SetAddressBusSource, ShiftDirection,
     },
+    variant::Variant,
 };
 
 // https://www.pagetable.com/c64ref/6502/?tab=2
@@ -38,20 +40,6 @@ pub enum Wdc65C02AddressingMode {
 pub enum AddressingMode {
     Mos6502(Mos6502AddressingMode),
     Wdc65C02(Wdc65C02AddressingMode),
-}
-
-impl AddressingMode {
-    pub fn is_valid_for_mode(&self, mode: Mos6502Kind) -> bool {
-        match mode {
-            Mos6502Kind::Mos6502 => matches!(self, AddressingMode::Mos6502(_)),
-            Mos6502Kind::Mos6507 => matches!(self, AddressingMode::Mos6502(_)),
-            Mos6502Kind::Ricoh2A0x => matches!(self, AddressingMode::Mos6502(_)),
-            Mos6502Kind::Wdc65C02 => matches!(
-                self,
-                AddressingMode::Mos6502(_) | AddressingMode::Wdc65C02(_)
-            ),
-        }
-    }
 }
 
 #[derive(
@@ -174,7 +162,7 @@ pub struct Mos6502InstructionSet {
     pub addressing_mode: Option<AddressingMode>,
 }
 
-impl Mos6502 {
+impl<V: Variant> Mos6502<V> {
     pub(super) fn push_steps_for_instruction(&mut self, instruction: &Mos6502InstructionSet) {
         if let Some(addressing_mode) = instruction.addressing_mode {
             match addressing_mode {
@@ -268,10 +256,8 @@ impl Mos6502 {
                                     destination: PointerLikeRegister::AddressBus,
                                     interpretation: ArithmeticOperandInterpretation::Unsigned,
                                     // Insert carry cycle if the bug is not present
-                                    insert_adjustment_cycle_upon_carry: !self
-                                        .config
-                                        .kind
-                                        .has_absolute_indirect_page_wrap_errata(),
+                                    insert_adjustment_cycle_upon_carry:
+                                        !V::HAS_ABSOLUTE_INDIRECT_PAGE_WRAP_ERRATA,
                                 },
                             ],
                         ),

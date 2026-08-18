@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use fluxemu_definition_mos6502::{Mos6502Config, Mos6502Kind};
+use fluxemu_definition_mos6502::variant::Mos6507;
 use fluxemu_definition_mos6532::Mos6532RiotConfig;
 use fluxemu_program::{AtariSystem, SystemId};
 use fluxemu_runtime::{
@@ -131,12 +131,7 @@ fn common<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>>(
 
     let (machine_builder, cpu) = machine_builder.component(
         "mos6502",
-        Mos6502Config {
-            frequency: R::frequency() / 3,
-            kind: Mos6502Kind::Mos6507,
-            assigned_address_space: cpu_address_space,
-            broken_ror: false,
-        },
+        fluxemu_definition_mos6502::Config::<Mos6507>::new(R::frequency() / 3, cpu_address_space),
     );
 
     let (machine_builder, _) = machine_builder.component(

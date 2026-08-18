@@ -1,7 +1,4 @@
-use crate::{
-    Mos6502Kind,
-    instruction::{AddressingMode, Mos6502AddressingMode, Mos6502Opcode, Opcode},
-};
+use crate::instruction::{AddressingMode, Mos6502AddressingMode, Mos6502Opcode, Opcode};
 
 // This one is hellish to decode
 
@@ -9,7 +6,6 @@ use crate::{
 pub fn decode_group3_space_instruction(
     instruction_identifier: u8,
     argument: u8,
-    _kind: Mos6502Kind,
 ) -> (Opcode, Option<AddressingMode>) {
     let addressing_mode = AddressingMode::from_group1_addressing(argument);
 

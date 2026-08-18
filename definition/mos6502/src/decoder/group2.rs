@@ -1,20 +1,19 @@
 use crate::{
-    Mos6502Kind,
     instruction::{AddressingMode, Mos6502AddressingMode, Mos6502Opcode, Opcode},
+    variant::Variant,
 };
 
 #[inline]
-pub fn decode_group2_space_instruction(
+pub fn decode_group2_space_instruction<V: Variant>(
     instruction_identifier: u8,
     argument: u8,
-    kind: Mos6502Kind,
 ) -> (Opcode, Option<AddressingMode>) {
-    let addressing_mode = AddressingMode::from_group2_addressing(argument, kind);
+    let addressing_mode = AddressingMode::from_group2_addressing::<V>(argument);
 
     match instruction_identifier {
         0b000 => match argument {
             0b000 => {
-                if kind == Mos6502Kind::Wdc65C02 {
+                if V::WDC_VARIANT {
                     (
                         Opcode::Mos6502(Mos6502Opcode::Nop),
                         Some(AddressingMode::Mos6502(Mos6502AddressingMode::Immediate)),
@@ -24,7 +23,7 @@ pub fn decode_group2_space_instruction(
                 }
             }
             0b100 => {
-                if kind == Mos6502Kind::Wdc65C02 {
+                if V::WDC_VARIANT {
                     (
                         Opcode::Mos6502(Mos6502Opcode::Ora),
                         Some(addressing_mode.unwrap()),
@@ -41,7 +40,7 @@ pub fn decode_group2_space_instruction(
         },
         0b001 => match argument {
             0b000 => {
-                if kind == Mos6502Kind::Wdc65C02 {
+                if V::WDC_VARIANT {
                     (
                         Opcode::Mos6502(Mos6502Opcode::Nop),
                         Some(AddressingMode::Mos6502(Mos6502AddressingMode::Immediate)),
@@ -51,7 +50,7 @@ pub fn decode_group2_space_instruction(
                 }
             }
             0b100 => {
-                if kind == Mos6502Kind::Wdc65C02 {
+                if V::WDC_VARIANT {
                     (
                         Opcode::Mos6502(Mos6502Opcode::And),
                         Some(addressing_mode.unwrap()),
@@ -68,7 +67,7 @@ pub fn decode_group2_space_instruction(
         },
         0b010 => match argument {
             0b000 => {
-                if kind == Mos6502Kind::Wdc65C02 {
+                if V::WDC_VARIANT {
                     (
                         Opcode::Mos6502(Mos6502Opcode::Nop),
                         Some(AddressingMode::Mos6502(Mos6502AddressingMode::Immediate)),
@@ -78,7 +77,7 @@ pub fn decode_group2_space_instruction(
                 }
             }
             0b100 => {
-                if kind == Mos6502Kind::Wdc65C02 {
+                if V::WDC_VARIANT {
                     (
                         Opcode::Mos6502(Mos6502Opcode::Eor),
                         Some(addressing_mode.unwrap()),
@@ -95,7 +94,7 @@ pub fn decode_group2_space_instruction(
         },
         0b011 => match argument {
             0b000 => {
-                if kind == Mos6502Kind::Wdc65C02 {
+                if V::WDC_VARIANT {
                     (
                         Opcode::Mos6502(Mos6502Opcode::Nop),
                         Some(AddressingMode::Mos6502(Mos6502AddressingMode::Immediate)),
@@ -105,7 +104,7 @@ pub fn decode_group2_space_instruction(
                 }
             }
             0b100 => {
-                if kind == Mos6502Kind::Wdc65C02 {
+                if V::WDC_VARIANT {
                     (
                         Opcode::Mos6502(Mos6502Opcode::Adc),
                         Some(addressing_mode.unwrap()),
@@ -126,7 +125,7 @@ pub fn decode_group2_space_instruction(
                 Some(AddressingMode::Mos6502(Mos6502AddressingMode::Immediate)),
             ),
             0b100 => {
-                if kind == Mos6502Kind::Wdc65C02 {
+                if V::WDC_VARIANT {
                     (
                         Opcode::Mos6502(Mos6502Opcode::Sta),
                         Some(addressing_mode.unwrap()),
@@ -174,7 +173,7 @@ pub fn decode_group2_space_instruction(
                 (Opcode::Mos6502(Mos6502Opcode::Ldx), fixed_mode)
             }
             0b100 => {
-                if kind == Mos6502Kind::Wdc65C02 {
+                if V::WDC_VARIANT {
                     (
                         Opcode::Mos6502(Mos6502Opcode::Lda),
                         Some(addressing_mode.unwrap()),
@@ -193,7 +192,7 @@ pub fn decode_group2_space_instruction(
                 Some(AddressingMode::Mos6502(Mos6502AddressingMode::Immediate)),
             ),
             0b100 => {
-                if kind == Mos6502Kind::Wdc65C02 {
+                if V::WDC_VARIANT {
                     (
                         Opcode::Mos6502(Mos6502Opcode::Cmp),
                         Some(addressing_mode.unwrap()),
@@ -216,7 +215,7 @@ pub fn decode_group2_space_instruction(
                 Some(AddressingMode::Mos6502(Mos6502AddressingMode::Immediate)),
             ),
             0b100 => {
-                if kind == Mos6502Kind::Wdc65C02 {
+                if V::WDC_VARIANT {
                     (
                         Opcode::Mos6502(Mos6502Opcode::Sbc),
                         Some(addressing_mode.unwrap()),
