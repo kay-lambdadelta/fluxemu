@@ -14,8 +14,8 @@ impl<P: Platform> System<P> for Gameboy {
 
     fn build(
         &self,
-        quirks: Self::Quirks,
-        machine_builder: MachineBuilder<P>,
+        _quirks: Self::Quirks,
+        _machine_builder: MachineBuilder<P>,
     ) -> SealedMachineBuilder<P> {
         todo!()
     }
