@@ -5,7 +5,7 @@ use core::{
 };
 
 use bytemuck::{AnyBitPattern, NoUninit};
-use fluxemu_math::range::ContiguousRange;
+use fluxemu_math::{range::ContiguousRange, rectangle::Rectangle};
 use nalgebra::{Point2, Vector2};
 use rayon::{
     iter::{IndexedParallelIterator, ParallelIterator},
@@ -19,12 +19,10 @@ pub type RefMutTexture<'a, T> = Texture<&'a mut [T]>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Texture<STORAGE: Storage> {
+    // Subview within the storage's absolute coordinates this texture represents
+    view: Rectangle<usize>,
     // The size of texture the storage represents
     storage_size: Vector2<usize>,
-    // Offset within the storage's absolute coordinates this view represents
-    view_offset: Point2<usize>,
-    // The size of the view in pixels, equal to or less than storage_size - view_offset
-    view_extent: Vector2<usize>,
     // The storage backing this texture
     storage: STORAGE,
 }
@@ -79,8 +77,7 @@ impl<STORAGE: Storage> Texture<STORAGE> {
 
         Self {
             storage_size: Vector2::new(width, height),
-            view_offset: Point2::new(0, 0),
-            view_extent: Vector2::new(width, height),
+            view: Rectangle::from_size(Vector2::new(width, height)),
             storage,
         }
     }
@@ -97,8 +94,7 @@ impl<STORAGE: Storage> Texture<STORAGE> {
         debug_assert!(point.x < self.width());
         debug_assert!(point.y < self.height());
 
-        let index =
-            (self.view_offset.y + point.y) * self.storage_size.x + (self.view_offset.x + point.x);
+        let index = (self.view.min.y + point.y) * self.storage_size.x + (self.view.min.x + point.x);
 
         debug_assert!(index < self.storage.len());
 
@@ -123,8 +119,7 @@ impl<STORAGE: Storage> Texture<STORAGE> {
         debug_assert!(point.x < self.width());
         debug_assert!(point.y < self.height());
 
-        let index =
-            (self.view_offset.y + point.y) * self.storage_size.x + (self.view_offset.x + point.x);
+        let index = (self.view.min.y + point.y) * self.storage_size.x + (self.view.min.x + point.x);
 
         debug_assert!(index < self.storage.len());
 
@@ -134,13 +129,13 @@ impl<STORAGE: Storage> Texture<STORAGE> {
     /// Get the width of the texture (or the view, if applicable)
     #[inline]
     pub fn width(&self) -> usize {
-        self.view_extent.x
+        self.view.width()
     }
 
     /// Get the height of the texture (or the view, if applicable)
     #[inline]
     pub fn height(&self) -> usize {
-        self.view_extent.y
+        self.view.height()
     }
 
     /// Get the size of the texture (or the view, if applicable)
@@ -164,8 +159,7 @@ impl<STORAGE: Storage> Texture<STORAGE> {
 
         Texture {
             storage: &self.storage,
-            view_extent: end - start,
-            view_offset: start,
+            view: Rectangle::from_min_and_max(start, end),
             storage_size: self.storage_size,
         }
     }
@@ -188,8 +182,7 @@ impl<STORAGE: Storage> Texture<STORAGE> {
 
         Texture {
             storage: &mut self.storage,
-            view_extent: end - start,
-            view_offset: start,
+            view: Rectangle::from_min_and_max(start, end),
             storage_size: self.storage_size,
         }
     }
@@ -205,8 +198,7 @@ impl<STORAGE: Storage> Texture<STORAGE> {
 
         Texture {
             storage: self.storage,
-            view_extent: end - start,
-            view_offset: start,
+            view: Rectangle::from_min_and_max(start, end),
             storage_size: self.storage_size,
         }
     }
@@ -328,15 +320,14 @@ impl<STORAGE: Storage> Texture<STORAGE> {
         STORAGE::Pixel: Clone,
     {
         // Each branch is a less efficient way of filling the texture
-
-        if self.view_offset == Point2::new(0, 0) && self.storage_size == self.view_extent {
+        if self.view.min == Point2::new(0, 0) && self.storage_size == self.view.size {
             // The view on the storage is wholly overlapping the storage
             self.storage.fill(value);
-        } else if self.view_extent.x == self.storage_size.x {
+        } else if self.view.width() == self.storage_size.x {
             // This is a single contiguous memory block
             let range = RangeInclusive::from_start_and_length(
-                self.view_offset.y * self.storage_size.x,
-                self.view_extent.x * self.view_extent.y,
+                self.view.min.y * self.storage_size.x,
+                self.view.width() * self.view.height(),
             );
 
             self.storage[range].fill(value)
@@ -350,14 +341,13 @@ impl<STORAGE: Storage> Texture<STORAGE> {
 
     #[inline]
     pub fn rows(&self) -> impl Iterator<Item = &[STORAGE::Pixel]> {
-        let view_extent = self.view_extent;
-        let view_offset = self.view_offset;
+        let view = self.view;
 
         self.storage
             .chunks_exact(self.storage_size.x)
-            .skip(view_offset.y)
-            .take(view_extent.y)
-            .map(move |row| &row[view_offset.x..view_offset.x + view_extent.x])
+            .skip(view.min.y)
+            .take(view.height())
+            .map(move |row| &row[view.min.x..view.min.x + view.width()])
     }
 
     #[inline]
@@ -365,14 +355,13 @@ impl<STORAGE: Storage> Texture<STORAGE> {
     where
         STORAGE: StorageMut,
     {
-        let view_extent = self.view_extent;
-        let view_offset = self.view_offset;
+        let view = self.view;
 
         self.storage
             .chunks_exact_mut(self.storage_size.x)
-            .skip(view_offset.y)
-            .take(view_extent.y)
-            .map(move |row| &mut row[view_offset.x..view_offset.x + view_extent.x])
+            .skip(view.min.y)
+            .take(view.height())
+            .map(move |row| &mut row[view.min.x..view.min.x + view.width()])
     }
 
     /// Iterate over the rows of this texture in parallel
@@ -381,14 +370,13 @@ impl<STORAGE: Storage> Texture<STORAGE> {
     where
         STORAGE::Pixel: Send + Sync,
     {
-        let view_extent = self.view_extent;
-        let view_offset = self.view_offset;
+        let view = self.view;
 
         self.storage
             .par_chunks_exact(self.storage_size.x)
-            .skip(view_offset.y)
-            .take(view_extent.y)
-            .map(move |row| &row[view_offset.x..view_offset.x + view_extent.x])
+            .skip(view.min.y)
+            .take(view.height())
+            .map(move |row| &row[view.min.x..view.min.x + view.width()])
     }
 
     /// Mutably iterate over the rows of this texture in parallel
@@ -398,14 +386,13 @@ impl<STORAGE: Storage> Texture<STORAGE> {
         STORAGE: StorageMut,
         STORAGE::Pixel: Send + Sync,
     {
-        let view_extent = self.view_extent;
-        let view_offset = self.view_offset;
+        let view = self.view;
 
         self.storage
             .par_chunks_exact_mut(self.storage_size.x)
-            .skip(view_offset.y)
-            .take(view_extent.y)
-            .map(move |row| &mut row[view_offset.x..view_offset.x + view_extent.x])
+            .skip(view.min.y)
+            .take(view.height())
+            .map(move |row| &mut row[view.min.x..view.min.x + view.width()])
     }
 
     /// Iterate over the pixels in this texture
@@ -453,10 +440,10 @@ impl<STORAGE: Storage> Texture<STORAGE> {
     /// Returns `None` if the texture is not contiguous in memory.
     #[inline]
     pub fn as_slice(&self) -> Option<&[STORAGE::Pixel]> {
-        if self.storage_size.x == self.view_extent.x {
+        if self.storage_size.x == self.view.width() {
             let slice = &self.storage[RangeInclusive::from_start_and_length(
-                self.view_offset.y * self.storage_size.x,
-                self.view_extent.y * self.view_extent.x,
+                self.view.min.y * self.storage_size.x,
+                self.view.width() * self.view.height(),
             )];
 
             Some(slice)
@@ -473,10 +460,10 @@ impl<STORAGE: Storage> Texture<STORAGE> {
     where
         STORAGE: StorageMut,
     {
-        if self.storage_size.x == self.view_extent.x {
+        if self.storage_size.x == self.view.width() {
             let slice = &mut self.storage[RangeInclusive::from_start_and_length(
-                self.view_offset.y * self.storage_size.x,
-                self.view_extent.y * self.view_extent.x,
+                self.view.min.y * self.storage_size.x,
+                self.view.width() * self.view.height(),
             )];
 
             Some(slice)
@@ -508,8 +495,7 @@ impl<STORAGE: Storage> Texture<STORAGE> {
 
         Texture {
             storage_size: self.storage_size,
-            view_offset: self.view_offset,
-            view_extent: self.view_extent,
+            view: self.view,
             storage: bytemuck::cast_slice(&self.storage),
         }
     }
@@ -525,8 +511,7 @@ impl<STORAGE: Storage> Texture<STORAGE> {
 
         Texture {
             storage_size: self.storage_size,
-            view_offset: self.view_offset,
-            view_extent: self.view_extent,
+            view: self.view,
             storage: bytemuck::cast_slice_mut(&mut self.storage),
         }
     }

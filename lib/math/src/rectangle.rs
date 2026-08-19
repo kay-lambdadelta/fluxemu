@@ -1,6 +1,7 @@
 use core::ops::{Mul, RangeInclusive};
 
 use nalgebra::{ClosedAddAssign, ClosedSubAssign, Point2, Scalar, Vector2};
+use num::Zero;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, PartialOrd)]
@@ -10,6 +11,16 @@ pub struct Rectangle<T: Scalar> {
 }
 
 impl<T: Scalar> Rectangle<T> {
+    pub fn from_size(size: Vector2<T>) -> Self
+    where
+        T: Zero,
+    {
+        Self {
+            min: Point2::origin(),
+            size,
+        }
+    }
+
     pub fn from_min_and_size(min: Point2<T>, size: Vector2<T>) -> Self {
         Self { min, size }
     }
