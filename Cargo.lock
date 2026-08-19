@@ -1696,6 +1696,9 @@ dependencies = [
 name = "fluxemu-definition-mos6502"
 version = "0.1.0"
 dependencies = [
+ "bytes",
+ "criterion",
+ "fluxemu-math",
  "fluxemu-runtime",
  "heapless",
  "serde",
