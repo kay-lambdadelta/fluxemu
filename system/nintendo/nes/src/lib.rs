@@ -24,7 +24,7 @@ use crate::{
     ppu::{
         BACKGROUND_PALETTE_BASE_ADDRESS, NAMETABLE_ADDRESSES, PALETTE_RAM_ADDRESSES,
         backend::SupportedGraphicsApiPpu,
-        region::{Region, ntsc::Ntsc},
+        region::{Region, ntsc::Ntsc, pal::Pal},
     },
 };
 
@@ -302,12 +302,10 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> System<P> for Nes
         match header.timing_mode {
             // FIXME: Implementing Multi as NTSC for now
             TimingMode::Ntsc | TimingMode::Multi => {
-                let processor_frequency = Ntsc::master_clock() / 12;
-
                 let (machine_builder, processor) = machine_builder.component(
                     "cpu",
                     fluxemu_definition_mos6502::Config::<Ricoh2A0x>::new(
-                        processor_frequency,
+                        Ntsc::master_clock() / 12,
                         cpu_address_space,
                     ),
                 );
@@ -327,7 +325,30 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> System<P> for Nes
 
                 machine_builder
             }
-            TimingMode::Pal => todo!(),
+            TimingMode::Pal => {
+                let (machine_builder, processor) = machine_builder.component(
+                    "cpu",
+                    fluxemu_definition_mos6502::Config::<Ricoh2A0x>::new(
+                        Pal::master_clock() / 16,
+                        cpu_address_space,
+                    ),
+                );
+
+                let (machine_builder, _) = machine_builder.component(
+                    "ppu",
+                    PpuConfig::<Pal> {
+                        ppu_address_space,
+                        cpu_address_space,
+                        processor,
+                        _phantom: PhantomData,
+                    },
+                );
+
+                let (machine_builder, _) =
+                    machine_builder.component("apu", ApuConfig { cpu_address_space });
+
+                machine_builder
+            }
             TimingMode::Dendy => todo!(),
         }
         .seal()

@@ -17,6 +17,7 @@ use fluxemu_runtime::{
     scheduler::{Period, SynchronizationContext},
 };
 use nalgebra::Point2;
+use palette::Srgb;
 use serde::{Deserialize, Serialize};
 use strum::FromRepr;
 
@@ -66,7 +67,6 @@ const DUMMY_SCANLINE_COUNT: u16 = 2;
 const VISIBLE_SCANLINE_LENGTH: u16 = 256;
 const HBLANK_LENGTH: u16 = 85;
 const TOTAL_SCANLINE_LENGTH: u16 = VISIBLE_SCANLINE_LENGTH + HBLANK_LENGTH;
-const INITIAL_CYCLE_COUNTER_POSITION: Point2<u16> = Point2::new(1, 261);
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct ColorEmphasis {
@@ -93,6 +93,7 @@ pub struct Ppu<R: Region, G: SupportedGraphicsApiPpu> {
     ppu_address_space: AddressSpaceId,
     processor_path: ComponentPath,
     staging_buffer: OwnedTexture<PpuColorIndex>,
+    palette: [Srgb<u8>; 64],
     path: ComponentPath,
     period: Period,
 }
@@ -113,7 +114,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
         self,
         component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
-        let frequency = R::master_clock() / 4;
+        let frequency = R::master_clock() / R::PPU_CLOCK_DIVISOR as u128;
 
         let (component_builder, _) = component_builder
             .scheduler_participation(Some(SchedulerParticipation::OnAccess))
@@ -163,12 +164,13 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
             ],
         );
 
+        let time = TOTAL_SCANLINE_LENGTH as u32 * (R::VISIBLE_SCANLINES as u32 + 2);
         let component_builder = component_builder
             .map_memory(self.cpu_address_space, register_mappings)
             .schedule_event::<Self::Component>(
                 // x: 1, y: 241
                 &my_path,
-                Period::from_num(82522) / frequency,
+                Period::from_num(time) / frequency,
                 EventMode::Once,
                 PpuEvent::VblankStart,
             );
@@ -192,7 +194,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
                     green: false,
                     blue: false,
                 },
-                cycle_counter: INITIAL_CYCLE_COUNTER_POSITION,
+                cycle_counter: Point2::new(1, R::PRERENDER_SCANLINE),
                 background_pipeline_state: BackgroundPipelineState::FetchingNametable,
                 sprite_pipeline_state: SpritePipelineState::FetchingNametableGarbage0,
                 oam: OamState {
@@ -230,6 +232,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
             cpu_address_space: self.cpu_address_space,
             processor_path: self.processor.clone(),
             ppu_address_space: self.ppu_address_space,
+            palette: R::generate_palette(),
             path: component_builder.path().clone(),
             period: frequency.recip(),
         })
@@ -547,13 +550,15 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     self.backend
                         .as_mut()
                         .unwrap()
-                        .commit_staging_buffer(self.staging_buffer.as_view());
+                        .commit_staging_buffer(&self.palette, self.staging_buffer.as_view());
 
                     let lines_until_next_vblank = R::TOTAL_SCANLINES - R::VBLANK_LENGTH;
                     let mut cycles_until_next_vblank =
                         TOTAL_SCANLINE_LENGTH as u128 * lines_until_next_vblank as u128;
 
-                    if self.state.odd_frame
+                    // This only occurs on NTSC and Dendy
+                    if R::SKIPS_DOT_ON_ODD_FRAME
+                        && self.state.odd_frame
                         && (self.state.background.rendering_enabled
                             || self.state.oam.rendering_enabled)
                     {
@@ -580,11 +585,11 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
         while let Some(timestamp) = quanta_iterator.allocate() {
             if (0..R::VISIBLE_SCANLINES).contains(&self.state.cycle_counter.y) {
                 self.handle_visible_scanlines(&mut ppu_address_space, timestamp);
-            } else if self.state.cycle_counter.y == 261 {
+            } else if self.state.cycle_counter.y == R::PRERENDER_SCANLINE {
                 self.handle_prerender(&mut ppu_address_space, timestamp);
             }
 
-            if self.state.cycle_counter.y == 261
+            if self.state.cycle_counter.y == R::PRERENDER_SCANLINE
                 && self.state.cycle_counter.x == 339
                 && self.state.odd_frame
                 && (self.state.background.rendering_enabled || self.state.oam.rendering_enabled)

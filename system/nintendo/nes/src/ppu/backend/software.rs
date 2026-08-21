@@ -7,7 +7,7 @@ use fluxemu_graphics::api::{
         texture::{AsViewTextureMut, OwnedTexture, RefTexture, Texture},
     },
 };
-use palette::{Srgba, named::BLACK};
+use palette::{Srgb, Srgba, named::BLACK};
 
 use super::{PpuDisplayBackend, SupportedGraphicsApiPpu};
 use crate::ppu::{
@@ -45,8 +45,16 @@ impl<R: Region> PpuDisplayBackend<R> for SoftwareState {
     }
 
     #[inline]
-    fn commit_staging_buffer(&mut self, staging_buffer: RefTexture<PpuColorIndex>) {
-        convert_paletted_staging_buffer::<R>(staging_buffer, self.framebuffer.as_view_mut());
+    fn commit_staging_buffer(
+        &mut self,
+        palette: &[Srgb<u8>; 64],
+        staging_buffer: RefTexture<PpuColorIndex>,
+    ) {
+        convert_paletted_staging_buffer::<R>(
+            palette,
+            staging_buffer,
+            self.framebuffer.as_view_mut(),
+        );
     }
 }
 

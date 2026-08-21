@@ -1,87 +1,46 @@
+use std::f32::consts::TAU;
+
+use fluxemu_math::color::YIQ_TO_RGB_NTSC_1953;
 use fluxemu_runtime::scheduler::Frequency;
+use nalgebra::{Rotation, SMatrix};
 use palette::Srgb;
 
-use super::Region;
+use crate::ppu::region::composite::{CompositeParams, build_palette};
 
-pub const COLOR_PALETTE: [Srgb<u8>; 64] = [
-    Srgb::new(84, 84, 84),
-    Srgb::new(0, 30, 116),
-    Srgb::new(8, 16, 144),
-    Srgb::new(48, 0, 136),
-    Srgb::new(68, 0, 100),
-    Srgb::new(92, 0, 48),
-    Srgb::new(84, 4, 0),
-    Srgb::new(60, 24, 0),
-    Srgb::new(32, 42, 0),
-    Srgb::new(8, 58, 0),
-    Srgb::new(0, 64, 0),
-    Srgb::new(0, 60, 0),
-    Srgb::new(0, 50, 60),
-    Srgb::new(0, 0, 0),
-    Srgb::new(0, 0, 0),
-    Srgb::new(0, 0, 0),
-    Srgb::new(152, 150, 152),
-    Srgb::new(8, 76, 196),
-    Srgb::new(48, 50, 236),
-    Srgb::new(92, 30, 228),
-    Srgb::new(136, 20, 176),
-    Srgb::new(160, 20, 100),
-    Srgb::new(152, 34, 32),
-    Srgb::new(120, 60, 0),
-    Srgb::new(84, 90, 0),
-    Srgb::new(40, 114, 0),
-    Srgb::new(8, 124, 0),
-    Srgb::new(0, 118, 40),
-    Srgb::new(0, 102, 120),
-    Srgb::new(0, 0, 0),
-    Srgb::new(0, 0, 0),
-    Srgb::new(0, 0, 0),
-    Srgb::new(236, 238, 236),
-    Srgb::new(76, 154, 236),
-    Srgb::new(120, 124, 236),
-    Srgb::new(176, 98, 236),
-    Srgb::new(228, 84, 236),
-    Srgb::new(236, 88, 180),
-    Srgb::new(236, 106, 100),
-    Srgb::new(212, 136, 32),
-    Srgb::new(160, 170, 0),
-    Srgb::new(116, 196, 0),
-    Srgb::new(76, 208, 32),
-    Srgb::new(56, 204, 108),
-    Srgb::new(56, 180, 204),
-    Srgb::new(60, 60, 60),
-    Srgb::new(0, 0, 0),
-    Srgb::new(0, 0, 0),
-    Srgb::new(236, 238, 236),
-    Srgb::new(168, 204, 236),
-    Srgb::new(188, 188, 236),
-    Srgb::new(212, 178, 236),
-    Srgb::new(236, 174, 236),
-    Srgb::new(236, 174, 212),
-    Srgb::new(236, 180, 176),
-    Srgb::new(228, 196, 144),
-    Srgb::new(204, 210, 120),
-    Srgb::new(180, 222, 120),
-    Srgb::new(168, 226, 144),
-    Srgb::new(152, 226, 180),
-    Srgb::new(160, 214, 228),
-    Srgb::new(160, 162, 160),
-    Srgb::new(0, 0, 0),
-    Srgb::new(0, 0, 0),
-];
+use super::Region;
 
 #[derive(Debug)]
 pub struct Ntsc;
 
 impl Region for Ntsc {
     const BYPASS_READ_BUFFER_FOR_PPUDATA_PALETTE_READS: bool = true;
-    const COLOR_PALETTE: [Srgb<u8>; 64] = COLOR_PALETTE;
     const VBLANK_LENGTH: u16 = 20;
     const VISIBLE_SCANLINES: u16 = 240;
+    const SKIPS_DOT_ON_ODD_FRAME: bool = true;
+    const PPU_CLOCK_DIVISOR: u8 = 4;
 
     #[inline]
     fn master_clock() -> Frequency {
         // 236.25 MHz / 11
         Frequency::from_num(236250000) / 11
+    }
+
+    #[inline]
+    fn generate_palette() -> [Srgb<u8>; 64] {
+        // If something looks wrong, please consult and check against https://www.nesdev.org/wiki/NTSC_video
+        //
+        // Especially if you have a better understanding of math or televisions than I do.
+
+        build_palette(CompositeParams {
+            black_voltage: 0.312,
+            luma_voltage_grey: [0.228, 0.312, 0.552, 0.880],
+            luma_voltage_chroma: [0.422, 0.576, 0.826, 0.990],
+            chroma_amplitude: [0.194, 0.264, 0.274, 0.110],
+            hue0_phase: Rotation::<_, 2>::new(0.0),
+            hue_step: Rotation::<_, 2>::new(TAU / 12.0),
+            burst_phase: Rotation::<_, 2>::new((180.0f32).to_radians()),
+            // Flip it so it works with the same math that works with pal
+            chroma_to_rgb: SMatrix::from_fn(|row, col| YIQ_TO_RGB_NTSC_1953[(row, 1 - col)]),
+        })
     }
 }

@@ -3,7 +3,7 @@ use fluxemu_graphics::api::{
     software::texture::{AsViewTextureMut, OwnedTexture, RefTexture},
     webgpu::{InitializationData, Webgpu, suggested_framebuffer_texture_usages},
 };
-use palette::{Srgba, named::BLACK};
+use palette::{Srgb, Srgba, named::BLACK};
 use wgpu::{
     Extent3d, Origin3d, Queue, TexelCopyBufferLayout, TexelCopyTextureInfo, Texture, TextureAspect,
     TextureDescriptor, TextureDimension, TextureFormat,
@@ -75,8 +75,16 @@ impl<R: Region> PpuDisplayBackend<R> for State {
     }
 
     #[inline]
-    fn commit_staging_buffer(&mut self, staging_buffer: RefTexture<PpuColorIndex>) {
-        convert_paletted_staging_buffer::<R>(staging_buffer, self.staging_texture.as_view_mut());
+    fn commit_staging_buffer(
+        &mut self,
+        palette: &[Srgb<u8>; 64],
+        staging_buffer: RefTexture<PpuColorIndex>,
+    ) {
+        convert_paletted_staging_buffer::<R>(
+            palette,
+            staging_buffer,
+            self.staging_texture.as_view_mut(),
+        );
     }
 }
 

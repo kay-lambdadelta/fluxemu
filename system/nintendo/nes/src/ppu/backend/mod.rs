@@ -4,7 +4,7 @@ use fluxemu_graphics::api::{
     GraphicsApi,
     software::texture::{CopyMode, RefMutTexture, RefTexture},
 };
-use palette::Srgba;
+use palette::{Srgb, Srgba};
 
 use crate::ppu::{color::PpuColorIndex, region::Region};
 
@@ -19,7 +19,11 @@ pub(crate) trait PpuDisplayBackend<R: Region>:
 
     fn new(initialization_data: <Self::GraphicsApi as GraphicsApi>::InitializationData) -> Self;
     fn framebuffer(&mut self) -> &<Self::GraphicsApi as GraphicsApi>::Framebuffer;
-    fn commit_staging_buffer(&mut self, staging_buffer: RefTexture<PpuColorIndex>);
+    fn commit_staging_buffer(
+        &mut self,
+        palette: &[Srgb<u8>; 64],
+        staging_buffer: RefTexture<PpuColorIndex>,
+    );
 }
 
 pub(crate) trait SupportedGraphicsApiPpu: GraphicsApi {
@@ -28,6 +32,7 @@ pub(crate) trait SupportedGraphicsApiPpu: GraphicsApi {
 
 #[inline]
 fn convert_paletted_staging_buffer<R: Region>(
+    palette: &[Srgb<u8>; 64],
     staging_buffer: RefTexture<PpuColorIndex>,
     mut framebuffer: RefMutTexture<Srgba<u8>>,
 ) {
@@ -38,9 +43,9 @@ fn convert_paletted_staging_buffer<R: Region>(
         CopyMode::Nearest,
         #[inline]
         |index| {
-            let clamped_index = (index as usize).min(R::COLOR_PALETTE.len() - 1);
+            let clamped_index = (index as usize).min(palette.len() - 1);
 
-            R::COLOR_PALETTE[clamped_index].into()
+            palette[clamped_index].into()
         },
     );
 }
