@@ -1,28 +1,32 @@
-use std::{any::Any, borrow::Cow, marker::PhantomData, ops::RangeInclusive, sync::Arc};
+use std::{
+    any::Any, borrow::Cow, collections::HashMap, marker::PhantomData, ops::RangeInclusive,
+    sync::Arc,
+};
 
 use bytes::Bytes;
 use fluxemu_input::InputId;
 use fluxemu_program::{ProgramManager, RomId};
 
 use crate::{
-    component::{Component, config::ComponentConfig},
-    event::EventMode,
+    component::{Component, TaskEntry, config::ComponentConfig},
     graphics::GraphicsRequirements,
     input::{LogicalInputDevice, LogicalInputDeviceMetadata},
-    machine::builder::{
-        ComponentLateInitializer, MachineBuilder, RomRequirement, SchedulerParticipation,
-    },
+    machine::builder::{ComponentLateInitializer, MachineBuilder, RomRequirement},
     memory::{AddressSpaceId, MemoryMapCommand, RegionInitializationData},
     path::{ComponentPath, ResourcePath},
     platform::Platform,
-    scheduler::Period,
+    scheduler::{
+        Period,
+        event::EventMode,
+        task::{self, Mode, Task},
+    },
 };
 
 /// Overall data extracted from components needed for machine initialization
 pub(super) struct ComponentData<P: Platform> {
     pub late_initializer: ComponentLateInitializer<P>,
     pub graphics_requirements: GraphicsRequirements<P::GraphicsApi>,
-    pub scheduler_participation: Option<SchedulerParticipation>,
+    pub systems: HashMap<Cow<'static, str>, TaskEntry>,
 }
 
 impl<P: Platform> ComponentData<P> {
@@ -35,7 +39,7 @@ impl<P: Platform> ComponentData<P> {
                 B::late_initialize(component, data)
             }),
             graphics_requirements: GraphicsRequirements::default(),
-            scheduler_participation: None,
+            systems: HashMap::new(),
         }
     }
 }
@@ -66,20 +70,6 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
 
     pub fn program_manager(&self) -> &ProgramManager {
         self.machine_builder.program_manager()
-    }
-
-    pub fn scheduler_participation(
-        self,
-        scheduler_participation: Option<SchedulerParticipation>,
-    ) -> Self {
-        if scheduler_participation == Some(SchedulerParticipation::SchedulerDriven) {
-            self.machine_builder
-                .scheduler
-                .register_driven_component(self.path.clone());
-        }
-        self.component_data.scheduler_participation = scheduler_participation;
-
-        self
     }
 
     /// Insert a component into the machine
@@ -212,13 +202,13 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
         self,
         target_path: &ComponentPath,
         time: Period,
-        requeue_mode: EventMode,
+        event_mode: EventMode,
         data: C2::Event,
     ) -> Self {
-        self.machine_builder.scheduler.event_manager.schedule(
-            time,
+        self.machine_builder.scheduler.queue.schedule_event(
             target_path.clone(),
-            requeue_mode,
+            time,
+            event_mode,
             Box::new(data),
         );
 
@@ -231,6 +221,36 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
     ) -> Self {
         self.component_data.graphics_requirements =
             self.component_data.graphics_requirements.clone() | requirements;
+
+        self
+    }
+
+    pub fn task(
+        self,
+        name: impl Into<Cow<'static, str>>,
+        mode: task::Mode,
+        system: impl Task<Component = C>,
+    ) -> Self {
+        let name = name.into();
+
+        if mode == Mode::Always {
+            let path = self.path.clone().into_resource(name.clone()).unwrap();
+
+            self.machine_builder
+                .scheduler
+                .queue
+                .reschedule_task(path, Period::ZERO);
+        }
+
+        self.component_data.systems.insert(
+            name,
+            TaskEntry {
+                current_timestamp: Period::ZERO,
+                mode,
+                started: false,
+                task: Box::new(system),
+            },
+        );
 
         self
     }

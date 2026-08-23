@@ -2,12 +2,15 @@ use core::marker::PhantomData;
 
 use alloc::boxed::Box;
 use fluxemu_runtime::{
-    Platform,
+    Platform, RuntimeHandle,
     component::{Component, config::ComponentConfig},
-    event::{Event, downcast_event},
-    machine::builder::{ComponentBuilder, SchedulerParticipation},
+    machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId},
-    scheduler::{Frequency, Period, SynchronizationContext},
+    scheduler::{
+        Frequency, QuantaAllocator,
+        event::{Event, downcast_event},
+        task::{FrequencyBased, Mode},
+    },
 };
 
 use crate::{
@@ -21,129 +24,11 @@ use crate::{
 pub struct Mos6502<V: Variant> {
     pub(crate) state: State,
     pub(crate) config: Config<V>,
-    pub(crate) period: Period,
     _variant: PhantomData<V>,
 }
 
 impl<V: Variant> Component for Mos6502<V> {
     type Event = Mos6502Event;
-
-    fn synchronize(&mut self, mut context: SynchronizationContext) {
-        let runtime = context.runtime();
-
-        let mut address_space = runtime
-            .address_space(self.config.assigned_address_space)
-            .unwrap();
-
-        let mut quanta_iterator = context.quanta_allocator(self.period);
-        while let Some(timestamp) = quanta_iterator.allocate() {
-            if self.state.cycle_queue.is_empty() {
-                self.state
-                    .cycle_queue
-                    .push_back(Cycle::new(
-                        BusMode::Read,
-                        Some(Phi1::SetAddressBus {
-                            source: SetAddressBusSource::InstructionPointer,
-                        }),
-                        [
-                            Phi2::IncrementInstructionPointer,
-                            Phi2::Move {
-                                source: MoveSource::Data,
-                                destination: MoveDestination::Opcode,
-                            },
-                        ],
-                    ))
-                    .unwrap();
-            }
-
-            let current_cycle = self.state.cycle_queue.front_mut().unwrap();
-
-            match current_cycle.phi1 {
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::InstructionPointer,
-                }) => {
-                    self.state.bus.address = self.state.instruction_pointer;
-                }
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::EffectiveAddress,
-                }) => {
-                    match self.state.effective_address.len() {
-                        1 => {
-                            self.state.bus.address = u16::from(self.state.effective_address[0]);
-                        }
-                        2 => {
-                            self.state.bus.address = u16::from_le_bytes([
-                                self.state.effective_address[0],
-                                self.state.effective_address[1],
-                            ]);
-                        }
-                        _ => unreachable!(),
-                    }
-
-                    self.state.consume_effective_address = true;
-                }
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::Constant(value),
-                }) => {
-                    self.state.bus.address = value;
-                }
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::Stack,
-                }) => {
-                    self.state.bus.address = u16::from(self.state.stack) | STACK_BASE_ADDRESS;
-                }
-                None => {}
-            }
-
-            let is_read_cycle = match current_cycle.bus_mode {
-                BusMode::Read => {
-                    self.state.bus.data = address_space
-                        .read_le_value::<_, false>(self.state.bus.address as Address, timestamp)
-                        .unwrap_or_default();
-
-                    true
-                }
-                BusMode::Write => false,
-            };
-
-            if self.state.rdy || !is_read_cycle {
-                if core::mem::take(&mut self.state.consume_effective_address) {
-                    self.state.effective_address.clear();
-                }
-
-                let current_cycle = self.state.cycle_queue.pop_front().unwrap();
-
-                self.handle_phi2(&current_cycle);
-
-                match current_cycle.bus_mode {
-                    BusMode::Read => {}
-                    BusMode::Write => {
-                        address_space
-                            .write_le_value(
-                                self.state.bus.address as Address,
-                                timestamp,
-                                self.state.bus.data,
-                            )
-                            .unwrap_or_default();
-                    }
-                }
-
-                // Check for interrupts
-
-                if V::SUPPORTS_INTERRUPTS && self.state.cycle_queue.is_empty() {
-                    if self.state.nmi.interrupt_required() {
-                        self.handle_nmi();
-                    } else if core::mem::take(&mut self.state.irq) {
-                        self.handle_irq();
-                    }
-                }
-            }
-        }
-    }
-
-    fn needs_work(&self, _timestamp: &Period, delta: &Period) -> bool {
-        delta >= &self.period
-    }
 
     fn handle_event(&mut self, event: Box<dyn Event>) {
         let event = downcast_event::<Self>(event);
@@ -182,7 +67,11 @@ impl<P: Platform, V: Variant> ComponentConfig<P> for Config<V> {
         self,
         component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn core::error::Error>> {
-        component_builder.scheduler_participation(Some(SchedulerParticipation::SchedulerDriven));
+        component_builder.task(
+            "synchronization",
+            Mode::Always,
+            FrequencyBased::new(self.frequency, Self::Component::task),
+        );
 
         let mut component = Mos6502 {
             state: State {
@@ -205,7 +94,6 @@ impl<P: Platform, V: Variant> ComponentConfig<P> for Config<V> {
                 effective_address: heapless::Vec::default(),
                 consume_effective_address: false,
             },
-            period: self.frequency.recip(),
             config: self,
             _variant: PhantomData::<V>,
         };
@@ -440,5 +328,116 @@ impl<V: Variant> Mos6502<V> {
                 ],
             ),
         ]);
+    }
+
+    #[inline]
+    fn task(&mut self, runtime_handle: &RuntimeHandle, quanta_allocator: QuantaAllocator<'_, '_>) {
+        let mut address_space = runtime_handle
+            .address_space(self.config.assigned_address_space)
+            .unwrap();
+
+        for timestamp in quanta_allocator {
+            if self.state.cycle_queue.is_empty() {
+                self.state
+                    .cycle_queue
+                    .push_back(Cycle::new(
+                        BusMode::Read,
+                        Some(Phi1::SetAddressBus {
+                            source: SetAddressBusSource::InstructionPointer,
+                        }),
+                        [
+                            Phi2::IncrementInstructionPointer,
+                            Phi2::Move {
+                                source: MoveSource::Data,
+                                destination: MoveDestination::Opcode,
+                            },
+                        ],
+                    ))
+                    .unwrap();
+            }
+
+            let current_cycle = self.state.cycle_queue.front_mut().unwrap();
+
+            match current_cycle.phi1 {
+                Some(Phi1::SetAddressBus {
+                    source: SetAddressBusSource::InstructionPointer,
+                }) => {
+                    self.state.bus.address = self.state.instruction_pointer;
+                }
+                Some(Phi1::SetAddressBus {
+                    source: SetAddressBusSource::EffectiveAddress,
+                }) => {
+                    match self.state.effective_address.len() {
+                        1 => {
+                            self.state.bus.address = u16::from(self.state.effective_address[0]);
+                        }
+                        2 => {
+                            self.state.bus.address = u16::from_le_bytes([
+                                self.state.effective_address[0],
+                                self.state.effective_address[1],
+                            ]);
+                        }
+                        _ => unreachable!(),
+                    }
+
+                    self.state.consume_effective_address = true;
+                }
+                Some(Phi1::SetAddressBus {
+                    source: SetAddressBusSource::Constant(value),
+                }) => {
+                    self.state.bus.address = value;
+                }
+                Some(Phi1::SetAddressBus {
+                    source: SetAddressBusSource::Stack,
+                }) => {
+                    self.state.bus.address = u16::from(self.state.stack) | STACK_BASE_ADDRESS;
+                }
+                None => {}
+            }
+
+            let is_read_cycle = match current_cycle.bus_mode {
+                BusMode::Read => {
+                    self.state.bus.data = address_space
+                        .read_le_value::<_, false>(self.state.bus.address as Address, &timestamp)
+                        .unwrap_or_default();
+
+                    true
+                }
+                BusMode::Write => false,
+            };
+
+            if self.state.rdy || !is_read_cycle {
+                if core::mem::take(&mut self.state.consume_effective_address) {
+                    self.state.effective_address.clear();
+                }
+
+                let current_cycle = self.state.cycle_queue.pop_front().unwrap();
+
+                self.handle_phi2(&current_cycle);
+
+                match current_cycle.bus_mode {
+                    BusMode::Read => {}
+                    BusMode::Write => {
+                        address_space
+                            .write_le_value(
+                                self.state.bus.address as Address,
+                                &timestamp,
+                                self.state.bus.data,
+                            )
+                            .unwrap_or_default();
+                    }
+                }
+
+                // Check for interrupts
+
+                if V::SUPPORTS_INTERRUPTS && self.state.cycle_queue.is_empty() {
+                    if self.state.nmi.interrupt_required() {
+                        self.handle_nmi();
+                    } else if core::mem::take(&mut self.state.irq) {
+                        self.handle_irq();
+                    }
+                }
+            }
+        }
     }
 }

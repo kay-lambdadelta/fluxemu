@@ -72,7 +72,7 @@ impl<P: Platform> MachineBuilder<P> {
             input_devices: HashMap::default(),
             framebuffers: HashSet::default(),
             audio_channels: HashSet::default(),
-            scheduler: Scheduler::new(),
+            scheduler: Scheduler::default(),
         }
     }
 
@@ -148,8 +148,8 @@ impl<P: Platform> MachineBuilder<P> {
 
         self.component_registry_data.insert_component(
             path.clone(),
-            component_data.scheduler_participation.is_some(),
             component,
+            component_data.systems.drain(),
         );
 
         self.component_data.insert(path, component_data);

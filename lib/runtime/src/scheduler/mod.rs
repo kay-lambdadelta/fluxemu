@@ -2,29 +2,20 @@ use std::{fmt::Debug, sync::Mutex};
 
 use fixed::{FixedU128, types::extra::U64};
 
-use crate::{
-    RuntimeHandle, component::ComponentRegistry, event::EventManager, path::ComponentPath,
-};
+use crate::{RuntimeHandle, component::ComponentRegistry, scheduler::queue::Queue};
 
-#[derive(Debug)]
-pub(crate) struct Scheduler {
-    pub event_manager: EventManager,
+pub mod event;
+pub(crate) mod queue;
+pub mod task;
+
+#[derive(Debug, Default)]
+pub struct Scheduler {
+    pub queue: Queue,
     safe_advance_timestamp: Mutex<Period>,
-    driven: Vec<ComponentPath>,
     start_time: Period,
 }
 
 impl Scheduler {
-    pub fn new() -> Self {
-        Scheduler {
-            event_manager: EventManager::default(),
-            driven: Vec::default(),
-            safe_advance_timestamp: Mutex::default(),
-            start_time: Period::default(),
-        }
-    }
-
-    /// Retrieves the latest timestamp that the machine has been driven to
     pub fn safe_advance_timestamp(&self) -> Period {
         *self.safe_advance_timestamp.lock().unwrap()
     }
@@ -33,46 +24,33 @@ impl Scheduler {
         self.start_time
     }
 
-    /// Register a new component that is directly driven by the scheduler
-    ///
-    /// For machine builder purposes
-    pub fn register_driven_component(&mut self, path: ComponentPath) {
-        self.driven.push(path);
-    }
+    pub fn run(&self, component_registry: &ComponentRegistry<'_>, allocated_time: Period) {
+        let target = self.safe_advance_timestamp() + allocated_time;
 
-    /// Run the scheduler for a given amount of time, advancing the machine's timestamp and interacting with driven components
-    ///
-    /// After all driven components (ie: cpus) are successfully advanced, the safe advance timestamp is updated to reflect the new time
-    pub fn run(&self, component_registry: &mut ComponentRegistry<'_>, allocated_time: Period) {
-        // Grab current time
-        let safe_advance_timestamp = self.safe_advance_timestamp() + allocated_time;
+        self.queue
+            .handle_deadlines_before(target, component_registry);
 
-        // Advance the time forward for all driven components
-        for path in &self.driven {
-            component_registry.interact_dyn(path, &safe_advance_timestamp, |_| {});
-        }
-
-        // Set the new time, marking that the machine has officially advanced to this time
-        let mut safe_advance_timestamp_guard = self.safe_advance_timestamp.lock().unwrap();
-        *safe_advance_timestamp_guard = (*safe_advance_timestamp_guard).max(safe_advance_timestamp);
+        let mut safe_advance_timestamp = self.safe_advance_timestamp.lock().unwrap();
+        *safe_advance_timestamp = (*safe_advance_timestamp).max(target);
     }
 }
 
-/// Type representing a period, or a inverse frequency, as a Q64.64
+/// Type representing a period, or an inverse frequency, as a [Q64.64](https://en.wikipedia.org/wiki/Q_(number_format))
 pub type Period = FixedU128<U64>;
-/// Type representing a frequency, or a inverse period, as a Q64.64
+
+/// Type representing a frequency, or an inverse period, as a [Q64.64](https://en.wikipedia.org/wiki/Q_(number_format))
 pub type Frequency = FixedU128<U64>;
 
 /// Context to begin the synchronization process
 #[derive(Debug)]
-pub struct SynchronizationContext<'a> {
+pub struct Context<'a> {
     pub(crate) runtime: &'a RuntimeHandle,
     pub(crate) current_timestamp: &'a mut Period,
     pub(crate) target_timestamp: Period,
     pub(crate) last_attempted_allocation: &'a mut Period,
 }
 
-impl<'a> SynchronizationContext<'a> {
+impl<'a> Context<'a> {
     #[inline]
     pub fn runtime(&self) -> &'a RuntimeHandle {
         self.runtime
@@ -98,11 +76,11 @@ impl<'a> SynchronizationContext<'a> {
         *self.last_attempted_allocation = period;
 
         let scheduler = &self.runtime.machine().scheduler;
-        let last_seen_event_generation = scheduler.event_manager.preemption_signal().generation();
+        let last_seen_event_generation = scheduler.queue.preemption_signal().generation();
 
         let mut stop_time = self.target_timestamp;
-        if let Some(next_event) = scheduler.event_manager.next_event() {
-            stop_time = stop_time.min(next_event);
+        if let Some(next_deadline) = scheduler.queue.next_deadline() {
+            stop_time = stop_time.min(next_deadline);
         }
 
         let budget = (stop_time.saturating_sub(*self.current_timestamp) / period)
@@ -119,18 +97,19 @@ pub struct QuantaAllocator<'b, 'a> {
     period: Period,
     budget: u32,
     last_seen_event_generation: u32,
-    context: &'b mut SynchronizationContext<'a>,
+    context: &'b mut Context<'a>,
 }
 
-impl QuantaAllocator<'_, '_> {
-    #[inline]
-    pub fn allocate(&mut self) -> Option<&Period> {
+impl<'b, 'a> Iterator for QuantaAllocator<'b, 'a> {
+    type Item = Period;
+
+    fn next(&mut self) -> Option<Self::Item> {
         let preemption_signal = self
             .context
             .runtime
             .machine()
             .scheduler
-            .event_manager
+            .queue
             .preemption_signal();
 
         let current_generation = preemption_signal.generation();
@@ -147,11 +126,14 @@ impl QuantaAllocator<'_, '_> {
             return None;
         }
 
-        *self.context.current_timestamp += self.period;
+        let next_timestamp = *self.context.current_timestamp + self.period;
+        *self.context.current_timestamp = next_timestamp;
 
-        Some(self.context.current_timestamp)
+        Some(next_timestamp)
     }
+}
 
+impl QuantaAllocator<'_, '_> {
     #[cold]
     fn rebudget(&mut self) {
         let mut stop_time = self.context.target_timestamp;
@@ -162,8 +144,8 @@ impl QuantaAllocator<'_, '_> {
             .runtime
             .machine()
             .scheduler
-            .event_manager
-            .next_event()
+            .queue
+            .next_deadline()
         {
             stop_time = stop_time.min(next_event);
         }

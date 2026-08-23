@@ -8,10 +8,10 @@ pub(crate) use backend::SupportedGraphicsApiTia;
 use color::TiaColor;
 use fluxemu_graphics::api::software::texture::OwnedTexture;
 use fluxemu_runtime::{
-    ComponentPath,
+    ComponentPath, RuntimeHandle,
     component::Component,
     memory::{Address, AddressSpaceId, MemoryError},
-    scheduler::{Period, SynchronizationContext},
+    scheduler::QuantaAllocator,
 };
 use itertools::Itertools;
 use nalgebra::Point2;
@@ -126,7 +126,6 @@ pub(crate) struct Tia<R: Region, G: SupportedGraphicsApiTia> {
     state: State,
     backend: Option<G::Backend<R>>,
     cpu_path: ComponentPath,
-    path: ComponentPath,
 }
 
 impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
@@ -171,9 +170,15 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
         }
     }
 
-    fn synchronize(&mut self, mut context: SynchronizationContext) {
-        let mut quanta_iterator = context.quanta_allocator(R::frequency().recip());
-        while quanta_iterator.allocate().is_some() {
+    fn get_framebuffer(&mut self, _name: &str) -> &dyn Any {
+        self.backend.as_mut().unwrap().framebuffer()
+    }
+}
+
+impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
+    #[inline]
+    fn task(&mut self, _runtime_handle: &RuntimeHandle, quanta_allocator: QuantaAllocator<'_, '_>) {
+        for _ in quanta_allocator {
             if !(self.state.in_vsync || self.state.vblank_active)
                 && (HBLANK_LENGTH..(VISIBLE_SCANLINE_LENGTH + HBLANK_LENGTH))
                     .contains(&self.state.electron_beam.x)
@@ -230,16 +235,6 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
         }
     }
 
-    fn needs_work(&self, _timestamp: &Period, delta: &Period) -> bool {
-        *delta >= R::frequency().recip()
-    }
-
-    fn get_framebuffer(&mut self, _name: &str) -> &dyn Any {
-        self.backend.as_mut().unwrap().framebuffer()
-    }
-}
-
-impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
     fn update_collision(&mut self) {
         let mut active_objects: Vec<ObjectId> = Vec::new();
 

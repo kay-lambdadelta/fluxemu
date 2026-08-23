@@ -4,13 +4,17 @@ use std::{
 };
 
 use fluxemu_runtime::{
+    RuntimeHandle,
     component::{Component, config::ComponentConfig},
     input::LogicalInputDevice,
-    machine::builder::{ComponentBuilder, SchedulerParticipation},
+    machine::builder::ComponentBuilder,
     memory::AddressSpaceId,
     path::ComponentPath,
     platform::Platform,
-    scheduler::{Frequency, Period, SynchronizationContext},
+    scheduler::{
+        Frequency, QuantaAllocator,
+        task::{FrequencyBased, Mode},
+    },
 };
 use input::Chip8KeyCode;
 use instruction::Register;
@@ -89,25 +93,14 @@ pub struct Chip8Processor<G: SupportedGraphicsApiChip8Display> {
     config: Chip8ProcessorConfig<G>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Chip8ProcessorSnapshot {
-    registers: Chip8ProcessorRegisters,
-    stack: heapless::Vec<u16, 16>,
-    execution_state: ExecutionState,
-}
-
-impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
-    type Event = ();
-
-    fn synchronize(&mut self, mut context: SynchronizationContext) {
-        let runtime = context.runtime();
-
-        let mut address_space = runtime
+impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
+    #[inline]
+    fn task(&mut self, runtime_handle: &RuntimeHandle, quanta_allocator: QuantaAllocator<'_, '_>) {
+        let mut address_space = runtime_handle
             .address_space(self.config.cpu_address_space)
             .unwrap();
 
-        let mut quanta_iterator = context.quanta_allocator(self.config.frequency.recip());
-        while let Some(timestamp) = quanta_iterator.allocate() {
+        for timestamp in quanta_allocator {
             'main: {
                 match &self.state.execution_state {
                     ExecutionState::Normal => {
@@ -116,7 +109,7 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
                         address_space
                             .read::<_, false>(
                                 self.state.registers.program as usize,
-                                timestamp,
+                                &timestamp,
                                 &mut instruction,
                             )
                             .unwrap();
@@ -127,9 +120,9 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
                         self.state.registers.program = self.state.registers.program.wrapping_add(2);
 
                         self.interpret_instruction(
-                            runtime,
+                            runtime_handle,
                             &mut address_space,
-                            timestamp,
+                            &timestamp,
                             instruction,
                         );
                     }
@@ -173,11 +166,11 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
                         }
                     }
                     ExecutionState::AwaitingVsync => {
-                        let vsync_occured = runtime
+                        let vsync_occured = runtime_handle
                             .component_registry()
                             .interact::<Chip8Display<G>, _>(
                                 &self.config.display,
-                                timestamp,
+                                &timestamp,
                                 |component| component.vsync_occurred(),
                             )
                             .unwrap();
@@ -194,10 +187,10 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
             }
         }
     }
+}
 
-    fn needs_work(&self, _timestamp: &Period, delta: &Period) -> bool {
-        *delta >= self.config.frequency.recip()
-    }
+impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
+    type Event = ();
 }
 
 #[derive(Debug)]
@@ -226,7 +219,11 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
         let state = ProcessorState::default();
 
         let (_component_builder, keypad) = component_builder
-            .scheduler_participation(Some(SchedulerParticipation::SchedulerDriven))
+            .task(
+                "synchronization",
+                Mode::Always,
+                FrequencyBased::new(self.frequency, Self::Component::task),
+            )
             .input("keypad", PRESENT_INPUTS, DEFAULT_MAPPINGS);
 
         Ok(Chip8Processor {

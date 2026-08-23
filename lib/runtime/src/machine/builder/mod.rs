@@ -16,14 +16,6 @@ pub use component::*;
 use fluxemu_graphics::api::GraphicsApi;
 pub use machine::*;
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
-pub enum SchedulerParticipation {
-    /// [`crate::component::Component::synchronize`] will only be called upon interaction
-    OnAccess,
-    /// [`crate::component::Component::synchronize`] will also be called when the scheduler advances time
-    SchedulerDriven,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// The requirement of a ROM as pertains to a component attempting to load it
 pub enum RomRequirement {

@@ -9,12 +9,15 @@ use fluxemu_runtime::{
         Component,
         config::{ComponentConfig, LateContext},
     },
-    event::{Event, EventMode, downcast_event},
-    machine::builder::{ComponentBuilder, SchedulerParticipation},
+    machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId, MemoryError, MemoryMapCommand, Permissions},
     path::ComponentPath,
     platform::Platform,
-    scheduler::{Period, SynchronizationContext},
+    scheduler::{
+        Period,
+        event::{Event, EventMode, downcast_event},
+        task::{FrequencyBased, Mode},
+    },
 };
 use nalgebra::Point2;
 use palette::Srgb;
@@ -117,7 +120,11 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
         let frequency = R::master_clock() / R::PPU_CLOCK_DIVISOR as u128;
 
         let (component_builder, _) = component_builder
-            .scheduler_participation(Some(SchedulerParticipation::OnAccess))
+            .task(
+                "synchronization",
+                Mode::OnDemand,
+                FrequencyBased::new(frequency, Self::Component::task),
+            )
             .framebuffer("framebuffer");
 
         let my_path = component_builder.path().clone();
@@ -283,7 +290,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                 CpuAccessibleRegister::PpuAddr => todo!(),
                 CpuAccessibleRegister::PpuData => {
                     RuntimeHandle::with_current(|runtime| {
-                        let timestamp = runtime.current_timestamp(&self.path);
+                        let timestamp = runtime.current_timestamp();
 
                         let mut ppu_address_space =
                             runtime.address_space(self.ppu_address_space).unwrap();
@@ -426,7 +433,8 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                 }
                 CpuAccessibleRegister::PpuData => {
                     RuntimeHandle::with_current(|runtime| {
-                        let timestamp = runtime.current_timestamp(&self.path);
+                        let timestamp = runtime.current_timestamp();
+
                         let mut ppu_address_space =
                             runtime.address_space(self.ppu_address_space).unwrap();
 
@@ -447,17 +455,16 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                 }
                 CpuAccessibleRegister::OamDma => {
                     RuntimeHandle::with_current(|runtime| {
-                        let timestamp = runtime.current_timestamp(&self.path);
+                        let timestamp = runtime.current_timestamp();
 
                         let mut cpu_address_space =
                             runtime.address_space(self.cpu_address_space).unwrap();
 
                         let page = u16::from(*buffer) << 8;
 
-                        runtime.schedule_event::<Mos6502<Ricoh2A0x>>(
+                        runtime.schedule_event_now::<Mos6502<Ricoh2A0x>>(
                             &self.processor_path,
                             EventMode::Once,
-                            timestamp,
                             Mos6502Event::FlagChange {
                                 pin: Pin::Rdy,
                                 value: false,
@@ -467,14 +474,11 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         // TODO: Extract to constant or extract from cpu directly within the config builder
                         let processor_frequency = R::master_clock() / 12;
 
-                        let next_processor_rdy_high =
-                            timestamp + (processor_frequency.recip() * 514);
-
                         // Make sure the cpu wakes up
-                        runtime.schedule_event::<Mos6502<Ricoh2A0x>>(
+                        runtime.schedule_event_relative::<Mos6502<Ricoh2A0x>>(
                             &self.processor_path,
                             EventMode::Once,
-                            next_processor_rdy_high,
+                            processor_frequency.recip() * 514,
                             Mos6502Event::FlagChange {
                                 pin: Pin::Rdy,
                                 value: true,
@@ -505,17 +509,14 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
         let event = downcast_event::<Self>(event);
 
         RuntimeHandle::with_current(|runtime| {
-            let timestamp = runtime.current_timestamp(&self.path);
-
             match event {
                 PpuEvent::VblankStart => {
                     self.state.entered_vblank = true;
 
                     if self.state.vblank_nmi_enabled {
-                        runtime.schedule_event::<Mos6502<Ricoh2A0x>>(
+                        runtime.schedule_event_now::<Mos6502<Ricoh2A0x>>(
                             &self.processor_path,
                             EventMode::Once,
-                            timestamp,
                             Mos6502Event::FlagChange {
                                 pin: Pin::Nmi,
                                 value: false,
@@ -526,10 +527,10 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     let vblank_len =
                         Period::from_num(TOTAL_SCANLINE_LENGTH as u128 * R::VBLANK_LENGTH as u128);
 
-                    runtime.schedule_event::<Self>(
+                    runtime.schedule_event_relative::<Self>(
                         &self.path,
                         EventMode::Once,
-                        timestamp + self.period * vblank_len,
+                        self.period * vblank_len,
                         PpuEvent::VblankEnd,
                     );
                 }
@@ -537,10 +538,9 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                     self.state.entered_vblank = false;
                     self.state.odd_frame = !self.state.odd_frame;
 
-                    runtime.schedule_event::<Mos6502<Ricoh2A0x>>(
+                    runtime.schedule_event_now::<Mos6502<Ricoh2A0x>>(
                         &self.processor_path,
                         EventMode::Once,
-                        timestamp,
                         Mos6502Event::FlagChange {
                             pin: Pin::Nmi,
                             value: true,
@@ -565,53 +565,15 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         cycles_until_next_vblank -= 1;
                     }
 
-                    let next_timestamp = timestamp + self.period * cycles_until_next_vblank;
-                    runtime.schedule_event::<Self>(
+                    runtime.schedule_event_relative::<Self>(
                         &self.path,
                         EventMode::Once,
-                        next_timestamp,
+                        self.period * cycles_until_next_vblank,
                         PpuEvent::VblankStart,
                     );
                 }
             }
         });
-    }
-
-    fn synchronize(&mut self, mut context: SynchronizationContext) {
-        let runtime = context.runtime();
-        let mut ppu_address_space = runtime.address_space(self.ppu_address_space).unwrap();
-
-        let mut quanta_iterator = context.quanta_allocator(self.period);
-        while let Some(timestamp) = quanta_iterator.allocate() {
-            if (0..R::VISIBLE_SCANLINES).contains(&self.state.cycle_counter.y) {
-                self.handle_visible_scanlines(&mut ppu_address_space, timestamp);
-            } else if self.state.cycle_counter.y == R::PRERENDER_SCANLINE {
-                self.handle_prerender(&mut ppu_address_space, timestamp);
-            }
-
-            if self.state.cycle_counter.y == R::PRERENDER_SCANLINE
-                && self.state.cycle_counter.x == 339
-                && self.state.odd_frame
-                && (self.state.background.rendering_enabled || self.state.oam.rendering_enabled)
-            {
-                self.state.cycle_counter = Point2::default();
-            } else {
-                self.state.cycle_counter.x += 1;
-
-                if self.state.cycle_counter.x >= TOTAL_SCANLINE_LENGTH {
-                    self.state.cycle_counter.x = 0;
-                    self.state.cycle_counter.y += 1;
-                }
-
-                if self.state.cycle_counter.y >= R::TOTAL_SCANLINES {
-                    self.state.cycle_counter.y = 0;
-                }
-            }
-        }
-    }
-
-    fn needs_work(&self, _timestamp: &Period, delta: &Period) -> bool {
-        delta >= &self.period
     }
 
     fn get_framebuffer(&mut self, _name: &str) -> &dyn Any {

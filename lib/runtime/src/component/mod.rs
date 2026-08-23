@@ -6,9 +6,8 @@ use nalgebra::SVector;
 use ringbuffer::AllocRingBuffer;
 
 use crate::{
-    event::Event,
     memory::{Address, AddressSpaceId, MemoryError, MemoryErrorType},
-    scheduler::{Period, SynchronizationContext},
+    scheduler::event::Event,
 };
 
 /// Component config (factory) related items
@@ -72,16 +71,6 @@ pub trait Component: Send + Sync + Debug + Any {
         unreachable!()
     }
 
-    /// Synchronize using the utilties given by [`SynchronizationContext`]
-    fn synchronize(&mut self, context: SynchronizationContext) {}
-
-    /// Tell the scheduler that work needs to be done to close this delta
-    ///
-    /// It is logically hazardous to do any runtime interaction within this function
-    fn needs_work(&self, current_timestamp: &Period, delta: &Period) -> bool {
-        false
-    }
-
     /// Handle an event targeted towards this component
     fn handle_event(&mut self, event: Box<dyn Event>) {}
 
@@ -110,8 +99,8 @@ fn denied_range(address: Address, len: usize) -> MemoryError {
     )
 }
 
-/// A nonstable ID to refer to a component.
+/// A non-stable ID that refers to a component
 ///
-/// Use a path if stability is a concern, but use this if absolute speed is more of a concern
+/// Prefer paths as they are stable, but IDs are faster
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ComponentId(pub(crate) u16);

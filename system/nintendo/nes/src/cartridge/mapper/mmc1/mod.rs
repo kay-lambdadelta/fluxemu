@@ -2,7 +2,7 @@ use std::ops::RangeInclusive;
 
 use fluxemu_math::range::ContiguousRange;
 use fluxemu_runtime::{
-    ComponentPath, RuntimeHandle,
+    RuntimeHandle,
     component::{
         Component,
         config::{ComponentConfig, LateContext},
@@ -52,7 +52,6 @@ pub struct Mmc1 {
     prg_rom_bank_index: u8,
     mirroring: Mirroring,
     config: Mmc1Config,
-    path: ComponentPath,
 }
 
 impl Mmc1 {
@@ -64,7 +63,7 @@ impl Mmc1 {
         //
         // Therefore the ppu can never observe stale mappings
 
-        let timestamp = runtime.current_timestamp(&self.path);
+        let timestamp = runtime.current_timestamp();
 
         let mut cpu_commands = Vec::new();
 
@@ -156,7 +155,7 @@ impl Mmc1 {
     }
 
     fn update_nametables(&mut self, runtime: &RuntimeHandle) {
-        let timestamp = runtime.current_timestamp(&self.path);
+        let timestamp = runtime.current_timestamp();
 
         let [nametable_0, nametable_1] = &self.config.params.nametables;
 
@@ -496,7 +495,6 @@ impl<P: Platform> ComponentConfig<P> for Mmc1Config {
             prg_rom_bank_mode: PrgRomBankMode::LockLastBank,
             prg_rom_bank_index: 0,
             mirroring: Mirroring::Horizontal,
-            path: my_path,
         })
     }
 }

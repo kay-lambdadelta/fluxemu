@@ -1,12 +1,16 @@
 use std::ops::RangeInclusive;
 
 use fluxemu_math::range::ContiguousRange;
-use fluxemu_runtime::{memory::AddressSpace, scheduler::Period};
+use fluxemu_runtime::{
+    RuntimeHandle,
+    memory::AddressSpace,
+    scheduler::{Period, QuantaAllocator},
+};
 use nalgebra::Point2;
 
 use crate::ppu::{
     ATTRIBUTE_BASE_ADDRESS, BACKGROUND_PALETTE_BASE_ADDRESS, NAMETABLE_BASE_ADDRESS, Ppu,
-    SPRITE_PALETTE_BASE_ADDRESS,
+    SPRITE_PALETTE_BASE_ADDRESS, TOTAL_SCANLINE_LENGTH,
     backend::SupportedGraphicsApiPpu,
     background::{BackgroundPipelineState, SpritePipelineState},
     color::PpuColorIndex,
@@ -16,6 +20,44 @@ use crate::ppu::{
 };
 
 impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
+    #[inline]
+    pub(super) fn task(
+        &mut self,
+        runtime_handle: &RuntimeHandle,
+        quanta_allocator: QuantaAllocator<'_, '_>,
+    ) {
+        let mut ppu_address_space = runtime_handle
+            .address_space(self.ppu_address_space)
+            .unwrap();
+
+        for timestamp in quanta_allocator {
+            if (0..R::VISIBLE_SCANLINES).contains(&self.state.cycle_counter.y) {
+                self.handle_visible_scanlines(&mut ppu_address_space, &timestamp);
+            } else if self.state.cycle_counter.y == R::PRERENDER_SCANLINE {
+                self.handle_prerender(&mut ppu_address_space, &timestamp);
+            }
+
+            if self.state.cycle_counter.y == R::PRERENDER_SCANLINE
+                && self.state.cycle_counter.x == 339
+                && self.state.odd_frame
+                && (self.state.background.rendering_enabled || self.state.oam.rendering_enabled)
+            {
+                self.state.cycle_counter = Point2::default();
+            } else {
+                self.state.cycle_counter.x += 1;
+
+                if self.state.cycle_counter.x >= TOTAL_SCANLINE_LENGTH {
+                    self.state.cycle_counter.x = 0;
+                    self.state.cycle_counter.y += 1;
+                }
+
+                if self.state.cycle_counter.y >= R::TOTAL_SCANLINES {
+                    self.state.cycle_counter.y = 0;
+                }
+            }
+        }
+    }
+
     pub(super) fn handle_prerender(
         &mut self,
         ppu_address_space: &mut AddressSpace<'_>,

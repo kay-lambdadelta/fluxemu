@@ -1,9 +1,9 @@
 use std::{
     any::Any,
+    borrow::Cow,
     cell::UnsafeCell,
     collections::HashMap,
     fmt::Debug,
-    ops::DerefMut,
     sync::{Arc, Condvar, Mutex},
 };
 
@@ -11,17 +11,21 @@ use rustc_hash::FxBuildHasher;
 
 use crate::{
     RuntimeHandle,
-    component::{Component, ComponentId},
+    component::{
+        Component, ComponentId,
+        registry::{
+            handle::{ComponentHandle, MutableData},
+            timestamp_guard::TimestampGuard,
+        },
+    },
     path::ComponentPath,
-    scheduler::{Period, SynchronizationContext},
+    scheduler::{Context, Period, task::Mode},
 };
 
-#[derive(Debug)]
-pub(crate) struct ComponentHandle {
-    current_timestamp: Period,
-    synchronize: bool,
-    component: Option<Box<dyn Component>>,
-}
+mod handle;
+pub(crate) mod timestamp_guard;
+
+pub(crate) use handle::TaskEntry;
 
 #[derive(Debug)]
 struct GlobalComponentMetadata {
@@ -29,7 +33,7 @@ struct GlobalComponentMetadata {
 }
 
 #[derive(Debug, Default)]
-struct GlobalSyncState {
+struct GlobalState {
     global_component_store: HashMap<ComponentId, ComponentHandle, FxBuildHasher>,
     component_condvars: HashMap<ComponentId, Arc<Condvar>, FxBuildHasher>,
 }
@@ -37,7 +41,7 @@ struct GlobalSyncState {
 #[derive(Debug, Default)]
 /// The store for components
 pub(crate) struct ComponentRegistryData {
-    sync_state: Mutex<GlobalSyncState>,
+    state: Mutex<GlobalState>,
     metadata: HashMap<ComponentPath, GlobalComponentMetadata, FxBuildHasher>,
     next_component_id: u16,
 }
@@ -50,10 +54,10 @@ impl ComponentRegistryData {
     pub fn insert_component<C: Component>(
         &mut self,
         path: ComponentPath,
-        synchronize: bool,
         component: C,
+        systems: impl IntoIterator<Item = (Cow<'static, str>, TaskEntry)>,
     ) {
-        let mut sync_state_guard = self.sync_state.lock().unwrap();
+        let mut sync_state_guard = self.state.lock().unwrap();
 
         let id = ComponentId(self.next_component_id);
         self.next_component_id = self
@@ -66,9 +70,11 @@ impl ComponentRegistryData {
             .insert(
                 id,
                 ComponentHandle {
-                    current_timestamp: Period::default(),
-                    synchronize,
-                    component: Some(Box::new(component)),
+                    data: Some(MutableData {
+                        component: Box::new(component),
+                        systems: systems.into_iter().collect(),
+                    }),
+                    path: path.clone(),
                 },
             )
             .is_some()
@@ -94,10 +100,12 @@ impl<'a> ComponentRegistry<'a> {
         Self { runtime }
     }
 
+    #[inline]
     fn data(&self) -> &ComponentRegistryData {
         &self.runtime.machine().component_registry_data
     }
 
+    #[inline]
     fn local_data(&self) -> &UnsafeCell<LocalComponentRegistryData> {
         &self.runtime.local_data().component_registry_data
     }
@@ -134,50 +142,27 @@ impl<'a> ComponentRegistry<'a> {
         target_timestamp: &Period,
         callback: impl FnOnce(&mut dyn Component) -> T,
     ) -> T {
-        // Move the component handle to our thread and check if it needs synchronization
-        let needs_sync = {
-            // SAFETY: No active borrows
-            let local_data = unsafe { &mut *self.local_data().get() };
-            let handle = self.fetch_or_acquire_component(id, local_data);
+        self.synchronize_component(id, target_timestamp);
 
-            if !handle.synchronize {
-                handle.current_timestamp = *target_timestamp;
-            }
-
-            handle.synchronize
-        };
-
-        // Synchronize if required
-        if needs_sync {
-            self.synchronize_component(id, target_timestamp);
-        }
-
-        // Extract the component
-        let mut component = {
-            // SAFETY: No active borrows
+        let mut data = {
             let store = unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
-            let handle = store.get_slot(id).as_mut().unwrap();
 
-            handle
-                .component
+            store
+                .get_slot(id)
+                .as_mut()
+                .unwrap()
+                .data
                 .take()
                 .expect("Component is reentrant on itself")
         };
 
-        // Do the callback and get the return
-        let item = callback(component.deref_mut());
+        // Record the current timestamp on the thread local
+        let _guard = TimestampGuard::enter(*target_timestamp);
 
-        // Clean up
-        {
-            // SAFETY:
-            //  The first operation is sound because there are currently no overlapping borrows
-            //  The second is sound because nothing could have been moved out of that slot, due to us owning the component
-            //  The third operation is not unsafe, but it is logically sound to forget the `None` in the slot and save some instructions
+        let item = callback(data.component.as_mut());
 
-            let store = unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
-            let handle = unsafe { store.get_slot(id).as_mut().unwrap_unchecked() };
-            std::mem::forget(handle.component.replace(component));
-        }
+        let store = unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
+        unsafe { store.get_slot(id).as_mut().unwrap_unchecked() }.data = Some(data);
 
         item
     }
@@ -223,84 +208,97 @@ impl<'a> ComponentRegistry<'a> {
     }
 
     fn synchronize_component(&self, id: ComponentId, target_timestamp: &Period) {
-        let mut current_timestamp;
-
-        let (delta, mut component) = {
-            let store = unsafe { &mut *self.local_data().get() };
-            let handle = store.get_slot(id).as_mut().unwrap();
-
-            let Some(delta) = target_timestamp.checked_sub(handle.current_timestamp) else {
-                return;
-            };
-
-            current_timestamp = handle.current_timestamp;
-
-            (
-                delta,
-                handle
-                    .component
-                    .take()
-                    .expect("Component handle should be present"),
-            )
-        };
-
-        if delta == Period::ZERO || !component.needs_work(&current_timestamp, &delta) {
-            let store = unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
-            store.get_slot(id).as_mut().unwrap().component = Some(component);
-
-            return;
-        }
-
         loop {
-            let mut last_attempted_allocation = Period::ZERO;
+            let (mut data, path) = {
+                let store = unsafe { &mut *self.local_data().get() };
+                let handle = self.fetch_or_acquire_component(id, store);
 
-            let context = SynchronizationContext {
-                runtime: self.runtime,
-                current_timestamp: &mut current_timestamp,
-                target_timestamp: *target_timestamp,
-                last_attempted_allocation: &mut last_attempted_allocation,
+                (handle.data.take().unwrap(), handle.path.clone())
             };
 
-            component.synchronize(context);
-
-            let delta = target_timestamp - current_timestamp;
-            let needs_work = component.needs_work(&current_timestamp, &delta);
-
-            assert_ne!(
-                last_attempted_allocation,
-                Period::ZERO,
-                "Synchronization attempt for component did not attempt to allocate time"
-            );
-
-            let hazard_timestamp = {
+            if data.systems.is_empty() {
                 let store =
                     unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
-                let handle = store.get_slot(id).as_mut().unwrap();
 
-                handle.component = Some(component);
-                handle.current_timestamp = current_timestamp;
+                store.get_slot(id).as_mut().unwrap().data = Some(data);
 
-                handle.current_timestamp + last_attempted_allocation
-            };
+                return;
+            }
 
-            if !needs_work {
+            let mut earliest_hazard = None;
+            let mut any_incomplete = false;
+
+            for (name, entry) in data.systems.iter_mut() {
+                while !entry.started || entry.current_timestamp < *target_timestamp {
+                    entry.started = true;
+
+                    let previous_timestamp = entry.current_timestamp;
+                    let mut last_attempted_allocation = Period::ZERO;
+
+                    let mut context = Context {
+                        runtime: self.runtime,
+                        current_timestamp: &mut entry.current_timestamp,
+                        target_timestamp: *target_timestamp,
+                        last_attempted_allocation: &mut last_attempted_allocation,
+                    };
+
+                    let next_deadline = entry.task.run(data.component.as_mut(), &mut context);
+
+                    if last_attempted_allocation == Period::ZERO {
+                        let path = path.clone().into_resource(name.clone()).unwrap();
+
+                        panic!("System for {path} did not attempt to allocate time");
+                    }
+
+                    if next_deadline == entry.current_timestamp {
+                        let path = path.clone().into_resource(name.clone()).unwrap();
+
+                        panic!(
+                            "Delta between requested next deadline by system is zero for {path}"
+                        );
+                    }
+
+                    if entry.mode == Mode::Always {
+                        let path = path.clone().into_resource(name.clone()).unwrap();
+
+                        self.runtime
+                            .machine()
+                            .scheduler
+                            .queue
+                            .reschedule_task(path.clone(), next_deadline);
+                    }
+
+                    if entry.current_timestamp == previous_timestamp {
+                        let queue = &self.runtime.machine().scheduler.queue;
+
+                        if let Some(blocking_deadline) = queue.next_deadline()
+                            && blocking_deadline < *target_timestamp
+                        {
+                            earliest_hazard = Some(
+                                earliest_hazard.map_or(blocking_deadline, |hazard: Period| {
+                                    hazard.min(blocking_deadline)
+                                }),
+                            );
+                            any_incomplete = true;
+                        }
+
+                        break;
+                    }
+                }
+            }
+
+            let store = unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
+            store.get_slot(id).as_mut().unwrap().data = Some(data);
+
+            if !any_incomplete {
                 return;
             }
 
             self.runtime
                 .machine()
                 .scheduler
-                .event_manager
-                .consume(self, hazard_timestamp);
-
-            {
-                let store =
-                    unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
-                let handle = self.fetch_or_acquire_component(id, store);
-
-                component = handle.component.take().unwrap();
-                current_timestamp = handle.current_timestamp;
-            }
+                .queue
+                .handle_deadlines_before(earliest_hazard.unwrap(), self);
         }
     }
 
@@ -325,7 +323,7 @@ impl<'a> ComponentRegistry<'a> {
         id: ComponentId,
         local_data: &'b mut LocalComponentRegistryData,
     ) -> &'b mut ComponentHandle {
-        let mut sync_state_guard = self.data().sync_state.lock().unwrap();
+        let mut sync_state_guard = self.data().state.lock().unwrap();
 
         loop {
             let Some(handle) = sync_state_guard.global_component_store.remove(&id) else {
@@ -354,7 +352,7 @@ impl<'a> ComponentRegistry<'a> {
     }
 
     pub(crate) unsafe fn release_all(&self) {
-        let mut sync_state_guard = self.data().sync_state.lock().unwrap();
+        let mut sync_state_guard = self.data().state.lock().unwrap();
         let local_data = unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
 
         self.release_all_inner(&mut sync_state_guard, local_data);
@@ -363,13 +361,13 @@ impl<'a> ComponentRegistry<'a> {
     /// Release all components currently available for releasing
     fn release_all_inner(
         &self,
-        sync_state: &mut GlobalSyncState,
+        sync_state: &mut GlobalState,
         local_data: &mut LocalComponentRegistryData,
     ) {
         for (id, slot) in local_data.iter_mut() {
             // Check if the slot is occupied and the handle isn't borrowed
             if let Some(handle) = slot
-                && handle.component.is_some()
+                && handle.data.is_some()
             {
                 let handle = slot.take().unwrap();
 
@@ -394,26 +392,9 @@ impl<'a> ComponentRegistry<'a> {
     pub(crate) fn id_for_path(&self, path: &ComponentPath) -> Option<ComponentId> {
         Some(self.data().metadata.get(path)?.id)
     }
-
-    pub(crate) fn get_timestamp<'b>(
-        &'b self,
-        id: impl Into<ComponentIdentifier<'b>>,
-    ) -> Option<Period> {
-        let id = self.convert_identifier(id)?;
-        let local_data = &self.runtime.local_data().component_registry_data;
-
-        let timestamp = {
-            let store = unsafe { &mut *local_data.get() };
-            self.fetch_or_acquire_component(id, store).current_timestamp
-        };
-
-        Some(timestamp)
-    }
 }
 
 /// An identifier for a component, either by its ID or path.
-///
-/// You should not have to use this type directly, instead rely on its `From` impls
 pub enum ComponentIdentifier<'a> {
     /// ID
     Id(ComponentId),

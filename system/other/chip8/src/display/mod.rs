@@ -5,20 +5,23 @@ use fluxemu_graphics::api::{
     software::texture::{CopyMode, OwnedTexture, Texture},
 };
 use fluxemu_runtime::{
+    RuntimeHandle,
     component::{
         Component,
         config::{ComponentConfig, LateContext},
     },
-    machine::builder::{ComponentBuilder, SchedulerParticipation},
+    machine::builder::ComponentBuilder,
     platform::Platform,
-    scheduler::{Period, SynchronizationContext},
+    scheduler::{
+        Frequency, QuantaAllocator,
+        task::{FrequencyBased, Mode},
+    },
 };
 use nalgebra::{Point2, Vector2};
 use palette::{
     Srgba,
     named::{BLACK, WHITE},
 };
-use serde::{Deserialize, Serialize};
 
 mod software;
 #[cfg(feature = "webgpu")]
@@ -26,13 +29,6 @@ mod webgpu;
 
 const LORES: Vector2<u8> = Vector2::new(64, 32);
 const HIRES: Vector2<u8> = Vector2::new(128, 64);
-
-#[derive(Debug, Serialize, Deserialize)]
-struct Snapshot {
-    screen_buffer: OwnedTexture<Srgba<u8>>,
-    vsync_occurred: bool,
-    hires: bool,
-}
 
 #[derive(Debug)]
 pub struct Chip8Display<G: SupportedGraphicsApiChip8Display> {
@@ -158,16 +154,12 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Display<G> {
 
         self.staging_buffer.fill(BLACK.into());
     }
-}
 
-impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Display<G> {
-    type Event = ();
-
-    fn synchronize(&mut self, mut context: SynchronizationContext) {
+    #[inline]
+    fn task(&mut self, _runtime_handle: &RuntimeHandle, quanta_allocator: QuantaAllocator<'_, '_>) {
         let mut commit_staging_buffer = false;
 
-        let mut quanta_iterator = context.quanta_allocator(Period::ONE / 60);
-        while quanta_iterator.allocate().is_some() {
+        for _ in quanta_allocator {
             self.vsync_occurred = true;
 
             commit_staging_buffer = true;
@@ -180,10 +172,10 @@ impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Display<G> {
                 .commit_staging_buffer(&self.staging_buffer);
         }
     }
+}
 
-    fn needs_work(&self, _timestamp: &Period, delta: &Period) -> bool {
-        *delta >= Period::ONE / 60
-    }
+impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Display<G> {
+    type Event = ();
 
     fn get_framebuffer(&mut self, _name: &str) -> &dyn Any {
         self.backend.as_mut().unwrap().framebuffer()
@@ -220,7 +212,11 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
         component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         component_builder
-            .scheduler_participation(Some(SchedulerParticipation::OnAccess))
+            .task(
+                "synchronization",
+                Mode::OnDemand,
+                FrequencyBased::new(Frequency::from_num(60), Self::Component::task),
+            )
             .framebuffer("framebuffer");
 
         Ok(Chip8Display {

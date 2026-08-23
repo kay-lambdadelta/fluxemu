@@ -1,8 +1,12 @@
 use fluxemu_runtime::{
+    RuntimeHandle,
     component::{Component, config::ComponentConfig},
-    machine::builder::{ComponentBuilder, SchedulerParticipation},
+    machine::builder::ComponentBuilder,
     platform::Platform,
-    scheduler::{Period, SynchronizationContext},
+    scheduler::{
+        Frequency, QuantaAllocator,
+        task::{FrequencyBased, Mode},
+    },
 };
 
 #[derive(Debug)]
@@ -19,21 +23,17 @@ impl Chip8Timer {
     pub fn get(&self) -> u8 {
         self.timer
     }
+
+    #[inline]
+    fn task(&mut self, _runtime_handle: &RuntimeHandle, quanta_allocator: QuantaAllocator<'_, '_>) {
+        for _ in quanta_allocator {
+            self.timer = self.timer.saturating_sub(1);
+        }
+    }
 }
 
 impl Component for Chip8Timer {
     type Event = ();
-
-    fn synchronize(&mut self, mut context: SynchronizationContext) {
-        let mut quanta_iterator = context.quanta_allocator(Period::ONE / 60);
-        while quanta_iterator.allocate().is_some() {
-            self.timer = self.timer.saturating_sub(1);
-        }
-    }
-
-    fn needs_work(&self, _timestamp: &Period, delta: &Period) -> bool {
-        *delta >= Period::ONE / 60
-    }
 }
 
 #[derive(Debug, Default)]
@@ -46,7 +46,11 @@ impl<P: Platform> ComponentConfig<P> for Chip8TimerConfig {
         self,
         component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
-        component_builder.scheduler_participation(Some(SchedulerParticipation::OnAccess));
+        component_builder.task(
+            "synchronization",
+            Mode::OnDemand,
+            FrequencyBased::new(Frequency::from_num(60), Self::Component::task),
+        );
 
         Ok(Chip8Timer { timer: 0 })
     }

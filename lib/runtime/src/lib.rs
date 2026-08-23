@@ -3,7 +3,6 @@
 //! Main runtime crate for the FluxEMU framework
 
 pub mod component;
-pub mod event;
 pub mod graphics;
 mod handle;
 pub mod input;

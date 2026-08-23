@@ -7,14 +7,17 @@ use fluxemu_runtime::{
         Component,
         config::{ComponentConfig, LateContext},
     },
-    machine::builder::{ComponentBuilder, SchedulerParticipation},
+    machine::builder::ComponentBuilder,
     memory::{
         Address, AddressSpaceId, MapTarget, MemoryError, MemoryErrorType, MemoryMapCommand,
         Permissions,
     },
     path::ComponentPath,
     platform::Platform,
-    scheduler::{Frequency, Period, SynchronizationContext},
+    scheduler::{
+        Frequency, Period,
+        event::{Event, EventMode, downcast_event},
+    },
 };
 use serde::{Deserialize, Serialize};
 use strum::FromRepr;
@@ -34,11 +37,11 @@ pub enum Register {
     T1024t = 0x17,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone, Copy)]
-struct TimerConfiguration {
-    timer: u8,
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+struct TimerSnapshot {
+    value: u8,
+    timestamp: Period,
     divider: u16,
-    next_timestamp: Period,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -46,7 +49,12 @@ struct State {
     swacnt: bool,
     swbcnt: bool,
     instat: u8,
-    timer_configuration: Option<TimerConfiguration>,
+    timer: Option<TimerSnapshot>,
+}
+
+#[derive(Debug, Clone)]
+pub enum RiotEvent {
+    TimerUnderflow,
 }
 
 #[derive(Debug)]
@@ -65,16 +73,34 @@ impl Mos6532Riot {
     pub fn swchb_address(&self) -> Address {
         self.config.registers_assigned_address + (Register::Swchb as Address)
     }
+
+    #[inline]
+    fn compute_intim(&self) -> u8 {
+        let Some(TimerSnapshot {
+            value,
+            timestamp,
+            divider,
+        }) = self.state.timer
+        else {
+            return 0;
+        };
+
+        let elapsed_ticks = RuntimeHandle::with_current(|handle| {
+            ((handle.current_timestamp() - timestamp) / self.period).to_num::<u64>()
+                / divider as u64
+        });
+        value.wrapping_sub(elapsed_ticks as u8)
+    }
 }
 
 impl Component for Mos6532Riot {
-    type Event = ();
+    type Event = RiotEvent;
 
     fn memory_read(
         &mut self,
         address: Address,
         _address_space: AddressSpaceId,
-        _avoid_side_effects: bool,
+        avoid_side_effects: bool,
         buffer: &mut [u8],
     ) -> Result<(), MemoryError> {
         for (address, buffer_section) in
@@ -96,8 +122,11 @@ impl Component for Mos6532Riot {
                     *buffer_section = self.state.swbcnt.into();
                 }
                 Register::Intim => {
-                    *buffer_section = self.state.timer_configuration.map(|t| t.timer).unwrap_or(0);
-                    self.state.instat &= 0b0111_1111;
+                    *buffer_section = self.compute_intim();
+
+                    if !avoid_side_effects {
+                        self.state.instat &= 0b0111_1111;
+                    }
                 }
                 Register::Instat => todo!(),
                 _ => {
@@ -122,14 +151,15 @@ impl Component for Mos6532Riot {
         buffer: &[u8],
     ) -> Result<(), MemoryError> {
         RuntimeHandle::with_current(|runtime| {
-            let timestamp = runtime.current_timestamp(&self.path);
+            let timestamp = runtime.current_timestamp();
 
             for (address, buffer_section) in
                 RangeInclusive::from_start_and_length(address, buffer.len()).zip(buffer.iter())
             {
                 let adjusted_address = address - self.config.registers_assigned_address;
+                let register = Register::from_repr(adjusted_address).unwrap();
 
-                match Register::from_repr(adjusted_address).unwrap() {
+                match register {
                     Register::Swcha => {
                         unreachable!()
                     }
@@ -190,32 +220,28 @@ impl Component for Mos6532Riot {
                         // Read only
                         unreachable!()
                     }
-                    Register::Tim1t => {
-                        self.state.timer_configuration = Some(TimerConfiguration {
-                            timer: *buffer_section,
-                            divider: 1,
-                            next_timestamp: timestamp + self.period,
-                        });
-                    }
-                    Register::Tim8t => {
-                        self.state.timer_configuration = Some(TimerConfiguration {
-                            timer: *buffer_section,
-                            divider: 8,
-                            next_timestamp: timestamp + self.period * 8,
-                        });
-                    }
-                    Register::Tim64t => {
-                        self.state.timer_configuration = Some(TimerConfiguration {
-                            timer: *buffer_section,
-                            divider: 64,
-                            next_timestamp: timestamp + self.period * 64,
-                        });
-                    }
-                    Register::T1024t => {
-                        self.state.timer_configuration = Some(TimerConfiguration {
-                            timer: *buffer_section,
-                            divider: 1024,
-                            next_timestamp: timestamp + self.period * 1024,
+                    Register::Tim1t | Register::Tim8t | Register::Tim64t | Register::T1024t => {
+                        let divider = match register {
+                            Register::Tim1t => 1,
+                            Register::Tim8t => 8,
+                            Register::Tim64t => 64,
+                            Register::T1024t => 1024,
+                            _ => unreachable!(),
+                        };
+
+                        RuntimeHandle::with_current(|runtime| {
+                            self.state.timer = Some(TimerSnapshot {
+                                value: *buffer_section,
+                                timestamp: runtime.current_timestamp(),
+                                divider,
+                            });
+
+                            runtime.schedule_event_relative::<Self>(
+                                &self.path,
+                                EventMode::Once,
+                                self.period * divider as u128 * (*buffer_section as u128 + 1),
+                                RiotEvent::TimerUnderflow,
+                            );
                         });
                     }
                     Register::Instat => todo!(),
@@ -226,32 +252,21 @@ impl Component for Mos6532Riot {
         Ok(())
     }
 
-    fn synchronize(&mut self, mut context: SynchronizationContext) {
-        let mut quanta_iterator = context.quanta_allocator(self.period);
-        while let Some(timestamp) = quanta_iterator.allocate() {
-            if let Some(config) = &mut self.state.timer_configuration
-                && timestamp == &config.next_timestamp
-            {
-                let (new_timer, underflowed) = config.timer.overflowing_sub(1);
+    fn handle_event(&mut self, event: Box<dyn Event>) {
+        let event = downcast_event::<Self>(event);
 
-                if !underflowed {
-                    config.next_timestamp += self.period * config.divider as u128;
-                } else {
-                    config.divider = 1;
-                    config.next_timestamp += self.period;
-                    self.state.instat |= 0b1000_0000;
-                }
+        match event {
+            RiotEvent::TimerUnderflow => {
+                self.state.instat |= 0b1000_0000;
 
-                config.timer = new_timer;
+                RuntimeHandle::with_current(|runtime| {
+                    self.state.timer = Some(TimerSnapshot {
+                        value: 0xff,
+                        timestamp: runtime.current_timestamp(),
+                        divider: 1,
+                    });
+                });
             }
-        }
-    }
-
-    fn needs_work(&self, current_timestamp: &Period, delta: &Period) -> bool {
-        if let Some(config) = self.state.timer_configuration {
-            current_timestamp + delta >= config.next_timestamp
-        } else {
-            false
         }
     }
 }
@@ -309,24 +324,22 @@ impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
 
         let my_path = component_builder.path().clone();
 
-        let component_builder = component_builder
-            .map_memory(
-                self.assigned_address_space,
-                MemoryMapCommand::with_component(
-                    my_path,
-                    [
-                        (RangeInclusive::from_single(swacnt), Permissions::ALL),
-                        (RangeInclusive::from_single(swbcnt), Permissions::ALL),
-                        (RangeInclusive::from_single(intim), Permissions::READ),
-                        (RangeInclusive::from_single(tim1t), Permissions::WRITE),
-                        (RangeInclusive::from_single(tim8t), Permissions::WRITE),
-                        (RangeInclusive::from_single(tim64t), Permissions::WRITE),
-                        (RangeInclusive::from_single(t1024t), Permissions::WRITE),
-                        (RangeInclusive::from_single(instat), Permissions::READ),
-                    ],
-                ),
-            )
-            .scheduler_participation(Some(SchedulerParticipation::OnAccess));
+        let component_builder = component_builder.map_memory(
+            self.assigned_address_space,
+            MemoryMapCommand::with_component(
+                my_path,
+                [
+                    (RangeInclusive::from_single(swacnt), Permissions::ALL),
+                    (RangeInclusive::from_single(swbcnt), Permissions::ALL),
+                    (RangeInclusive::from_single(intim), Permissions::READ),
+                    (RangeInclusive::from_single(tim1t), Permissions::WRITE),
+                    (RangeInclusive::from_single(tim8t), Permissions::WRITE),
+                    (RangeInclusive::from_single(tim64t), Permissions::WRITE),
+                    (RangeInclusive::from_single(t1024t), Permissions::WRITE),
+                    (RangeInclusive::from_single(instat), Permissions::READ),
+                ],
+            ),
+        );
 
         let path = component_builder.path().clone();
 
@@ -350,7 +363,7 @@ impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
                 swacnt: false,
                 swbcnt: false,
                 instat: 0,
-                timer_configuration: None,
+                timer: None,
             },
             period: self.frequency.recip(),
             config: self,

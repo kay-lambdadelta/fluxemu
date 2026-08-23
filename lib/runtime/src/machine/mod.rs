@@ -3,7 +3,7 @@
 //! The main runtime for the FluxEMU emulator framework
 
 use std::{
-    cell::{RefCell, UnsafeCell},
+    cell::{Cell, RefCell, UnsafeCell},
     collections::{HashMap, HashSet},
     fmt::Debug,
     marker::PhantomData,
@@ -137,12 +137,12 @@ impl RuntimeGuard<'_> {
 
     /// Drive the scheduler driven components to the current timestamp + the given time
     pub fn run(&self, allocated_time: Period) {
-        let mut registry = self.runtime.component_registry();
+        let registry = self.runtime.component_registry();
 
         self.runtime
             .machine()
             .scheduler
-            .run(&mut registry, allocated_time)
+            .run(&registry, allocated_time)
     }
 
     /// Get the last safe time to advance any component to
@@ -253,4 +253,5 @@ impl ThreadLocalData {
 
 thread_local! {
     pub(crate) static CURRENT_THREAD_RUNTIME_HANDLE: RefCell<Weak<RuntimeHandle>> = const { RefCell::new(Weak::new()) };
+    pub(crate) static CURRENT_DISPATCH_TIMESTAMP: Cell<Option<Period>> = const { Cell::new(None) };
 }

@@ -4,10 +4,11 @@ use fluxemu_graphics::api::software::texture::Texture;
 use fluxemu_math::range::ContiguousRange;
 use fluxemu_runtime::{
     component::config::{ComponentConfig, LateContext},
-    machine::builder::{ComponentBuilder, SchedulerParticipation},
+    machine::builder::ComponentBuilder,
     memory::{AddressSpaceId, MemoryMapCommand, Permissions},
     path::ComponentPath,
     platform::Platform,
+    scheduler::task::{FrequencyBased, Mode},
 };
 use nalgebra::Point2;
 use palette::named::BLACK;
@@ -44,7 +45,11 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>> ComponentConf
         component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         let (mut component_builder, _) = component_builder
-            .scheduler_participation(Some(SchedulerParticipation::OnAccess))
+            .task(
+                "synchronization",
+                Mode::OnDemand,
+                FrequencyBased::new(R::frequency(), Self::Component::task),
+            )
             .framebuffer("framebuffer");
 
         let my_path = component_builder.path().clone();
@@ -61,7 +66,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>> ComponentConf
                 }),
             ),
         );
-        component_builder = component_builder.map_memory(
+        component_builder.map_memory(
             self.cpu_address_space,
             MemoryMapCommand::with_component(
                 my_path.clone(),
@@ -98,7 +103,6 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>> ComponentConf
                 staging_buffer,
                 hmove_pending: false,
             },
-            path: component_builder.path().clone(),
         })
     }
 }

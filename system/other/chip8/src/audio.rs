@@ -1,9 +1,13 @@
 use fluxemu_audio::{SampleFormat, SquareWave};
 use fluxemu_runtime::{
+    RuntimeHandle,
     component::{Component, SampleSource, config::ComponentConfig},
-    machine::builder::{ComponentBuilder, SchedulerParticipation},
+    machine::builder::ComponentBuilder,
     platform::Platform,
-    scheduler::{Frequency, Period, SynchronizationContext},
+    scheduler::{
+        Frequency, Period, QuantaAllocator,
+        task::{FrequencyBased, Mode},
+    },
 };
 use nalgebra::SVector;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
@@ -26,24 +30,13 @@ impl Chip8Audio {
     pub fn set(&mut self, value: u8) {
         self.timer = value;
     }
-}
 
-impl Component for Chip8Audio {
-    type Event = ();
-
-    fn get_audio_channel(&mut self, _name: &str) -> SampleSource<'_> {
-        SampleSource {
-            audio_ring: &mut self.buffer,
-            sample_rate: INTERNAL_SAMPLE_RATE,
-        }
-    }
-
-    fn synchronize(&mut self, mut context: SynchronizationContext) {
+    #[inline]
+    fn task(&mut self, _runtime_handle: &RuntimeHandle, quanta_allocator: QuantaAllocator<'_, '_>) {
         let timer_period = Period::from_num(60).recip();
         let samples_per_tick = INTERNAL_SAMPLE_RATE / self.processor_frequency.to_num::<f32>();
 
-        let mut quanta_iterator = context.quanta_allocator(self.processor_frequency.recip());
-        while quanta_iterator.allocate().is_some() {
+        for _ in quanta_allocator {
             self.audio_accumulator += samples_per_tick;
 
             while self.audio_accumulator >= 1.0 {
@@ -67,9 +60,16 @@ impl Component for Chip8Audio {
             }
         }
     }
+}
 
-    fn needs_work(&self, _timestamp: &Period, delta: &Period) -> bool {
-        *delta >= self.processor_frequency.recip()
+impl Component for Chip8Audio {
+    type Event = ();
+
+    fn get_audio_channel(&mut self, _name: &str) -> SampleSource<'_> {
+        SampleSource {
+            audio_ring: &mut self.buffer,
+            sample_rate: INTERNAL_SAMPLE_RATE,
+        }
     }
 }
 
@@ -86,7 +86,11 @@ impl<P: Platform> ComponentConfig<P> for Chip8AudioConfig {
         component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         component_builder
-            .scheduler_participation(Some(SchedulerParticipation::OnAccess))
+            .task(
+                "synchronization",
+                Mode::OnDemand,
+                FrequencyBased::new(self.processor_frequency, Self::Component::task),
+            )
             .audio_channel("mono");
 
         Ok(Chip8Audio {

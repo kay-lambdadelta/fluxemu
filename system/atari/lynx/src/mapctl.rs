@@ -44,7 +44,7 @@ impl Component for Mapctl {
         buffer: &[u8],
     ) -> Result<(), MemoryError> {
         RuntimeHandle::with_current(|runtime| {
-            let timestamp = runtime.current_timestamp(&self.path);
+            let timestamp = runtime.current_timestamp();
 
             self.status = MapctlStatus::from_byte(buffer[0]);
 

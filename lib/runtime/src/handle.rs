@@ -3,10 +3,11 @@ use std::{rc::Rc, sync::Arc};
 use crate::{
     ComponentPath,
     component::{Component, ComponentRegistry},
-    event::EventMode,
-    machine::{CURRENT_THREAD_RUNTIME_HANDLE, Machine, ThreadLocalData},
+    machine::{
+        CURRENT_DISPATCH_TIMESTAMP, CURRENT_THREAD_RUNTIME_HANDLE, Machine, ThreadLocalData,
+    },
     memory::{AddressSpace, AddressSpaceId},
-    scheduler::Period,
+    scheduler::{Period, event::EventMode},
 };
 
 #[derive(Debug)]
@@ -62,28 +63,55 @@ impl RuntimeHandle {
         ComponentRegistry::new(self)
     }
 
-    /// Schedule an event by the [Component]s event type
+    /// Fire an event by the [Component]'s event type
     ///
     /// This event will fire at the specified timestamp, or if the timestamp is too early (ie: the period for it had already been allocated) directly after the timestamp
-    pub fn schedule_event<C: Component>(
+    pub fn schedule_event_at<C: Component>(
         &self,
         target_path: &ComponentPath,
         requeue_mode: EventMode,
-        time: Period,
+        at: Period,
         data: C::Event,
     ) {
-        self.machine.scheduler.event_manager.schedule(
-            time,
+        self.machine.scheduler.queue.schedule_event(
             target_path.clone(),
+            at,
             requeue_mode,
             Box::new(data),
         );
     }
 
+    /// Fire relative to the current timestamp for this interaction call
+    ///
+    /// See [`Self::schedule_event_at`] for more information
+    pub fn schedule_event_relative<C: Component>(
+        &self,
+        target_path: &ComponentPath,
+        mode: EventMode,
+        delay: Period,
+        data: C::Event,
+    ) {
+        self.schedule_event_at::<C>(target_path, mode, self.current_timestamp() + delay, data);
+    }
+
+    /// Fire this event as soon as possible
+    ///
+    /// See [`Self::schedule_event_at`] for more information
+    pub fn schedule_event_now<C: Component>(
+        &self,
+        target_path: &ComponentPath,
+        mode: EventMode,
+        data: C::Event,
+    ) {
+        self.schedule_event_at::<C>(target_path, mode, self.current_timestamp(), data);
+    }
+
     /// Get the current timestamp of your component
     ///
-    /// This will NOT be reliable within a synchronization call, and will give the time when the synchronization call started!
-    pub fn current_timestamp(&self, path: &ComponentPath) -> Period {
-        self.component_registry().get_timestamp(path).unwrap()
+    /// This will NOT be reliable within a system call, and will give the time when the system call started!
+    pub fn current_timestamp(&self) -> Period {
+        CURRENT_DISPATCH_TIMESTAMP
+            .with(|timestamp| timestamp.get())
+            .expect("This function only works within an interact call")
     }
 }
