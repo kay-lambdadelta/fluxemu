@@ -67,7 +67,7 @@ impl<'a> AddressSpace<'a> {
                             //
                             // Do not allow the copy at the end of both of these blocks to be merged
                             //
-                            // LLVM often gets confused and generates a actual memcpy
+                            // LLVM often gets confused and generates an actual memcpy, causing a severe perf regression
                             black_box(());
                         }
                         PageTableTarget::Component {
