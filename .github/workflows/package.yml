@@ -81,16 +81,13 @@ jobs:
         with:
           submodules: "true"
 
-      - uses: Swatinem/rust-cache@v2
+      - name: Setup nightly config
+        run: rm rust-toolchain.toml && ln -s shell/nuttallite/rust-toolchain.toml ./rust-toolchain.toml
 
-      - name: Force a rustup default
-        run: rustup default stable
+      - uses: Swatinem/rust-cache@v2
 
       - name: Install cargo-nuttx
         run: cargo install --git https://github.com/kay-lambdadelta/cargo-nuttx
-
-      - name: Setup nightly config
-        run: rm rust-toolchain.toml && ln -s shell/nuttallite/rust-toolchain.toml ./rust-toolchain.toml
 
       - name: Build nuttallite
         run: cargo nuttx --board raspberrypi-pico-2 --board-config nsh build -p fluxemu-shell-nuttallite --download --release -- -j$(nproc)
