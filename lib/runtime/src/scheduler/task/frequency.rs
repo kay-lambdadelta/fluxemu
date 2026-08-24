@@ -45,13 +45,10 @@ impl<
     type Component = C;
 
     #[inline]
-    fn run(&mut self, component: &mut Self::Component, context: &mut Context) -> Period {
+    fn run(&mut self, component: &mut Self::Component, context: &mut Context) {
         let runtime_handle = context.runtime();
         let quanta_allocator = context.quanta_allocator(self.period);
 
         (self.callback)(component, runtime_handle, quanta_allocator);
-
-        // Next time to run
-        *context.current_timestamp + self.period
     }
 }

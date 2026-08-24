@@ -209,6 +209,9 @@ impl<'a> Deref for RuntimeGuard<'a> {
 
 impl<'a> Drop for RuntimeGuard<'a> {
     fn drop(&mut self) {
+        CURRENT_DISPATCH_TIMESTAMP.with(|timestamp| {
+            timestamp.set(None);
+        });
         CURRENT_THREAD_RUNTIME_HANDLE.with_borrow_mut(|runtime| {
             *runtime = Weak::new();
         });

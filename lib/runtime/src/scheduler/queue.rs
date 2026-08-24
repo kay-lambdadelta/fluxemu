@@ -1,6 +1,6 @@
 use std::{
     cmp::Reverse,
-    collections::BinaryHeap,
+    collections::{BinaryHeap, binary_heap::PeekMut},
     sync::{
         Mutex,
         atomic::{AtomicU32, Ordering},
@@ -58,51 +58,76 @@ impl Queue {
         timestamp: Period,
         component_registry: &ComponentRegistry<'_>,
     ) {
-        let mut heap_guard = self.heap.lock().unwrap();
+        loop {
+            let mut heap_guard = self.heap.lock().unwrap();
 
-        while let Some(item) = heap_guard.peek() {
+            let Some(mut item) = heap_guard.peek_mut() else {
+                break;
+            };
+
             if timestamp < item.deadline.0 {
                 // The next item's deadline doesn't overlap with the specified period
                 break;
             }
 
-            let item = heap_guard.pop().unwrap();
-
-            match item.type_ {
+            match &item.type_ {
                 Type::Event { path, mode, data } => {
-                    if let EventMode::Repeating { frequency } = mode {
-                        let next_deadline = item.deadline.0 + frequency.recip();
+                    let (path, deadline, data) = if let EventMode::Repeating { frequency } = mode {
+                        // Copy needed data
+                        let deadline = item.deadline.0;
+                        let data = dyn_clone::clone_box(data.as_ref());
+                        let path = path.clone();
 
-                        heap_guard.push(QueueItem {
-                            deadline: Reverse(next_deadline),
-                            type_: Type::Event {
-                                path: path.clone(),
-                                mode,
-                                data: dyn_clone::clone_box(data.as_ref()),
-                            },
-                        });
+                        let next_deadline = deadline + frequency.recip();
 
+                        // Assign to its next deadline
+                        item.deadline = Reverse(next_deadline);
                         self.preemption_signal.bump();
-                    }
 
-                    drop(heap_guard);
+                        // Drop to prevent deadlocks due to reentrancy
+                        drop(item);
+                        drop(heap_guard);
 
-                    component_registry.interact_dyn(&path, &item.deadline.0, |component| {
+                        (path, deadline, data)
+                    } else {
+                        // Remove from queue
+                        let item = PeekMut::pop(item);
+                        let Type::Event { path, data, .. } = item.type_ else {
+                            unreachable!()
+                        };
+
+                        // Drop to prevent deadlocks due to reentrancy
+                        drop(heap_guard);
+
+                        (path, item.deadline.0, data)
+                    };
+
+                    // Events need to stop *on the timestamp* because they represent a full halt to service some periodic happening
+                    component_registry.interact_dyn(&path, &deadline, |component| {
                         component.handle_event(data);
                     });
                 }
-                Type::AlwaysModeTask { path } => {
+                // Always tasks do not need to be stopped on the dot however, and it would make it more efficient if they
+                // ran for as long runs as possible.
+                Type::AlwaysModeTask { .. } => {
+                    // Remove from queue
+                    let item = PeekMut::pop(item);
+                    let Type::AlwaysModeTask { path } = item.type_ else {
+                        unreachable!()
+                    };
+
+                    // Drop to prevent deadlocks due to reentrancy
                     drop(heap_guard);
 
+                    // Run the tasks associated with said component
                     component_registry.interact_dyn(
                         path.parent().unwrap(),
-                        &item.deadline.0,
+                        // Bound by the timestamp, in order to facilitate batching
+                        &timestamp,
                         |_| {},
                     );
                 }
             }
-
-            heap_guard = self.heap.lock().unwrap();
         }
     }
 
@@ -166,7 +191,10 @@ impl PreemptionSignal {
     }
 
     #[inline]
-    pub(crate) fn generation(&self) -> u32 {
-        self.0.load(Ordering::Acquire)
+    pub(crate) fn generation(&self) -> Generation {
+        Generation(self.0.load(Ordering::Acquire))
     }
 }
+
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Generation(u32);

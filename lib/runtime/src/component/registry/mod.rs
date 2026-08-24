@@ -142,7 +142,7 @@ impl<'a> ComponentRegistry<'a> {
         target_timestamp: &Period,
         callback: impl FnOnce(&mut dyn Component) -> T,
     ) -> T {
-        self.synchronize_component(id, target_timestamp);
+        self.synchronize_component(id, *target_timestamp);
 
         let mut data = {
             let store = unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
@@ -207,13 +207,16 @@ impl<'a> ComponentRegistry<'a> {
         }
     }
 
-    fn synchronize_component(&self, id: ComponentId, target_timestamp: &Period) {
+    fn synchronize_component(&self, id: ComponentId, target_timestamp: Period) {
         loop {
             let (mut data, path) = {
                 let store = unsafe { &mut *self.local_data().get() };
                 let handle = self.fetch_or_acquire_component(id, store);
 
-                (handle.data.take().unwrap(), handle.path.clone())
+                (
+                    handle.data.take().expect("Reentrant task detected"),
+                    handle.path.clone(),
+                )
             };
 
             if data.systems.is_empty() {
@@ -225,64 +228,64 @@ impl<'a> ComponentRegistry<'a> {
                 return;
             }
 
-            let mut earliest_hazard = None;
+            let mut earliest_hazard = Period::MAX;
             let mut any_incomplete = false;
 
             for (name, entry) in data.systems.iter_mut() {
-                while !entry.started || entry.current_timestamp < *target_timestamp {
-                    entry.started = true;
+                let delta = target_timestamp.saturating_sub(entry.current_timestamp);
 
-                    let previous_timestamp = entry.current_timestamp;
-                    let mut last_attempted_allocation = Period::ZERO;
-
+                // Attempt to allocate time for the task
+                if entry.required_next_allocation <= delta {
                     let mut context = Context {
                         runtime: self.runtime,
                         current_timestamp: &mut entry.current_timestamp,
-                        target_timestamp: *target_timestamp,
-                        last_attempted_allocation: &mut last_attempted_allocation,
+                        target_timestamp,
+                        required_next_allocation: &mut entry.required_next_allocation,
                     };
 
-                    let next_deadline = entry.task.run(data.component.as_mut(), &mut context);
+                    // Run task
+                    entry.task.run(data.component.as_mut(), &mut context);
 
-                    if last_attempted_allocation == Period::ZERO {
-                        let path = path.clone().into_resource(name.clone()).unwrap();
+                    // Ensure the requested time allocation was not meaningless
+                    assert_ne!(
+                        entry.required_next_allocation,
+                        Period::ZERO,
+                        "Task attempted to allocate zero time"
+                    );
 
-                        panic!("System for {path} did not attempt to allocate time");
+                    // Check if the goal was not reached
+                    let delta = target_timestamp.saturating_sub(entry.current_timestamp);
+
+                    // If the delta is enough that it could have allocated, that means the task yielded
+                    //
+                    // Check for any items in the queue
+                    if delta >= entry.required_next_allocation
+                        && let Some(blocking_deadline) =
+                            self.runtime.machine().scheduler.queue.next_deadline()
+                        && blocking_deadline <= target_timestamp
+                    {
+                        earliest_hazard = earliest_hazard.min(blocking_deadline);
+                        any_incomplete = true;
                     }
 
-                    if next_deadline == entry.current_timestamp {
-                        let path = path.clone().into_resource(name.clone()).unwrap();
-
-                        panic!(
-                            "Delta between requested next deadline by system is zero for {path}"
-                        );
-                    }
-
+                    // If it's an Always task, requeue it
                     if entry.mode == Mode::Always {
-                        let path = path.clone().into_resource(name.clone()).unwrap();
+                        let next_deadline =
+                            entry.current_timestamp + entry.required_next_allocation;
 
-                        self.runtime
-                            .machine()
-                            .scheduler
-                            .queue
-                            .reschedule_task(path.clone(), next_deadline);
-                    }
-
-                    if entry.current_timestamp == previous_timestamp {
-                        let queue = &self.runtime.machine().scheduler.queue;
-
-                        if let Some(blocking_deadline) = queue.next_deadline()
-                            && blocking_deadline < *target_timestamp
+                        if next_deadline > target_timestamp
+                            && entry.last_requeued_deadline != next_deadline
                         {
-                            earliest_hazard = Some(
-                                earliest_hazard.map_or(blocking_deadline, |hazard: Period| {
-                                    hazard.min(blocking_deadline)
-                                }),
-                            );
-                            any_incomplete = true;
-                        }
+                            let path = path.clone().into_resource(name.clone()).unwrap();
 
-                        break;
+                            self.runtime
+                                .machine()
+                                .scheduler
+                                .queue
+                                .reschedule_task(path, next_deadline);
+
+                            entry.last_requeued_deadline = next_deadline;
+                        }
                     }
                 }
             }
@@ -291,14 +294,14 @@ impl<'a> ComponentRegistry<'a> {
             store.get_slot(id).as_mut().unwrap().data = Some(data);
 
             if !any_incomplete {
-                return;
+                break;
             }
 
             self.runtime
                 .machine()
                 .scheduler
                 .queue
-                .handle_deadlines_before(earliest_hazard.unwrap(), self);
+                .handle_deadlines_before(earliest_hazard, self);
         }
     }
 

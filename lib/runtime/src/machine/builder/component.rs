@@ -242,15 +242,9 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
                 .reschedule_task(path, Period::ZERO);
         }
 
-        self.component_data.systems.insert(
-            name,
-            TaskEntry {
-                current_timestamp: Period::ZERO,
-                mode,
-                started: false,
-                task: Box::new(system),
-            },
-        );
+        self.component_data
+            .systems
+            .insert(name, TaskEntry::new(mode, system));
 
         self
     }

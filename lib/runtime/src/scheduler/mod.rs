@@ -2,7 +2,11 @@ use std::{fmt::Debug, sync::Mutex};
 
 use fixed::{FixedU128, types::extra::U64};
 
-use crate::{RuntimeHandle, component::ComponentRegistry, scheduler::queue::Queue};
+use crate::{
+    RuntimeHandle,
+    component::ComponentRegistry,
+    scheduler::queue::{Generation, Queue},
+};
 
 pub mod event;
 pub(crate) mod queue;
@@ -45,9 +49,9 @@ pub type Frequency = FixedU128<U64>;
 #[derive(Debug)]
 pub struct Context<'a> {
     pub(crate) runtime: &'a RuntimeHandle,
-    pub(crate) current_timestamp: &'a mut Period,
     pub(crate) target_timestamp: Period,
-    pub(crate) last_attempted_allocation: &'a mut Period,
+    pub(crate) current_timestamp: &'a mut Period,
+    pub(crate) required_next_allocation: &'a mut Period,
 }
 
 impl<'a> Context<'a> {
@@ -60,43 +64,33 @@ impl<'a> Context<'a> {
     /// or the runtime preempts the task
     #[inline]
     pub fn quanta_allocator<'b>(&'b mut self, period: Period) -> QuantaAllocator<'b, 'a> {
-        let (last_seen_event_generation, budget) = self.check_allocation_preconditions(period);
+        let last_seen_generation = self
+            .runtime
+            .machine()
+            .scheduler
+            .queue
+            .preemption_signal()
+            .generation();
 
-        QuantaAllocator {
+        let mut allocator = QuantaAllocator {
             period,
-            budget,
-            last_seen_event_generation,
+            budget: u32::MAX,
+            last_seen_generation,
             context: self,
-        }
-    }
+        };
 
-    #[inline]
-    fn check_allocation_preconditions(&mut self, period: Period) -> (u32, u32) {
-        assert_ne!(period, Period::ZERO, "Cannot allocate zero period");
-        *self.last_attempted_allocation = period;
+        allocator.rebudget();
 
-        let scheduler = &self.runtime.machine().scheduler;
-        let last_seen_event_generation = scheduler.queue.preemption_signal().generation();
-
-        let mut stop_time = self.target_timestamp;
-        if let Some(next_deadline) = scheduler.queue.next_deadline() {
-            stop_time = stop_time.min(next_deadline);
-        }
-
-        let budget = (stop_time.saturating_sub(*self.current_timestamp) / period)
-            .floor()
-            .checked_to_num::<u32>()
-            .unwrap_or(u32::MAX);
-
-        (last_seen_event_generation, budget)
+        allocator
     }
 }
 
 /// Helper iterator to continuously allocate a period until the time budget is exhausted
+#[must_use = "The cooperative scheduler needs your task to allocate time to advance"]
 pub struct QuantaAllocator<'b, 'a> {
     period: Period,
     budget: u32,
-    last_seen_event_generation: u32,
+    last_seen_generation: Generation,
     context: &'b mut Context<'a>,
 }
 
@@ -113,10 +107,11 @@ impl<'b, 'a> Iterator for QuantaAllocator<'b, 'a> {
             .preemption_signal();
 
         let current_generation = preemption_signal.generation();
-        if current_generation != self.last_seen_event_generation {
-            self.last_seen_event_generation = current_generation;
+        if current_generation != self.last_seen_generation {
+            self.last_seen_generation = current_generation;
             self.rebudget();
         }
+        *self.context.required_next_allocation = self.period;
 
         if self.budget != 0 {
             self.budget -= 1;
@@ -153,8 +148,7 @@ impl QuantaAllocator<'_, '_> {
         // Recalculate budget
         let new_budget = (stop_time.saturating_sub(*self.context.current_timestamp) / self.period)
             .floor()
-            .checked_to_num()
-            .unwrap_or(u32::MAX);
+            .saturating_to_num();
 
         self.budget = self.budget.min(new_budget);
     }
