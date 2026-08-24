@@ -93,7 +93,7 @@ jobs:
         run: rm rust-toolchain.toml && ln -s shell/nuttallite/rust-toolchain.toml ./rust-toolchain.toml
 
       - name: Build nuttallite
-        run: cargo +nightly nuttx --board raspberrypi-pico-2 --board-config nsh build -p fluxemu-shell-nuttallite --download --release -- -j$(nproc)
+        run: cargo nuttx --board raspberrypi-pico-2 --board-config nsh build -p fluxemu-shell-nuttallite --download --release -- -j$(nproc)
 
       - name: Upload NuttX firmware image
         uses: actions/upload-artifact@v7
