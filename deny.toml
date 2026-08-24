@@ -3,3 +3,8 @@ allow = ["GPL-3.0-or-later", "LGPL-2.1-or-later", "MIT", "Apache-2.0", "BSD-2-Cl
 
 [bans]
 multiple-versions = "allow"
+
+[advisories]
+ignore = [
+  { id = "RUSTSEC-2026-0192", reason = "ttf-parser is unmaintained" },
+]
