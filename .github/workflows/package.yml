@@ -45,14 +45,34 @@ jobs:
       - name: Install cargo-deb
         run: cargo install cargo-deb --locked
 
-      - name: Build Debian package
+      - name: Build
         run: cargo deb -p fluxemu-shell-destinezite --features drm --target x86_64-unknown-linux-gnu
 
       - name: Upload Debian package
         uses: actions/upload-artifact@v7
         with:
-          name: fluxemu-shell-destinezite-x86_64-unknown-linux-gnu-deb
+          name: fluxemu-shell-destinezite-(debian-trixie-x86_64)-deb
           path: target/debian/fluxemu-shell-destinezite_*_amd64.deb
+          if-no-files-found: error
+
+  windows-x86_64:
+    name: Windows (x86_64-pc-windows-msvc)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: "true"
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build -p fluxemu-shell-destinezite --release
+
+      - name: Upload Windows binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: fluxemu-shell-destinezite-(windows-x86_64)-portable
+          path: target/release/fluxemu-shell-destinezite.exe
           if-no-files-found: error
 
   apache-nuttx-raspberrypi-pico-2:
@@ -89,12 +109,12 @@ jobs:
       - name: Install cargo-nuttx
         run: cargo install --git https://github.com/kay-lambdadelta/cargo-nuttx
 
-      - name: Build nuttallite
+      - name: Build
         run: cargo nuttx --board raspberrypi-pico-2 --board-config nsh build -p fluxemu-shell-nuttallite --download --release -- -j$(nproc)
 
       - name: Upload NuttX firmware image
         uses: actions/upload-artifact@v7
         with:
-          name: fluxemu-shell-nuttallite-raspberrypi-pico-2
+          name: fluxemu-shell-nuttallite-(apache-nuttx-raspberrypi-pico-2)-uf2
           path: target/nuttx/raspberrypi-pico-2/release/nuttx.uf2
           if-no-files-found: error
