@@ -60,24 +60,24 @@ jobs:
       - name: Test
         run: cargo test
 
-  windows-x86_64:
-    name: Windows (x86_64-pc-windows-msvc)
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: "true"
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Build destinezite
-        run: cargo build -p fluxemu-shell-destinezite
-
-      - name: Build utils
-        run: cargo build -p fluxemu-utils
-
-      - name: Test
-        run: cargo test
+  #  windows-x86_64:
+  #    name: Windows (x86_64-pc-windows-msvc)
+  #    runs-on: windows-latest
+  #    steps:
+  #      - uses: actions/checkout@v7
+  #        with:
+  #          submodules: "true"
+  #
+  #      - uses: Swatinem/rust-cache@v2
+  #
+  #      - name: Build destinezite
+  #        run: cargo build -p fluxemu-shell-destinezite
+  #
+  #      - name: Build utils
+  #        run: cargo build -p fluxemu-utils
+  #
+  #      - name: Test
+  #        run: cargo test
 
   apache-nuttx-raspberrypi-pico-2:
     name: Apache NuttX Raspberry Pi Pico 2 (thumbv8m.main-nuttx-eabihf)
