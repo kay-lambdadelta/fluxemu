@@ -134,8 +134,7 @@ impl INes {
                 let prg_nvram_shift_count: u8 = reader.read(4)?;
                 let prg_ram_shift_count: u8 = reader.read(4)?;
 
-                if !non_volatile_memory && (prg_nvram_shift_count != 0 || prg_ram_shift_count != 0)
-                {
+                if !non_volatile_memory && prg_nvram_shift_count != 0 {
                     return Err(ParsingError::DisagreeingNonVolatileMemory);
                 }
 
