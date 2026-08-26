@@ -18,6 +18,7 @@ impl Region for Pal {
     const VISIBLE_SCANLINES: u16 = 240;
     const SKIPS_DOT_ON_ODD_FRAME: bool = false;
     const PPU_CLOCK_DIVISOR: u8 = 5;
+    const CPU_CLOCK_DIVISOR: u8 = 16;
 
     fn master_clock() -> Frequency {
         // ~53.203425 MHZ / 2

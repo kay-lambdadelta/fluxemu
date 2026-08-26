@@ -12,6 +12,7 @@ impl Region for Dendy {
     const VISIBLE_SCANLINES: u16 = 0;
     const SKIPS_DOT_ON_ODD_FRAME: bool = true;
     const PPU_CLOCK_DIVISOR: u8 = todo!();
+    const CPU_CLOCK_DIVISOR: u8 = todo!();
 
     fn master_clock() -> Frequency {
         todo!()

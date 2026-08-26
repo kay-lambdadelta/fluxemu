@@ -20,6 +20,7 @@ pub trait Region: Send + Sync + Debug + 'static {
     const PRERENDER_SCANLINE: u16 = Self::TOTAL_SCANLINES - 1;
     const SKIPS_DOT_ON_ODD_FRAME: bool;
     const PPU_CLOCK_DIVISOR: u8;
+    const CPU_CLOCK_DIVISOR: u8;
 
     fn master_clock() -> Frequency;
     fn generate_palette() -> [Srgb<u8>; 64];

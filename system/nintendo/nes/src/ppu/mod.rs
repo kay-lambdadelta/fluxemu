@@ -471,8 +471,7 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                             },
                         );
 
-                        // TODO: Extract to constant or extract from cpu directly within the config builder
-                        let processor_frequency = R::master_clock() / 12;
+                        let processor_frequency = R::master_clock() / R::CPU_CLOCK_DIVISOR as u128;
 
                         // Make sure the cpu wakes up
                         runtime.schedule_event_relative::<Mos6502<Ricoh2A0x>>(

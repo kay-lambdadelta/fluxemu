@@ -18,6 +18,7 @@ impl Region for Ntsc {
     const VISIBLE_SCANLINES: u16 = 240;
     const SKIPS_DOT_ON_ODD_FRAME: bool = true;
     const PPU_CLOCK_DIVISOR: u8 = 4;
+    const CPU_CLOCK_DIVISOR: u8 = 12;
 
     #[inline]
     fn master_clock() -> Frequency {

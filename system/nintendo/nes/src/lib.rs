@@ -305,7 +305,7 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> System<P> for Nes
                 let (machine_builder, processor) = machine_builder.component(
                     "cpu",
                     fluxemu_definition_mos6502::Config::<Ricoh2A0x>::new(
-                        Ntsc::master_clock() / 12,
+                        Ntsc::master_clock() / Ntsc::CPU_CLOCK_DIVISOR as u128,
                         cpu_address_space,
                     ),
                 );
@@ -329,7 +329,7 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> System<P> for Nes
                 let (machine_builder, processor) = machine_builder.component(
                     "cpu",
                     fluxemu_definition_mos6502::Config::<Ricoh2A0x>::new(
-                        Pal::master_clock() / 16,
+                        Pal::master_clock() / Pal::CPU_CLOCK_DIVISOR as u128,
                         cpu_address_space,
                     ),
                 );
