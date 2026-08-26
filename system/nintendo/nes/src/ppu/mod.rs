@@ -227,7 +227,6 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
                     fine_x_scroll: 0,
                     rendering_enabled: false,
                     awaiting_memory_access: true,
-                    tile_pixel: 0,
                     show_leftmost_pixels: true,
                 },
                 vram_address_pointer: 0,

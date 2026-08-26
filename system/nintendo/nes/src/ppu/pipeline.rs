@@ -123,22 +123,15 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
                 ));
             }
 
-            let bit_position =
-                15 - self.state.background.fine_x_scroll - self.state.background.tile_pixel;
+            let tile_pixel = (scanline_position_x % 8) as u8;
+            let bit_position = 15 - self.state.background.fine_x_scroll - tile_pixel;
 
             let high = (self.state.background.pattern_high_shift >> bit_position) & 1;
             let low = (self.state.background.pattern_low_shift >> bit_position) & 1;
 
             let attribute = (self.state.background.attribute_shift
-                >> (30
-                    - (self.state.background.fine_x_scroll + self.state.background.tile_pixel)
-                        * 2))
+                >> (30 - (self.state.background.fine_x_scroll + tile_pixel) * 2))
                 & 0b11;
-
-            self.state.background.tile_pixel += 1;
-            if self.state.background.tile_pixel == 8 {
-                self.state.background.tile_pixel = 0;
-            }
 
             let background_color_bits = (high << 1) | low;
             let is_background_visible = self.state.background.rendering_enabled
@@ -514,8 +507,6 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
                 self.state.background.pattern_low_shift |= u16::from(pattern_table_low);
                 self.state.background.pattern_high_shift |= u16::from(pattern_table_high);
                 self.state.background.attribute_shift |= u32::from(attribute) * 0x5555;
-
-                self.state.background.tile_pixel = 0;
 
                 if self.state.background.rendering_enabled {
                     if vram_address_pointer_contents.coarse.x == 31 {
