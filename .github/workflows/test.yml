@@ -51,14 +51,14 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Build destinezite
+      - name: Check destinezite
         run: cargo clippy -p fluxemu-shell-destinezite --all-features
 
-      - name: Build utils
+      - name: Check utils
         run: cargo clippy -p fluxemu-utils
 
       - name: Test
-        run: cargo test
+        run: RUSTFLAGS="-C opt-level=0" cargo test
 
   #  windows-x86_64:
   #    name: Windows (x86_64-pc-windows-msvc)
