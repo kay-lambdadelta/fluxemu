@@ -1676,7 +1676,7 @@ checksum = "98de4bbd547a563b716d8dfa9aad1cb19bfab00f4fa09a6a4ed21dbcf44ce9c4"
 
 [[package]]
 name = "fluxemu-audio"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "nalgebra",
  "num",
@@ -1685,7 +1685,7 @@ dependencies = [
 
 [[package]]
 name = "fluxemu-definition-intel8080"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "bytemuck",
  "fluxemu-runtime",
@@ -1694,7 +1694,7 @@ dependencies = [
 
 [[package]]
 name = "fluxemu-definition-mos6502"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "bytes",
  "criterion",
@@ -1708,7 +1708,7 @@ dependencies = [
 
 [[package]]
 name = "fluxemu-definition-mos6532"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "fluxemu-math",
  "fluxemu-runtime",
@@ -1718,7 +1718,7 @@ dependencies = [
 
 [[package]]
 name = "fluxemu-egui-software-renderer"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "criterion",
  "egui",
@@ -1736,7 +1736,7 @@ dependencies = [
 
 [[package]]
 name = "fluxemu-environment"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "confique",
  "dirs",
@@ -1751,7 +1751,7 @@ dependencies = [
 
 [[package]]
 name = "fluxemu-frontend"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "byte-unit",
  "egui",
@@ -1784,7 +1784,7 @@ dependencies = [
 
 [[package]]
 name = "fluxemu-graphics"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "bytemuck",
  "fluxemu-math",
@@ -1797,7 +1797,7 @@ dependencies = [
 
 [[package]]
 name = "fluxemu-input"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "serde",
  "strum",
@@ -1806,7 +1806,7 @@ dependencies = [
 
 [[package]]
 name = "fluxemu-locale"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "csv",
  "proc-macro2",
@@ -1817,7 +1817,7 @@ dependencies = [
 
 [[package]]
 name = "fluxemu-math"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "nalgebra",
  "num",
@@ -1827,7 +1827,7 @@ dependencies = [
 
 [[package]]
 name = "fluxemu-program"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "bytes",
  "data-encoding",
@@ -1849,7 +1849,7 @@ dependencies = [
 
 [[package]]
 name = "fluxemu-runtime"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "bit-vec 0.10.1",
  "bytes",
@@ -1882,7 +1882,7 @@ dependencies = [
 
 [[package]]
 name = "fluxemu-shell-destinezite"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "bytemuck",
  "clap",
@@ -1929,7 +1929,7 @@ dependencies = [
 
 [[package]]
 name = "fluxemu-shell-nuttallite"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "bindgen",
  "egui",
@@ -1957,7 +1957,7 @@ dependencies = [
 
 [[package]]
 name = "fluxemu-system"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "fluxemu-program",
  "fluxemu-runtime",
@@ -1966,7 +1966,7 @@ dependencies = [
 
 [[package]]
 name = "fluxemu-system-atari-2600"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "bytemuck",
  "bytes",
@@ -1992,7 +1992,7 @@ dependencies = [
 
 [[package]]
 name = "fluxemu-system-atari-lynx"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "fluxemu-definition-mos6502",
  "fluxemu-graphics",
@@ -2012,7 +2012,7 @@ dependencies = [
 
 [[package]]
 name = "fluxemu-system-nintendo-gameboy"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "fluxemu-definition-intel8080",
  "fluxemu-program",
@@ -2023,7 +2023,7 @@ dependencies = [
 
 [[package]]
 name = "fluxemu-system-nintendo-nes"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "bitstream-io",
  "bytemuck",
@@ -2054,7 +2054,7 @@ dependencies = [
 
 [[package]]
 name = "fluxemu-system-other-chip8"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "bytemuck",
  "bytes",
@@ -2078,7 +2078,7 @@ dependencies = [
 
 [[package]]
 name = "fluxemu-utils"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "clap",
  "fluxemu-environment",

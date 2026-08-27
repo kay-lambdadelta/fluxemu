@@ -1,9 +1,11 @@
 [package]
 name = "fluxemu-shell-nuttallite"
-version = "0.1.0"
-edition = "2024"
+version = "0.0.1"
+edition = { workspace = true }
+rust-version = { workspace = true }
 description = "A multi system emulator"
-license = "GPL-3.0-or-later"
+repository = { workspace = true }
+license = { workspace = true }
 
 [package.metadata.nuttx]
 priority = 100

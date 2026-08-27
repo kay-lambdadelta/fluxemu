@@ -8,6 +8,12 @@ members = [
   "utils/",
 ]
 
+[workspace.package]
+edition = "2024"
+rust-version = "1.95"
+repository = "https://github.com/kay-lambdadelta/fluxemu"
+license = "GPL-3.0-or-later"
+
 [workspace.dependencies]
 bit-vec = "0.10"
 bitstream-io = "4.10"

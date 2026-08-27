@@ -1,9 +1,11 @@
 [package]
 name = "fluxemu-utils"
-version = "0.1.0"
-edition = "2024"
+version = "0.0.1"
+edition = { workspace = true }
+rust-version = { workspace = true }
 description = "A command line utility interface for FluxEMU, but has tools generically useful for rom organization"
-license = "GPL-3.0-or-later"
+repository = { workspace = true }
+license = { workspace = true }
 
 [package.metadata.deb]
 maintainer = "Kay <lambdadeltakay@proton.me>"
