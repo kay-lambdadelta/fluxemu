@@ -96,7 +96,7 @@ udev = "0.9"
 ureq = "3.4"
 url = "2.5"
 uuid = {
-  version = "1.24",
+  version = "1.26",
   features = [
     "serde",
   ]
