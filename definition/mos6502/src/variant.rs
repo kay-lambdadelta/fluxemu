@@ -24,10 +24,10 @@ macro_rules! define_variant {
         pub struct $name;
 
         impl Variant for $name {
-            const SUPPORTS_DECIMAL: bool = $supports_decimal;
-            const SUPPORTS_INTERRUPTS: bool = $supports_interrupts;
             const HAS_ABSOLUTE_INDIRECT_PAGE_WRAP_ERRATA: bool =
                 $has_absolute_indirect_page_wrap_errata;
+            const SUPPORTS_DECIMAL: bool = $supports_decimal;
+            const SUPPORTS_INTERRUPTS: bool = $supports_interrupts;
             const WDC_VARIANT: bool = $wdc_variant;
 
             fn is_addressing_mode_valid(mode: &AddressingMode) -> bool {

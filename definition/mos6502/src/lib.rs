@@ -2,9 +2,11 @@
 
 extern crate alloc;
 
-use crate::cycle::Cycle;
 use core::fmt::Debug;
+
 use serde::{Deserialize, Serialize};
+
+use crate::cycle::Cycle;
 
 mod component;
 mod cycle;

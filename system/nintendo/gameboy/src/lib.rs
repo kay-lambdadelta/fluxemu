@@ -10,6 +10,7 @@ pub struct Gameboy;
 
 impl<P: Platform> System<P> for Gameboy {
     type Quirks = ();
+
     const ID: SystemId = SystemId::Nintendo(NintendoSystem::GameBoy);
 
     fn build(

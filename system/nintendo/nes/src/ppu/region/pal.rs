@@ -5,20 +5,19 @@ use fluxemu_runtime::scheduler::Frequency;
 use nalgebra::Rotation;
 use palette::Srgb;
 
-use crate::ppu::region::composite::{CompositeParams, build_palette};
-
 use super::Region;
+use crate::ppu::region::composite::{CompositeParams, build_palette};
 
 #[derive(Debug)]
 pub struct Pal;
 
 impl Region for Pal {
     const BYPASS_READ_BUFFER_FOR_PPUDATA_PALETTE_READS: bool = true;
+    const CPU_CLOCK_DIVISOR: u8 = 16;
+    const PPU_CLOCK_DIVISOR: u8 = 5;
+    const SKIPS_DOT_ON_ODD_FRAME: bool = false;
     const VBLANK_LENGTH: u16 = 70;
     const VISIBLE_SCANLINES: u16 = 240;
-    const SKIPS_DOT_ON_ODD_FRAME: bool = false;
-    const PPU_CLOCK_DIVISOR: u8 = 5;
-    const CPU_CLOCK_DIVISOR: u8 = 16;
 
     fn master_clock() -> Frequency {
         // ~53.203425 MHZ / 2

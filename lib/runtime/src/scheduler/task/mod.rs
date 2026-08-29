@@ -1,11 +1,10 @@
 mod frequency;
 
-use std::any::Any;
-use std::fmt::Debug;
-
-use crate::{component::Component, scheduler::Context};
+use std::{any::Any, fmt::Debug};
 
 pub use frequency::FrequencyBased;
+
+use crate::{component::Component, scheduler::Context};
 
 pub trait Task: Debug + Send + Sync + 'static {
     type Component: Component;

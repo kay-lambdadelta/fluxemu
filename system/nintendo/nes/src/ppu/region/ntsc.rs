@@ -5,20 +5,19 @@ use fluxemu_runtime::scheduler::Frequency;
 use nalgebra::{Rotation, SMatrix};
 use palette::Srgb;
 
-use crate::ppu::region::composite::{CompositeParams, build_palette};
-
 use super::Region;
+use crate::ppu::region::composite::{CompositeParams, build_palette};
 
 #[derive(Debug)]
 pub struct Ntsc;
 
 impl Region for Ntsc {
     const BYPASS_READ_BUFFER_FOR_PPUDATA_PALETTE_READS: bool = true;
+    const CPU_CLOCK_DIVISOR: u8 = 12;
+    const PPU_CLOCK_DIVISOR: u8 = 4;
+    const SKIPS_DOT_ON_ODD_FRAME: bool = true;
     const VBLANK_LENGTH: u16 = 20;
     const VISIBLE_SCANLINES: u16 = 240;
-    const SKIPS_DOT_ON_ODD_FRAME: bool = true;
-    const PPU_CLOCK_DIVISOR: u8 = 4;
-    const CPU_CLOCK_DIVISOR: u8 = 12;
 
     #[inline]
     fn master_clock() -> Frequency {

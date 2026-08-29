@@ -123,7 +123,10 @@ impl EguiInputTranslator {
     fn keyboardinput2egui(&mut self, input: KeyboardInputId, state: InputState) {
         static WARN_ONCE: Once = Once::new();
         WARN_ONCE.call_once(|| {
-            tracing::warn!("This function should not be used, instead platform specific keyboard translation should be employed");
+            tracing::warn!(
+                "This function should not be used, instead platform specific keyboard translation \
+                 should be employed"
+            );
         });
 
         let key = match input {

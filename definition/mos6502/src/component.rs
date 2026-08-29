@@ -1,6 +1,6 @@
+use alloc::boxed::Box;
 use core::marker::PhantomData;
 
-use alloc::boxed::Box;
 use fluxemu_runtime::{
     Platform, RuntimeHandle,
     component::{Component, config::ComponentConfig},

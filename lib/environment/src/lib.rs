@@ -36,34 +36,20 @@ pub struct Environment {
 
 pub static STORAGE_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| {
     cfg_select! {
-        target_os = "nuttx" => {
-            PathBuf::from("/data/fluxemu")
-        }
-        all(
-            any(target_family = "unix", target_os = "windows"),
-        ) => {
-            dirs::data_dir()
-                .expect("Could not lookup data directory")
-                .join("fluxemu")
-        }
-
+        target_os = "nuttx" => PathBuf::from("/data/fluxemu"),
+        all(any(target_family = "unix", target_os = "windows"),) => dirs::data_dir()
+            .expect("Could not lookup data directory")
+            .join("fluxemu"),
     }
 });
 
 pub static ENVIRONMENT_LOCATION: LazyLock<PathBuf> = LazyLock::new(|| {
     cfg_select! {
-        target_os = "nuttx" => {
-            STORAGE_DIRECTORY.join("environment.ron")
-        }
-        all(
-            any(target_family = "unix", target_os = "windows"),
-        ) => {
-            dirs::config_dir()
-                .map(|path| path.join("fluxemu"))
-                .unwrap_or(STORAGE_DIRECTORY.clone())
-                .join("environment.ron")
-        }
-
+        target_os = "nuttx" => STORAGE_DIRECTORY.join("environment.ron"),
+        all(any(target_family = "unix", target_os = "windows"),) => dirs::config_dir()
+            .map(|path| path.join("fluxemu"))
+            .unwrap_or(STORAGE_DIRECTORY.clone())
+            .join("environment.ron"),
     }
 });
 
