@@ -41,9 +41,9 @@ fn produce_memory() -> [u8; 0x10000] {
         0xa6, 0x11,
         // cpx #$ff
         0xe0, 0xff,
-        // bne back to $0204
-        0xd0, 0xe9,
-        // jmp $0200 (restart loop)
+        // bne $0204
+        0xd0, 0xf1,
+        // jmp $0200
         0x4c, 0x00, 0x02,
     ];
 
