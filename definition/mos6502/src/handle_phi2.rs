@@ -3,8 +3,8 @@ use crate::{
     component::Mos6502,
     cycle::{
         AddToPointerLikeRegisterSource, ArithmeticOperandInterpretation, BusMode, Cycle, Flag,
-        GeneralPurposeRegister, IncrementOperand, MoveDestination, MoveSource, Phi2,
-        PointerLikeRegister, ShiftDirection,
+        GeneralPurposeRegister, IncrementOperand, IndexAdjustment, MoveDestination, MoveSource,
+        Phi1Source, Phi2, PointerLikeRegister, ShiftDirection, UnstableStoreSource,
     },
     decoder::{
         InstructionGroup, decode_group1_space_instruction, decode_group2_space_instruction,
@@ -20,13 +20,13 @@ impl<V: Variant> Mos6502<V> {
         for &step in current_cycle.phi2.iter() {
             match step {
                 Phi2::AddToPointerLikeRegister {
-                    insert_adjustment_cycle_upon_carry,
+                    adjustment,
                     interpretation,
                     source,
                     destination,
                 } => {
                     self.add_to_pointer_like_register(
-                        insert_adjustment_cycle_upon_carry,
+                        adjustment,
                         interpretation,
                         source,
                         destination,
@@ -53,6 +53,7 @@ impl<V: Variant> Mos6502<V> {
                         MoveSource::InstructionPointer { offset } => {
                             self.state.instruction_pointer.to_le_bytes()[offset as usize]
                         }
+                        MoveSource::AccumulatorAndX => self.state.a & self.state.x,
                     };
 
                     match destination {
@@ -119,7 +120,7 @@ impl<V: Variant> Mos6502<V> {
                         IncrementOperand::Operand => &mut self.state.operand,
                     };
 
-                    let delta: i8 = if subtract { -1 } else { 1 };
+                    let delta = if subtract { -1 } else { 1 };
 
                     *operand = operand.wrapping_add_signed(delta);
 
@@ -233,55 +234,162 @@ impl<V: Variant> Mos6502<V> {
                             != (second_operation_result & 0b1000_0000));
 
                     self.state.flags.carry = first_operation_carry || second_operation_carry;
-
                     self.state.flags.negative = (second_operation_result as i8).is_negative();
-
                     self.state.flags.zero = second_operation_result == 0;
 
                     self.state.a = second_operation_result;
                 }
+                Phi2::CopyFlag {
+                    source,
+                    destination,
+                } => {
+                    let value = match source {
+                        Flag::Carry => self.state.flags.carry,
+                        Flag::Zero => self.state.flags.zero,
+                        Flag::Overflow => self.state.flags.overflow,
+                        Flag::Negative => self.state.flags.negative,
+                        Flag::Decimal => self.state.flags.decimal,
+                        Flag::InterruptDisable => self.state.flags.interrupt_disable,
+                    };
+
+                    match destination {
+                        Flag::Carry => self.state.flags.carry = value,
+                        Flag::Zero => self.state.flags.zero = value,
+                        Flag::Overflow => self.state.flags.overflow = value,
+                        Flag::Negative => self.state.flags.negative = value,
+                        Flag::Decimal => self.state.flags.decimal = value,
+                        Flag::InterruptDisable => self.state.flags.interrupt_disable = value,
+                    }
+                }
+                Phi2::RotateRightThroughAdder => {
+                    let result = (self.state.a >> 1) | ((self.state.flags.carry as u8) << 7);
+
+                    let bit_5 = (result & 0b0010_0000) != 0;
+                    let bit_6 = (result & 0b0100_0000) != 0;
+
+                    self.state.flags.carry = bit_6;
+                    self.state.flags.overflow = bit_6 != bit_5;
+                    self.state.flags.negative = (result as i8).is_negative();
+                    self.state.flags.zero = result == 0;
+
+                    self.state.a = result;
+                }
+                Phi2::SubtractOperandFromAAndX => {
+                    let (result, borrow) =
+                        (self.state.a & self.state.x).overflowing_sub(self.state.operand);
+
+                    self.state.flags.carry = !borrow;
+                    self.state.flags.zero = result == 0;
+                    self.state.flags.negative = (result as i8).is_negative();
+
+                    self.state.x = result;
+                }
+                Phi2::AndOperandWithStackPointer => {
+                    let result = self.state.stack & self.state.operand;
+
+                    self.state.flags.zero = result == 0;
+                    self.state.flags.negative = (result as i8).is_negative();
+
+                    self.state.a = result;
+                    self.state.x = result;
+                    self.state.stack = result;
+                }
+                Phi2::UnstableAndWithMagicConstant => {
+                    let result = (self.state.a | V::XAA_MAGIC_CONSTANT.unwrap())
+                        & self.state.x
+                        & self.state.operand;
+
+                    self.state.flags.zero = result == 0;
+                    self.state.flags.negative = (result as i8).is_negative();
+
+                    self.state.a = result;
+                }
+                Phi2::ComputeUnstableStoreOperand { source, register } => {
+                    let value = match source {
+                        UnstableStoreSource::AAndX => self.state.a & self.state.x,
+                        UnstableStoreSource::X => self.state.x,
+                        UnstableStoreSource::Y => self.state.y,
+                        UnstableStoreSource::StackPointerFromAAndX => {
+                            self.state.stack = self.state.a & self.state.x;
+
+                            self.state.stack
+                        }
+                    };
+
+                    let [_, address_high] = self.pointer_like_register(register).to_le_bytes();
+
+                    self.state.operand = value & address_high.wrapping_add(1);
+                }
+                Phi2::ReplacePointerLikeRegisterHighByteWithOperand { register } => {
+                    let [address_low, _] = self.pointer_like_register(register).to_le_bytes();
+
+                    self.write_pointer_like_register(
+                        register,
+                        u16::from_le_bytes([address_low, self.state.operand]),
+                    );
+                }
+                Phi2::Jam => {
+                    self.state
+                        .cycle_queue
+                        .push_front(Cycle::new(
+                            BusMode::Read,
+                            Some(Phi1Source::Constant(u16::MAX)),
+                            [Phi2::Jam],
+                        ))
+                        .unwrap();
+                }
             }
+        }
+    }
+
+    #[inline]
+    fn pointer_like_register(&self, register: PointerLikeRegister) -> u16 {
+        match register {
+            PointerLikeRegister::AddressBus => self.state.bus.address,
+            PointerLikeRegister::InstructionPointer => self.state.instruction_pointer,
+            PointerLikeRegister::EffectiveAddress => match self.state.effective_address.len() {
+                1 => u16::from(self.state.effective_address[0]),
+                2 => u16::from_le_bytes([
+                    self.state.effective_address[0],
+                    self.state.effective_address[1],
+                ]),
+                _ => unreachable!(),
+            },
+        }
+    }
+
+    #[inline]
+    fn write_pointer_like_register(&mut self, register: PointerLikeRegister, value: u16) {
+        let [value_low, value_high] = value.to_le_bytes();
+
+        match register {
+            PointerLikeRegister::AddressBus => self.state.bus.address = value,
+            PointerLikeRegister::InstructionPointer => self.state.instruction_pointer = value,
+            PointerLikeRegister::EffectiveAddress => match self.state.effective_address.len() {
+                1 => {
+                    self.state.effective_address[0] = value_low;
+                }
+                2 => {
+                    self.state.effective_address[0] = value_low;
+                    self.state.effective_address[1] = value_high;
+                }
+                _ => unreachable!(),
+            },
         }
     }
 
     #[inline]
     fn add_carry_to_pointer_like_register(&mut self, register: PointerLikeRegister, carry: i8) {
-        let address = match register {
-            PointerLikeRegister::AddressBus => self.state.bus.address,
-            PointerLikeRegister::InstructionPointer => self.state.instruction_pointer,
-            PointerLikeRegister::EffectiveAddress => {
-                match self.state.effective_address.len() {
-                    // It would be impossible for a "1" to be here
-                    2 => u16::from_le_bytes([
-                        self.state.effective_address[0],
-                        self.state.effective_address[1],
-                    ]),
-                    _ => unreachable!(),
-                }
-            }
-        };
-
-        let [address_low, address_high] = address.to_le_bytes();
+        let [address_low, address_high] = self.pointer_like_register(register).to_le_bytes();
         let result = address_high.wrapping_add_signed(carry);
 
-        match register {
-            PointerLikeRegister::AddressBus => {
-                self.state.bus.address = u16::from_le_bytes([address_low, result]);
-            }
-            PointerLikeRegister::EffectiveAddress => {
-                self.state.effective_address[0] = address_low;
-                self.state.effective_address[1] = result;
-            }
-            PointerLikeRegister::InstructionPointer => {
-                self.state.instruction_pointer = u16::from_le_bytes([address_low, result]);
-            }
-        }
+        self.write_pointer_like_register(register, u16::from_le_bytes([address_low, result]));
     }
 
     #[inline]
     fn add_to_pointer_like_register(
         &mut self,
-        insert_carry_cycle: bool,
+        adjustment: IndexAdjustment,
         interpretation: ArithmeticOperandInterpretation,
         source: AddToPointerLikeRegisterSource,
         destination: PointerLikeRegister,
@@ -298,18 +406,7 @@ impl<V: Variant> Mos6502<V> {
             AddToPointerLikeRegisterSource::Operand => self.state.operand,
         };
 
-        let address = match destination {
-            PointerLikeRegister::AddressBus => self.state.bus.address,
-            PointerLikeRegister::EffectiveAddress => match self.state.effective_address.len() {
-                1 => u16::from(self.state.effective_address[0]),
-                2 => u16::from_le_bytes([
-                    self.state.effective_address[0],
-                    self.state.effective_address[1],
-                ]),
-                _ => unreachable!(),
-            },
-            PointerLikeRegister::InstructionPointer => self.state.instruction_pointer,
-        };
+        let address = self.pointer_like_register(destination);
 
         let [_, address_high] = address.to_le_bytes();
 
@@ -339,40 +436,45 @@ impl<V: Variant> Mos6502<V> {
 
         let [result_low, _] = result.to_le_bytes();
 
-        // These write the OLD high so that the extra cycle can fix if carry arises and it must be handled
+        // This writes the OLD high so that the extra cycle can fix it if a carry arises and it
+        // must be handled
 
-        match destination {
-            PointerLikeRegister::AddressBus => {
-                self.state.bus.address = u16::from_le_bytes([result_low, address_high]);
-            }
-            PointerLikeRegister::InstructionPointer => {
-                self.state.instruction_pointer = u16::from_le_bytes([result_low, address_high]);
-            }
-            PointerLikeRegister::EffectiveAddress => match self.state.effective_address.len() {
-                1 => {
-                    self.state.effective_address[0] = result_low;
-                }
-                2 => {
-                    self.state.effective_address[0] = result_low;
-                    self.state.effective_address[1] = address_high;
-                }
-                _ => {
-                    unreachable!()
-                }
-            },
-        }
+        self.write_pointer_like_register(
+            destination,
+            u16::from_le_bytes([result_low, address_high]),
+        );
 
-        if carry != 0 && insert_carry_cycle {
+        let adjustment_steps: heapless::Vec<_, 4> = match adjustment {
+            IndexAdjustment::Discard => heapless::Vec::new(),
+            IndexAdjustment::OnCarry if carry == 0 => heapless::Vec::new(),
+            IndexAdjustment::OnCarry | IndexAdjustment::Always => {
+                heapless::Vec::from_iter([Phi2::AddCarryToPointerLikeRegister {
+                    register: destination,
+                    carry,
+                }])
+            }
+            IndexAdjustment::UnstableStore { source } => {
+                let mut steps = heapless::Vec::from_iter([Phi2::ComputeUnstableStoreOperand {
+                    source,
+                    register: destination,
+                }]);
+
+                if carry != 0 {
+                    steps
+                        .push(Phi2::ReplacePointerLikeRegisterHighByteWithOperand {
+                            register: destination,
+                        })
+                        .unwrap();
+                }
+
+                steps
+            }
+        };
+
+        if !adjustment_steps.is_empty() {
             self.state
                 .cycle_queue
-                .push_front(Cycle::new(
-                    BusMode::Read,
-                    None,
-                    [Phi2::AddCarryToPointerLikeRegister {
-                        register: destination,
-                        carry,
-                    }],
-                ))
+                .push_front(Cycle::new(BusMode::Read, None, adjustment_steps))
                 .unwrap();
         }
     }

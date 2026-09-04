@@ -153,7 +153,9 @@ pub fn decode_group2_space_instruction<V: Variant>(
             0b110 => (Opcode::Mos6502(Mos6502Opcode::Txs), None),
             0b111 => (
                 Opcode::Mos6502(Mos6502Opcode::Shx),
-                Some(addressing_mode.unwrap()),
+                Some(AddressingMode::Mos6502(
+                    Mos6502AddressingMode::YIndexedAbsolute,
+                )),
             ),
             _ => unreachable!(),
         },

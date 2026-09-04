@@ -36,6 +36,7 @@ pub enum MoveSource {
         /// LITTLE ENDIAN
         offset: u8,
     },
+    AccumulatorAndX,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -63,7 +64,7 @@ pub enum Flag {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum SetAddressBusSource {
+pub enum Phi1Source {
     InstructionPointer,
     EffectiveAddress,
     Constant(u16),
@@ -97,8 +98,28 @@ pub enum ShiftDirection {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Phi1 {
-    SetAddressBus { source: SetAddressBusSource },
+pub enum IndexAdjustment {
+    /// The carry is always discarded and ignored
+    Discard,
+    /// The carry is serviced, consuming an extra cycle
+    OnCarry,
+    /// A cycle is always spent, regardless if carrying occurred or not
+    Always,
+    UnstableStore {
+        source: UnstableStoreSource,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UnstableStoreSource {
+    /// Relevant to Sha
+    AAndX,
+    /// Relevant to Shx
+    X,
+    /// Relevant to Shy
+    Y,
+    /// Relevant to Shs
+    StackPointerFromAAndX,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -136,7 +157,7 @@ pub enum Phi2 {
     },
     IncrementInstructionPointer,
     AddToPointerLikeRegister {
-        insert_adjustment_cycle_upon_carry: bool,
+        adjustment: IndexAdjustment,
         interpretation: ArithmeticOperandInterpretation,
         source: AddToPointerLikeRegisterSource,
         destination: PointerLikeRegister,
@@ -146,20 +167,37 @@ pub enum Phi2 {
         carry: i8,
     },
     LoadInstructionPointerFromEffectiveAddress,
+    // Below ones are relevant to only UB instructions
+    CopyFlag {
+        source: Flag,
+        destination: Flag,
+    },
+    RotateRightThroughAdder,
+    SubtractOperandFromAAndX,
+    AndOperandWithStackPointer,
+    UnstableAndWithMagicConstant,
+    ComputeUnstableStoreOperand {
+        source: UnstableStoreSource,
+        register: PointerLikeRegister,
+    },
+    ReplacePointerLikeRegisterHighByteWithOperand {
+        register: PointerLikeRegister,
+    },
+    Jam,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Cycle {
     pub bus_mode: BusMode,
-    pub phi1: Option<Phi1>,
-    pub phi2: heapless::Vec<Phi2, 3>,
+    pub phi1: Option<Phi1Source>,
+    pub phi2: heapless::Vec<Phi2, 4>,
 }
 
 impl Cycle {
     #[inline]
     pub fn new(
         bus_mode: BusMode,
-        phi1: Option<Phi1>,
+        phi1: Option<Phi1Source>,
         phi2: impl IntoIterator<Item = Phi2>,
     ) -> Self {
         Self {

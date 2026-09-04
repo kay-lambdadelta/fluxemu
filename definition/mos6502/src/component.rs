@@ -16,7 +16,7 @@ use fluxemu_runtime::{
 use crate::{
     Bus, FlagRegister, IRQ_VECTOR, Mos6502Event, NMI_VECTOR, NmiFlag, Pin, RESET_VECTOR,
     STACK_BASE_ADDRESS, State,
-    cycle::{BusMode, Cycle, Flag, MoveDestination, MoveSource, Phi1, Phi2, SetAddressBusSource},
+    cycle::{BusMode, Cycle, Flag, MoveDestination, MoveSource, Phi1Source, Phi2},
     variant::Variant,
 };
 
@@ -147,9 +147,7 @@ impl<V: Variant> Mos6502<V> {
             // Load the reset vector
             Cycle::new(
                 BusMode::Read,
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::Constant(RESET_VECTOR),
-                }),
+                Some(Phi1Source::Constant(RESET_VECTOR)),
                 [Phi2::Move {
                     source: MoveSource::Data,
                     destination: MoveDestination::EffectiveAddress,
@@ -157,9 +155,7 @@ impl<V: Variant> Mos6502<V> {
             ),
             Cycle::new(
                 BusMode::Read,
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::Constant(RESET_VECTOR + 1),
-                }),
+                Some(Phi1Source::Constant(RESET_VECTOR + 1)),
                 [
                     Phi2::Move {
                         source: MoveSource::Data,
@@ -173,18 +169,10 @@ impl<V: Variant> Mos6502<V> {
 
     fn handle_nmi(&mut self) {
         self.state.cycle_queue.extend([
-            Cycle::new(
-                BusMode::Read,
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::InstructionPointer,
-                }),
-                [],
-            ),
+            Cycle::new(BusMode::Read, Some(Phi1Source::InstructionPointer), []),
             Cycle::new(
                 BusMode::Write,
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::Stack,
-                }),
+                Some(Phi1Source::Stack),
                 [
                     Phi2::Move {
                         source: MoveSource::InstructionPointer { offset: 1 },
@@ -195,9 +183,7 @@ impl<V: Variant> Mos6502<V> {
             ),
             Cycle::new(
                 BusMode::Write,
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::Stack,
-                }),
+                Some(Phi1Source::Stack),
                 [
                     Phi2::Move {
                         source: MoveSource::InstructionPointer { offset: 0 },
@@ -208,9 +194,7 @@ impl<V: Variant> Mos6502<V> {
             ),
             Cycle::new(
                 BusMode::Write,
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::Stack,
-                }),
+                Some(Phi1Source::Stack),
                 [
                     Phi2::Move {
                         source: MoveSource::Flags { break_: false },
@@ -221,9 +205,7 @@ impl<V: Variant> Mos6502<V> {
             ),
             Cycle::new(
                 BusMode::Read,
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::Constant(NMI_VECTOR),
-                }),
+                Some(Phi1Source::Constant(NMI_VECTOR)),
                 [Phi2::Move {
                     source: MoveSource::Data,
                     destination: MoveDestination::EffectiveAddress,
@@ -231,9 +213,7 @@ impl<V: Variant> Mos6502<V> {
             ),
             Cycle::new(
                 BusMode::Read,
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::Constant(NMI_VECTOR + 1),
-                }),
+                Some(Phi1Source::Constant(NMI_VECTOR + 1)),
                 [
                     Phi2::Move {
                         source: MoveSource::Data,
@@ -247,25 +227,11 @@ impl<V: Variant> Mos6502<V> {
 
     fn handle_irq(&mut self) {
         self.state.cycle_queue.extend([
-            Cycle::new(
-                BusMode::Read,
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::InstructionPointer,
-                }),
-                [],
-            ),
-            Cycle::new(
-                BusMode::Read,
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::InstructionPointer,
-                }),
-                [],
-            ),
+            Cycle::new(BusMode::Read, Some(Phi1Source::InstructionPointer), []),
+            Cycle::new(BusMode::Read, Some(Phi1Source::InstructionPointer), []),
             Cycle::new(
                 BusMode::Write,
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::Stack,
-                }),
+                Some(Phi1Source::Stack),
                 [
                     Phi2::Move {
                         source: MoveSource::InstructionPointer { offset: 1 },
@@ -276,9 +242,7 @@ impl<V: Variant> Mos6502<V> {
             ),
             Cycle::new(
                 BusMode::Write,
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::Stack,
-                }),
+                Some(Phi1Source::Stack),
                 [
                     Phi2::Move {
                         source: MoveSource::InstructionPointer { offset: 0 },
@@ -289,9 +253,7 @@ impl<V: Variant> Mos6502<V> {
             ),
             Cycle::new(
                 BusMode::Write,
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::Stack,
-                }),
+                Some(Phi1Source::Stack),
                 [
                     Phi2::Move {
                         source: MoveSource::Flags { break_: false },
@@ -302,9 +264,7 @@ impl<V: Variant> Mos6502<V> {
             ),
             Cycle::new(
                 BusMode::Read,
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::Constant(IRQ_VECTOR),
-                }),
+                Some(Phi1Source::Constant(IRQ_VECTOR)),
                 [Phi2::Move {
                     source: MoveSource::Data,
                     destination: MoveDestination::EffectiveAddress,
@@ -312,9 +272,7 @@ impl<V: Variant> Mos6502<V> {
             ),
             Cycle::new(
                 BusMode::Read,
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::Constant(IRQ_VECTOR + 1),
-                }),
+                Some(Phi1Source::Constant(IRQ_VECTOR + 1)),
                 [
                     Phi2::Move {
                         source: MoveSource::Data,
@@ -342,9 +300,7 @@ impl<V: Variant> Mos6502<V> {
                     .cycle_queue
                     .push_back(Cycle::new(
                         BusMode::Read,
-                        Some(Phi1::SetAddressBus {
-                            source: SetAddressBusSource::InstructionPointer,
-                        }),
+                        Some(Phi1Source::InstructionPointer),
                         [
                             Phi2::IncrementInstructionPointer,
                             Phi2::Move {
@@ -359,14 +315,10 @@ impl<V: Variant> Mos6502<V> {
             let current_cycle = self.state.cycle_queue.front_mut().unwrap();
 
             match current_cycle.phi1 {
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::InstructionPointer,
-                }) => {
+                Some(Phi1Source::InstructionPointer) => {
                     self.state.bus.address = self.state.instruction_pointer;
                 }
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::EffectiveAddress,
-                }) => {
+                Some(Phi1Source::EffectiveAddress) => {
                     match self.state.effective_address.len() {
                         1 => {
                             self.state.bus.address = u16::from(self.state.effective_address[0]);
@@ -382,14 +334,10 @@ impl<V: Variant> Mos6502<V> {
 
                     self.state.consume_effective_address = true;
                 }
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::Constant(value),
-                }) => {
+                Some(Phi1Source::Constant(value)) => {
                     self.state.bus.address = value;
                 }
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::Stack,
-                }) => {
+                Some(Phi1Source::Stack) => {
                     self.state.bus.address = u16::from(self.state.stack) | STACK_BASE_ADDRESS;
                 }
                 None => {}

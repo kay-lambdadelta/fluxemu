@@ -7,8 +7,8 @@ use crate::{
     component::Mos6502,
     cycle::{
         AddToPointerLikeRegisterSource, ArithmeticOperandInterpretation, BusMode, Cycle, Flag,
-        GeneralPurposeRegister, IncrementOperand, MoveDestination, MoveSource, Phi1, Phi2,
-        PointerLikeRegister, SetAddressBusSource, ShiftDirection,
+        GeneralPurposeRegister, IncrementOperand, IndexAdjustment, MoveDestination, MoveSource,
+        Phi1Source, Phi2, PointerLikeRegister, ShiftDirection, UnstableStoreSource,
     },
     variant::Variant,
 };
@@ -164,15 +164,15 @@ pub struct Mos6502InstructionSet {
 
 impl<V: Variant> Mos6502<V> {
     pub(super) fn push_steps_for_instruction(&mut self, instruction: &Mos6502InstructionSet) {
+        let index_adjustment = Self::index_adjustment(instruction.opcode);
+
         if let Some(addressing_mode) = instruction.addressing_mode {
             match addressing_mode {
                 AddressingMode::Mos6502(Mos6502AddressingMode::Absolute) => {
                     self.state.cycle_queue.extend([
                         Cycle::new(
                             BusMode::Read,
-                            Some(Phi1::SetAddressBus {
-                                source: SetAddressBusSource::InstructionPointer,
-                            }),
+                            Some(Phi1Source::InstructionPointer),
                             [
                                 Phi2::IncrementInstructionPointer,
                                 Phi2::Move {
@@ -183,9 +183,7 @@ impl<V: Variant> Mos6502<V> {
                         ),
                         Cycle::new(
                             BusMode::Read,
-                            Some(Phi1::SetAddressBus {
-                                source: SetAddressBusSource::InstructionPointer,
-                            }),
+                            Some(Phi1Source::InstructionPointer),
                             [
                                 Phi2::IncrementInstructionPointer,
                                 Phi2::Move {
@@ -201,25 +199,21 @@ impl<V: Variant> Mos6502<V> {
                 ) => {
                     self.state.cycle_queue.extend([Cycle::new(
                         BusMode::Read,
-                        Some(Phi1::SetAddressBus {
-                            source: SetAddressBusSource::InstructionPointer,
-                        }),
+                        Some(Phi1Source::InstructionPointer),
                         [Phi2::IncrementInstructionPointer],
                     )]);
                 }
                 AddressingMode::Mos6502(Mos6502AddressingMode::XIndexedAbsolute) => {
-                    self.register_indexed_absolute(GeneralPurposeRegister::X);
+                    self.register_indexed_absolute(GeneralPurposeRegister::X, index_adjustment);
                 }
                 AddressingMode::Mos6502(Mos6502AddressingMode::YIndexedAbsolute) => {
-                    self.register_indexed_absolute(GeneralPurposeRegister::Y);
+                    self.register_indexed_absolute(GeneralPurposeRegister::Y, index_adjustment);
                 }
                 AddressingMode::Mos6502(Mos6502AddressingMode::AbsoluteIndirect) => {
                     self.state.cycle_queue.extend([
                         Cycle::new(
                             BusMode::Read,
-                            Some(Phi1::SetAddressBus {
-                                source: SetAddressBusSource::InstructionPointer,
-                            }),
+                            Some(Phi1Source::InstructionPointer),
                             [
                                 Phi2::IncrementInstructionPointer,
                                 Phi2::Move {
@@ -230,9 +224,7 @@ impl<V: Variant> Mos6502<V> {
                         ),
                         Cycle::new(
                             BusMode::Read,
-                            Some(Phi1::SetAddressBus {
-                                source: SetAddressBusSource::InstructionPointer,
-                            }),
+                            Some(Phi1Source::InstructionPointer),
                             [
                                 Phi2::IncrementInstructionPointer,
                                 Phi2::Move {
@@ -243,9 +235,7 @@ impl<V: Variant> Mos6502<V> {
                         ),
                         Cycle::new(
                             BusMode::Read,
-                            Some(Phi1::SetAddressBus {
-                                source: SetAddressBusSource::EffectiveAddress,
-                            }),
+                            Some(Phi1Source::EffectiveAddress),
                             [
                                 Phi2::Move {
                                     source: MoveSource::Data,
@@ -256,8 +246,11 @@ impl<V: Variant> Mos6502<V> {
                                     destination: PointerLikeRegister::AddressBus,
                                     interpretation: ArithmeticOperandInterpretation::Unsigned,
                                     // Insert carry cycle if the bug is not present
-                                    insert_adjustment_cycle_upon_carry:
-                                        !V::HAS_ABSOLUTE_INDIRECT_PAGE_WRAP_ERRATA,
+                                    adjustment: if V::HAS_ABSOLUTE_INDIRECT_PAGE_WRAP_ERRATA {
+                                        IndexAdjustment::Discard
+                                    } else {
+                                        IndexAdjustment::OnCarry
+                                    },
                                 },
                             ],
                         ),
@@ -275,9 +268,7 @@ impl<V: Variant> Mos6502<V> {
                     self.state.cycle_queue.extend([
                         Cycle::new(
                             BusMode::Read,
-                            Some(Phi1::SetAddressBus {
-                                source: SetAddressBusSource::InstructionPointer,
-                            }),
+                            Some(Phi1Source::InstructionPointer),
                             [
                                 Phi2::IncrementInstructionPointer,
                                 Phi2::Move {
@@ -288,15 +279,13 @@ impl<V: Variant> Mos6502<V> {
                         ),
                         Cycle::new(
                             BusMode::Read,
-                            Some(Phi1::SetAddressBus {
-                                source: SetAddressBusSource::EffectiveAddress,
-                            }),
+                            Some(Phi1Source::EffectiveAddress),
                             [Phi2::AddToPointerLikeRegister {
                                 source: AddToPointerLikeRegisterSource::Register(
                                     GeneralPurposeRegister::X,
                                 ),
                                 destination: PointerLikeRegister::AddressBus,
-                                insert_adjustment_cycle_upon_carry: false,
+                                adjustment: IndexAdjustment::Discard,
                                 interpretation: ArithmeticOperandInterpretation::Unsigned,
                             }],
                         ),
@@ -312,7 +301,7 @@ impl<V: Variant> Mos6502<V> {
                                     source: AddToPointerLikeRegisterSource::Constant(1),
                                     destination: PointerLikeRegister::AddressBus,
                                     interpretation: ArithmeticOperandInterpretation::Unsigned,
-                                    insert_adjustment_cycle_upon_carry: false,
+                                    adjustment: IndexAdjustment::Discard,
                                 },
                             ],
                         ),
@@ -330,9 +319,7 @@ impl<V: Variant> Mos6502<V> {
                     self.state.cycle_queue.extend([
                         Cycle::new(
                             BusMode::Read,
-                            Some(Phi1::SetAddressBus {
-                                source: SetAddressBusSource::InstructionPointer,
-                            }),
+                            Some(Phi1Source::InstructionPointer),
                             [
                                 Phi2::IncrementInstructionPointer,
                                 Phi2::Move {
@@ -343,9 +330,7 @@ impl<V: Variant> Mos6502<V> {
                         ),
                         Cycle::new(
                             BusMode::Read,
-                            Some(Phi1::SetAddressBus {
-                                source: SetAddressBusSource::EffectiveAddress,
-                            }),
+                            Some(Phi1Source::EffectiveAddress),
                             [
                                 Phi2::Move {
                                     source: MoveSource::Data,
@@ -355,7 +340,7 @@ impl<V: Variant> Mos6502<V> {
                                     source: AddToPointerLikeRegisterSource::Constant(1),
                                     destination: PointerLikeRegister::AddressBus,
                                     interpretation: ArithmeticOperandInterpretation::Unsigned,
-                                    insert_adjustment_cycle_upon_carry: false,
+                                    adjustment: IndexAdjustment::Discard,
                                 },
                             ],
                         ),
@@ -373,7 +358,7 @@ impl<V: Variant> Mos6502<V> {
                                     ),
                                     destination: PointerLikeRegister::EffectiveAddress,
                                     interpretation: ArithmeticOperandInterpretation::Unsigned,
-                                    insert_adjustment_cycle_upon_carry: true,
+                                    adjustment: index_adjustment,
                                 },
                             ],
                         ),
@@ -388,9 +373,7 @@ impl<V: Variant> Mos6502<V> {
                 AddressingMode::Mos6502(Mos6502AddressingMode::ZeroPage) => {
                     self.state.cycle_queue.extend([Cycle::new(
                         BusMode::Read,
-                        Some(Phi1::SetAddressBus {
-                            source: SetAddressBusSource::InstructionPointer,
-                        }),
+                        Some(Phi1Source::InstructionPointer),
                         [
                             Phi2::IncrementInstructionPointer,
                             Phi2::Move {
@@ -426,7 +409,22 @@ impl<V: Variant> Mos6502<V> {
                     ],
                 );
             }
-            Opcode::Mos6502(Mos6502Opcode::Anc) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Anc) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [
+                        Phi2::Move {
+                            source: MoveSource::Data,
+                            destination: MoveDestination::Operand,
+                        },
+                        Phi2::And { writeback: true },
+                        Phi2::CopyFlag {
+                            source: Flag::Negative,
+                            destination: Flag::Carry,
+                        },
+                    ],
+                );
+            }
             Opcode::Mos6502(Mos6502Opcode::And) => {
                 self.patch_read_maybe_effective_address_dependent(
                     instruction,
@@ -439,7 +437,19 @@ impl<V: Variant> Mos6502<V> {
                     ],
                 );
             }
-            Opcode::Mos6502(Mos6502Opcode::Arr) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Arr) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [
+                        Phi2::Move {
+                            source: MoveSource::Data,
+                            destination: MoveDestination::Operand,
+                        },
+                        Phi2::And { writeback: true },
+                        Phi2::RotateRightThroughAdder,
+                    ],
+                );
+            }
             Opcode::Mos6502(Mos6502Opcode::Asl) => {
                 if instruction.addressing_mode
                     == Some(AddressingMode::Mos6502(Mos6502AddressingMode::Accumulator))
@@ -460,7 +470,23 @@ impl<V: Variant> Mos6502<V> {
                     }]);
                 }
             }
-            Opcode::Mos6502(Mos6502Opcode::Asr) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Asr) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [
+                        Phi2::Move {
+                            source: MoveSource::Data,
+                            destination: MoveDestination::Operand,
+                        },
+                        Phi2::And { writeback: true },
+                        Phi2::Shift {
+                            direction: ShiftDirection::Right,
+                            rotate: false,
+                            a_is_operand: true,
+                        },
+                    ],
+                );
+            }
             Opcode::Mos6502(Mos6502Opcode::Bit) => {
                 self.patch_read_maybe_effective_address_dependent(
                     instruction,
@@ -481,16 +507,12 @@ impl<V: Variant> Mos6502<V> {
                 self.state.cycle_queue.extend([
                     Cycle::new(
                         BusMode::Read,
-                        Some(Phi1::SetAddressBus {
-                            source: SetAddressBusSource::InstructionPointer,
-                        }),
+                        Some(Phi1Source::InstructionPointer),
                         [Phi2::IncrementInstructionPointer],
                     ),
                     Cycle::new(
                         BusMode::Write,
-                        Some(Phi1::SetAddressBus {
-                            source: SetAddressBusSource::Stack,
-                        }),
+                        Some(Phi1Source::Stack),
                         [
                             Phi2::Move {
                                 source: MoveSource::InstructionPointer { offset: 1 },
@@ -501,9 +523,7 @@ impl<V: Variant> Mos6502<V> {
                     ),
                     Cycle::new(
                         BusMode::Write,
-                        Some(Phi1::SetAddressBus {
-                            source: SetAddressBusSource::Stack,
-                        }),
+                        Some(Phi1Source::Stack),
                         [
                             Phi2::Move {
                                 source: MoveSource::InstructionPointer { offset: 0 },
@@ -514,9 +534,7 @@ impl<V: Variant> Mos6502<V> {
                     ),
                     Cycle::new(
                         BusMode::Write,
-                        Some(Phi1::SetAddressBus {
-                            source: SetAddressBusSource::Stack,
-                        }),
+                        Some(Phi1Source::Stack),
                         [
                             Phi2::Move {
                                 source: MoveSource::Flags { break_: true },
@@ -527,9 +545,7 @@ impl<V: Variant> Mos6502<V> {
                     ),
                     Cycle::new(
                         BusMode::Read,
-                        Some(Phi1::SetAddressBus {
-                            source: SetAddressBusSource::Constant(IRQ_VECTOR),
-                        }),
+                        Some(Phi1Source::Constant(IRQ_VECTOR)),
                         [Phi2::Move {
                             source: MoveSource::Data,
                             destination: MoveDestination::EffectiveAddress,
@@ -537,9 +553,7 @@ impl<V: Variant> Mos6502<V> {
                     ),
                     Cycle::new(
                         BusMode::Read,
-                        Some(Phi1::SetAddressBus {
-                            source: SetAddressBusSource::Constant(IRQ_VECTOR + 1),
-                        }),
+                        Some(Phi1Source::Constant(IRQ_VECTOR + 1)),
                         [
                             Phi2::Move {
                                 source: MoveSource::Data,
@@ -632,7 +646,17 @@ impl<V: Variant> Mos6502<V> {
                     ],
                 );
             }
-            Opcode::Mos6502(Mos6502Opcode::Dcp) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Dcp) => {
+                self.insert_rmw_effective_address_dependent([
+                    Phi2::Increment {
+                        operand: IncrementOperand::Operand,
+                        subtract: true,
+                    },
+                    Phi2::Compare {
+                        register: GeneralPurposeRegister::A,
+                    },
+                ]);
+            }
             Opcode::Mos6502(Mos6502Opcode::Dec) => {
                 self.insert_rmw_effective_address_dependent([Phi2::Increment {
                     operand: IncrementOperand::Operand,
@@ -693,8 +717,30 @@ impl<V: Variant> Mos6502<V> {
                     }],
                 );
             }
-            Opcode::Mos6502(Mos6502Opcode::Isc) => todo!(),
-            Opcode::Mos6502(Mos6502Opcode::Jam) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Isc) => {
+                self.insert_rmw_effective_address_dependent([
+                    Phi2::Increment {
+                        operand: IncrementOperand::Operand,
+                        subtract: false,
+                    },
+                    Phi2::Add {
+                        invert_operand: true,
+                    },
+                ]);
+            }
+            Opcode::Mos6502(Mos6502Opcode::Jam) => {
+                tracing::error!("JAM occurred");
+
+                self.state.cycle_queue.clear();
+                self.state
+                    .cycle_queue
+                    .push_back(Cycle::new(
+                        BusMode::Read,
+                        Some(Phi1Source::Constant(u16::MAX)),
+                        [Phi2::Jam],
+                    ))
+                    .unwrap();
+            }
             Opcode::Mos6502(Mos6502Opcode::Jmp) => {
                 // Note that this is correct for all actual existing addressing modes for JMP
                 self.state
@@ -712,9 +758,7 @@ impl<V: Variant> Mos6502<V> {
                 self.state.cycle_queue.extend([
                     Cycle::new(
                         BusMode::Read,
-                        Some(Phi1::SetAddressBus {
-                            source: SetAddressBusSource::InstructionPointer,
-                        }),
+                        Some(Phi1Source::InstructionPointer),
                         [
                             Phi2::IncrementInstructionPointer,
                             Phi2::Move {
@@ -725,9 +769,7 @@ impl<V: Variant> Mos6502<V> {
                     ),
                     Cycle::new(
                         BusMode::Write,
-                        Some(Phi1::SetAddressBus {
-                            source: SetAddressBusSource::Stack,
-                        }),
+                        Some(Phi1Source::Stack),
                         [
                             Phi2::Move {
                                 source: MoveSource::InstructionPointer { offset: 1 },
@@ -738,9 +780,7 @@ impl<V: Variant> Mos6502<V> {
                     ),
                     Cycle::new(
                         BusMode::Write,
-                        Some(Phi1::SetAddressBus {
-                            source: SetAddressBusSource::Stack,
-                        }),
+                        Some(Phi1Source::Stack),
                         [
                             Phi2::Move {
                                 source: MoveSource::InstructionPointer { offset: 0 },
@@ -751,9 +791,7 @@ impl<V: Variant> Mos6502<V> {
                     ),
                     Cycle::new(
                         BusMode::Read,
-                        Some(Phi1::SetAddressBus {
-                            source: SetAddressBusSource::InstructionPointer,
-                        }),
+                        Some(Phi1Source::InstructionPointer),
                         [
                             Phi2::IncrementInstructionPointer,
                             Phi2::Move {
@@ -769,8 +807,39 @@ impl<V: Variant> Mos6502<V> {
                     ),
                 ]);
             }
-            Opcode::Mos6502(Mos6502Opcode::Las) => todo!(),
-            Opcode::Mos6502(Mos6502Opcode::Lax) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Las) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [
+                        Phi2::Move {
+                            source: MoveSource::Data,
+                            destination: MoveDestination::Operand,
+                        },
+                        Phi2::AndOperandWithStackPointer,
+                    ],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Lax) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [
+                        Phi2::Move {
+                            source: MoveSource::Data,
+                            destination: MoveDestination::Register {
+                                register: GeneralPurposeRegister::A,
+                                update_nz: true,
+                            },
+                        },
+                        Phi2::Move {
+                            source: MoveSource::Data,
+                            destination: MoveDestination::Register {
+                                register: GeneralPurposeRegister::X,
+                                update_nz: true,
+                            },
+                        },
+                    ],
+                );
+            }
             Opcode::Mos6502(Mos6502Opcode::Lda) => {
                 self.patch_read_maybe_effective_address_dependent(
                     instruction,
@@ -828,7 +897,8 @@ impl<V: Variant> Mos6502<V> {
                 }
             }
             Opcode::Mos6502(Mos6502Opcode::Nop) => {
-                // Nothing happens
+                // Handle the multibyte forms if required
+                self.patch_read_maybe_effective_address_dependent(instruction, []);
             }
             Opcode::Mos6502(Mos6502Opcode::Ora) => {
                 self.patch_read_maybe_effective_address_dependent(
@@ -859,7 +929,16 @@ impl<V: Variant> Mos6502<V> {
             Opcode::Mos6502(Mos6502Opcode::Plp) => {
                 self.pull_stack_item(MoveDestination::Flags);
             }
-            Opcode::Mos6502(Mos6502Opcode::Rla) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Rla) => {
+                self.insert_rmw_effective_address_dependent([
+                    Phi2::Shift {
+                        direction: ShiftDirection::Left,
+                        rotate: true,
+                        a_is_operand: false,
+                    },
+                    Phi2::And { writeback: true },
+                ]);
+            }
             Opcode::Mos6502(Mos6502Opcode::Rol) => {
                 if instruction.addressing_mode
                     == Some(AddressingMode::Mos6502(Mos6502AddressingMode::Accumulator))
@@ -900,7 +979,18 @@ impl<V: Variant> Mos6502<V> {
                     }]);
                 }
             }
-            Opcode::Mos6502(Mos6502Opcode::Rra) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Rra) => {
+                self.insert_rmw_effective_address_dependent([
+                    Phi2::Shift {
+                        direction: ShiftDirection::Right,
+                        rotate: true,
+                        a_is_operand: false,
+                    },
+                    Phi2::Add {
+                        invert_operand: false,
+                    },
+                ]);
+            }
             Opcode::Mos6502(Mos6502Opcode::Rti) => {
                 self.state.cycle_queue.clear();
 
@@ -912,9 +1002,7 @@ impl<V: Variant> Mos6502<V> {
                     ),
                     Cycle::new(
                         BusMode::Read,
-                        Some(Phi1::SetAddressBus {
-                            source: SetAddressBusSource::Stack,
-                        }),
+                        Some(Phi1Source::Stack),
                         [
                             Phi2::Move {
                                 source: MoveSource::Data,
@@ -925,9 +1013,7 @@ impl<V: Variant> Mos6502<V> {
                     ),
                     Cycle::new(
                         BusMode::Read,
-                        Some(Phi1::SetAddressBus {
-                            source: SetAddressBusSource::Stack,
-                        }),
+                        Some(Phi1Source::Stack),
                         [
                             Phi2::Move {
                                 source: MoveSource::Data,
@@ -938,9 +1024,7 @@ impl<V: Variant> Mos6502<V> {
                     ),
                     Cycle::new(
                         BusMode::Read,
-                        Some(Phi1::SetAddressBus {
-                            source: SetAddressBusSource::Stack,
-                        }),
+                        Some(Phi1Source::Stack),
                         [Phi2::Move {
                             source: MoveSource::Data,
                             destination: MoveDestination::EffectiveAddress,
@@ -964,9 +1048,7 @@ impl<V: Variant> Mos6502<V> {
                     ),
                     Cycle::new(
                         BusMode::Read,
-                        Some(Phi1::SetAddressBus {
-                            source: SetAddressBusSource::Stack,
-                        }),
+                        Some(Phi1Source::Stack),
                         [
                             Phi2::Move {
                                 source: MoveSource::Data,
@@ -977,9 +1059,7 @@ impl<V: Variant> Mos6502<V> {
                     ),
                     Cycle::new(
                         BusMode::Read,
-                        Some(Phi1::SetAddressBus {
-                            source: SetAddressBusSource::Stack,
-                        }),
+                        Some(Phi1Source::Stack),
                         [Phi2::Move {
                             source: MoveSource::Data,
                             destination: MoveDestination::EffectiveAddress,
@@ -993,7 +1073,15 @@ impl<V: Variant> Mos6502<V> {
                     Cycle::new(BusMode::Read, None, [Phi2::IncrementInstructionPointer]),
                 ]);
             }
-            Opcode::Mos6502(Mos6502Opcode::Sax) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Sax) => {
+                self.insert_write_effective_address_dependent(
+                    instruction,
+                    [Phi2::Move {
+                        source: MoveSource::AccumulatorAndX,
+                        destination: MoveDestination::Data,
+                    }],
+                );
+            }
             Opcode::Mos6502(Mos6502Opcode::Sbc) => {
                 self.patch_read_maybe_effective_address_dependent(
                     instruction,
@@ -1008,7 +1096,18 @@ impl<V: Variant> Mos6502<V> {
                     ],
                 );
             }
-            Opcode::Mos6502(Mos6502Opcode::Sbx) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Sbx) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [
+                        Phi2::Move {
+                            source: MoveSource::Data,
+                            destination: MoveDestination::Operand,
+                        },
+                        Phi2::SubtractOperandFromAAndX,
+                    ],
+                );
+            }
             Opcode::Mos6502(Mos6502Opcode::Sec) => {
                 self.patch_read_maybe_effective_address_dependent(
                     instruction,
@@ -1036,12 +1135,37 @@ impl<V: Variant> Mos6502<V> {
                     }],
                 );
             }
-            Opcode::Mos6502(Mos6502Opcode::Sha) => todo!(),
-            Opcode::Mos6502(Mos6502Opcode::Shs) => todo!(),
-            Opcode::Mos6502(Mos6502Opcode::Shx) => todo!(),
-            Opcode::Mos6502(Mos6502Opcode::Shy) => todo!(),
-            Opcode::Mos6502(Mos6502Opcode::Slo) => todo!(),
-            Opcode::Mos6502(Mos6502Opcode::Sre) => todo!(),
+            Opcode::Mos6502(
+                Mos6502Opcode::Sha | Mos6502Opcode::Shs | Mos6502Opcode::Shx | Mos6502Opcode::Shy,
+            ) => {
+                self.insert_write_effective_address_dependent(
+                    instruction,
+                    [Phi2::Move {
+                        source: MoveSource::Operand,
+                        destination: MoveDestination::Data,
+                    }],
+                );
+            }
+            Opcode::Mos6502(Mos6502Opcode::Slo) => {
+                self.insert_rmw_effective_address_dependent([
+                    Phi2::Shift {
+                        direction: ShiftDirection::Left,
+                        rotate: false,
+                        a_is_operand: false,
+                    },
+                    Phi2::Or,
+                ]);
+            }
+            Opcode::Mos6502(Mos6502Opcode::Sre) => {
+                self.insert_rmw_effective_address_dependent([
+                    Phi2::Shift {
+                        direction: ShiftDirection::Right,
+                        rotate: false,
+                        a_is_operand: false,
+                    },
+                    Phi2::Xor,
+                ]);
+            }
             Opcode::Mos6502(Mos6502Opcode::Sta) => {
                 self.insert_write_effective_address_dependent(
                     instruction,
@@ -1154,7 +1278,18 @@ impl<V: Variant> Mos6502<V> {
                     }],
                 );
             }
-            Opcode::Mos6502(Mos6502Opcode::Xaa) => todo!(),
+            Opcode::Mos6502(Mos6502Opcode::Xaa) => {
+                self.patch_read_maybe_effective_address_dependent(
+                    instruction,
+                    [
+                        Phi2::Move {
+                            source: MoveSource::Data,
+                            destination: MoveDestination::Operand,
+                        },
+                        Phi2::UnstableAndWithMagicConstant,
+                    ],
+                );
+            }
             Opcode::Mos6502(Mos6502Opcode::Bvs)
             | Opcode::Mos6502(Mos6502Opcode::Bvc)
             | Opcode::Mos6502(Mos6502Opcode::Beq)
@@ -1190,7 +1325,7 @@ impl<V: Variant> Mos6502<V> {
                         BusMode::Read,
                         None,
                         [Phi2::AddToPointerLikeRegister {
-                            insert_adjustment_cycle_upon_carry: true,
+                            adjustment: IndexAdjustment::OnCarry,
                             source: AddToPointerLikeRegisterSource::Operand,
                             destination: PointerLikeRegister::InstructionPointer,
                             interpretation: ArithmeticOperandInterpretation::Signed,
@@ -1239,6 +1374,47 @@ impl<V: Variant> Mos6502<V> {
     }
 
     #[inline]
+    fn index_adjustment(opcode: Opcode) -> IndexAdjustment {
+        match opcode {
+            Opcode::Mos6502(Mos6502Opcode::Sha) => IndexAdjustment::UnstableStore {
+                source: UnstableStoreSource::AAndX,
+            },
+            Opcode::Mos6502(Mos6502Opcode::Shs) => IndexAdjustment::UnstableStore {
+                source: UnstableStoreSource::StackPointerFromAAndX,
+            },
+            Opcode::Mos6502(Mos6502Opcode::Shx) => IndexAdjustment::UnstableStore {
+                source: UnstableStoreSource::X,
+            },
+            Opcode::Mos6502(Mos6502Opcode::Shy) => IndexAdjustment::UnstableStore {
+                source: UnstableStoreSource::Y,
+            },
+            // Anything that writes cannot put a byte somewhere it might have to take it back from
+            Opcode::Mos6502(
+                Mos6502Opcode::Asl
+                | Mos6502Opcode::Dcp
+                | Mos6502Opcode::Dec
+                | Mos6502Opcode::Inc
+                | Mos6502Opcode::Isc
+                | Mos6502Opcode::Lsr
+                | Mos6502Opcode::Rla
+                | Mos6502Opcode::Rol
+                | Mos6502Opcode::Ror
+                | Mos6502Opcode::Rra
+                | Mos6502Opcode::Sax
+                | Mos6502Opcode::Slo
+                | Mos6502Opcode::Sre
+                | Mos6502Opcode::Sta
+                | Mos6502Opcode::Stx
+                | Mos6502Opcode::Sty,
+            )
+            | Opcode::Wdc65C02(Wdc65C02Opcode::Stz | Wdc65C02Opcode::Trb | Wdc65C02Opcode::Tsb) => {
+                IndexAdjustment::Always
+            }
+            _ => IndexAdjustment::OnCarry,
+        }
+    }
+
+    #[inline]
     fn register_indexed_zero_page(&mut self, register: GeneralPurposeRegister) {
         assert!(
             matches!(
@@ -1251,9 +1427,7 @@ impl<V: Variant> Mos6502<V> {
         self.state.cycle_queue.extend([
             Cycle::new(
                 BusMode::Read,
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::InstructionPointer,
-                }),
+                Some(Phi1Source::InstructionPointer),
                 [
                     Phi2::IncrementInstructionPointer,
                     Phi2::Move {
@@ -1269,14 +1443,19 @@ impl<V: Variant> Mos6502<V> {
                     source: AddToPointerLikeRegisterSource::Register(register),
                     destination: PointerLikeRegister::EffectiveAddress,
                     interpretation: ArithmeticOperandInterpretation::Unsigned,
-                    insert_adjustment_cycle_upon_carry: false,
+                    // Zero indexing automatically fixes the high byte via wrapping
+                    adjustment: IndexAdjustment::Discard,
                 }],
             ),
         ]);
     }
 
     #[inline]
-    fn register_indexed_absolute(&mut self, register: GeneralPurposeRegister) {
+    fn register_indexed_absolute(
+        &mut self,
+        register: GeneralPurposeRegister,
+        adjustment: IndexAdjustment,
+    ) {
         assert!(
             matches!(
                 register,
@@ -1288,9 +1467,7 @@ impl<V: Variant> Mos6502<V> {
         self.state.cycle_queue.extend([
             Cycle::new(
                 BusMode::Read,
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::InstructionPointer,
-                }),
+                Some(Phi1Source::InstructionPointer),
                 [
                     Phi2::IncrementInstructionPointer,
                     Phi2::Move {
@@ -1301,9 +1478,7 @@ impl<V: Variant> Mos6502<V> {
             ),
             Cycle::new(
                 BusMode::Read,
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::InstructionPointer,
-                }),
+                Some(Phi1Source::InstructionPointer),
                 [
                     Phi2::IncrementInstructionPointer,
                     Phi2::Move {
@@ -1313,7 +1488,7 @@ impl<V: Variant> Mos6502<V> {
                     Phi2::AddToPointerLikeRegister {
                         source: AddToPointerLikeRegisterSource::Register(register),
                         destination: PointerLikeRegister::EffectiveAddress,
-                        insert_adjustment_cycle_upon_carry: true,
+                        adjustment,
                         interpretation: ArithmeticOperandInterpretation::Unsigned,
                     },
                 ],
@@ -1334,9 +1509,7 @@ impl<V: Variant> Mos6502<V> {
             ),
             Cycle::new(
                 BusMode::Read,
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::Stack,
-                }),
+                Some(Phi1Source::Stack),
                 [Phi2::Move {
                     source: MoveSource::Data,
                     destination: item,
@@ -1351,9 +1524,7 @@ impl<V: Variant> Mos6502<V> {
             .cycle_queue
             .push_back(Cycle::new(
                 BusMode::Write,
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::Stack,
-                }),
+                Some(Phi1Source::Stack),
                 [
                     Phi2::Move {
                         source: item,
@@ -1395,9 +1566,7 @@ impl<V: Variant> Mos6502<V> {
                     .cycle_queue
                     .push_back(Cycle::new(
                         BusMode::Read,
-                        Some(Phi1::SetAddressBus {
-                            source: SetAddressBusSource::EffectiveAddress,
-                        }),
+                        Some(Phi1Source::EffectiveAddress),
                         steps,
                     ))
                     .unwrap();
@@ -1410,9 +1579,7 @@ impl<V: Variant> Mos6502<V> {
         self.state.cycle_queue.extend([
             Cycle::new(
                 BusMode::Read,
-                Some(Phi1::SetAddressBus {
-                    source: SetAddressBusSource::EffectiveAddress,
-                }),
+                Some(Phi1Source::EffectiveAddress),
                 [Phi2::Move {
                     source: MoveSource::Data,
                     destination: MoveDestination::Operand,
@@ -1444,9 +1611,9 @@ impl<V: Variant> Mos6502<V> {
         steps: impl IntoIterator<Item = Phi2>,
     ) {
         match instruction.addressing_mode {
-            // It's impossible to have a instruction that writes but does not form an effective address
+            // It's impossible to have an instruction that writes but does not form an effective address
             //
-            // Additionally merging with the previous cycle is impossible because all addressing mode resolution cycles are read
+            // Additionally, merging with the previous cycle is impossible because all addressing mode resolution cycles are read
             None
             | Some(AddressingMode::Mos6502(
                 Mos6502AddressingMode::Accumulator
@@ -1460,9 +1627,7 @@ impl<V: Variant> Mos6502<V> {
                     .cycle_queue
                     .push_back(Cycle::new(
                         BusMode::Write,
-                        Some(Phi1::SetAddressBus {
-                            source: SetAddressBusSource::EffectiveAddress,
-                        }),
+                        Some(Phi1Source::EffectiveAddress),
                         steps,
                     ))
                     .unwrap();

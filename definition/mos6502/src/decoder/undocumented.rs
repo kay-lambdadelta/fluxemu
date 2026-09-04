@@ -8,7 +8,7 @@ pub fn decode_undocumented_space_instruction<V: Variant>(
     instruction_identifier: u8,
     argument: u8,
 ) -> (Opcode, Option<AddressingMode>) {
-    // No UB instructions on the wdc 65c02
+    // No UB instructions on the WDC 65C02
     if V::WDC_VARIANT {
         (Opcode::Mos6502(Mos6502Opcode::Nop), None)
     } else {
@@ -40,7 +40,7 @@ pub fn decode_undocumented_space_instruction<V: Variant>(
                     addressing_mode,
                     AddressingMode::Mos6502(Mos6502AddressingMode::Immediate)
                 ) {
-                    (Opcode::Mos6502(Mos6502Opcode::Anc), Some(addressing_mode))
+                    (Opcode::Mos6502(Mos6502Opcode::Asr), Some(addressing_mode))
                 } else {
                     (Opcode::Mos6502(Mos6502Opcode::Sre), Some(addressing_mode))
                 }
@@ -50,7 +50,7 @@ pub fn decode_undocumented_space_instruction<V: Variant>(
                     addressing_mode,
                     AddressingMode::Mos6502(Mos6502AddressingMode::Immediate)
                 ) {
-                    (Opcode::Mos6502(Mos6502Opcode::Anc), Some(addressing_mode))
+                    (Opcode::Mos6502(Mos6502Opcode::Arr), Some(addressing_mode))
                 } else {
                     (Opcode::Mos6502(Mos6502Opcode::Rra), Some(addressing_mode))
                 }
@@ -85,16 +85,24 @@ pub fn decode_undocumented_space_instruction<V: Variant>(
                 }
                 _ => unreachable!(),
             },
-            0b101 => {
-                if matches!(
-                    addressing_mode,
-                    AddressingMode::Mos6502(Mos6502AddressingMode::YIndexedAbsolute)
-                ) {
+            0b101 => match addressing_mode {
+                AddressingMode::Mos6502(Mos6502AddressingMode::YIndexedAbsolute) => {
                     (Opcode::Mos6502(Mos6502Opcode::Las), Some(addressing_mode))
-                } else {
-                    (Opcode::Mos6502(Mos6502Opcode::Lax), Some(addressing_mode))
                 }
-            }
+                AddressingMode::Mos6502(Mos6502AddressingMode::XIndexedZeroPage) => (
+                    Opcode::Mos6502(Mos6502Opcode::Lax),
+                    Some(AddressingMode::Mos6502(
+                        Mos6502AddressingMode::YIndexedZeroPage,
+                    )),
+                ),
+                AddressingMode::Mos6502(Mos6502AddressingMode::XIndexedAbsolute) => (
+                    Opcode::Mos6502(Mos6502Opcode::Lax),
+                    Some(AddressingMode::Mos6502(
+                        Mos6502AddressingMode::YIndexedAbsolute,
+                    )),
+                ),
+                _ => (Opcode::Mos6502(Mos6502Opcode::Lax), Some(addressing_mode)),
+            },
             0b110 => {
                 if matches!(
                     addressing_mode,
