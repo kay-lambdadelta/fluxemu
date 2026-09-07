@@ -11,11 +11,11 @@ pub fn get_webgpu_factories<P: Platform<GraphicsApi = fluxemu_graphics::api::web
 -> FactoryManager<P> {
     let mut factories = FactoryManager::default();
 
-    factories.insert_factory::<Atari2600>();
-    factories.insert_factory::<AtariLynx>();
-    factories.insert_factory::<Chip8>();
-    factories.insert_factory::<Nes>();
-    factories.insert_factory::<Gameboy>();
+    factories.insert::<Atari2600>();
+    factories.insert::<AtariLynx>();
+    factories.insert::<Chip8>();
+    factories.insert::<Nes>();
+    factories.insert::<Gameboy>();
 
     factories
 }
@@ -25,11 +25,11 @@ pub fn get_software_factories<
 >() -> FactoryManager<P> {
     let mut factories = FactoryManager::default();
 
-    factories.insert_factory::<Atari2600>();
-    factories.insert_factory::<AtariLynx>();
-    factories.insert_factory::<Chip8>();
-    factories.insert_factory::<Nes>();
-    factories.insert_factory::<Gameboy>();
+    factories.insert::<Atari2600>();
+    factories.insert::<AtariLynx>();
+    factories.insert::<Chip8>();
+    factories.insert::<Nes>();
+    factories.insert::<Gameboy>();
 
     factories
 }

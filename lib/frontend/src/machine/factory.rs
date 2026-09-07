@@ -21,7 +21,7 @@ impl<P: Platform> Debug for FactoryManager<P> {
 
 impl<P: Platform> FactoryManager<P> {
     /// Register a factory
-    pub fn insert_factory<S: System<P> + Default>(&mut self) {
+    pub fn insert<S: System<P> + Default>(&mut self) {
         self.0.insert(
             S::ID,
             Box::new(|quirks, machine_builder| {
