@@ -1,10 +1,6 @@
 name: "package"
 
 on:
-  push:
-    paths:
-      - ".github/workflows/package.yml"
-
   schedule:
     - cron: "0 0 * * *"
 
