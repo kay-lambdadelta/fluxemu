@@ -15,6 +15,7 @@ repository = "https://github.com/kay-lambdadelta/fluxemu"
 license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
+bindgen = "0.73"
 bit-vec = "0.10"
 bitstream-io = "4.10"
 byte-unit = "5.2"
@@ -27,7 +28,7 @@ criterion = "0.8"
 csv = "1.4"
 data-encoding = "2.11"
 digest-io = "0.1"
-dirs = "6.0"
+dirs = "7.0"
 drm = "0.15"
 dyn-clone = "1.0"
 egui = { version = "0.36", default-features = false }
@@ -51,7 +52,7 @@ libc = "0.2"
 libseat = "0.2"
 lz4_flex = "0.14"
 memmap2 = "0.9"
-multiversion = "0.8"
+multiversion = "0.9"
 nalgebra = {
   version = "0.35",
   features = [

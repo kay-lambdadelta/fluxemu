@@ -60,4 +60,4 @@ fluxemu-system-other-chip8 = {
 }
 
 [build-dependencies]
-bindgen = "0.72"
+bindgen = { workspace = true }
