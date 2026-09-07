@@ -118,3 +118,35 @@ jobs:
           name: fluxemu-shell-nuttallite-(apache-nuttx-raspberrypi-pico-2)-uf2
           path: target/nuttx/raspberrypi-pico-2/release/nuttx.uf2
           if-no-files-found: error
+
+  nightly-release:
+    name: Publish nightly release
+    runs-on: ubuntu-latest
+    needs:
+      - debian-trixie-x86_64
+      - windows-x86_64
+      - apache-nuttx-raspberrypi-pico-2
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release-files
+          find artifacts -type f -exec cp {} release-files/ \;
+
+      - name: Upload nightly release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: nightly
+          name: "Nightly Build"
+          prerelease: true
+          allowUpdates: true
+          removeArtifacts: true
+          replacesArtifacts: true
+          artifacts: "release-files/*"
+          body: |
+            Automated nightly build from ${{ github.sha }}.
+            This contains the latest nightly, overwritten every night.
