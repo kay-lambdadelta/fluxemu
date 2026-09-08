@@ -1,7 +1,7 @@
 use std::ops::RangeInclusive;
 
-use fluxemu_graphics::api::software::texture::{OwnedTexture, StorageMut, Texture};
-use fluxemu_math::range::ContiguousRange;
+use fluxemu_graphics::api::software::texture::{AsViewTexture, Storage, StorageMut, Texture};
+use fluxemu_math::{range::ContiguousRange, rectangle::Rectangle};
 use nalgebra::{Point2, SMatrix, Vector2, Vector3};
 use palette::{
     Srgb, Srgba,
@@ -9,34 +9,35 @@ use palette::{
 };
 
 use crate::{
-    geometry::{Shape, SolidQuad, Triangle},
+    geometry::{SolidQuad, Triangle},
     powerof2::PowerOfTwoIter,
 };
 
 #[inline(always)]
 pub fn fill_quad<P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'static>(
-    shape: &Shape,
+    clip: Rectangle<f32>,
     solid_quad: SolidQuad,
     mut target_texture: Texture<impl StorageMut<Pixel = P>>,
 ) {
-    let texture_max = Point2::from(target_texture.size() - Vector2::from_element(1));
+    let texture_max = Point2::from(target_texture.size().cast() - Vector2::from_element(1.0));
 
     let min = solid_quad
         .rectangle
         .min
-        .sup(&shape.min)
-        .map(|c| c as usize)
-        .inf(&texture_max);
+        .sup(&clip.min)
+        .sup(&Point2::new(0.0, 0.0));
+    let max = solid_quad.rectangle.max.inf(&clip.max).inf(&texture_max);
 
-    let max = solid_quad
-        .rectangle
-        .max()
-        .inf(&shape.max)
-        .map(|c| c as usize)
-        .inf(&texture_max);
+    let rect = Rectangle::from_min_and_max(min, max);
+    if !rect.is_valid() {
+        return;
+    }
+
+    let rect =
+        Rectangle::from_min_and_max(rect.min.map(|c| c as usize), rect.max.map(|c| c as usize));
 
     target_texture
-        .view_mut(min.x..=max.x, min.y..=max.y)
+        .view_mut(rect.x_range(), rect.y_range())
         .fill(solid_quad.color.into_format().into());
 }
 
@@ -45,11 +46,12 @@ pub fn fill_triangle<
     P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'static,
     const BATCH_SIZE: usize,
 >(
-    geometry: &Shape,
+    clip: Rectangle<f32>,
     triangle: Triangle,
-    source_texture: &OwnedTexture<PreAlpha<Srgb<f32>>>,
+    source_texture: Texture<impl Storage<Pixel = PreAlpha<Srgb<f32>>>>,
     mut destination_texture: Texture<impl StorageMut<Pixel = P>>,
 ) {
+    let source_texture = source_texture.as_view();
     let target_texture_dimensions = destination_texture.size().cast();
     let max_texture_coordinates =
         Point2::from(target_texture_dimensions - Vector2::from_element(1.0));
@@ -70,7 +72,7 @@ pub fn fill_triangle<
     );
 
     // Clip the clipping box by the target texture size
-    let clip_max = geometry.max.inf(&max_texture_coordinates);
+    let clip_max = clip.max.inf(&max_texture_coordinates);
 
     // Clip the triangle
     let triangle_bounding_max = vector_max.inf(&clip_max).map(|c| c.floor());
@@ -91,7 +93,7 @@ pub fn fill_triangle<
     );
 
     // Ensure negative clip values do not exist
-    let clip_min = geometry.min.sup(&Point2::new(0.0, 0.0));
+    let clip_min = clip.min.sup(&Point2::new(0.0, 0.0));
 
     // Clip the triangle again
     let triangle_bounding_min = vertex_min.sup(&clip_min).map(|c| c.ceil());
@@ -283,7 +285,7 @@ fn pixel_rounds<
     P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'static,
 >(
     mut target_row: Texture<impl StorageMut<Pixel = P>>,
-    texture: &OwnedTexture<PreAlpha<Srgb<f32>>>,
+    texture: Texture<impl Storage<Pixel = PreAlpha<Srgb<f32>>>>,
     texture_dimensions: Vector2<f32>,
     current_uv: Vector2<f32>,
     current_color: Srgba<f32>,

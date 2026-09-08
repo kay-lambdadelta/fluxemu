@@ -351,7 +351,7 @@ impl EguiInputTranslator {
         if let Some(rectangle) = self.screen_rectangle {
             self.pointer_position = self
                 .pointer_position
-                .inf(&rectangle.max())
+                .inf(&rectangle.max)
                 .sup(&rectangle.min);
         }
 

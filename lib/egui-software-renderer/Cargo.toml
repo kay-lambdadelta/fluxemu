@@ -19,6 +19,7 @@ itertools = { workspace = true }
 multiversion = { workspace = true }
 nalgebra = { workspace = true }
 palette = { workspace = true }
+rayon = { workspace = true }
 rustc-hash = { workspace = true }
 tracing = { workspace = true }
 

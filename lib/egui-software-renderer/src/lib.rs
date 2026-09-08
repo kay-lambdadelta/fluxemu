@@ -1,11 +1,13 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::RangeInclusive};
 
 use egui::{FullOutput, TextureId};
 use fluxemu_graphics::api::software::texture::{
-    AsViewTextureMut, CopyMode, OwnedTexture, StorageMut, Texture,
+    AsViewTexture, AsViewTextureMut, CopyMode, OwnedTexture, StorageMut, Texture,
 };
-use nalgebra::Vector2;
+use fluxemu_math::{range::ContiguousRange, rectangle::Rectangle};
+use nalgebra::{Point2, Vector2};
 use palette::{Srgb, Srgba, blend::PreAlpha, named::BLACK};
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use rustc_hash::FxBuildHasher;
 
 use crate::geometry::{
@@ -42,8 +44,8 @@ impl Renderer {
         assert!(BATCH_SIZE <= 32, "Batch size is too large to be useful");
 
         self.update_textures(&mut full_output);
-        let to_free = full_output.textures_delta.free.clone();
 
+        let to_free = full_output.textures_delta.free.clone();
         let target_texture = target_texture.as_view_mut();
 
         render_inner::<_, BATCH_SIZE>(context, full_output, target_texture, &mut self.textures);
@@ -77,30 +79,67 @@ impl Renderer {
             assert_ne!(target_texture.width(), 0);
             assert_ne!(target_texture.height(), 0);
 
-            for geometry in
+            let target_texture = target_texture.as_view_mut();
+
+            let shapes: Vec<_> =
                 reduce_geometry(context, full_output.shapes, full_output.pixels_per_point)
-            {
-                for primitive in geometry.primitives.iter().copied() {
-                    match primitive {
-                        Primitive::SolidQuad(solid_quad) => {
-                            let target_texture = target_texture.view_mut(.., ..);
+                    .collect();
 
-                            fill_quad(&geometry, solid_quad, target_texture);
+            let band_count = rayon::current_num_threads().clamp(1, target_texture.height());
+            let bands = target_texture.split_into_bands_mut(band_count);
+
+            let mut cursor = 0;
+            let ranges: Vec<_> = bands
+                .iter()
+                .map(|band| {
+                    let range = RangeInclusive::from_start_and_length(cursor, band.height());
+
+                    cursor += band.height();
+
+                    range
+                })
+                .collect();
+
+            bands
+                .into_par_iter()
+                .zip(ranges)
+                .for_each(|(mut band, band_range)| {
+                    let offset = *band_range.start() as f32;
+
+                    for shape in &shapes {
+                        let clip_min = Point2::new(shape.rect.min.x, shape.rect.min.y - offset);
+                        let clip_max = Point2::new(shape.rect.max.x, shape.rect.max.y - offset);
+
+                        let clip = Rectangle::from_min_and_max(clip_min, clip_max);
+
+                        if !clip.is_valid() || !shape.rect.is_valid() {
+                            continue;
                         }
-                        Primitive::Triangle(triangle) => {
-                            let texture = &textures[&geometry.texture_id];
-                            let target_texture = target_texture.view_mut(.., ..);
 
-                            fill_triangle::<_, BATCH_SIZE>(
-                                &geometry,
-                                triangle,
-                                texture,
-                                target_texture,
-                            );
+                        for primitive in shape.primitives.iter().copied() {
+                            match primitive {
+                                Primitive::SolidQuad(mut quad) => {
+                                    quad.rectangle.min.y -= offset;
+                                    quad.rectangle.max.y -= offset;
+
+                                    fill_quad(clip, quad, band.as_view_mut());
+                                }
+                                Primitive::Triangle(mut triangle) => {
+                                    triangle.v0.position.y -= offset;
+                                    triangle.v1.position.y -= offset;
+                                    triangle.v2.position.y -= offset;
+
+                                    fill_triangle::<_, BATCH_SIZE>(
+                                        clip,
+                                        triangle,
+                                        textures[&shape.texture_id].as_view(),
+                                        band.as_view_mut(),
+                                    );
+                                }
+                            }
                         }
                     }
-                }
-            }
+                });
         }
     }
 

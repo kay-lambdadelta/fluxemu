@@ -38,8 +38,7 @@ pub struct SolidQuad {
 
 #[derive(Debug)]
 pub struct Shape {
-    pub min: Point2<f32>,
-    pub max: Point2<f32>,
+    pub rect: Rectangle<f32>,
     pub texture_id: TextureId,
     pub primitives: Vec<Primitive>,
 }

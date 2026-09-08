@@ -1,4 +1,4 @@
-use alloc::boxed::Box;
+use alloc::{boxed::Box, vec, vec::Vec};
 use core::{
     convert::identity,
     ops::{Bound, Deref, DerefMut, Index, IndexMut, RangeBounds, RangeInclusive},
@@ -320,7 +320,7 @@ impl<STORAGE: Storage> Texture<STORAGE> {
         STORAGE::Pixel: Clone,
     {
         // Each branch is a less efficient way of filling the texture
-        if self.view.min == Point2::new(0, 0) && self.storage_size == self.view.size {
+        if self.view.min == Point2::new(0, 0) && self.storage_size == self.view.size() {
             // The view on the storage is wholly overlapping the storage
             self.storage.fill(value);
         } else if self.view.width() == self.storage_size.x {
@@ -517,6 +517,108 @@ impl<STORAGE: Storage> Texture<STORAGE> {
     }
 }
 
+impl<'a, P> Texture<&'a mut [P]> {
+    #[inline]
+    pub fn split_rows_mut(self, row: usize) -> (Texture<&'a mut [P]>, Texture<&'a mut [P]>) {
+        assert!(row <= self.height());
+
+        let global_split_row = self.view.min.y + row;
+        let split_index = global_split_row * self.storage_size.x;
+
+        let (top_storage, bottom_storage) = self.storage.split_at_mut(split_index);
+
+        let top = Texture {
+            storage: top_storage,
+            storage_size: self.storage_size,
+            view: Rectangle::from_min_and_max(
+                self.view.min,
+                Point2::new(self.view.max.x, global_split_row),
+            ),
+        };
+
+        let bottom = Texture {
+            storage: bottom_storage,
+            storage_size: self.storage_size,
+            view: Rectangle::from_min_and_max(
+                Point2::new(self.view.min.x, 0),
+                Point2::new(self.view.max.x, self.view.max.y - global_split_row),
+            ),
+        };
+
+        (top, bottom)
+    }
+
+    #[inline]
+    pub fn split_into_bands_mut(self, bands: usize) -> Vec<Texture<&'a mut [P]>> {
+        if bands <= 1 || self.height() == 0 {
+            return vec![self];
+        }
+
+        let height = self.height();
+        let band_height = height.div_ceil(bands);
+
+        let (first, rest) = self.split_rows_mut(band_height.min(height));
+        let mut result = vec![first];
+
+        if rest.height() > 0 {
+            result.extend(rest.split_into_bands_mut(bands - 1));
+        }
+
+        result
+    }
+}
+
+impl<'a, P> Texture<&'a [P]> {
+    #[inline]
+    pub fn split_rows(self, row: usize) -> (Texture<&'a [P]>, Texture<&'a [P]>) {
+        assert!(row <= self.height());
+
+        let global_split_row = self.view.min.y + row;
+        let split_index = global_split_row * self.storage_size.x;
+
+        let (top_storage, bottom_storage) = self.storage.split_at(split_index);
+
+        let top = Texture {
+            storage: top_storage,
+            storage_size: self.storage_size,
+            view: Rectangle::from_min_and_max(
+                self.view.min,
+                Point2::new(self.view.max.x, global_split_row),
+            ),
+        };
+
+        let bottom = Texture {
+            storage: bottom_storage,
+            storage_size: self.storage_size,
+            view: Rectangle::from_min_and_max(
+                Point2::new(self.view.min.x, 0),
+                Point2::new(self.view.max.x, self.view.max.y - global_split_row),
+            ),
+        };
+
+        (top, bottom)
+    }
+
+    #[inline]
+    pub fn split_into_bands(self, bands: usize) -> Vec<Texture<&'a [P]>> {
+        if bands <= 1 || self.height() == 0 {
+            return vec![self];
+        }
+
+        let height = self.height();
+        let band_height = height.div_ceil(bands);
+
+        let (first, rest) = self.split_rows(band_height.min(height));
+        let mut result = vec![first];
+
+        if rest.height() > 0 {
+            result.extend(rest.split_into_bands(bands - 1));
+        }
+
+        result
+    }
+}
+
 impl<STORAGE: Storage, P: Into<Point2<usize>>> Index<P> for Texture<STORAGE> {
     type Output = STORAGE::Pixel;
 
@@ -557,8 +659,14 @@ fn resolve_range(range: impl RangeBounds<usize>, max: usize) -> (usize, usize) {
         Bound::Unbounded => max,
     };
 
-    assert!(start <= end);
-    assert!(end <= max);
+    assert!(
+        start <= end,
+        "start ({start}) must be less than or equal to end ({end})"
+    );
+    assert!(
+        end <= max,
+        "end ({end}) must be less than or equal to max ({max})"
+    );
 
     (start, end)
 }

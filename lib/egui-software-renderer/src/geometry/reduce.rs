@@ -60,15 +60,19 @@ pub fn reduce_geometry(
                     }
                 }
 
-                shapes.push(Shape {
-                    min: Point2::new(
+                let rect = Rectangle::from_min_and_max(
+                    Point2::new(
                         clipped_primitive.clip_rect.min.x,
                         clipped_primitive.clip_rect.min.y,
                     ) * pixels_per_point,
-                    max: Point2::new(
+                    Point2::new(
                         clipped_primitive.clip_rect.max.x,
                         clipped_primitive.clip_rect.max.y,
                     ) * pixels_per_point,
+                );
+
+                shapes.push(Shape {
+                    rect,
                     texture_id: mesh.texture_id,
                     primitives,
                 });
