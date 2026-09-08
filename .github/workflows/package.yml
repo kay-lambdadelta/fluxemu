@@ -3,6 +3,7 @@ name: "package"
 on:
   schedule:
     - cron: "0 0 * * *"
+  workflow_dispatch:
 
 jobs:
   debian-trixie-x86_64:
@@ -118,6 +119,8 @@ jobs:
   nightly-release:
     name: Publish nightly release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     needs:
       - debian-trixie-x86_64
       - windows-x86_64
