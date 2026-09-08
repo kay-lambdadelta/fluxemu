@@ -3,7 +3,6 @@ name: "package"
 on:
   schedule:
     - cron: "0 0 * * *"
-  workflow_dispatch:
 
 jobs:
   debian-trixie-x86_64:
@@ -140,7 +139,7 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           tag: nightly
-          name: "Nightly Build"
+          name: "Nightly"
           prerelease: true
           allowUpdates: true
           removeArtifacts: true
@@ -148,4 +147,4 @@ jobs:
           artifacts: "release-files/*"
           body: |
             Automated nightly build from ${{ github.sha }}.
-            This contains the latest nightly, overwritten every night.
+            This contains the latest build, updated every night.
