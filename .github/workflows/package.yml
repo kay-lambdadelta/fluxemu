@@ -3,6 +3,7 @@ name: "package"
 on:
   schedule:
     - cron: "0 0 * * *"
+  workflow_dispatch:
 
 jobs:
   debian-trixie-x86_64:
@@ -129,11 +130,7 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           path: artifacts
-
-      - name: Flatten artifacts
-        run: |
-          mkdir -p release-files
-          find artifacts -type f -exec cp {} release-files/ \;
+          skip-decompress: true
 
       - name: Upload nightly release
         uses: ncipollo/release-action@v1
@@ -144,7 +141,7 @@ jobs:
           allowUpdates: true
           removeArtifacts: true
           replacesArtifacts: true
-          artifacts: "release-files/*"
+          artifacts: "*.zip"
           body: |
             Automated nightly build from ${{ github.sha }}.
             This contains the latest build, updated every night.
