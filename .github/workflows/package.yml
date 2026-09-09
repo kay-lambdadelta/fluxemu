@@ -141,7 +141,7 @@ jobs:
           allowUpdates: true
           removeArtifacts: true
           replacesArtifacts: true
-          artifacts: "*.zip"
+          artifacts: "artifacts/*.zip"
           body: |
             Automated nightly build from ${{ github.sha }}.
             This contains the latest build, updated every night.
