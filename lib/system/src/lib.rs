@@ -1,3 +1,10 @@
+#![no_std]
+
+extern crate alloc;
+
+use core::error::Error;
+
+use alloc::boxed::Box;
 use fluxemu_program::SystemId;
 use fluxemu_runtime::{
     Platform,
@@ -13,5 +20,5 @@ pub trait System<P: Platform> {
         &self,
         quirks: Self::Quirks,
         machine_builder: MachineBuilder<P>,
-    ) -> SealedMachineBuilder<P>;
+    ) -> Result<SealedMachineBuilder<P>, Box<dyn Error>>;
 }

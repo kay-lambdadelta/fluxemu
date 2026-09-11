@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{error::Error, marker::PhantomData};
 
 use fluxemu_definition_mos6502::variant::Mos6507;
 use fluxemu_definition_mos6532::Mos6532RiotConfig;
@@ -44,7 +44,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiTia>> System<P> for Atari2600 
         &self,
         _quirks: Self::Quirks,
         machine_builder: MachineBuilder<P>,
-    ) -> SealedMachineBuilder<P> {
+    ) -> Result<SealedMachineBuilder<P>, Box<dyn Error>> {
         let (machine_builder, cpu_address_space) = machine_builder.address_space(13);
         // For now, assume all games are ntsc
         let region = RegionSelection::Ntsc;
@@ -114,12 +114,12 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiTia>> System<P> for Atari2600 
             ),
         );
 
-        match region {
+        Ok(match region {
             RegionSelection::Ntsc => common::<Ntsc, _>(cpu_address_space, machine),
             RegionSelection::Pal => common::<Pal, _>(cpu_address_space, machine),
             RegionSelection::Secam => common::<Secam, _>(cpu_address_space, machine),
         }
-        .seal()
+        .seal())
     }
 }
 

@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, ops::RangeInclusive};
+use std::{error::Error, marker::PhantomData, ops::RangeInclusive};
 
 use audio::Chip8AudioConfig;
 use bytes::Bytes;
@@ -47,7 +47,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> System<P> for C
         &self,
         _quirks: Self::Quirks,
         machine_builder: MachineBuilder<P>,
-    ) -> SealedMachineBuilder<P> {
+    ) -> Result<SealedMachineBuilder<P>, Box<dyn Error>> {
         let (machine_builder, cpu_address_space) = machine_builder.address_space(12);
         let (machine_builder, timer) =
             machine_builder.default_component::<Chip8TimerConfig>("timer");
@@ -108,7 +108,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> System<P> for C
             ],
         );
 
-        machine_builder
+        Ok(machine_builder
             .map_memory(
                 cpu_address_space,
                 [MemoryMapCommand::Map {
@@ -120,6 +120,6 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> System<P> for C
                     },
                 }],
             )
-            .seal()
+            .seal())
     }
 }

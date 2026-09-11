@@ -13,7 +13,7 @@ use fluxemu_frontend::audio::{AudioRuntime, mixer::AudioMixer};
 use nalgebra::SVector;
 
 pub struct CpalAudioRuntime {
-    stream: Stream,
+    _stream: Stream,
     config: SupportedStreamConfig,
     mixer: Arc<OnceLock<Arc<AudioMixer>>>,
 }
@@ -61,7 +61,7 @@ impl CpalAudioRuntime {
         stream.play().unwrap();
 
         Ok(Self {
-            stream,
+            _stream: stream,
             config,
             mixer,
         })

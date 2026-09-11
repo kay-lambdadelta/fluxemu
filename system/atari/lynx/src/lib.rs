@@ -1,4 +1,4 @@
-use std::{ops::RangeInclusive, str::FromStr};
+use std::{error::Error, ops::RangeInclusive, str::FromStr};
 
 use fluxemu_math::range::ContiguousRange;
 use fluxemu_program::{AtariSystem, RomId, SystemId};
@@ -35,7 +35,7 @@ impl<P: Platform> System<P> for AtariLynx {
         &self,
         _quirks: Self::Quirks,
         machine_builder: MachineBuilder<P>,
-    ) -> SealedMachineBuilder<P> {
+    ) -> Result<SealedMachineBuilder<P>, Box<dyn Error>> {
         // 16 Mhz
         let _base_clock = Ratio::from_integer(16000000);
         let (machine_builder, cpu_address_space) = machine_builder.address_space(16);
@@ -93,6 +93,6 @@ impl<P: Platform> System<P> for AtariLynx {
             },
         );
 
-        machine_builder.seal()
+        Ok(machine_builder.seal())
     }
 }

@@ -196,7 +196,9 @@ impl<P: FrontendPlatform> Frontend<P> {
         let machine_builder = Machine::build(Some(specification), program_manager);
 
         let handle = std::thread::spawn(move || {
-            machine_factories.construct_machine(ron::Value::from(()), machine_builder)
+            machine_factories
+                .construct_machine(ron::Value::from(()), machine_builder)
+                .map(|r| r.unwrap())
         });
 
         self.machine_initialization_step =

@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, ops::RangeInclusive};
+use std::{error::Error, marker::PhantomData, ops::RangeInclusive};
 
 pub use cartridge::ines::INes;
 use cartridge::{CartParams, ines::TimingMode};
@@ -45,7 +45,7 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> System<P> for Nes
         &self,
         _quirks: Self::Quirks,
         machine_builder: MachineBuilder<P>,
-    ) -> SealedMachineBuilder<P> {
+    ) -> Result<SealedMachineBuilder<P>, Box<dyn Error>> {
         let (machine_builder, cpu_address_space) = machine_builder.address_space(16);
         let (machine_builder, ppu_address_space) = machine_builder.address_space(14);
 
@@ -299,7 +299,7 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> System<P> for Nes
             DefaultExpansionDevice::泽诚Keyboard => todo!(),
         };
 
-        match header.timing_mode {
+        Ok(match header.timing_mode {
             // FIXME: Implementing Multi as NTSC for now
             TimingMode::Ntsc | TimingMode::Multi => {
                 let (machine_builder, processor) = machine_builder.component(
@@ -351,7 +351,7 @@ impl<G: SupportedGraphicsApiPpu, P: Platform<GraphicsApi = G>> System<P> for Nes
             }
             TimingMode::Dendy => todo!(),
         }
-        .seal()
+        .seal())
     }
 }
 

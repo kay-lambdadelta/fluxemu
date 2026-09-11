@@ -16,9 +16,7 @@ pub enum Intel8080Kind {
 }
 
 #[derive(Debug)]
-pub struct Intel8080 {
-    config: Intel8080Config,
-}
+pub struct Intel8080 {}
 
 impl Component for Intel8080 {
     type Event = ();

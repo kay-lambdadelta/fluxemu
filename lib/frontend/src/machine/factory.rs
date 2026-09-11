@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Debug};
+use std::{collections::HashMap, error::Error, fmt::Debug};
 
 use fluxemu_program::SystemId;
 use fluxemu_runtime::{
@@ -7,8 +7,11 @@ use fluxemu_runtime::{
 };
 use fluxemu_system::System;
 
-type MachineConstructor<P> =
-    Box<dyn Fn(ron::Value, MachineBuilder<P>) -> SealedMachineBuilder<P> + Send + Sync>;
+type MachineConstructor<P> = Box<
+    dyn Fn(ron::Value, MachineBuilder<P>) -> Result<SealedMachineBuilder<P>, Box<dyn Error>>
+        + Send
+        + Sync,
+>;
 
 /// Factory storage for frontend machine generation automation
 pub struct FactoryManager<P: Platform>(HashMap<SystemId, MachineConstructor<P>>);
@@ -38,7 +41,7 @@ impl<P: Platform> FactoryManager<P> {
         &self,
         quirks: ron::Value,
         machine_builder: MachineBuilder<P>,
-    ) -> Option<SealedMachineBuilder<P>> {
+    ) -> Option<Result<SealedMachineBuilder<P>, Box<dyn Error>>> {
         let system = machine_builder.system_id()?;
 
         Some(self.0.get(&system)?(quirks, machine_builder))

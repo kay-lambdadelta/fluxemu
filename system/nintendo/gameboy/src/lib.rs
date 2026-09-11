@@ -1,3 +1,5 @@
+use std::error::Error;
+
 use fluxemu_program::{NintendoSystem, SystemId};
 use fluxemu_runtime::{
     Platform,
@@ -17,7 +19,7 @@ impl<P: Platform> System<P> for Gameboy {
         &self,
         _quirks: Self::Quirks,
         _machine_builder: MachineBuilder<P>,
-    ) -> SealedMachineBuilder<P> {
+    ) -> Result<SealedMachineBuilder<P>, Box<dyn Error>> {
         todo!()
     }
 }

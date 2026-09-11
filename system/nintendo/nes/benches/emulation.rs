@@ -65,7 +65,7 @@ fn emulation_performance(c: &mut Criterion) {
             && program_manager.load(rom_id).unwrap().is_some()
         {
             let machine = Machine::build_test(Some(specification), program_manager.clone());
-            let machine = Nes.build((), machine).build(());
+            let machine = Nes.build((), machine).unwrap().build(());
 
             group.bench_function(program_name, |b| {
                 b.iter(|| {
