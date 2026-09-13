@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
   "definition/*",
+  "frontend/*",
   "lib/*",
   "shell/*",
   "system/*/*",
@@ -111,7 +112,6 @@ zip = "8.6"
 fluxemu-audio = { path = "lib/audio" }
 fluxemu-egui-software-renderer = { path = "lib/egui-software-renderer" }
 fluxemu-environment = { path = "lib/environment" }
-fluxemu-frontend = { path = "lib/frontend" }
 fluxemu-graphics = { path = "lib/graphics" }
 fluxemu-input = { path = "lib/input" }
 fluxemu-locale = { path = "lib/locale" }
@@ -119,6 +119,8 @@ fluxemu-math = { path = "lib/math" }
 fluxemu-program = { path = "lib/program" }
 fluxemu-runtime = { path = "lib/runtime" }
 fluxemu-system = { path = "lib/system" }
+
+fluxemu-frontend-egui = { path = "frontend/egui" }
 
 fluxemu-definition-intel8080 = { path = "definition/intel8080" }
 fluxemu-definition-mos6502 = { path = "definition/mos6502" }

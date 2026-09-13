@@ -11,7 +11,7 @@ use std::{
 
 use egui::{FontData, FontDefinitions, FontFamily, RawInput, Rect, ViewportId, ViewportInfo};
 use fluxemu_environment::load_environment;
-use fluxemu_frontend::{
+use fluxemu_frontend_egui::{
     Frontend,
     graphics::{DrawTarget, GraphicsRuntime as _},
 };

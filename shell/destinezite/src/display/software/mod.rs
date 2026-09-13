@@ -1,5 +1,5 @@
 use fluxemu_egui_software_renderer::Renderer;
-use fluxemu_frontend::graphics::{DrawTarget, GraphicsRuntime, present_machine_software};
+use fluxemu_frontend_egui::graphics::{DrawTarget, GraphicsRuntime, present_machine_software};
 use fluxemu_graphics::api::{
     GraphicsApi,
     software::{Software, texture::AsViewTextureMut},

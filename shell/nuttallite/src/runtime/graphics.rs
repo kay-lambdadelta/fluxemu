@@ -1,5 +1,5 @@
 use fluxemu_egui_software_renderer::Renderer;
-use fluxemu_frontend::graphics::{DrawTarget, present_machine_software};
+use fluxemu_frontend_egui::graphics::{DrawTarget, present_machine_software};
 use fluxemu_graphics::api::{
     GraphicsApi,
     software::{Software, texture::OwnedTexture},
@@ -21,7 +21,7 @@ impl Default for GraphicsRuntime {
     }
 }
 
-impl fluxemu_frontend::graphics::GraphicsRuntime for GraphicsRuntime {
+impl fluxemu_frontend_egui::graphics::GraphicsRuntime for GraphicsRuntime {
     type GraphicsApi = Software;
 
     fn reconfigure(&mut self, _graphics_requirements: GraphicsRequirements<Self::GraphicsApi>) {}

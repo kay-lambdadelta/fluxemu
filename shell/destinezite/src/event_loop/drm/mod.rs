@@ -10,7 +10,7 @@ use ::input::Libinput;
 use drm::control::Device;
 use egui::{RawInput, Rect, ViewportId, ViewportInfo};
 use fluxemu_environment::Environment;
-use fluxemu_frontend::{
+use fluxemu_frontend_egui::{
     Frontend,
     graphics::{DrawTarget, GraphicsRuntime},
     machine::FactoryManager,

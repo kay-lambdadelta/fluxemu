@@ -1,7 +1,7 @@
 use std::{collections::HashMap, io::Write, time::Duration};
 
 use digest_io::IoWrapper;
-use fluxemu_frontend::{Frontend, FrontendPlatform};
+use fluxemu_frontend_egui::{Frontend, FrontendPlatform};
 use fluxemu_input::{GamepadInputId, InputId, InputState, physical::PhysicalInputDeviceId};
 use gilrs::{Axis, Button, Event, GamepadId, Gilrs, GilrsBuilder};
 use sha2::{Digest, Sha256};

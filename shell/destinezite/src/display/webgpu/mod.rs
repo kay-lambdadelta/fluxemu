@@ -1,5 +1,5 @@
 use egui_wgpu::{Renderer, RendererOptions, ScreenDescriptor};
-use fluxemu_frontend::graphics::{DrawTarget, GraphicsRuntime};
+use fluxemu_frontend_egui::graphics::{DrawTarget, GraphicsRuntime};
 use fluxemu_graphics::api::{
     GraphicsApi,
     webgpu::{InitializationData, Webgpu},

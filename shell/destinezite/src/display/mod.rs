@@ -1,4 +1,4 @@
-use fluxemu_frontend::graphics::GraphicsRuntime;
+use fluxemu_frontend_egui::graphics::GraphicsRuntime;
 use fluxemu_runtime::graphics::GraphicsRequirements;
 use nalgebra::Vector2;
 

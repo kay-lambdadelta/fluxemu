@@ -9,7 +9,7 @@ impl fluxemu_runtime::platform::Platform for Platform {
     type GraphicsApi = Software;
 }
 
-impl fluxemu_frontend::FrontendPlatform for Platform {
+impl fluxemu_frontend_egui::FrontendPlatform for Platform {
     type AudioRuntime = AudioRuntime;
     type GraphicsRuntime = GraphicsRuntime;
 

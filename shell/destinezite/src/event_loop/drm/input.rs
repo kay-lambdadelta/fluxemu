@@ -9,7 +9,7 @@ use egui::{
     Event, Modifiers, MouseWheelUnit, PointerButton, Pos2, TouchDeviceId, TouchId, TouchPhase,
 };
 use evdev::KeyCode;
-use fluxemu_frontend::{Frontend, graphics::GraphicsRuntime};
+use fluxemu_frontend_egui::{Frontend, graphics::GraphicsRuntime};
 use fluxemu_input::{InputId, InputState, KeyboardInputId, physical::PhysicalInputDeviceId};
 use input::{
     Libinput, LibinputInterface,

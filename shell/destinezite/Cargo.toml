@@ -30,7 +30,7 @@ egui = { workspace = true }
 fluxemu-audio = { workspace = true }
 fluxemu-egui-software-renderer = { workspace = true }
 fluxemu-environment = { workspace = true }
-fluxemu-frontend = { workspace = true }
+fluxemu-frontend-egui = { workspace = true }
 fluxemu-graphics = { workspace = true }
 fluxemu-input = { workspace = true }
 fluxemu-program = { workspace = true, features = ["mmap"] }
@@ -95,4 +95,4 @@ webgpu = [
   "fluxemu-system-nintendo-nes/webgpu",
   "fluxemu-system-other-chip8/webgpu",
 ]
-windowing = ["dep:egui-winit", "dep:softbuffer", "dep:winit", "fluxemu-frontend/external-file-dialog"]
+windowing = ["dep:egui-winit", "dep:softbuffer", "dep:winit", "fluxemu-frontend-egui/external-file-dialog"]

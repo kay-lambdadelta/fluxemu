@@ -33,7 +33,7 @@ egui = { workspace = true }
 fluxemu-audio = { workspace = true }
 fluxemu-egui-software-renderer = { workspace = true }
 fluxemu-environment = { workspace = true }
-fluxemu-frontend = { workspace = true }
+fluxemu-frontend-egui = { workspace = true }
 fluxemu-graphics = { workspace = true }
 fluxemu-input = { workspace = true }
 fluxemu-program = { workspace = true }
