@@ -1,7 +1,8 @@
 use std::{collections::HashMap, io::Write, time::Duration};
 
 use digest_io::IoWrapper;
-use fluxemu_frontend_egui::{Frontend, FrontendPlatform};
+use fluxemu_frontend::Platform;
+use fluxemu_frontend_egui::Frontend;
 use fluxemu_input::{GamepadInputId, InputId, InputState, physical::PhysicalInputDeviceId};
 use gilrs::{Axis, Button, Event, GamepadId, Gilrs, GilrsBuilder};
 use sha2::{Digest, Sha256};
@@ -122,7 +123,7 @@ pub struct GamepadContext {
 
 impl GamepadContext {
     #[allow(clippy::result_large_err)]
-    pub fn new<P: FrontendPlatform>(frontend: &mut Frontend<P>) -> Result<Self, gilrs::Error> {
+    pub fn new<P: Platform>(frontend: &mut Frontend<P>) -> Result<Self, gilrs::Error> {
         let gilrs = GilrsBuilder::new()
             .add_env_mappings(true)
             .add_included_mappings(true)
@@ -143,7 +144,7 @@ impl GamepadContext {
     }
 
     #[must_use]
-    pub fn poll_gamepad_events<P: FrontendPlatform>(
+    pub fn poll_gamepad_events<P: Platform>(
         &mut self,
         timeout: Option<Duration>,
     ) -> Option<impl FnOnce(&mut Frontend<P>)> {

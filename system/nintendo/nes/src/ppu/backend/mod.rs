@@ -1,8 +1,8 @@
 use std::fmt::Debug;
 
-use fluxemu_graphics::api::{
-    GraphicsApi,
-    software::texture::{CopyMode, RefMutTexture, RefTexture},
+use fluxemu_graphics::{
+    api::GraphicsApi,
+    texture::{CopyMode, RefMutTexture, RefTexture},
 };
 use palette::{Srgb, Srgba};
 

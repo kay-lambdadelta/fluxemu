@@ -31,7 +31,8 @@ jobs:
             libinput-dev \
             libseat-dev \
             libbz2-dev \
-            libfontconfig-dev
+            libfontconfig-dev \
+            libchafa-dev
 
       - uses: actions/checkout@v7
         with:

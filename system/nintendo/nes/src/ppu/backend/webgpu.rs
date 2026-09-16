@@ -1,7 +1,9 @@
-use fluxemu_graphics::api::{
-    GraphicsApi,
-    software::texture::{AsViewTextureMut, OwnedTexture, RefTexture},
-    webgpu::{InitializationData, Webgpu, suggested_framebuffer_texture_usages},
+use fluxemu_graphics::{
+    api::{
+        GraphicsApi,
+        webgpu::{InitializationData, Webgpu, suggested_framebuffer_texture_usages},
+    },
+    texture::{AsViewTextureMut, OwnedTexture, RefTexture},
 };
 use palette::{Srgb, Srgba, named::BLACK};
 use wgpu::{
@@ -45,7 +47,7 @@ impl<R: Region> PpuDisplayBackend<R> for State {
 
         State {
             queue: initialization_data.queue,
-            staging_texture: fluxemu_graphics::api::software::texture::Texture::from_value(
+            staging_texture: fluxemu_graphics::texture::Texture::from_value(
                 VISIBLE_SCANLINE_LENGTH as usize,
                 R::VISIBLE_SCANLINES as usize,
                 BLACK.into(),

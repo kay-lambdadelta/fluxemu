@@ -1,0 +1,16 @@
+[package]
+name = "fluxemu-frontend-ratatui"
+version = "0.0.1"
+edition = { workspace = true }
+rust-version = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+crossterm = { workspace = true }
+fluxemu-environment = { workspace = true }
+fluxemu-frontend = { workspace = true }
+fluxemu-program = { workspace = true }
+ratatui = { workspace = true }
+ratatui-explorer = { workspace = true }
+ratatui-image = { workspace = true }

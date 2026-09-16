@@ -18,14 +18,14 @@ This program should not have any further dependencies on these platforms, apart 
 
 The instructions for listed distros should work for downstream distros also (ie: the Debian instructions operate for Ubuntu).
 
-| Distro   | Development Package Name                                                                                     |
-| -------- | ------------------------------------------------------------------------------------------------------------ |
-| Debian   | `libasound2-dev libudev-dev pkg-config build-essential libfontconfig-dev fonts-noto-core`                    |
-| Fedora   | `alsa-lib-devel systemd-devel pkgconf-pkg-config @development-tools fontconfig-devel google-noto-sans-fonts` |
-| Arch     | `alsa-lib systemd base-devel fontconfig noto-fonts `                                                         |
-| openSUSE | `alsa-lib-devel libudev-devel pkg-config noto-sans-fonts`                                                    |
+| Distro   | Development Package Name                                             |
+| -------- | -------------------------------------------------------------------- |
+| Debian   | `libasound2-dev libudev-dev pkg-config build-essential`              |
+| Fedora   | `alsa-lib-devel systemd-devel pkgconf-pkg-config @development-tools` |
+| Arch     | `alsa-lib systemd base-devel`                                        |
+| openSUSE | `alsa-lib-devel libudev-devel pkg-config`                            |
 
-Feature specific dependencies (`webgpu` and `windowing` are on by default, `drm` is not):
+Feature specific dependencies (`webgpu`, `windowing`, `egui` are on by default, the rest are not):
 
 #### `webgpu` — WebGPU backend for graphics rendering (via [wgpu](https://crates.io/crates/wgpu))
 
@@ -36,7 +36,7 @@ Feature specific dependencies (`webgpu` and `windowing` are on by default, `drm`
 | Arch     | `vulkan-devel libglvnd`                |
 | openSUSE | `vulkan-devel Mesa-libGL-devel`        |
 
-#### `windowing` — windowing backend for interface display (via [winit](https://crates.io/crates/winit))
+#### `windowing` — Windowing backend for interface display (via [winit](https://crates.io/crates/winit))
 
 | Distro   | Development Package Name                        |
 | -------- | ----------------------------------------------- |
@@ -53,6 +53,24 @@ Feature specific dependencies (`webgpu` and `windowing` are on by default, `drm`
 | Fedora   | `libinput-devel libxkbcommon-devel libseat-devel` |
 | Arch     | `libinput libxkbcommon libseat`                   |
 | openSUSE | `libinput-devel libxkbcommon-devel libseat-devel` |
+
+### [`egui`](https://crates.io/crates/egui) - GUI frontend (is enabled by `windowing` or `drm`)
+
+| Distro   | Development Package Name                  |
+| -------- | ----------------------------------------- |
+| Debian   | `libfontconfig-dev fonts-noto-core`       |
+| Fedora   | `fontconfig-devel google-noto-sans-fonts` |
+| Arch     | `fontconfig noto-fonts `                  |
+| openSUSE | `noto-sans-fonts`                         |
+
+### [`ratatui`](https://crates.io/crates/ratatui) - TUI frontend
+
+| Distro   | Development Package Name |
+| -------- | ------------------------ |
+| Debian   | `libchafa-dev`           |
+| Fedora   | `chafa-devel`            |
+| Arch     | `chafa`                  |
+| openSUSE | `chafa-devel`            |
 
 ## MSRV (Minimal Supported Rust Version)
 

@@ -10,36 +10,30 @@ use std::{
 use fluxemu_runtime::machine::Machine;
 
 use crate::{
-    AudioMixer,
-    machine::simulation_controller::{
-        thread::{SimulationControllerState, simulation_controller_loop},
-        ui::UiState,
-    },
+    audio::mixer::AudioMixer,
+    simulation_controller::thread::{SimulationControllerState, simulation_controller_loop},
 };
 
-const UI_UPDATE_RATE: Duration = Duration::from_millis(200);
-const HISTORICAL_SAMPLE_WINDOW: usize = 32;
-const JITTER_CEILING: f32 = 0.4;
-const HARDWARE_SPEED_EMA: f32 = 0.9995;
-const COMFORTABLE_HEADROOM: f32 = 1.0 + Duration::from_millis(1).as_secs_f32();
-const EXPLORATION_CHANGE: Duration = Duration::from_micros(1);
-const MAX_SCHEDULE_DRIFT: Duration = Duration::from_millis(20);
-const OVERSHOOT_EMA_ALPHA: f32 = 0.9;
-const DIMINISHING_RETURNS_ELASTICITY: f32 = 0.4;
-const MIN_PROBE_DELTA: f32 = 0.05;
-const PROBE_WINDOW: usize = 64;
-
 mod thread;
-mod ui;
+
+pub const HISTORICAL_SAMPLE_WINDOW: usize = 32;
+pub const JITTER_CEILING: f32 = 0.4;
+pub const HARDWARE_SPEED_EMA: f32 = 0.9995;
+pub const COMFORTABLE_HEADROOM: f32 = 1.0 + Duration::from_millis(1).as_secs_f32();
+pub const EXPLORATION_CHANGE: Duration = Duration::from_micros(1);
+pub const MAX_SCHEDULE_DRIFT: Duration = Duration::from_millis(20);
+pub const OVERSHOOT_EMA_ALPHA: f32 = 0.9;
+pub const DIMINISHING_RETURNS_ELASTICITY: f32 = 0.4;
+pub const MIN_PROBE_DELTA: f32 = 0.05;
+pub const PROBE_WINDOW: usize = 64;
 
 #[derive(Debug)]
-pub struct SimulationController {
+pub struct Controller {
     shared: Arc<SharedState>,
-    ui_state: UiState,
     handle: Option<JoinHandle<()>>,
 }
 
-impl Drop for SimulationController {
+impl Drop for Controller {
     fn drop(&mut self) {
         self.shared.should_exit.store(true, Ordering::Release);
         self.shared.paused.store(false, Ordering::Release);
@@ -51,7 +45,7 @@ impl Drop for SimulationController {
     }
 }
 
-impl SimulationController {
+impl Controller {
     pub fn new(machine: Arc<Machine>, audio_mixer: Arc<AudioMixer>) -> Self {
         let shared = Arc::new(SharedState {
             paused: AtomicBool::new(true),
@@ -73,7 +67,6 @@ impl SimulationController {
         Self {
             shared,
             handle: Some(handle),
-            ui_state: UiState::default(),
         }
     }
 
@@ -81,6 +74,10 @@ impl SimulationController {
         self.shared.paused.store(paused, Ordering::Release);
 
         self.handle.as_ref().unwrap().thread().unpark();
+    }
+
+    pub fn get_state_snapshot(&self) -> SimulationControllerState {
+        self.shared.state.lock().unwrap().clone()
     }
 }
 

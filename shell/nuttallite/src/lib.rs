@@ -11,9 +11,10 @@ use std::{
 
 use egui::{FontData, FontDefinitions, FontFamily, RawInput, Rect, ViewportId, ViewportInfo};
 use fluxemu_environment::load_environment;
+use fluxemu_frontend::graphics::GraphicsRuntime as _;
 use fluxemu_frontend_egui::{
     Frontend,
-    graphics::{DrawTarget, GraphicsRuntime as _},
+    rendering::{DrawTarget, EguiCapableGraphicsRuntime},
 };
 use fluxemu_program::ProgramManager;
 use palette::named::BLACK;
@@ -35,6 +36,9 @@ use crate::{
 mod build_machine;
 mod platform;
 mod runtime;
+
+#[cfg(not(feature = "egui"))]
+compile_error!("No frontend enabled, please enable the egui feature");
 
 #[cfg(target_os = "nuttx")]
 mod storage;
@@ -171,7 +175,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             graphics_runtime.present(
                 BLACK,
-                [DrawTarget::Egui {
+                [DrawTarget::Gui {
                     context: frontend.egui_context(),
                     full_output,
                 }],

@@ -9,7 +9,7 @@ use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
 use fluxemu_audio::{FromSample, SampleFormat};
-use fluxemu_frontend_egui::audio::{AudioRuntime, mixer::AudioMixer};
+use fluxemu_frontend::audio::{AudioRuntime, mixer::AudioMixer};
 use nalgebra::SVector;
 
 pub struct CpalAudioRuntime {

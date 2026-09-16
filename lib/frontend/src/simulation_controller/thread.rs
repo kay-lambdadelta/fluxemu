@@ -9,14 +9,12 @@ use rand::RngExt;
 use ringbuffer::{ConstGenericRingBuffer, RingBuffer};
 use rust_i18n::t;
 
-use crate::{
-    audio::mixer::AudioMixer,
-    machine::simulation_controller::{
-        COMFORTABLE_HEADROOM, DIMINISHING_RETURNS_ELASTICITY, EXPLORATION_CHANGE,
-        HARDWARE_SPEED_EMA, HISTORICAL_SAMPLE_WINDOW, JITTER_CEILING, MAX_SCHEDULE_DRIFT,
-        MIN_PROBE_DELTA, OVERSHOOT_EMA_ALPHA, PROBE_WINDOW, SharedState,
-    },
+pub use super::{
+    COMFORTABLE_HEADROOM, DIMINISHING_RETURNS_ELASTICITY, EXPLORATION_CHANGE, HARDWARE_SPEED_EMA,
+    HISTORICAL_SAMPLE_WINDOW, JITTER_CEILING, MAX_SCHEDULE_DRIFT, MIN_PROBE_DELTA,
+    OVERSHOOT_EMA_ALPHA, PROBE_WINDOW,
 };
+use crate::{audio::mixer::AudioMixer, simulation_controller::SharedState};
 
 #[derive(Clone, Debug)]
 pub struct SimulationControllerState {

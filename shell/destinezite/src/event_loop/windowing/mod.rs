@@ -5,33 +5,95 @@ use std::{
 
 use egui::{Context, ViewportId};
 use fluxemu_environment::Environment;
+use fluxemu_frontend::{
+    graphics::{DisplayContext, GraphicsRuntime, ProducableGraphicsRuntime},
+    machine::FactoryManager,
+};
 use fluxemu_frontend_egui::{
     Frontend,
-    graphics::{DrawTarget, GraphicsRuntime},
-    machine::FactoryManager,
+    rendering::{DrawTarget, EguiCapableGraphicsRuntime},
 };
 use fluxemu_input::{InputId, InputState, physical::PhysicalInputDeviceId};
 use fluxemu_program::{ProgramManager, RomId};
 use fluxemu_runtime::graphics::GraphicsRequirements;
 use nalgebra::Vector2;
 use palette::named::BLACK;
+use raw_window_handle::{
+    DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle,
+};
 use winit::{
     application::ApplicationHandler,
     event::{ElementState, StartCause, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy},
-    window::{Window, WindowId},
+    window::WindowId,
 };
 
 use crate::{
-    audio::CpalAudioRuntime,
-    display::{DisplayContext, RuntimeAssociatedDisplayContext},
-    event_loop::windowing::key::winit2key,
-    font::load_fonts,
-    gamepad::GamepadContext,
-    platform::DesktopPlatform,
+    audio::CpalAudioRuntime, event_loop::windowing::key::winit2key, font::load_fonts,
+    gamepad::GamepadContext, platform::DesktopPlatform,
 };
 
 mod key;
+
+pub fn run<R: ProducableGraphicsRuntime<Window> + EguiCapableGraphicsRuntime>(
+    environment: Environment,
+    program_manager: Arc<ProgramManager>,
+    machine_factories: FactoryManager<DesktopPlatform<R, true>>,
+    initial_program: Option<Vec<RomId>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let event_loop = EventLoop::with_user_event().build()?;
+    let audio_runtime = CpalAudioRuntime::new().unwrap();
+
+    let mut frontend = Frontend::new(
+        environment,
+        machine_factories,
+        program_manager,
+        audio_runtime,
+        initial_program,
+        load_fonts(),
+    );
+
+    let gamepad_context = GamepadContext::new(&mut frontend);
+    let frontend = Arc::new(Mutex::new(frontend));
+
+    match gamepad_context {
+        Ok(mut context) => {
+            let frontend = frontend.clone();
+
+            std::thread::Builder::new()
+                .name("Gamepad Poll Thread".to_string())
+                .spawn(move || {
+                    loop {
+                        if let Some(callback) = context.poll_gamepad_events(None) {
+                            let mut frontend = frontend.lock().unwrap();
+                            callback(&mut frontend);
+                        }
+                    }
+                })
+                .unwrap();
+        }
+        Err(err) => {
+            tracing::error!(
+                "Gamepad context could not be created: {}, you will not have gamepad support",
+                err
+            );
+        }
+    }
+
+    let event_loop_proxy = event_loop.create_proxy();
+
+    let mut me = WindowingEventLoop {
+        frontend,
+        windowing_context: None,
+        event_loop_proxy,
+        refresh_surface: false,
+        added_keyboard: false,
+    };
+
+    event_loop.run_app(&mut me)?;
+
+    Ok(())
+}
 
 #[derive(Debug)]
 enum Message {
@@ -39,12 +101,12 @@ enum Message {
 }
 
 struct WindowingContext<R> {
-    window: Arc<Window>,
+    window: Window,
     egui_winit_context: egui_winit::State,
     graphics_runtime: R,
 }
 
-pub struct WindowingEventLoop<R: GraphicsRuntime> {
+struct WindowingEventLoop<R: GraphicsRuntime> {
     windowing_context: Option<WindowingContext<R>>,
     frontend: Arc<Mutex<Frontend<DesktopPlatform<R, true>>>>,
     event_loop_proxy: EventLoopProxy<Message>,
@@ -52,81 +114,15 @@ pub struct WindowingEventLoop<R: GraphicsRuntime> {
     added_keyboard: bool,
 }
 
-impl<R: GraphicsRuntime> WindowingEventLoop<R>
-where
-    Arc<Window>: RuntimeAssociatedDisplayContext<R>,
-{
-    pub fn run(
-        environment: Environment,
-        program_manager: Arc<ProgramManager>,
-        machine_factories: FactoryManager<DesktopPlatform<R, true>>,
-        initial_program: Option<Vec<RomId>>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let event_loop = EventLoop::with_user_event().build()?;
-        let audio_runtime = CpalAudioRuntime::new().unwrap();
-
-        let mut frontend = Frontend::new(
-            environment,
-            machine_factories,
-            program_manager,
-            audio_runtime,
-            initial_program,
-            load_fonts(),
-        );
-
-        let gamepad_context = GamepadContext::new(&mut frontend);
-        let frontend = Arc::new(Mutex::new(frontend));
-
-        match gamepad_context {
-            Ok(mut context) => {
-                let frontend = frontend.clone();
-
-                std::thread::Builder::new()
-                    .name("Gamepad Poll Thread".to_string())
-                    .spawn(move || {
-                        loop {
-                            if let Some(callback) = context.poll_gamepad_events(None) {
-                                let mut frontend = frontend.lock().unwrap();
-                                callback(&mut frontend);
-                            }
-                        }
-                    })
-                    .unwrap();
-            }
-            Err(err) => {
-                tracing::error!(
-                    "Gamepad context could not be created: {}, you will not have gamepad support",
-                    err
-                );
-            }
-        }
-
-        let event_loop_proxy = event_loop.create_proxy();
-
-        let mut me = Self {
-            frontend,
-            windowing_context: None,
-            event_loop_proxy,
-            refresh_surface: false,
-            added_keyboard: false,
-        };
-
-        event_loop.run_app(&mut me)?;
-
-        Ok(())
-    }
-}
-
-impl<R: GraphicsRuntime> ApplicationHandler<Message> for WindowingEventLoop<R>
-where
-    Arc<Window>: RuntimeAssociatedDisplayContext<R>,
+impl<R: ProducableGraphicsRuntime<Window> + EguiCapableGraphicsRuntime> ApplicationHandler<Message>
+    for WindowingEventLoop<R>
 {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         event_loop.set_control_flow(ControlFlow::Wait);
         let frontend = self.frontend.lock().unwrap();
 
-        let window = setup_window(event_loop);
-        let graphics_runtime = window.produce_runtime(GraphicsRequirements::default());
+        let window = Window::new(event_loop);
+        let graphics_runtime = R::new(&window, GraphicsRequirements::default());
         let egui_context = frontend.egui_context();
 
         setup_egui_context(egui_context, self.event_loop_proxy.clone(), window.clone());
@@ -135,8 +131,8 @@ where
             egui_context.clone(),
             ViewportId::ROOT,
             &window,
-            Some(window.scale_factor() as f32),
-            window.theme(),
+            Some(window.0.scale_factor() as f32),
+            window.0.theme(),
             Some(graphics_runtime.max_texture_side() as usize),
         );
 
@@ -162,7 +158,7 @@ where
 
         // Pass events to egui if the frontend overlay is active
         let repaint = if frontend.overlay_active() {
-            let response = egui_winit_context.on_window_event(window, &event);
+            let response = egui_winit_context.on_window_event(&window.0, &event);
 
             // We have our own redrawing logic
             response.repaint && event != WindowEvent::RedrawRequested
@@ -171,7 +167,7 @@ where
         };
 
         if repaint {
-            window.request_redraw();
+            window.0.request_redraw();
         }
 
         match event {
@@ -184,15 +180,15 @@ where
                 }
 
                 if frontend.overlay_active() {
-                    let raw_input = egui_winit_context.take_egui_input(window);
+                    let raw_input = egui_winit_context.take_egui_input(&window.0);
                     let full_output = frontend.run_menu(raw_input);
 
                     egui_winit_context
-                        .handle_platform_output(window, full_output.platform_output.clone());
+                        .handle_platform_output(&window.0, full_output.platform_output.clone());
 
                     graphics_runtime.present(
                         BLACK,
-                        [DrawTarget::Egui {
+                        [DrawTarget::Gui {
                             context: frontend.egui_context(),
                             full_output,
                         }],
@@ -257,8 +253,8 @@ where
                     egui_context.clone(),
                     ViewportId::ROOT,
                     &window,
-                    Some(window.scale_factor() as f32),
-                    window.theme(),
+                    Some(window.0.scale_factor() as f32),
+                    window.0.theme(),
                     Some(graphics_runtime.max_texture_side() as usize),
                 );
 
@@ -266,7 +262,7 @@ where
                     graphics_runtime.component_initialization_data();
 
                 // Immediately refresh since the backend changed
-                window.request_redraw();
+                window.0.request_redraw();
 
                 component_initialization_data
             },
@@ -291,7 +287,7 @@ where
             let WindowingContext { window, .. } = self.windowing_context.as_mut().unwrap();
 
             event_loop.set_control_flow(ControlFlow::Wait);
-            window.request_redraw();
+            window.0.request_redraw();
         }
     }
 }
@@ -299,11 +295,11 @@ where
 fn setup_egui_context(
     context: &Context,
     event_loop_proxy: EventLoopProxy<Message>,
-    window: Arc<Window>,
+    window: Window,
 ) {
     context.set_request_repaint_callback(move |info| {
         if info.delay.is_zero() {
-            window.request_redraw();
+            window.0.request_redraw();
         } else {
             let at = Instant::now() + info.delay;
             let _ = event_loop_proxy.send_event(Message::RedrawAt(at));
@@ -311,24 +307,43 @@ fn setup_egui_context(
     });
 }
 
-fn setup_window(event_loop: &ActiveEventLoop) -> Arc<Window> {
-    let window_attributes = Window::default_attributes()
-        .with_title("FluxEMU")
-        .with_resizable(true)
-        .with_transparent(false)
-        .with_decorations(true);
+#[derive(Debug, Clone)]
+pub struct Window(pub Arc<winit::window::Window>);
 
-    Arc::new(event_loop.create_window(window_attributes).unwrap())
+impl Window {
+    pub fn new(event_loop: &ActiveEventLoop) -> Self {
+        let window_attributes = winit::window::Window::default_attributes()
+            .with_title("FluxEMU")
+            .with_resizable(true)
+            .with_transparent(false)
+            .with_decorations(true);
+
+        Window(Arc::new(
+            event_loop.create_window(window_attributes).unwrap(),
+        ))
+    }
 }
 
-impl DisplayContext for Arc<Window> {
+impl HasDisplayHandle for Window {
+    fn display_handle(&self) -> Result<DisplayHandle<'_>, HandleError> {
+        self.0.display_handle()
+    }
+}
+
+impl HasWindowHandle for Window {
+    fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
+        self.0.window_handle()
+    }
+}
+
+impl DisplayContext for Window {
     fn dimensions(&self) -> Vector2<u32> {
-        let size = self.inner_size();
+        let size = self.0.inner_size();
 
         Vector2::new(size.width, size.height)
     }
 
-    fn pre_present_notify(&self) {
-        Window::pre_present_notify(self);
+    fn pre_present_notify(&mut self) {
+        self.0.pre_present_notify();
     }
 }

@@ -7,9 +7,9 @@ use fluxemu_input::{
 };
 use indexmap::{IndexMap, IndexSet};
 
-use crate::{Frontend, FrontendPlatform, MachineContext, PhysicalInputDeviceState};
+use crate::{Frontend, MachineContext, PhysicalInputDeviceState, Platform};
 
-impl<P: FrontendPlatform> Frontend<P> {
+impl<P: Platform> Frontend<P> {
     pub fn insert_input(
         &mut self,
         origin: PhysicalInputDeviceId,
@@ -58,20 +58,18 @@ impl<P: FrontendPlatform> Frontend<P> {
                 match hotkey_action {
                     Hotkey::ToggleMenu => {
                         if self.frontend_overlay_active {
-                            if let Some(MachineContext {
-                                simulation_controller,
-                                ..
-                            }) = &mut self.machine_context
+                            if let Some(MachineContext { controller, .. }) =
+                                &mut self.machine_context
                             {
                                 // We don't allow the overlay to be deactivated if there isn't an active machine
                                 self.frontend_overlay_active = false;
-                                simulation_controller.set_paused(false);
+                                controller.set_paused(false);
                             }
                         } else {
                             // Pause machine if one is active
                             if let Some(MachineContext {
-                                simulation_controller,
                                 machine,
+                                controller,
                                 ..
                             }) = &mut self.machine_context
                             {
@@ -94,7 +92,7 @@ impl<P: FrontendPlatform> Frontend<P> {
                                 }
 
                                 // Pause machine if one exists
-                                simulation_controller.set_paused(true);
+                                controller.set_paused(true);
                             }
 
                             self.frontend_overlay_active = true;

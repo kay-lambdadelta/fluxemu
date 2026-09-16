@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use drm::{
     buffer::{Buffer, DrmFourcc},
     control::{
@@ -8,8 +6,9 @@ use drm::{
     },
 };
 use fluxemu_egui_software_renderer::Renderer;
-use fluxemu_graphics::api::software::{
-    Software,
+use fluxemu_frontend::graphics::ProducableGraphicsRuntime;
+use fluxemu_graphics::{
+    api::software::Software,
     texture::{AsViewTexture, AsViewTextureMut, RefMutTexture, RefTexture},
 };
 use fluxemu_runtime::graphics::GraphicsRequirements;
@@ -21,10 +20,7 @@ use nix::{
 use palette::{cast::Packed, rgb::channels::Bgra};
 
 use crate::{
-    display::{
-        RuntimeAssociatedDisplayContext,
-        software::{SoftwareCompatibleDisplayContext, SoftwareGraphicsRuntime},
-    },
+    display::software::{SoftwareCompatibleDisplayContext, SoftwareGraphicsRuntime},
     event_loop::drm::DrmContext,
 };
 
@@ -63,38 +59,39 @@ impl AsViewTextureMut<Packed<Bgra, [u8; 4]>> for SurfaceBufferGuard<'_> {
     }
 }
 
-impl RuntimeAssociatedDisplayContext<SoftwareGraphicsRuntime<Self>> for Arc<DrmContext> {
-    fn produce_runtime(
-        &self,
+impl ProducableGraphicsRuntime<DrmContext> for SoftwareGraphicsRuntime<DrmContext> {
+    fn new(
+        context: &DrmContext,
         _graphics_requirements: GraphicsRequirements<Software>,
-    ) -> SoftwareGraphicsRuntime<Self> {
-        let (width, height) = self.params.mode.size();
+    ) -> SoftwareGraphicsRuntime<DrmContext> {
+        let (width, height) = context.params.mode.size();
 
-        let buffer_0 = self
+        let buffer_0 = context
             .card
             .create_dumb_buffer((width as u32, height as u32), DrmFourcc::Bgrx8888, 32)
             .unwrap();
-        let framebuffer_handle_0 = self.card.add_framebuffer(&buffer_0, 32, 32).unwrap();
+        let framebuffer_handle_0 = context.card.add_framebuffer(&buffer_0, 32, 32).unwrap();
 
-        let buffer_1 = self
+        let buffer_1 = context
             .card
             .create_dumb_buffer((width as u32, height as u32), DrmFourcc::Bgrx8888, 32)
             .unwrap();
-        let framebuffer_handle_1 = self.card.add_framebuffer(&buffer_1, 32, 32).unwrap();
+        let framebuffer_handle_1 = context.card.add_framebuffer(&buffer_1, 32, 32).unwrap();
 
-        self.card
+        context
+            .card
             .set_crtc(
-                self.params.crtc_handle,
+                context.params.crtc_handle,
                 Some(framebuffer_handle_0),
                 (0, 0),
-                &[self.params.connector_handle],
-                Some(self.params.mode),
+                &[context.params.connector_handle],
+                Some(context.params.mode),
             )
             .unwrap();
 
         let epoll = Epoll::new(EpollCreateFlags::EPOLL_CLOEXEC).unwrap();
         epoll
-            .add(&self.card, EpollEvent::new(EpollFlags::EPOLLIN, 0))
+            .add(&context.card, EpollEvent::new(EpollFlags::EPOLLIN, 0))
             .unwrap();
 
         SoftwareGraphicsRuntime {
@@ -105,12 +102,16 @@ impl RuntimeAssociatedDisplayContext<SoftwareGraphicsRuntime<Self>> for Arc<DrmC
                 epoll,
                 on_back_buffer: true,
             },
-            display_handle: self.clone(),
+            display_handle: context.clone(),
         }
+    }
+
+    fn display_context(&self) -> &DrmContext {
+        &self.display_handle
     }
 }
 
-impl SoftwareCompatibleDisplayContext for Arc<DrmContext> {
+impl SoftwareCompatibleDisplayContext for DrmContext {
     type MappingError = std::io::Error;
     type PresentError = std::io::Error;
     type ResizeError = std::io::Error;

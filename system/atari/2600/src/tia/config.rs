@@ -1,6 +1,6 @@
 use std::{collections::HashMap, marker::PhantomData, ops::RangeInclusive};
 
-use fluxemu_graphics::api::software::texture::Texture;
+use fluxemu_graphics::texture::Texture;
 use fluxemu_math::range::ContiguousRange;
 use fluxemu_runtime::{
     component::config::{ComponentConfig, LateContext},

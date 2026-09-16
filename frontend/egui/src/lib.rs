@@ -1,42 +1,41 @@
-//! Generic multi platform frontend implementation for fluxemu
-
-pub mod audio;
-pub mod graphics;
+//! Generic multiplatform frontend implementation for fluxemu
 
 mod file_browser;
 mod input;
-pub mod machine;
-mod platform;
+pub mod rendering;
 mod settings;
+mod simulation_controller;
 mod toast;
 
 use std::{borrow::Cow, collections::HashMap, ops::Deref, sync::Arc, thread::JoinHandle};
 
 use egui::{
-    Align, Button, CentralPanel, Color32, Context, FontDefinitions, FontFamily, Frame, FullOutput,
-    Layout, Panel, RawInput, RichText, TextStyle,
+    Align, Button, CentralPanel, Color32, FontDefinitions, FontFamily, Frame, FullOutput, Layout,
+    Panel, RawInput, RichText, TextStyle,
 };
 use egui_toast::ToastKind;
 use fluxemu_environment::{ENVIRONMENT_LOCATION, Environment};
+use fluxemu_frontend::{
+    Platform,
+    audio::{AudioRuntime, mixer::AudioMixer},
+    machine::FactoryManager,
+    simulation_controller::Controller,
+};
 use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_input::{InputId, InputState, physical::PhysicalInputDeviceId};
 use fluxemu_program::{ProgramManager, ProgramSpecification, RomId};
 use fluxemu_runtime::{
     ResourcePath,
     machine::{Machine, builder::SealedMachineBuilder},
-    platform::Platform,
 };
 use indexmap::{IndexMap, IndexSet};
 use palette::Srgba;
-pub use platform::*;
 use ron::ser::PrettyConfig;
 use strum::{AsRefStr, EnumIter, IntoEnumIterator};
 
 use crate::{
-    audio::{AudioRuntime, mixer::AudioMixer},
-    file_browser::{FileBrowser, state::FileBrowserState},
+    file_browser::{FileBrowser, FileBrowserState},
     input::translator::EguiInputTranslator,
-    machine::{FactoryManager, SimulationController},
     toast::ToastManager,
 };
 
@@ -67,11 +66,6 @@ impl TabId {
     }
 }
 
-struct MachineContext {
-    machine: Arc<Machine>,
-    simulation_controller: SimulationController,
-}
-
 #[derive(Debug, Clone)]
 struct PhysicalInputDeviceState {
     // Should the runtime translate this input device into something egui can understand
@@ -100,7 +94,7 @@ enum MachineInitializationStep<P: Platform> {
 
 /// Frontend for the emulator
 #[allow(clippy::type_complexity)]
-pub struct Frontend<P: FrontendPlatform> {
+pub struct Frontend<P: Platform> {
     environment: Environment,
     machine_context: Option<MachineContext>,
     pending_machine: Option<SealedMachineBuilder<P>>,
@@ -110,7 +104,7 @@ pub struct Frontend<P: FrontendPlatform> {
     frontend_overlay_active: bool,
     current_tab: TabId,
     physical_input_devices: HashMap<PhysicalInputDeviceId, PhysicalInputDeviceState>,
-    egui_context: Context,
+    egui_context: egui::Context,
     file_browser_state: FileBrowserState,
     machine_initialization_step: Option<MachineInitializationStep<P>>,
     toast_manager: ToastManager,
@@ -121,7 +115,7 @@ pub struct Frontend<P: FrontendPlatform> {
     audio_mixer: Arc<AudioMixer>,
 }
 
-impl<P: FrontendPlatform> Frontend<P> {
+impl<P: Platform> Frontend<P> {
     pub fn new(
         environment: Environment,
         machine_factories: FactoryManager<P>,
@@ -208,7 +202,7 @@ impl<P: FrontendPlatform> Frontend<P> {
     pub fn maybe_reset_graphics_to_meet_machine_requirements(
         &mut self,
         callback: impl FnOnce(
-            &Context,
+            &egui::Context,
             &SealedMachineBuilder<P>,
         ) -> <P::GraphicsApi as GraphicsApi>::InitializationData,
     ) {
@@ -236,15 +230,15 @@ impl<P: FrontendPlatform> Frontend<P> {
             // Exit runtime
             drop(runtime_guard);
 
-            let simulation_controller =
-                SimulationController::new(machine.clone(), self.audio_mixer.clone());
+            let controller = Controller::new(machine.clone(), self.audio_mixer.clone());
 
             // Make sure the simulation is currently running
-            simulation_controller.set_paused(false);
+            controller.set_paused(false);
 
             self.machine_context = Some(MachineContext {
-                simulation_controller,
+                controller,
                 machine,
+                controller_ui_state: simulation_controller::State::default(),
             });
 
             self.machine_loading = false;
@@ -304,11 +298,13 @@ impl<P: FrontendPlatform> Frontend<P> {
                         TabId::Controller => {}
                         TabId::Debug => {
                             if let Some(MachineContext {
-                                simulation_controller,
+                                controller,
+                                controller_ui_state: ui_state,
                                 ..
                             }) = &mut self.machine_context
                             {
-                                ui.add(simulation_controller);
+                                ui_state.update(controller);
+                                ui.add(ui_state);
                             }
                         }
                         TabId::About => {}
@@ -394,15 +390,15 @@ impl<P: FrontendPlatform> Frontend<P> {
     }
 }
 
-impl<P: FrontendPlatform> Drop for Frontend<P> {
+impl<P: Platform> Drop for Frontend<P> {
     // Save on exit
     fn drop(&mut self) {
         self.save_environment();
     }
 }
 
-fn setup_egui_context(font_definitions: FontDefinitions) -> Context {
-    let egui_context = Context::default();
+fn setup_egui_context(font_definitions: FontDefinitions) -> egui::Context {
+    let egui_context = egui::Context::default();
 
     egui_context.global_style_mut(|style| {
         style.text_styles.insert(
@@ -429,4 +425,10 @@ fn to_egui_color(color: impl Into<Srgba<u8>>) -> Color32 {
     let color = color.into();
 
     Color32::from_rgba_unmultiplied(color.red, color.green, color.blue, color.alpha)
+}
+
+struct MachineContext {
+    machine: Arc<Machine>,
+    controller: Controller,
+    controller_ui_state: simulation_controller::State,
 }

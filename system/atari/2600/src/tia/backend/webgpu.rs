@@ -1,7 +1,9 @@
-use fluxemu_graphics::api::{
-    GraphicsApi,
-    software::texture::{CopyMode, OwnedTexture},
-    webgpu::{InitializationData, Webgpu, suggested_framebuffer_texture_usages},
+use fluxemu_graphics::{
+    api::{
+        GraphicsApi,
+        webgpu::{InitializationData, Webgpu, suggested_framebuffer_texture_usages},
+    },
+    texture::{CopyMode, OwnedTexture},
 };
 use palette::Srgba;
 use wgpu::{

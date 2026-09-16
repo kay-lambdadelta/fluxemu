@@ -1,11 +1,8 @@
 use std::fmt::Debug;
 
-use fluxemu_graphics::api::{
-    GraphicsApi,
-    software::{
-        Software,
-        texture::{AsViewTextureMut, OwnedTexture, RefTexture, Texture},
-    },
+use fluxemu_graphics::{
+    api::{GraphicsApi, software::Software},
+    texture::{AsViewTextureMut, OwnedTexture, RefTexture, Texture},
 };
 use palette::{Srgb, Srgba, named::BLACK};
 

@@ -2,9 +2,9 @@
 
 extern crate alloc;
 
+use alloc::boxed::Box;
 use core::error::Error;
 
-use alloc::boxed::Box;
 use fluxemu_program::SystemId;
 use fluxemu_runtime::{
     Platform,

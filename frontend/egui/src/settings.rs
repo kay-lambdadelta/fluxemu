@@ -2,12 +2,13 @@ use std::ops::Deref;
 
 use egui::{ComboBox, RichText, Slider};
 use fluxemu_environment::{ENVIRONMENT_LOCATION, graphics::GraphicsApi};
+use fluxemu_frontend::Platform;
 use ron::ser::PrettyConfig;
 use strum::IntoEnumIterator;
 
-use crate::{Frontend, FrontendPlatform};
+use crate::Frontend;
 
-impl<P: FrontendPlatform> Frontend<P> {
+impl<P: Platform> Frontend<P> {
     pub fn handle_settings(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_top(|ui| {
             let button_text = RichText::new("💾").size(32.0);

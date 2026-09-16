@@ -4,13 +4,11 @@
 //!
 //! This implements a meta graphic api, to provide a universal software rendering implementation
 
-pub mod texture;
-
 use core::{fmt::Debug, ops::BitOr};
 
 use palette::Srgba;
 
-use crate::api::{GraphicsApi, software::texture::OwnedTexture};
+use crate::{api::GraphicsApi, texture::OwnedTexture};
 
 /// Marker trait for software rendering
 ///

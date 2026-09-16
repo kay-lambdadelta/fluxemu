@@ -1,8 +1,8 @@
 use std::{any::Any, fmt::Debug};
 
-use fluxemu_graphics::api::{
-    GraphicsApi,
-    software::texture::{CopyMode, OwnedTexture, Texture},
+use fluxemu_graphics::{
+    api::GraphicsApi,
+    texture::{CopyMode, OwnedTexture, Texture},
 };
 use fluxemu_runtime::{
     RuntimeHandle,

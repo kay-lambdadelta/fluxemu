@@ -1,8 +1,9 @@
 use fluxemu_egui_software_renderer::Renderer;
-use fluxemu_frontend_egui::graphics::{DrawTarget, present_machine_software};
-use fluxemu_graphics::api::{
-    GraphicsApi,
-    software::{Software, texture::OwnedTexture},
+use fluxemu_frontend::graphics::present_machine_software;
+use fluxemu_frontend_egui::rendering::{DrawTarget, EguiCapableGraphicsRuntime};
+use fluxemu_graphics::{
+    api::{GraphicsApi, software::Software},
+    texture::{AsViewTexture, CowTexture, OwnedTexture},
 };
 use fluxemu_runtime::graphics::GraphicsRequirements;
 use palette::{Srgb, Srgba};
@@ -21,13 +22,28 @@ impl Default for GraphicsRuntime {
     }
 }
 
-impl fluxemu_frontend_egui::graphics::GraphicsRuntime for GraphicsRuntime {
+impl fluxemu_frontend::graphics::GraphicsRuntime for GraphicsRuntime {
     type GraphicsApi = Software;
 
     fn reconfigure(&mut self, _graphics_requirements: GraphicsRequirements<Self::GraphicsApi>) {}
 
     fn refresh_surface(&mut self) {}
 
+    fn component_initialization_data(
+        &self,
+    ) -> <Self::GraphicsApi as GraphicsApi>::InitializationData {
+    }
+
+    fn max_texture_side(&self) -> u32 {
+        u32::MAX
+    }
+
+    fn screenshot(&self) -> CowTexture<'_, Srgba<u8>> {
+        self.texture.as_view().into()
+    }
+}
+
+impl EguiCapableGraphicsRuntime for GraphicsRuntime {
     fn present<'a>(
         &'a mut self,
         clear_color: Srgb<u8>,
@@ -37,7 +53,7 @@ impl fluxemu_frontend_egui::graphics::GraphicsRuntime for GraphicsRuntime {
 
         for target in targets {
             match target {
-                DrawTarget::Egui {
+                DrawTarget::Gui {
                     context,
                     full_output,
                 } => {
@@ -49,14 +65,5 @@ impl fluxemu_frontend_egui::graphics::GraphicsRuntime for GraphicsRuntime {
                 }
             }
         }
-    }
-
-    fn component_initialization_data(
-        &self,
-    ) -> <Self::GraphicsApi as GraphicsApi>::InitializationData {
-    }
-
-    fn max_texture_side(&self) -> u32 {
-        u32::MAX
     }
 }

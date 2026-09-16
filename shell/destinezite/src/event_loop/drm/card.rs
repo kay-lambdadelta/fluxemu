@@ -162,7 +162,7 @@ impl AsRawFd for Card {
 impl drm::Device for Card {}
 impl drm::control::Device for Card {}
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct DrmParams {
     pub connector_handle: drm::control::connector::Handle,
     pub crtc_handle: drm::control::crtc::Handle,

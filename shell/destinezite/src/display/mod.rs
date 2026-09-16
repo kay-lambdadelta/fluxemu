@@ -1,5 +1,3 @@
-use fluxemu_frontend_egui::graphics::GraphicsRuntime;
-use fluxemu_runtime::graphics::GraphicsRequirements;
 use nalgebra::Vector2;
 
 pub mod software;
@@ -27,16 +25,4 @@ pub fn calculate_scale_factor(
         .sqrt();
 
     (d_px / d_mm) / REFERENCE_PIXEL_PER_MM
-}
-
-pub trait DisplayContext: Sized + 'static {
-    fn dimensions(&self) -> Vector2<u32>;
-    fn pre_present_notify(&self) {}
-}
-
-pub trait RuntimeAssociatedDisplayContext<R: GraphicsRuntime>: DisplayContext {
-    fn produce_runtime(
-        &self,
-        graphics_requirements: GraphicsRequirements<<R as GraphicsRuntime>::GraphicsApi>,
-    ) -> R;
 }

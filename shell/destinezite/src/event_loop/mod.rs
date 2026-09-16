@@ -2,6 +2,7 @@ use clap::ValueEnum;
 
 #[cfg(feature = "drm")]
 pub mod drm;
+
 #[cfg(feature = "windowing")]
 pub mod windowing;
 
@@ -13,6 +14,9 @@ pub enum DisplayBackend {
     #[cfg_attr(feature = "windowing", default)]
     Windowing,
     #[cfg(feature = "drm")]
-    #[cfg_attr(not(feature = "windowing"), default)]
+    #[cfg_attr(all(not(feature = "windowing"), not(feature = "ratatui")), default)]
     Drm,
+    #[cfg(feature = "ratatui")]
+    #[cfg_attr(all(not(feature = "windowing"), not(feature = "drm")), default)]
+    Ratatui,
 }

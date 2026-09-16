@@ -3,10 +3,19 @@
 // Make sure this does not spawn with the console on windows
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-#[cfg(all(not(feature = "drm"), not(feature = "windowing")))]
+#[cfg(all(
+    not(feature = "drm"),
+    not(feature = "windowing"),
+    not(feature = "ratatui")
+))]
 compile_error!(
     "No display backend enabled, please enable one of the supported backends (drm and/or \
      windowing)"
+);
+
+#[cfg(all(not(feature = "egui"), not(feature = "ratatui")))]
+compile_error!(
+    "No frontend enabled, please enable one of the supported frontends (egui and/or ratatui)"
 );
 
 #[cfg(all(feature = "drm", not(target_os = "linux")))]
@@ -106,9 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         fluxemu_environment::graphics::GraphicsApi::Software => match cli.display_backend {
             #[cfg(feature = "windowing")]
             DisplayBackend::Windowing => {
-                use crate::event_loop::windowing::WindowingEventLoop;
-
-                WindowingEventLoop::<SoftwareGraphicsRuntime<_>>::run(
+                crate::event_loop::windowing::run::<SoftwareGraphicsRuntime<_>>(
                     environment.clone(),
                     program_manager.clone(),
                     build_machine::get_software_factories(),
@@ -117,14 +124,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             #[cfg(feature = "drm")]
             DisplayBackend::Drm => {
-                use crate::event_loop::drm::DrmEventLoop;
-
-                DrmEventLoop::<SoftwareGraphicsRuntime<_>>::run(
+                crate::event_loop::drm::run::<SoftwareGraphicsRuntime<_>>(
                     environment.clone(),
                     program_manager.clone(),
                     build_machine::get_software_factories(),
                     initial_program.clone(),
                 )?;
+            }
+            #[cfg(feature = "ratatui")]
+            DisplayBackend::Ratatui => {
+                todo!()
             }
         },
         #[cfg(feature = "webgpu")]
@@ -134,9 +143,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             match cli.display_backend {
                 #[cfg(feature = "windowing")]
                 DisplayBackend::Windowing => {
-                    use crate::event_loop::windowing::WindowingEventLoop;
-
-                    WindowingEventLoop::<WebgpuGraphicsRuntime<_>>::run(
+                    crate::event_loop::windowing::run::<WebgpuGraphicsRuntime<_>>(
                         environment.clone(),
                         program_manager.clone(),
                         build_machine::get_webgpu_factories(),
@@ -145,14 +152,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 #[cfg(feature = "drm")]
                 DisplayBackend::Drm => {
-                    use crate::event_loop::drm::DrmEventLoop;
-
-                    DrmEventLoop::<WebgpuGraphicsRuntime<_>>::run(
+                    crate::event_loop::drm::run::<WebgpuGraphicsRuntime<_>>(
                         environment.clone(),
                         program_manager.clone(),
                         build_machine::get_webgpu_factories(),
                         initial_program.clone(),
                     )?;
+                }
+                #[cfg(feature = "ratatui")]
+                DisplayBackend::Ratatui => {
+                    todo!()
                 }
             }
         }

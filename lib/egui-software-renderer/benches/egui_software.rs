@@ -4,7 +4,7 @@ use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use egui::{Context, RawInput, Rect, ViewportId, ViewportInfo};
 use egui_demo_lib::DemoWindows;
 use fluxemu_egui_software_renderer::Renderer;
-use fluxemu_graphics::api::software::texture::{AsViewTextureMut, OwnedTexture};
+use fluxemu_graphics::texture::{AsViewTextureMut, OwnedTexture};
 use palette::{
     Srgba, WithAlpha,
     cast::Packed,

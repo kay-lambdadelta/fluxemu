@@ -19,13 +19,13 @@ license = "GPL-3.0-or-later"
 bindgen = "0.73"
 bit-vec = "0.10"
 bitstream-io = "4.10"
-byte-unit = "5.2"
 bytemuck = { version = "1.25", features = ["derive"] }
 bytes = "1.12"
 clap = { version = "4.6", features = ["derive"] }
 confique = "0.4"
 cpal = "0.18"
 criterion = "0.8"
+crossterm = "0.29"
 csv = "1.4"
 data-encoding = "2.11"
 digest-io = "0.1"
@@ -51,7 +51,6 @@ input = {
 itertools = "0.15"
 libc = "0.2"
 libseat = "0.2"
-lz4_flex = "0.14"
 memmap2 = "0.9"
 multiversion = "0.9"
 nalgebra = {
@@ -70,6 +69,7 @@ quick-xml = { version = "0.42", features = ["serialize"] }
 quote = "1.0"
 rand = "0.10"
 rangemap = { version = "1.8", features = ["serde1"] }
+raw-window-handle = "0.6"
 rayon = "1.12"
 redb = { version = "4.2", features = ["logging"] }
 rfd = "0.17"
@@ -88,7 +88,6 @@ sha2 = "0.11"
 softbuffer = "0.4"
 strum = { version = "0.28", features = ["derive"] }
 syn = { version = "3.0", features = ["full"] }
-sysinfo = "0.39"
 tempfile = "3.27"
 thin-vec = "0.2"
 thiserror = "2.0"
@@ -96,7 +95,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 udev = "0.9"
 ureq = "3.4"
-url = "2.5"
 uuid = {
   version = "1.26",
   features = [
@@ -109,9 +107,14 @@ winit = "0.30"
 xkbcommon = "0.9"
 zip = "8.6"
 
+ratatui = "0.30"
+ratatui-explorer = "0.3"
+ratatui-image = { version = "11.0", default-features = false, features = ["crossterm"] }
+
 fluxemu-audio = { path = "lib/audio" }
 fluxemu-egui-software-renderer = { path = "lib/egui-software-renderer" }
 fluxemu-environment = { path = "lib/environment" }
+fluxemu-frontend = { path = "lib/frontend" }
 fluxemu-graphics = { path = "lib/graphics" }
 fluxemu-input = { path = "lib/input" }
 fluxemu-locale = { path = "lib/locale" }
@@ -121,6 +124,7 @@ fluxemu-runtime = { path = "lib/runtime" }
 fluxemu-system = { path = "lib/system" }
 
 fluxemu-frontend-egui = { path = "frontend/egui" }
+fluxemu-frontend-ratatui = { path = "frontend/ratatui" }
 
 fluxemu-definition-intel8080 = { path = "definition/intel8080" }
 fluxemu-definition-mos6502 = { path = "definition/mos6502" }

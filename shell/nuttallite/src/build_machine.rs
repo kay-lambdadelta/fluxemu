@@ -1,4 +1,4 @@
-use fluxemu_frontend_egui::machine::FactoryManager;
+use fluxemu_frontend::machine::FactoryManager;
 use fluxemu_graphics::api::software::Software;
 use fluxemu_runtime::platform::Platform;
 use fluxemu_system_atari_2600::Atari2600;

@@ -26,11 +26,13 @@ bytemuck = { workspace = true }
 clap = { workspace = true }
 cpal = { workspace = true }
 digest-io = { workspace = true }
-egui = { workspace = true }
+egui = { workspace = true, optional = true }
 fluxemu-audio = { workspace = true }
-fluxemu-egui-software-renderer = { workspace = true }
+fluxemu-egui-software-renderer = { workspace = true, optional = true }
 fluxemu-environment = { workspace = true }
-fluxemu-frontend-egui = { workspace = true }
+fluxemu-frontend = { workspace = true }
+fluxemu-frontend-egui = { workspace = true, optional = true }
+fluxemu-frontend-ratatui = { workspace = true, optional = true }
 fluxemu-graphics = { workspace = true }
 fluxemu-input = { workspace = true }
 fluxemu-program = { workspace = true, features = ["mmap"] }
@@ -40,6 +42,8 @@ gilrs = { workspace = true }
 nalgebra = { workspace = true }
 palette = { workspace = true }
 pollster = { workspace = true }
+ratatui-image = { workspace = true, optional = true }
+raw-window-handle = { workspace = true, optional = true }
 redb = { workspace = true }
 sha2 = { workspace = true }
 strum = { workspace = true }
@@ -84,7 +88,9 @@ fluxemu-system-other-chip8 = {
 
 [features]
 default = ["webgpu", "windowing"]
-drm = ["dep:drm", "dep:evdev", "dep:input", "dep:libseat", "dep:nix", "dep:udev", "dep:xkbcommon", "wgpu/drm"]
+drm = ["dep:drm", "dep:evdev", "dep:input", "dep:libseat", "dep:nix", "dep:udev", "dep:xkbcommon", "egui", "wgpu/drm"]
+egui = ["dep:egui", "dep:fluxemu-egui-software-renderer", "dep:fluxemu-frontend-egui"]
+ratatui = ["dep:fluxemu-frontend-ratatui", "dep:ratatui-image", "ratatui-image/chafa-dyn"]
 webgpu = [
   "dep:egui-wgpu",
   "dep:wgpu",
@@ -95,4 +101,4 @@ webgpu = [
   "fluxemu-system-nintendo-nes/webgpu",
   "fluxemu-system-other-chip8/webgpu",
 ]
-windowing = ["dep:egui-winit", "dep:softbuffer", "dep:winit", "fluxemu-frontend-egui/external-file-dialog"]
+windowing = ["dep:egui-winit", "dep:raw-window-handle", "dep:softbuffer", "dep:winit", "egui", "fluxemu-frontend-egui/external-file-dialog"]

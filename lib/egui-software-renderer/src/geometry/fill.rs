@@ -1,6 +1,6 @@
 use std::ops::RangeInclusive;
 
-use fluxemu_graphics::api::software::texture::{AsViewTexture, Storage, StorageMut, Texture};
+use fluxemu_graphics::texture::{AsViewTexture, Storage, StorageMut, Texture};
 use fluxemu_math::{range::ContiguousRange, rectangle::Rectangle};
 use nalgebra::{Point2, SMatrix, Vector2, Vector3};
 use palette::{

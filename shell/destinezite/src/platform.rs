@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use fluxemu_frontend_egui::{FrontendPlatform, graphics::GraphicsRuntime};
+use fluxemu_frontend::graphics::GraphicsRuntime;
 use fluxemu_runtime::platform::Platform;
 
 use crate::audio::CpalAudioRuntime;
@@ -25,7 +25,7 @@ impl<R: GraphicsRuntime, const EXTERNAL_FILE_DIALOGS_SUPPORTED: bool> Platform
     type GraphicsApi = R::GraphicsApi;
 }
 
-impl<R: GraphicsRuntime, const EXTERNAL_FILE_DIALOGS_SUPPORTED: bool> FrontendPlatform
+impl<R: GraphicsRuntime, const EXTERNAL_FILE_DIALOGS_SUPPORTED: bool> fluxemu_frontend::Platform
     for DesktopPlatform<R, EXTERNAL_FILE_DIALOGS_SUPPORTED>
 {
     type AudioRuntime = CpalAudioRuntime;

@@ -1,26 +1,22 @@
 use std::sync::Arc;
 
-use egui::{Context, FullOutput};
-use fluxemu_graphics::api::{
-    GraphicsApi,
-    software::{
-        Software,
-        texture::{AsViewTextureMut, CopyMode},
-    },
+use fluxemu_graphics::{
+    api::{GraphicsApi, software::Software},
+    texture::{AsViewTextureMut, CopyMode, CowTexture, Storage, Texture},
 };
 use fluxemu_runtime::{graphics::GraphicsRequirements, machine::Machine};
 use nalgebra::{Point2, Vector2};
-use palette::{Srgb, Srgba};
+use palette::Srgba;
 
-#[allow(clippy::large_enum_variant)]
-pub enum DrawTarget<'a> {
-    Egui {
-        context: &'a Context,
-        full_output: FullOutput,
-    },
-    Machine {
-        machine: &'a Arc<Machine>,
-    },
+pub trait DisplayContext: 'static {
+    fn dimensions(&self) -> Vector2<u32>;
+    fn pre_present_notify(&mut self) {}
+}
+
+impl<STORAGE: Storage + 'static> DisplayContext for Texture<STORAGE> {
+    fn dimensions(&self) -> Vector2<u32> {
+        Texture::size(self).map(|s| s as u32)
+    }
 }
 
 /// Extension trait for graphics apis
@@ -28,24 +24,21 @@ pub trait GraphicsRuntime: Sized + 'static {
     type GraphicsApi: GraphicsApi;
 
     fn reconfigure(&mut self, graphics_requirements: GraphicsRequirements<Self::GraphicsApi>);
-
-    /// Refresh the surface
     fn refresh_surface(&mut self);
-
-    /// Draw these items in this order
-    fn present<'a>(
-        &'a mut self,
-        clear_color: Srgb<u8>,
-        targets: impl IntoIterator<Item = DrawTarget<'a>>,
-    );
-
-    /// Graphics data components require
     fn component_initialization_data(
         &self,
     ) -> <Self::GraphicsApi as GraphicsApi>::InitializationData;
-
-    /// Max texture size supported by this graphics backend
     fn max_texture_side(&self) -> u32;
+    fn screenshot(&self) -> CowTexture<'_, Srgba<u8>>;
+}
+
+pub trait ProducableGraphicsRuntime<D: DisplayContext>: GraphicsRuntime {
+    fn new(
+        display_context: &D,
+        graphics_requirements: GraphicsRequirements<Self::GraphicsApi>,
+    ) -> Self;
+
+    fn display_context(&self) -> &D;
 }
 
 #[inline]

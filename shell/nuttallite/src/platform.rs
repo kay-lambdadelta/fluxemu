@@ -5,11 +5,11 @@ use crate::runtime::{AudioRuntime, GraphicsRuntime};
 #[derive(Debug, Clone)]
 pub struct Platform;
 
-impl fluxemu_runtime::platform::Platform for Platform {
+impl fluxemu_runtime::Platform for Platform {
     type GraphicsApi = Software;
 }
 
-impl fluxemu_frontend_egui::FrontendPlatform for Platform {
+impl fluxemu_frontend::Platform for Platform {
     type AudioRuntime = AudioRuntime;
     type GraphicsRuntime = GraphicsRuntime;
 

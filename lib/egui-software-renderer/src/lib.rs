@@ -1,7 +1,7 @@
 use std::{collections::HashMap, ops::RangeInclusive};
 
 use egui::{FullOutput, TextureId};
-use fluxemu_graphics::api::software::texture::{
+use fluxemu_graphics::texture::{
     AsViewTexture, AsViewTextureMut, CopyMode, OwnedTexture, StorageMut, Texture,
 };
 use fluxemu_math::{range::ContiguousRange, rectangle::Rectangle};

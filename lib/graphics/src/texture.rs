@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, vec, vec::Vec};
+use alloc::{borrow::Cow, boxed::Box, vec, vec::Vec};
 use core::{
     convert::identity,
     ops::{Bound, Deref, DerefMut, Index, IndexMut, RangeBounds, RangeInclusive},
@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 pub type OwnedTexture<T> = Texture<Box<[T]>>;
 pub type RefTexture<'a, T> = Texture<&'a [T]>;
 pub type RefMutTexture<'a, T> = Texture<&'a mut [T]>;
+pub type CowTexture<'a, T> = Texture<Cow<'a, [T]>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Texture<STORAGE: Storage> {
@@ -642,6 +643,28 @@ impl<STORAGE: StorageMut, P: Into<Point2<usize>>> IndexMut<P> for Texture<STORAG
         assert!(point.y < self.height());
 
         unsafe { self.get_unchecked_mut(point) }
+    }
+}
+
+impl<'a, T: Clone> From<RefTexture<'a, T>> for CowTexture<'a, T> {
+    #[inline]
+    fn from(texture: RefTexture<'a, T>) -> Self {
+        Texture {
+            view: texture.view,
+            storage_size: texture.storage_size,
+            storage: Cow::Borrowed(texture.storage),
+        }
+    }
+}
+
+impl<'a, T: Clone> From<OwnedTexture<T>> for CowTexture<'a, T> {
+    #[inline]
+    fn from(texture: OwnedTexture<T>) -> Self {
+        Texture {
+            view: texture.view,
+            storage_size: texture.storage_size,
+            storage: Cow::Owned(texture.storage.into()),
+        }
     }
 }
 
