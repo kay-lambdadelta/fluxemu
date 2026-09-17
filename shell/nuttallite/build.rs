@@ -16,6 +16,7 @@ fn main() {
         .header("wrapper.h")
         .clang_arg("-nostdinc")
         .clang_arg("-nostdlib")
+        .clang_macro_fallback()
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate()
         .unwrap();
