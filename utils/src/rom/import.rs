@@ -1,95 +1,69 @@
 use std::{
+    error::Error,
     fs::{File, create_dir_all},
-    io::{Cursor, Read, Seek, SeekFrom},
-    path::{Path, PathBuf},
-    sync::{Arc, LazyLock},
+    io::{BufReader, Cursor, Read, Seek},
+    path::Path,
+    sync::LazyLock,
 };
 
 use fluxemu_program::{HASH_ALIAS_TABLE, ProgramId, ProgramManager, RomId};
 use rayon::{
     Scope,
-    iter::{IntoParallelIterator, ParallelBridge, ParallelIterator},
+    iter::{IntoParallelIterator, ParallelIterator},
 };
 use redb::{ReadOnlyMultimapTable, ReadableDatabase};
 use rustc_hash::FxBuildHasher;
 use sevenz_rust2::Password;
-use walkdir::WalkDir;
 use zip::ZipArchive;
+
+use crate::walk_for_files;
 
 static ALREADY_FOUND_ROMS: LazyLock<scc::HashSet<RomId, FxBuildHasher>> =
     LazyLock::new(scc::HashSet::default);
 
-pub fn rom_import(
-    paths: impl IntoParallelIterator<Item = PathBuf> + Send,
-    program_manager: Arc<ProgramManager>,
+pub fn import(
+    program_manager: &ProgramManager,
     rom_store: &Path,
     symlink: bool,
-) {
-    let read_transaction = match program_manager.database().begin_read() {
-        Ok(read_transaction) => read_transaction,
-        Err(err) => {
-            tracing::error!(
-                "Could not start a read transaction to the database: {}",
-                err
-            );
-
-            return;
-        }
-    };
-
-    let hash_alias_table = match read_transaction.open_multimap_table(HASH_ALIAS_TABLE) {
-        Ok(hash_alias_table) => hash_alias_table,
-        Err(err) => {
-            tracing::error!("Could not open hash alias table: {}", err);
-
-            return;
-        }
-    };
+    paths: impl IntoParallelIterator<Item = Result<walkdir::DirEntry, walkdir::Error>> + Send,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let read_transaction = program_manager.database().begin_read()?;
+    let hash_alias_table = read_transaction.open_multimap_table(HASH_ALIAS_TABLE)?;
 
     let _ = create_dir_all(rom_store);
 
     rayon::scope(|scope| {
         paths
             .into_par_iter()
-            .for_each(|path| match path.metadata() {
+            .flatten()
+            .for_each(|entry| match entry.metadata() {
                 Err(err) => {
-                    tracing::warn!("Cannot stat {}: {}", path.display(), err);
+                    tracing::warn!("Cannot stat {:?}: {}", entry.path(), err);
                 }
-                Ok(metadata) if metadata.is_file() => match File::open(&path) {
+                Ok(metadata) if metadata.is_file() => match File::open(entry.path()) {
                     Ok(file) => {
-                        tracing::debug!("Processing file {}", path.display());
+                        tracing::debug!("Processing file {:?}", entry.path());
 
                         process_entry(
                             scope,
-                            file,
-                            Some(&path),
+                            BufReader::new(file),
+                            Some(entry.path()),
                             rom_store,
                             symlink,
                             &hash_alias_table,
                         );
                     }
-                    Err(err) => tracing::warn!("Cannot open {}: {}", path.display(), err),
+                    Err(err) => tracing::warn!("Cannot open {:?}: {}", entry.path(), err),
                 },
                 Ok(metadata) if metadata.is_dir() => {
-                    WalkDir::new(path)
-                        .follow_links(true)
-                        .into_iter()
-                        .filter_map(|result| match result {
-                            Ok(entry) if entry.file_type().is_file() => Some(entry),
-                            Ok(_) => None,
-                            Err(err) => {
-                                tracing::warn!("Directory walk error: {}", err);
-                                None
-                            }
-                        })
-                        .par_bridge()
-                        .for_each(|entry| match File::open(entry.path()) {
+                    walk_for_files([entry.into_path()]).flatten().for_each(
+                        |entry| match File::open(entry.path()) {
                             Ok(file) => {
                                 tracing::debug!("Processing file {}", entry.path().display());
 
                                 process_entry(
                                     scope,
-                                    file,
+                                    BufReader::new(file),
                                     Some(entry.path()),
                                     rom_store,
                                     symlink,
@@ -97,15 +71,18 @@ pub fn rom_import(
                                 );
                             }
                             Err(err) => {
-                                tracing::warn!("Cannot open {}: {}", entry.path().display(), err)
+                                tracing::warn!("Cannot open {:?}: {}", entry.path(), err)
                             }
-                        });
+                        },
+                    );
                 }
                 Ok(_) => {
-                    tracing::warn!("Skipping {}: not a file or directory", path.display());
+                    tracing::warn!("Skipping {:?}: not a file or directory", entry.path());
                 }
             });
     });
+
+    Ok(())
 }
 
 fn process_entry<'a>(
@@ -128,14 +105,17 @@ fn process_entry<'a>(
 
     let rom_store = rom_store.as_ref();
 
-    try_as_zip(scope, &mut reader, rom_store, hash_alias_table);
+    match reader.rewind() {
+        Ok(_) => try_as_zip(scope, &mut reader, rom_store, hash_alias_table),
+        Err(err) => tracing::warn!("Seek failed {}", err),
+    }
 
-    match reader.seek(SeekFrom::Start(0)) {
+    match reader.rewind() {
         Ok(_) => try_as_7zip(scope, &mut reader, rom_store, hash_alias_table),
         Err(err) => tracing::warn!("Seek failed {}", err),
     }
 
-    match reader.seek(SeekFrom::Start(0)) {
+    match reader.rewind() {
         Ok(_) => process_rom(reader, path, rom_store, symlink, hash_alias_table),
         Err(err) => tracing::warn!("Seek failed {}", err),
     }
@@ -160,6 +140,10 @@ fn try_as_zip<'a>(
                 continue;
             }
         };
+
+        if !file.is_file() {
+            continue;
+        }
 
         tracing::debug!("Processing ZIP entry {}", file.name());
 

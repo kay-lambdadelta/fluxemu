@@ -14,6 +14,10 @@ use fluxemu_program::{
 use serde::{Deserialize, Deserializer};
 use serde_with::{DisplayFromStr, serde_as};
 
+mod import;
+
+pub use import::import;
+
 #[derive(Debug, Deserialize)]
 pub struct Datafile {
     pub header: Header,
@@ -44,28 +48,6 @@ pub struct Rom {
     #[serde_as(as = "DisplayFromStr")]
     #[serde(rename = "@sha1")]
     pub sha1: RomId,
-}
-
-fn get_data_in_parentheses(input: &str) -> Vec<String> {
-    let mut result = Vec::new();
-    let mut stack = Vec::new();
-
-    for (i, c) in input.char_indices() {
-        match c {
-            '(' => {
-                stack.push(i);
-            }
-            ')' => {
-                if let Some(start) = stack.pop() {
-                    let substring = &input[start + 1..i];
-                    result.push(substring.trim().to_string());
-                }
-            }
-            _ => {}
-        }
-    }
-
-    result
 }
 
 struct NameMetadataExtractor {
@@ -102,9 +84,9 @@ impl FromStr for NameMetadataExtractor {
     }
 }
 
-pub fn import(
-    file: impl BufRead,
+pub fn add_to_database(
     program_manager: &ProgramManager,
+    file: impl BufRead,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     // Parse XML based data file
     let data_file: Datafile = match quick_xml::de::from_reader(file) {
@@ -129,7 +111,7 @@ pub fn import(
     for game in data_file.game {
         let program_id = ProgramId {
             system: data_file.header.machine_id,
-            name: game.name.to_string(),
+            main_name: game.name.to_string(),
         };
 
         if !game.rom.is_empty() {
@@ -166,12 +148,12 @@ pub fn import(
     Ok(())
 }
 
-pub fn deserialize_nointro_machine_id<'de, D>(deserializer: D) -> Result<SystemId, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let s = String::deserialize(deserializer)?;
-    SystemId::from_nointro_str(&s).map_err(serde::de::Error::custom)
+pub fn deserialize_nointro_machine_id<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<SystemId, D::Error> {
+    let string = String::deserialize(deserializer)?;
+
+    SystemId::from_nointro_str(&string).map_err(serde::de::Error::custom)
 }
 
 static LANGUAGE_OVERRIDES: LazyLock<HashMap<&'static str, Iso639Alpha2>> = LazyLock::new(|| {
@@ -191,3 +173,25 @@ static LANGUAGE_OVERRIDES: LazyLock<HashMap<&'static str, Iso639Alpha2>> = LazyL
         ("taiwan", Iso639Alpha2::ZH),
     ])
 });
+
+fn get_data_in_parentheses(input: &str) -> Vec<String> {
+    let mut result = Vec::new();
+    let mut stack = Vec::new();
+
+    for (i, c) in input.char_indices() {
+        match c {
+            '(' => {
+                stack.push(i);
+            }
+            ')' => {
+                if let Some(start) = stack.pop() {
+                    let substring = &input[start + 1..i];
+                    result.push(substring.trim().to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+
+    result
+}

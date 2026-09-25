@@ -53,7 +53,7 @@ fn emulation_performance(c: &mut Criterion) {
         let rom_id = rom_id.parse().unwrap();
 
         if let Some(specification) = program_manager
-            .identify_program(&[rom_id])
+            .identify_program([rom_id])
             .map(|mut entries| {
                 if entries.is_empty() {
                     program_manager.auto_generate_specification(rom_id).unwrap()

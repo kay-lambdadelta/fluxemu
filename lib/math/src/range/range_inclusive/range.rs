@@ -1,4 +1,4 @@
-use core::range::RangeInclusive;
+use core::{ops::Sub, range::RangeInclusive};
 
 use num::{Integer, ToPrimitive};
 use rangemap::{RangeInclusiveSet, StepLite};
@@ -47,15 +47,15 @@ impl<Idx: Integer + Clone + ToPrimitive> ContiguousRange<Idx> for RangeInclusive
     }
 
     #[inline]
-    fn len(&self) -> usize {
+    fn len(&self) -> Idx
+    where
+        Idx: Sub,
+    {
         if self.is_empty() {
-            return 0;
+            return Idx::zero();
         }
 
-        let start = self.start.to_usize().unwrap();
-        let last = self.last.to_usize().unwrap();
-
-        last - start + 1
+        self.last.clone() - self.start.clone() + Idx::one()
     }
 }
 

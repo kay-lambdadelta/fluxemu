@@ -14,7 +14,7 @@ use rustc_hash::FxBuildHasher;
 use sha1::{Digest, Sha1};
 use thiserror::Error;
 
-use crate::{ProgramId, ProgramInfo, ProgramSpecification, RomId, SystemId};
+use crate::{Manifest, ProgramId, ProgramInfo, RomId, SystemId};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -70,7 +70,7 @@ impl ProgramManager {
         }))
     }
 
-    pub fn register_external(&self, path: impl AsRef<Path>) -> Result<RomId, Error> {
+    pub fn register_external_rom(&self, path: impl AsRef<Path>) -> Result<RomId, Error> {
         let path = path.as_ref();
         let rom_file = File::open(path)?;
         let rom_bytes = load_rom_bytes(rom_file)?;
@@ -131,7 +131,10 @@ impl ProgramManager {
     }
 
     /// Attempts to identify a program from its program ids
-    pub fn identify_program(&self, roms: &[RomId]) -> Result<Vec<ProgramSpecification>, Error> {
+    pub fn identify_program(
+        &self,
+        roms: impl IntoIterator<Item = RomId> + Clone,
+    ) -> Result<Vec<Manifest>, Error> {
         let read_transaction = self.database.begin_read()?;
 
         let hash_alias_table = read_transaction.open_multimap_table(HASH_ALIAS_TABLE)?;
@@ -139,7 +142,7 @@ impl ProgramManager {
 
         let mut possible_programs = Vec::default();
 
-        for rom_id in roms {
+        for rom_id in roms.clone() {
             for access_guard in hash_alias_table.get(rom_id)? {
                 let program_id = access_guard?.value();
 
@@ -147,11 +150,12 @@ impl ProgramManager {
                     let program_info = access_guard?.value();
 
                     let found_all = roms
-                        .iter()
-                        .all(|id| program_info.filesystem().contains_key(id));
+                        .clone()
+                        .into_iter()
+                        .all(|id| program_info.filesystem().contains_key(&id));
 
                     if found_all {
-                        possible_programs.push(ProgramSpecification {
+                        possible_programs.push(Manifest {
                             id: program_id.clone(),
                             info: program_info,
                         });
@@ -163,10 +167,7 @@ impl ProgramManager {
         Ok(possible_programs)
     }
 
-    pub fn auto_generate_specification(
-        &self,
-        rom_id: RomId,
-    ) -> Result<Option<ProgramSpecification>, Error> {
+    pub fn auto_generate_specification(&self, rom_id: RomId) -> Result<Option<Manifest>, Error> {
         let external_path = self.external_roms.get_sync(&rom_id);
         let rom = self.load(rom_id)?;
 
@@ -197,10 +198,10 @@ impl ProgramManager {
 
         let program_id = ProgramId {
             system: machine,
-            name: name.clone(),
+            main_name: name.clone(),
         };
 
-        Ok(Some(ProgramSpecification {
+        Ok(Some(Manifest {
             id: program_id,
             info: ProgramInfo::V0 {
                 names: BTreeSet::from_iter([name.clone()]),

@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, num::Wrapping, ops::Deref, path::PathBuf, sync::LazyLock};
+use std::{
+    collections::BTreeMap, fs::create_dir_all, num::Wrapping, ops::Deref, path::PathBuf,
+    sync::LazyLock,
+};
 
 use audio::AudioSettings;
 use confique::Config;
@@ -54,8 +57,8 @@ pub static ENVIRONMENT_LOCATION: LazyLock<PathBuf> = LazyLock::new(|| {
 });
 
 pub fn load_environment() -> Environment {
-    let _ = std::fs::create_dir_all(STORAGE_DIRECTORY.deref());
-    let _ = std::fs::create_dir_all(ENVIRONMENT_LOCATION.deref().parent().unwrap());
+    let _ = create_dir_all(STORAGE_DIRECTORY.deref());
+    let _ = create_dir_all(ENVIRONMENT_LOCATION.deref().parent().unwrap());
 
     let default_environment_string = ron::to_string(&Environment {
         gamepads: BTreeMap::default(),
@@ -84,7 +87,7 @@ pub fn load_environment() -> Environment {
         config_builder
     };
 
-    config_builder
+    let environment = config_builder
         .preloaded(
             Options::default()
                 .with_default_extension(Extensions::IMPLICIT_SOME)
@@ -92,5 +95,18 @@ pub fn load_environment() -> Environment {
                 .unwrap(),
         )
         .load()
-        .unwrap()
+        .unwrap();
+
+    // Try to create all relevant directories
+    let _ = create_dir_all(&environment.file_browser_home_directory);
+    let _ = create_dir_all(environment.log_location.parent().unwrap());
+    let _ = create_dir_all(environment.database_location.parent().unwrap());
+    let _ = create_dir_all(&environment.save_directory);
+    let _ = create_dir_all(&environment.snapshot_directory);
+
+    for directory in &environment.rom_store_directories {
+        let _ = create_dir_all(directory);
+    }
+
+    environment
 }

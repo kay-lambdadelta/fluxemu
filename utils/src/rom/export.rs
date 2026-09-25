@@ -1,142 +1,106 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{error::Error, fs::create_dir_all, path::PathBuf};
 
+use fluxemu_environment::Environment;
 use fluxemu_program::{PROGRAM_INFORMATION_TABLE, ProgramManager};
+use rayon::iter::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
 use redb::{ReadableDatabase, ReadableMultimapTable};
 
-use crate::ExportStyle;
+use crate::cli::ExportStyle;
 
-pub fn rom_export(
+pub fn export(
+    program_manager: &ProgramManager,
+    environment: &Environment,
     destination_path: PathBuf,
-    program_manager: Arc<ProgramManager>,
-    rom_stores: &[PathBuf],
     symlink: bool,
     style: ExportStyle,
-) {
-    let _ = std::fs::create_dir_all(&destination_path);
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let _ = create_dir_all(&destination_path);
 
-    let read_transaction = match program_manager.database().begin_read() {
-        Ok(read_transaction) => read_transaction,
-        Err(err) => {
-            tracing::error!(
-                "Could not start a read transaction to the database: {}",
-                err
-            );
-
-            return;
-        }
-    };
-
+    let read_transaction = program_manager.database().begin_read()?;
     let program_information_table =
-        match read_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE) {
-            Ok(program_information_table) => program_information_table,
-            Err(err) => {
-                tracing::error!("Could not open program information table: {}", err);
+        read_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
 
-                return;
-            }
-        };
+    program_information_table
+        .iter()?
+        .par_bridge()
+        .flatten()
+        .flat_map(|(id, info_values)| {
+            let id = id.value();
 
-    if let Ok(program_information_table_iter) = program_information_table.iter().map_err(|err| {
-        tracing::error!("Could not iter over program information table: {}", err);
-    }) {
-        for entry in program_information_table_iter {
-            let Ok((program_id_access_guard, program_information_values)) = entry.map_err(|err| {
-                tracing::error!(
-                    "Could not access entry for program id in hash alias table: {}",
-                    err
-                );
-            }) else {
-                continue;
-            };
-            let program_id = program_id_access_guard.value();
+            info_values
+                .into_iter()
+                .par_bridge()
+                .flatten()
+                .map(move |info| (id.clone(), info))
+        })
+        .try_for_each(|(id, info)| {
+            let info = info.value();
 
-            for program_info_access_guard in program_information_values {
-                let Ok(program_info_access_guard) = program_info_access_guard.map_err(|err| {
-                    tracing::error!(
-                        "Could not access entry in the program information entries for program id \
-                         {}: {}",
-                        program_id,
-                        err
-                    );
-                }) else {
+            for (rom_id, file_name) in info.filesystem().iter().flat_map(|(rom_id, file_names)| {
+                file_names.iter().map(|file_name| (*rom_id, file_name))
+            }) {
+                let Some(source_rom_path) = environment
+                    .rom_store_directories
+                    .par_iter()
+                    .map(|store| store.join(rom_id.to_string()))
+                    .find_first(|rom_path| rom_path.exists())
+                else {
                     continue;
                 };
 
-                let program_info = program_info_access_guard.value();
+                let destination_rom_path = match style {
+                    ExportStyle::NoIntro => {
+                        let machine_folder_name = id.system.to_nointro_string();
+                        let machine_folder = destination_path.join(machine_folder_name);
+                        let program_folder = machine_folder.join(&id.main_name);
+                        let final_path = program_folder.join(file_name);
 
-                for (rom_id, file_name) in
-                    program_info
-                        .filesystem()
-                        .iter()
-                        .flat_map(|(rom_id, file_names)| {
-                            file_names.iter().map(|file_name| (*rom_id, file_name))
-                        })
-                {
-                    let Some(source_rom_path) = rom_stores
-                        .iter()
-                        .map(|store| store.join(rom_id.to_string()))
-                        .find(|rom_path| rom_path.exists())
-                    else {
-                        continue;
-                    };
+                        let _ = create_dir_all(final_path.parent().unwrap());
 
-                    let destination_rom_path = match style {
-                        ExportStyle::NoIntro => {
-                            let machine_folder_name = program_id.system.to_nointro_string();
-                            let machine_folder = destination_path.join(machine_folder_name);
-                            let program_folder = machine_folder.join(&program_id.name);
-                            let final_path = program_folder.join(file_name);
-
-                            let _ = std::fs::create_dir_all(final_path.parent().unwrap());
-
-                            final_path
-                        }
-                        ExportStyle::Native => destination_path.join(rom_id.to_string()),
-                        ExportStyle::EmulationStation => todo!(),
-                    };
-
-                    if !destination_rom_path.starts_with(&destination_path) {
-                        tracing::error!("Export path is outside of the target directory");
-
-                        continue;
+                        final_path
                     }
+                    ExportStyle::Native => destination_path.join(rom_id.to_string()),
+                    ExportStyle::EmulationStation => todo!(),
+                };
 
-                    tracing::info!("Exporting ROM for program {}", program_id);
+                if !destination_rom_path.starts_with(&destination_path) {
+                    tracing::error!("Export path is outside of the target directory");
 
-                    if symlink {
-                        if let Err(err) = (|| {
-                            #[cfg(target_family = "unix")]
-                            return std::os::unix::fs::symlink(
-                                source_rom_path,
-                                &destination_rom_path,
-                            );
+                    continue;
+                }
 
-                            #[cfg(target_os = "windows")]
-                            return std::os::windows::fs::symlink_file(
-                                source_rom_path,
-                                &destination_rom_path,
-                            );
+                tracing::info!("Exporting ROM for program {}", id);
 
-                            #[cfg(not(any(target_family = "unix", target_os = "windows")))]
-                            panic!("Unsupported operating system for symlinking");
-                        })() {
-                            tracing::error!(
-                                "Could not output ROM to path {}: {}",
-                                destination_rom_path.display(),
-                                err
-                            );
+                if symlink {
+                    if let Err(err) = cfg_select! {
+                        target_family = "unix" => {
+                            std::os::unix::fs::symlink(source_rom_path, &destination_rom_path)
                         }
-                    } else {
-                        if let Err(err) = std::fs::copy(source_rom_path, &destination_rom_path) {
-                            tracing::error!(
-                                "Could not output ROM to path {}: {}",
-                                destination_rom_path.display(),
-                                err
-                            );
+                        target_os = "windows" => std::os::windows::fs::symlink_file(
+                            source_rom_path,
+                            &destination_rom_path,
+                        ),
+                        _ => {
+                            panic!("Unsupported operating system for symlinking")
                         }
+                    } {
+                        tracing::error!(
+                            "Could not output ROM to path {}: {}",
+                            destination_rom_path.display(),
+                            err
+                        );
+                    }
+                } else {
+                    if let Err(err) = std::fs::copy(source_rom_path, &destination_rom_path) {
+                        tracing::error!(
+                            "Could not output ROM to path {}: {}",
+                            destination_rom_path.display(),
+                            err
+                        );
                     }
                 }
             }
-        }
-    }
+
+            Ok(())
+        })
 }

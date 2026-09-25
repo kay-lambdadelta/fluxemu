@@ -1,87 +1,58 @@
-use std::{error::Error, fmt::Display, fs::File, io::BufReader, path::PathBuf};
+use std::{error::Error, path::PathBuf, process::ExitCode, sync::Arc};
 
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use fluxemu_environment::load_environment;
-use fluxemu_program::{PROGRAM_INFORMATION_TABLE, ProgramManager, SystemId};
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use redb::{Database, ReadOnlyDatabase, ReadableDatabase, ReadableMultimapTable};
+use fluxemu_program::{ProgramManager, SystemId};
+use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator};
+use redb::Database;
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::{
+    EnvFilter, Layer,
+    fmt::format::FmtSpan,
+    layer::{Filter, SubscriberExt},
+    util::SubscriberInitExt,
+};
+use walkdir::WalkDir;
 
 use crate::{
-    redump::{RedumpSystem, download_and_import_redump_system},
-    rom::{export::rom_export, import::rom_import},
+    cli::{Cli, DatabaseCommand, LogiqxCommand, ManifestCommand, RomCommand},
+    database::redump::{RedumpSystem, download_and_import_redump_system},
 };
 
+mod cli;
+mod database;
 mod logiqx;
-mod redump;
+mod manifest;
 mod rom;
 
-#[derive(Clone, Debug, Default, ValueEnum)]
-pub enum ExportStyle {
-    #[default]
-    NoIntro,
-    Native,
-    EmulationStation,
-}
-
-impl Display for ExportStyle {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                ExportStyle::NoIntro => "no-intro",
-                ExportStyle::Native => "native",
-                ExportStyle::EmulationStation => "emulationstation",
-            }
-        )
+fn main() -> ExitCode {
+    match run() {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("{}", err);
+            ExitCode::FAILURE
+        }
     }
 }
 
-#[derive(Clone, Parser)]
-pub enum Cli {
-    /// Import logiqx format datasheet
-    ImportLogiqxDatasheet {
-        #[clap(required=true, num_args=1..)]
-        paths: Vec<PathBuf>,
-    },
-    /// Import native [redb] format databases into the internal one
-    ImportDatabase {
-        #[clap(required=true, num_args=1..)]
-        paths: Vec<PathBuf>,
-    },
-    /// Download Redump datasheets (logiqx format)
-    DownloadRedumpDatasheet {
-        #[clap(long, num_args=1..)]
-        system_filter: Vec<SystemId>,
-    },
-    /// Import roms into a rom store
-    ImportRoms {
-        /// Symlink instead of copying, where supported
-        #[clap(short = 'l', long)]
-        symlink: bool,
-        /// Paths to search
-        #[clap(required=true, num_args=1..)]
-        paths: Vec<PathBuf>,
-    },
-    /// Export ROMs for more friendly access
-    ExportRoms {
-        /// Symlink instead of copying, where supported
-        #[clap(short = 'l', long)]
-        symlink: bool,
-        /// Set the style of the destination directory
-        #[clap(long, default_value_t=ExportStyle::default())]
-        style: ExportStyle,
-        /// Destination directory
-        destination: PathBuf,
-    },
-    /// Verify ROMs within stores
-    VerifyRoms,
-}
-
-fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
+fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
     let environment = load_environment();
 
-    tracing_subscriber::fmt().init();
+    let filter = Arc::new(
+        EnvFilter::builder()
+            .with_regex(true)
+            .with_default_directive(LevelFilter::INFO.into())
+            .from_env_lossy(),
+    );
+    let stderr_layer = tracing_subscriber::fmt::layer()
+        .with_writer(std::io::stderr)
+        .with_ansi(true)
+        .with_span_events(FmtSpan::CLOSE)
+        .with_thread_names(true)
+        .with_thread_ids(false);
+    tracing_subscriber::registry()
+        .with(stderr_layer.with_filter(filter.clone() as Arc<dyn Filter<_> + Send + Sync>))
+        .init();
 
     let args = Cli::parse();
 
@@ -91,89 +62,90 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     )?;
 
     match args {
-        Cli::ImportLogiqxDatasheet { mut paths } => {
-            paths.dedup();
+        Cli::Database(command) => match command {
+            DatabaseCommand::Import { paths } => {
+                database::native::import(&program_manager, walk_for_files(paths))?;
+            }
+        },
+        Cli::Rom(command) => match command {
+            RomCommand::Import { paths, symlink } => {
+                rom::import(
+                    &program_manager,
+                    &environment.rom_store_directories[0],
+                    symlink,
+                    walk_for_files(paths),
+                )?;
+            }
+            RomCommand::Export {
+                symlink,
+                style,
+                destination,
+            } => {
+                rom::export(&program_manager, &environment, destination, symlink, style)?;
+            }
+            RomCommand::Patch {
+                source,
+                patch,
+                add_to_database,
+            } => {
+                let source = source.to_id(&program_manager)?;
 
-            paths.into_par_iter().try_for_each(|path| {
-                let file = File::open(path)?;
-
-                logiqx::import(BufReader::new(file), &program_manager)?;
-
-                Ok::<_, Box<dyn Error + Send + Sync>>(())
-            })?;
-        }
-        Cli::ImportDatabase { mut paths } => {
-            paths.dedup();
-
-            let internal_database = program_manager.database();
-
-            paths.into_par_iter().try_for_each(|path| {
-                let external_database = ReadOnlyDatabase::open(path.clone())?;
-
-                let external_database_transaction = external_database.begin_read()?;
-                let external_database_table =
-                    external_database_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
-
-                let internal_database_transaction = internal_database.begin_write()?;
-                let mut internal_database_table =
-                    internal_database_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
-
-                for item in external_database_table.iter()? {
-                    let (rom_id, rom_infos) = item?;
-
-                    for rom_info in rom_infos {
-                        let rom_info = rom_info?;
-
-                        internal_database_table.insert(rom_id.value(), rom_info.value())?;
+                rom::patch(
+                    &program_manager,
+                    &environment,
+                    source,
+                    &patch,
+                    add_to_database,
+                )?;
+            }
+            RomCommand::Verify => {}
+        },
+        Cli::Manifest(command) => match command {
+            ManifestCommand::Import { paths } => {
+                manifest::import(&program_manager, walk_for_files(paths))?;
+            }
+            ManifestCommand::Export { output_directory } => {
+                manifest::export(&program_manager, &output_directory)?;
+            }
+        },
+        Cli::Logiqx(command) => match command {
+            LogiqxCommand::Import { paths } => {
+                logiqx::import(&program_manager, walk_for_files(paths))?;
+            }
+            LogiqxCommand::DownloadRedump { system_filter } => {
+                if system_filter.is_empty() {
+                    for machine_id in SystemId::iter() {
+                        if !system_filter.contains(&machine_id)
+                            && let Ok(redump_system) = RedumpSystem::try_from(machine_id)
+                        {
+                            download_and_import_redump_system(&program_manager, redump_system)?;
+                        }
                     }
-                }
-
-                drop(internal_database_table);
-                internal_database_transaction.commit()?;
-
-                Ok::<_, Box<dyn Error + Send + Sync>>(())
-            })?;
-        }
-        Cli::DownloadRedumpDatasheet { system_filter } => {
-            if system_filter.is_empty() {
-                for machine_id in SystemId::iter() {
-                    if !system_filter.contains(&machine_id)
-                        && let Ok(redump_system) = RedumpSystem::try_from(machine_id)
-                    {
-                        download_and_import_redump_system(redump_system, program_manager.clone())?;
-                    }
-                }
-            } else {
-                for machine_id in system_filter {
-                    if let Ok(redump_system) = RedumpSystem::try_from(machine_id) {
-                        download_and_import_redump_system(redump_system, program_manager.clone())?;
+                } else {
+                    for machine_id in system_filter {
+                        if let Ok(redump_system) = RedumpSystem::try_from(machine_id) {
+                            download_and_import_redump_system(&program_manager, redump_system)?;
+                        }
                     }
                 }
             }
-        }
-        Cli::ImportRoms { paths, symlink } => {
-            rom_import(
-                paths,
-                program_manager,
-                &environment.rom_store_directories[0],
-                symlink,
-            );
-        }
-        Cli::ExportRoms {
-            symlink,
-            style,
-            destination,
-        } => {
-            rom_export(
-                destination,
-                program_manager,
-                &environment.rom_store_directories,
-                symlink,
-                style,
-            );
-        }
-        Cli::VerifyRoms => {}
+        },
     }
 
     Ok(())
+}
+
+/// Turns the paths into a walkdir that automatically walks through links and filters to files
+#[inline]
+fn walk_for_files(
+    paths: impl IntoParallelIterator<Item = PathBuf>,
+) -> impl ParallelIterator<Item = Result<walkdir::DirEntry, walkdir::Error>> {
+    paths.into_par_iter().flat_map(|path| {
+        let walkdir = WalkDir::new(path).follow_links(true);
+
+        walkdir
+            .into_iter()
+            .par_bridge()
+            .filter(|entry| entry.as_ref().is_ok_and(|entry| entry.path().is_file()))
+    })
 }

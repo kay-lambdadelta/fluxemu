@@ -14,7 +14,7 @@ use std::{
 };
 
 use fluxemu_input::{InputId, InputState};
-use fluxemu_program::{ProgramManager, ProgramSpecification};
+use fluxemu_program::{ProgramManager, Manifest};
 use num::FromPrimitive;
 use redb::{Database, backends::InMemoryBackend};
 use rustc_hash::FxBuildHasher;
@@ -54,13 +54,13 @@ where
     /// All audio outputs this machine has
     pub(crate) audio_channels: HashSet<ResourcePath>,
     /// The program that this machine was set up with, if any
-    pub(crate) program_specification: Option<ProgramSpecification>,
+    pub(crate) program_specification: Option<Manifest>,
 }
 
 impl Machine {
     /// Creates a new [`MachineBuilder`] for the given platform and specifications
     pub fn build<P: Platform>(
-        program_specification: Option<ProgramSpecification>,
+        program_specification: Option<Manifest>,
         program_manager: Arc<ProgramManager>,
     ) -> MachineBuilder<P> {
         MachineBuilder::<P>::new(program_specification, program_manager)
@@ -68,7 +68,7 @@ impl Machine {
 
     /// Creates a new [`MachineBuilder`] for the test platform, which is to be used with unit tests only
     pub fn build_test(
-        program_specification: Option<ProgramSpecification>,
+        program_specification: Option<Manifest>,
         program_manager: Arc<ProgramManager>,
     ) -> MachineBuilder<TestPlatform> {
         Self::build(program_specification, program_manager)
@@ -111,7 +111,7 @@ impl Machine {
         }
     }
 
-    pub fn program_specification(&self) -> Option<&ProgramSpecification> {
+    pub fn program_specification(&self) -> Option<&Manifest> {
         self.program_specification.as_ref()
     }
 }

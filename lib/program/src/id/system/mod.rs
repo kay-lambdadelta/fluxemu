@@ -158,48 +158,7 @@ impl SystemId {
 
 impl AsRef<str> for SystemId {
     fn as_ref(&self) -> &str {
-        match self {
-            // Nintendo
-            SystemId::Nintendo(NintendoSystem::GameBoy) => "nintendo-game-boy",
-            SystemId::Nintendo(NintendoSystem::GameBoyColor) => "nintendo-game-boy-color",
-            SystemId::Nintendo(NintendoSystem::GameBoyAdvance) => "nintendo-game-boy-advance",
-            SystemId::Nintendo(NintendoSystem::GameCube) => "nintendo-nintendo-gamecube",
-            SystemId::Nintendo(NintendoSystem::Wii) => "nintendo-wii",
-            SystemId::Nintendo(NintendoSystem::WiiU) => "nintendo-wii-u",
-            SystemId::Nintendo(NintendoSystem::SuperNintendoEntertainmentSystem) => {
-                "nintendo-super-nintendo-entertainment-system"
-            }
-            SystemId::Nintendo(NintendoSystem::NintendoEntertainmentSystem) => {
-                "nintendo-nintendo-entertainment-system"
-            }
-            SystemId::Nintendo(NintendoSystem::Nintendo64) => "nintendo-nintendo-64",
-            SystemId::Nintendo(NintendoSystem::NintendoDS) => "nintendo-nintendo-ds",
-            SystemId::Nintendo(NintendoSystem::NintendoDSi) => "nintendo-nintendo-dsi",
-            SystemId::Nintendo(NintendoSystem::Nintendo3DS) => "nintendo-nintendo-3ds",
-            SystemId::Nintendo(NintendoSystem::PokemonMini) => "nintendo-pokemon-mini",
-            SystemId::Nintendo(NintendoSystem::VirtualBoy) => "nintendo-virtual-boy",
-
-            SystemId::Sony(SonySystem::Playstation) => "sony-playstation",
-            SystemId::Sony(SonySystem::Playstation2) => "sony-playstation-2",
-            SystemId::Sony(SonySystem::Playstation3) => "sony-playstation-3",
-            SystemId::Sony(SonySystem::PlaystationPortable) => "sony-playstation-portable",
-            SystemId::Sony(SonySystem::PlaystationVita) => "sony-playstation-vita",
-
-            SystemId::Sega(SegaSystem::MasterSystem) => "sega-master-system",
-            SystemId::Sega(SegaSystem::GameGear) => "sega-game-gear",
-            SystemId::Sega(SegaSystem::Genesis) => "sega-genesis",
-            SystemId::Sega(SegaSystem::SegaCD) => "sega-sega-cd",
-            SystemId::Sega(SegaSystem::Sega32X) => "sega-32x",
-
-            SystemId::Atari(AtariSystem::_2600) => "atari-2600",
-            SystemId::Atari(AtariSystem::_5200) => "atari-5200",
-            SystemId::Atari(AtariSystem::_7800) => "atari-7800",
-            SystemId::Atari(AtariSystem::Lynx) => "atari-lynx",
-            SystemId::Atari(AtariSystem::Jaguar) => "atari-jaguar",
-
-            SystemId::Other(OtherSystem::Chip8) => "other-chip8",
-            SystemId::Unknown => "unknown",
-        }
+        self.to_nointro_string()
     }
 }
 

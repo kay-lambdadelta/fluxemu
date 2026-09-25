@@ -1,12 +1,11 @@
 use std::{
     error::Error,
     io::{BufReader, Seek},
-    sync::Arc,
 };
 
-use clap::Subcommand;
 use fluxemu_program::{NintendoSystem, ProgramManager, SegaSystem, SonySystem, SystemId};
 use strum::{Display, EnumIter};
+use tempfile::tempfile;
 use zip::ZipArchive;
 
 const BASE_URL: &str = "http://redump.org/datfile";
@@ -39,18 +38,14 @@ impl TryFrom<SystemId> for RedumpSystem {
     }
 }
 
-#[derive(Clone, Debug, Subcommand)]
-pub enum RedumpAction {}
-
 pub fn download_and_import_redump_system(
+    program_manager: &ProgramManager,
     system: RedumpSystem,
-    program_manager: Arc<ProgramManager>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     tracing::info!("Downloading redump dat for system {}", system);
-
     let url = format!("{}/{}", BASE_URL, system.to_string().to_lowercase());
 
-    let mut temp_file = tempfile::tempfile()?;
+    let mut temp_file = tempfile()?;
 
     let response = ureq::get(&url).call()?;
     let response_body = response.into_body();
@@ -58,16 +53,14 @@ pub fn download_and_import_redump_system(
 
     // Download to temp file
     std::io::copy(&mut response_reader, &mut temp_file)?;
-    temp_file.seek(std::io::SeekFrom::Start(0))?;
+    temp_file.rewind()?;
 
-    // Go into blocking mode for a zip operation
-    let program_manager = program_manager.clone();
     let mut archive = ZipArchive::new(temp_file)?;
 
     for index in 0..archive.len() {
         let file = BufReader::new(archive.by_index(index)?);
 
-        crate::logiqx::import(file, &program_manager)?;
+        crate::logiqx::add_to_database(program_manager, file)?;
     }
 
     Ok(())

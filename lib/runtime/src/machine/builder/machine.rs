@@ -7,7 +7,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use fluxemu_program::{ProgramManager, ProgramSpecification, RomId, SystemId};
+use fluxemu_program::{ProgramManager, Manifest, RomId, SystemId};
 use rustc_hash::FxBuildHasher;
 
 use crate::{
@@ -44,7 +44,7 @@ pub(super) struct AddressSpaceSetupData {
 /// Builder to produce a machine, definition crates will want to use this
 pub struct MachineBuilder<P: Platform> {
     pub(super) program_manager: Arc<ProgramManager>,
-    pub(super) program_specification: Option<ProgramSpecification>,
+    pub(super) program_specification: Option<Manifest>,
     pub(super) next_address_space_id: AddressSpaceId,
     pub(super) component_registry_data: ComponentRegistryData,
     pub(super) address_spaces: HashMap<AddressSpaceId, AddressSpaceSetupData>,
@@ -58,7 +58,7 @@ pub struct MachineBuilder<P: Platform> {
 
 impl<P: Platform> MachineBuilder<P> {
     pub(crate) fn new(
-        program_specification: Option<ProgramSpecification>,
+        program_specification: Option<Manifest>,
         program_manager: Arc<ProgramManager>,
     ) -> Self {
         MachineBuilder::<P> {
@@ -82,7 +82,7 @@ impl<P: Platform> MachineBuilder<P> {
             .map(|program_specification| program_specification.id.system)
     }
 
-    pub fn program_specification(&self) -> Option<&ProgramSpecification> {
+    pub fn program_specification(&self) -> Option<&Manifest> {
         self.program_specification.as_ref()
     }
 

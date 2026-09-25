@@ -127,7 +127,7 @@ impl<P: Platform> Widget for FileBrowser<'_, P> {
 
                                     for handle in file_handles {
                                         rom_ids.push(
-                                            program_manager.register_external(handle.path())?,
+                                            program_manager.register_external_rom(handle.path())?,
                                         );
                                     }
 
@@ -310,7 +310,7 @@ impl<P: Platform> Widget for FileBrowser<'_, P> {
                                 let job = std::thread::Builder::new()
                                     .name(t!("browser.thread_name_rom_id_calculator").to_string())
                                     .spawn(move || {
-                                        let rom_id = program_manager.register_external(path)?;
+                                        let rom_id = program_manager.register_external_rom(path)?;
 
                                         Ok(vec![rom_id])
                                     })

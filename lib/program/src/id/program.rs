@@ -11,12 +11,12 @@ pub struct ProgramId {
     /// The system this program was produced for
     pub system: SystemId,
     /// A identifiable name for the program
-    pub name: String,
+    pub main_name: String,
 }
 
 impl Display for ProgramId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {}", self.system, self.name)
+        write!(f, "{} <{}>", self.system, self.main_name)
     }
 }
 

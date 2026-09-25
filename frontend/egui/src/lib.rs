@@ -23,7 +23,7 @@ use fluxemu_frontend::{
 };
 use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_input::{InputId, InputState, physical::PhysicalInputDeviceId};
-use fluxemu_program::{ProgramManager, ProgramSpecification, RomId};
+use fluxemu_program::{Manifest, ProgramManager, RomId};
 use fluxemu_runtime::{
     ResourcePath,
     machine::{Machine, builder::SealedMachineBuilder},
@@ -84,7 +84,7 @@ enum MachineInitializationStep<P: Platform> {
     /// Step 2: Search for programs that match the collection of given ROMs
     FindingMatchingSpecification {
         roms: Vec<RomId>,
-        job: JoinHandle<Result<Vec<ProgramSpecification>, fluxemu_program::Error>>,
+        job: JoinHandle<Result<Vec<Manifest>, fluxemu_program::Error>>,
     },
     /// Step 3: Create and seal a machine builder given the specification
     BuildingMachineBuilder {
@@ -129,7 +129,7 @@ impl<P: Platform> Frontend<P> {
 
             MachineInitializationStep::FindingMatchingSpecification {
                 roms: roms.clone(),
-                job: std::thread::spawn(move || program_manager.identify_program(&roms)),
+                job: std::thread::spawn(move || program_manager.identify_program(roms)),
             }
         });
 
@@ -183,7 +183,7 @@ impl<P: Platform> Frontend<P> {
         }
     }
 
-    fn build_machine_for_specification(&mut self, specification: ProgramSpecification) {
+    fn build_machine_for_specification(&mut self, specification: Manifest) {
         let program_manager = self.program_manager.clone();
         let machine_factories = self.machine_factory_manager.clone();
 
@@ -325,7 +325,7 @@ impl<P: Platform> Frontend<P> {
                             Some(MachineInitializationStep::FindingMatchingSpecification {
                                 roms: roms.clone(),
                                 job: std::thread::spawn(move || {
-                                    program_manager.identify_program(&roms)
+                                    program_manager.identify_program(roms)
                                 }),
                             });
                     }

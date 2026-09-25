@@ -102,7 +102,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut rom_ids = Vec::default();
 
                 for rom in &roms {
-                    rom_ids.push(program_manager.register_external(rom)?);
+                    rom_ids.push(program_manager.register_external_rom(rom)?);
                 }
 
                 initial_program = Some(rom_ids);

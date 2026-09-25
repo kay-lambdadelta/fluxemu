@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use thiserror::Error;
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Hash of a ROM, serves as its identification within emulator (this is a sha1 hash)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RomId(pub [u8; 20]);
 
 impl RomId {
@@ -24,6 +24,26 @@ impl RomId {
 impl Display for RomId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", HEXLOWER_PERMISSIVE.encode(&self.0))
+    }
+}
+
+impl Serialize for RomId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&format!("{}", self))
+    }
+}
+
+impl<'de> Deserialize<'de> for RomId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let string = String::deserialize(deserializer)?;
+
+        string.parse().map_err(serde::de::Error::custom)
     }
 }
 
