@@ -1,3 +1,4 @@
 disallowed-types = [
   { path = "std::sync::atomic::AtomicU64", reason = "AtomicU64 is not supported on many common platforms, use AtomicU32 or AtomicUsize instead" },
 ]
+too-many-lines-threshold = 300

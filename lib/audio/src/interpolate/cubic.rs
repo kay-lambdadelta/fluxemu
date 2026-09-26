@@ -86,12 +86,11 @@ struct CubicIterator<
 }
 
 impl<
-    'a,
     S: SampleFormat,
     const CHANNELS: usize,
     F: Float + SampleFormat,
     I: Iterator<Item = SVector<F, CHANNELS>>,
-> Iterator for CubicIterator<'a, S, CHANNELS, F, I>
+> Iterator for CubicIterator<'_, S, CHANNELS, F, I>
 {
     type Item = SVector<F, CHANNELS>;
 

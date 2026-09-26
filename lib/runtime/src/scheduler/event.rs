@@ -23,6 +23,7 @@ pub enum EventMode {
 
 /// Downcast the event down to the type that it should be
 #[inline]
+#[must_use]
 pub fn downcast_event<C: Component>(event: Box<dyn Event>) -> C::Event {
     *(event as Box<dyn Any>)
         .downcast()

@@ -86,12 +86,11 @@ struct LinearIterator<
 }
 
 impl<
-    'a,
     S: SampleFormat,
     const CHANNELS: usize,
     F: Float + SampleFormat,
     I: Iterator<Item = SVector<F, CHANNELS>>,
-> Iterator for LinearIterator<'a, S, CHANNELS, F, I>
+> Iterator for LinearIterator<'_, S, CHANNELS, F, I>
 {
     type Item = SVector<F, CHANNELS>;
 

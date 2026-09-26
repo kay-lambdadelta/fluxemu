@@ -85,12 +85,11 @@ struct NearestIterator<
 }
 
 impl<
-    'a,
     S: SampleFormat,
     const CHANNELS: usize,
     F: Float + SampleFormat,
     I: Iterator<Item = SVector<F, CHANNELS>>,
-> Iterator for NearestIterator<'a, S, CHANNELS, F, I>
+> Iterator for NearestIterator<'_, S, CHANNELS, F, I>
 {
     type Item = SVector<F, CHANNELS>;
 

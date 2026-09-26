@@ -10,3 +10,6 @@ license = { workspace = true }
 fluxemu-program = { workspace = true }
 fluxemu-runtime = { workspace = true }
 serde = { workspace = true }
+
+[lints]
+workspace = true

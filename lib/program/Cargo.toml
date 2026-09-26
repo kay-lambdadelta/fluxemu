@@ -27,3 +27,6 @@ tracing = { workspace = true }
 
 [features]
 mmap = ["dep:memmap2"]
+
+[lints]
+workspace = true

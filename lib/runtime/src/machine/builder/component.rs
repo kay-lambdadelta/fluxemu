@@ -36,7 +36,7 @@ impl<P: Platform> ComponentData<P> {
                 let component: &mut B::Component =
                     (component as &mut dyn Any).downcast_mut().unwrap();
 
-                B::late_initialize(component, data)
+                B::late_initialize(component, data);
             }),
             graphics_requirements: GraphicsRequirements::default(),
             systems: HashMap::new(),

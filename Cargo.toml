@@ -137,6 +137,16 @@ fluxemu-system-nintendo-gameboy = { path = "system/nintendo/gameboy" }
 fluxemu-system-nintendo-nes = { path = "system/nintendo/nes" }
 fluxemu-system-other-chip8 = { path = "system/other/chip8" }
 
+[workspace.lints]
+clippy.cloned_instead_of_copied = "warn"
+clippy.comparison_chain = "warn"
+clippy.decimal_bitwise_operands = "warn"
+clippy.duration_suboptimal_units = "warn"
+clippy.elidable_lifetime_names = "warn"
+clippy.too_many_lines = "warn"
+clippy.unnecessary_debug_formatting = "warn"
+clippy.wildcard_imports = "warn"
+
 # FIXME: Remove when getrandom 0.4.4 comes out
 [patch.crates-io]
 getrandom = { git = "https://github.com/rust-random/getrandom", rev = "4fbc7bc02b9a65beee4c72d4523010f388affce8" }

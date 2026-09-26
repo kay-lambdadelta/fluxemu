@@ -28,7 +28,7 @@ impl Scheduler {
         self.start_time
     }
 
-    pub fn run(&self, component_registry: &ComponentRegistry<'_>, allocated_time: Period) {
+    pub fn run(&self, component_registry: ComponentRegistry<'_>, allocated_time: Period) {
         let target = self.safe_advance_timestamp() + allocated_time;
 
         self.queue
@@ -94,7 +94,7 @@ pub struct QuantaAllocator<'b, 'a> {
     context: &'b mut Context<'a>,
 }
 
-impl<'b, 'a> Iterator for QuantaAllocator<'b, 'a> {
+impl Iterator for QuantaAllocator<'_, '_> {
     type Item = Period;
 
     fn next(&mut self) -> Option<Self::Item> {

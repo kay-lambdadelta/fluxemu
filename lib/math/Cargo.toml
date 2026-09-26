@@ -11,3 +11,6 @@ nalgebra = { workspace = true }
 num = { workspace = true }
 rangemap = { workspace = true }
 serde = { workspace = true }
+
+[lints]
+workspace = true

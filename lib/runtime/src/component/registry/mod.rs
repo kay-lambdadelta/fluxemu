@@ -231,7 +231,7 @@ impl<'a> ComponentRegistry<'a> {
             let mut earliest_hazard = Period::MAX;
             let mut any_incomplete = false;
 
-            for (name, entry) in data.systems.iter_mut() {
+            for (name, entry) in &mut data.systems {
                 let delta = target_timestamp.saturating_sub(entry.current_timestamp);
 
                 // Attempt to allocate time for the task
@@ -301,7 +301,7 @@ impl<'a> ComponentRegistry<'a> {
                 .machine()
                 .scheduler
                 .queue
-                .handle_deadlines_before(earliest_hazard, self);
+                .handle_deadlines_before(earliest_hazard, *self);
         }
     }
 
@@ -411,7 +411,7 @@ impl<'a> From<&'a ComponentPath> for ComponentIdentifier<'a> {
     }
 }
 
-impl<'a> From<ComponentId> for ComponentIdentifier<'a> {
+impl From<ComponentId> for ComponentIdentifier<'_> {
     fn from(id: ComponentId) -> Self {
         ComponentIdentifier::Id(id)
     }

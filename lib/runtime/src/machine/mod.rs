@@ -14,7 +14,7 @@ use std::{
 };
 
 use fluxemu_input::{InputId, InputState};
-use fluxemu_program::{ProgramManager, Manifest};
+use fluxemu_program::{Manifest, ProgramManager};
 use num::FromPrimitive;
 use redb::{Database, backends::InMemoryBackend};
 use rustc_hash::FxBuildHasher;
@@ -142,7 +142,7 @@ impl RuntimeGuard<'_> {
         self.runtime
             .machine()
             .scheduler
-            .run(&registry, allocated_time)
+            .run(registry, allocated_time);
     }
 
     /// Get the last safe time to advance any component to
@@ -199,7 +199,7 @@ impl RuntimeGuard<'_> {
     }
 }
 
-impl<'a> Deref for RuntimeGuard<'a> {
+impl Deref for RuntimeGuard<'_> {
     type Target = RuntimeHandle;
 
     fn deref(&self) -> &Self::Target {
@@ -207,7 +207,7 @@ impl<'a> Deref for RuntimeGuard<'a> {
     }
 }
 
-impl<'a> Drop for RuntimeGuard<'a> {
+impl Drop for RuntimeGuard<'_> {
     fn drop(&mut self) {
         CURRENT_DISPATCH_TIMESTAMP.with(|timestamp| {
             timestamp.set(None);

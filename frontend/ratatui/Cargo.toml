@@ -14,3 +14,6 @@ fluxemu-program = { workspace = true }
 ratatui = { workspace = true }
 ratatui-explorer = { workspace = true }
 ratatui-image = { workspace = true }
+
+[lints]
+workspace = true

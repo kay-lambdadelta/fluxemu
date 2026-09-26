@@ -17,7 +17,7 @@ impl<C, MC> Debug for FrequencyBased<C, MC> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FrequencyBased")
             .field("period", &self.period)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -26,6 +26,7 @@ impl<
     MC: FnMut(&mut C, &RuntimeHandle, QuantaAllocator<'_, '_>) + Send + Sync + 'static,
 > FrequencyBased<C, MC>
 {
+    /// Create a new [`FrequencyBased`] task with the given frequency and callback.
     pub fn new(frequency: Frequency, callback: MC) -> Self {
         assert_ne!(frequency, Period::ZERO, "Frequency must not be zero");
 

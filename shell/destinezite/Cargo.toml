@@ -102,3 +102,6 @@ webgpu = [
   "fluxemu-system-other-chip8/webgpu",
 ]
 windowing = ["dep:egui-winit", "dep:raw-window-handle", "dep:softbuffer", "dep:winit", "egui", "fluxemu-frontend-egui/external-file-dialog"]
+
+[lints]
+workspace = true

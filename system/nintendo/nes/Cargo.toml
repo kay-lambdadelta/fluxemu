@@ -41,3 +41,6 @@ redb = { workspace = true }
 
 [features]
 webgpu = ["dep:wgpu", "fluxemu-graphics/webgpu"]
+
+[lints]
+workspace = true

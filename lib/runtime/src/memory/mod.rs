@@ -74,9 +74,7 @@ impl<'a> AddressSpace<'a> {
         self.data
             .remap(timestamp, &self.guard, self.runtime, commands);
     }
-}
 
-impl<'a> AddressSpace<'a> {
     pub fn id(&self) -> AddressSpaceId {
         self.data.id
     }

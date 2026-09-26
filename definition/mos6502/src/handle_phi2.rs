@@ -216,28 +216,7 @@ impl<V: Variant> Mos6502<V> {
                     self.state.flags.negative = (*operand as i8).is_negative();
                 }
                 Phi2::Add { invert_operand } => {
-                    let operand = if invert_operand {
-                        !self.state.operand
-                    } else {
-                        self.state.operand
-                    };
-
-                    let (first_operation_result, first_operation_carry) =
-                        self.state.a.overflowing_add(operand);
-
-                    let (second_operation_result, second_operation_carry) =
-                        first_operation_result.overflowing_add(self.state.flags.carry.into());
-
-                    self.state.flags.overflow = ((self.state.a & 0b1000_0000)
-                        == (operand & 0b1000_0000))
-                        && ((self.state.a & 0b1000_0000)
-                            != (second_operation_result & 0b1000_0000));
-
-                    self.state.flags.carry = first_operation_carry || second_operation_carry;
-                    self.state.flags.negative = (second_operation_result as i8).is_negative();
-                    self.state.flags.zero = second_operation_result == 0;
-
-                    self.state.a = second_operation_result;
+                    self.phi2_add(invert_operand);
                 }
                 Phi2::CopyFlag {
                     source,
@@ -340,6 +319,29 @@ impl<V: Variant> Mos6502<V> {
                 }
             }
         }
+    }
+
+    #[inline]
+    fn phi2_add(&mut self, invert_operand: bool) {
+        let operand = if invert_operand {
+            !self.state.operand
+        } else {
+            self.state.operand
+        };
+
+        let (first_operation_result, first_operation_carry) = self.state.a.overflowing_add(operand);
+
+        let (second_operation_result, second_operation_carry) =
+            first_operation_result.overflowing_add(self.state.flags.carry.into());
+
+        self.state.flags.overflow = ((self.state.a & 0b1000_0000) == (operand & 0b1000_0000))
+            && ((self.state.a & 0b1000_0000) != (second_operation_result & 0b1000_0000));
+
+        self.state.flags.carry = first_operation_carry || second_operation_carry;
+        self.state.flags.negative = (second_operation_result as i8).is_negative();
+        self.state.flags.zero = second_operation_result == 0;
+
+        self.state.a = second_operation_result;
     }
 
     #[inline]

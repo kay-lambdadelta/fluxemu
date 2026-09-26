@@ -22,7 +22,7 @@ impl<S: Task> DynTask for S {
     fn run(&mut self, component: &mut dyn Component, context: &mut Context) {
         let component = (component as &mut dyn Any).downcast_mut().unwrap();
 
-        self.run(component, context)
+        self.run(component, context);
     }
 }
 

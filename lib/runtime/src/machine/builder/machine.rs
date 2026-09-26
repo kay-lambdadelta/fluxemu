@@ -7,7 +7,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use fluxemu_program::{ProgramManager, Manifest, RomId, SystemId};
+use fluxemu_program::{Manifest, ProgramManager, RomId, SystemId};
 use rustc_hash::FxBuildHasher;
 
 use crate::{

@@ -11,7 +11,10 @@ use crate::{
     CHIP8_FONT, Chip8Mode,
     audio::Chip8Audio,
     display::{Chip8Display, SupportedGraphicsApiChip8Display},
-    processor::{Chip8Processor, instruction::InstructionSetSuperChip8},
+    processor::{
+        Chip8Processor,
+        instruction::{InstructionSetSuperChip8, Register},
+    },
     timer::Chip8Timer,
 };
 
@@ -26,8 +29,6 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
         timestamp: &Period,
         instruction: Chip8InstructionSet,
     ) {
-        let mut mode_guard = self.mode.lock().unwrap();
-
         match instruction {
             Chip8InstructionSet::Chip8(InstructionSetChip8::Clr) => {
                 runtime
@@ -107,7 +108,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                 self.state.registers.work_registers[destination as usize] |=
                     self.state.registers.work_registers[source as usize];
 
-                if *mode_guard == Chip8Mode::Chip8 {
+                if *self.mode.lock().unwrap() == Chip8Mode::Chip8 {
                     self.state.registers.work_registers[0xf] = 0;
                 }
             }
@@ -118,7 +119,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                 self.state.registers.work_registers[destination as usize] &=
                     self.state.registers.work_registers[source as usize];
 
-                if *mode_guard == Chip8Mode::Chip8 {
+                if *self.mode.lock().unwrap() == Chip8Mode::Chip8 {
                     self.state.registers.work_registers[0xf] = 0;
                 }
             }
@@ -129,7 +130,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                 self.state.registers.work_registers[destination as usize] ^=
                     self.state.registers.work_registers[source as usize];
 
-                if *mode_guard == Chip8Mode::Chip8 {
+                if *self.mode.lock().unwrap() == Chip8Mode::Chip8 {
                     self.state.registers.work_registers[0xf] = 0;
                 }
             }
@@ -160,7 +161,8 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
             Chip8InstructionSet::Chip8(InstructionSetChip8::Shr { register, value }) => {
                 let mut destination_value = self.state.registers.work_registers[register as usize];
 
-                if *mode_guard == Chip8Mode::Chip8 || self.config.always_shr_in_place {
+                if *self.mode.lock().unwrap() == Chip8Mode::Chip8 || self.config.always_shr_in_place
+                {
                     destination_value = self.state.registers.work_registers[value as usize];
                 }
                 let overflow = destination_value & 0b0000_0001;
@@ -182,8 +184,9 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Shl { register, value }) => {
                 let mut destination_value = self.state.registers.work_registers[register as usize];
+                let mode = *self.mode.lock().unwrap();
 
-                if *mode_guard == Chip8Mode::Chip8 {
+                if mode == Chip8Mode::Chip8 {
                     destination_value = self.state.registers.work_registers[value as usize];
                 }
 
@@ -204,7 +207,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                 self.state.registers.index = value;
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Jumpi { address }) => {
-                let address = if *mode_guard == Chip8Mode::Chip8 {
+                let address = if *self.mode.lock().unwrap() == Chip8Mode::Chip8 {
                     address.wrapping_add(u16::from(self.state.registers.work_registers[0x0]))
                 } else {
                     let register = ((address & 0x0f00) >> 8) as u8;
@@ -225,67 +228,9 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                 coordinates,
                 height,
             }) => {
-                let position = Point2::new(
-                    self.state.registers.work_registers[coordinates.x as usize],
-                    self.state.registers.work_registers[coordinates.y as usize],
-                );
-                let mut cursor = 0;
+                let mode = *self.mode.lock().unwrap();
 
-                // SuperChip8 specializes a 16x16 sprite here
-                if height == 0 && *mode_guard == Chip8Mode::SuperChip8
-                    || *mode_guard == Chip8Mode::XoChip
-                {
-                    let mut buffer = [0; 32];
-
-                    for buffer_section in buffer.chunks_mut(2) {
-                        address_space
-                            .read::<_, false>(
-                                self.state.registers.index as usize + cursor,
-                                timestamp,
-                                buffer_section,
-                            )
-                            .unwrap();
-                        cursor += buffer_section.len();
-                    }
-
-                    self.state.registers.work_registers[0xf] = runtime
-                        .component_registry()
-                        .interact::<Chip8Display<G>, _>(
-                            &self.config.display,
-                            timestamp,
-                            |component| {
-                                u8::from(component.draw_supersized_sprite(position, buffer))
-                            },
-                        )
-                        .unwrap();
-                } else {
-                    let mut buffer =
-                        heapless::Vec::<_, 16>::from_iter(std::iter::repeat_n(0, height as usize));
-
-                    for buffer_section in buffer.chunks_mut(2) {
-                        address_space
-                            .read::<_, false>(
-                                self.state.registers.index as usize + cursor,
-                                timestamp,
-                                buffer_section,
-                            )
-                            .unwrap();
-                        cursor += buffer_section.len();
-                    }
-
-                    self.state.registers.work_registers[0xf] = runtime
-                        .component_registry()
-                        .interact::<Chip8Display<G>, _>(
-                            &self.config.display,
-                            timestamp,
-                            |component| u8::from(component.draw_sprite(position, &buffer)),
-                        )
-                        .unwrap();
-                }
-
-                if self.config.stall_on_draw_until_vsync {
-                    self.state.execution_state = ExecutionState::AwaitingVsync;
-                }
+                self.draw_instruction(runtime, address_space, timestamp, mode, coordinates, height);
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Skpr { key }) => {
                 let key = Chip8KeyCode(self.state.registers.work_registers[key as usize]);
@@ -376,7 +321,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                 }
 
                 // Only the original chip8 modifies the index register for this operation
-                if *mode_guard == Chip8Mode::Chip8 {
+                if *self.mode.lock().unwrap() == Chip8Mode::Chip8 {
                     self.state.registers.index = self
                         .state
                         .registers
@@ -396,7 +341,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                 }
 
                 // Only the original chip8 modifies the index register for this operation
-                if *mode_guard == Chip8Mode::Chip8 {
+                if *self.mode.lock().unwrap() == Chip8Mode::Chip8 {
                     self.state.registers.index = self
                         .state
                         .registers
@@ -405,46 +350,112 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
                 }
             }
             Chip8InstructionSet::SuperChip8(subinstruction) => {
-                *mode_guard = Chip8Mode::SuperChip8;
-
-                match subinstruction {
-                    InstructionSetSuperChip8::Lores => {
-                        runtime
-                            .component_registry()
-                            .interact::<Chip8Display<G>, _>(
-                                &self.config.display,
-                                timestamp,
-                                |component| {
-                                    component.set_hires(false);
-                                },
-                            )
-                            .unwrap();
-                    }
-                    InstructionSetSuperChip8::Hires => {
-                        runtime
-                            .component_registry()
-                            .interact::<Chip8Display<G>, _>(
-                                &self.config.display,
-                                timestamp,
-                                |component| {
-                                    component.set_hires(true);
-                                },
-                            )
-                            .unwrap();
-                    }
-                    InstructionSetSuperChip8::Scroll { direction: _ } => todo!(),
-                    InstructionSetSuperChip8::Scrd { amount: _ } => todo!(),
-                    InstructionSetSuperChip8::Scrr => todo!(),
-                    InstructionSetSuperChip8::Scrl => todo!(),
-                    InstructionSetSuperChip8::Srpl { amount: _ } => todo!(),
-                    InstructionSetSuperChip8::Rrpl { amount: _ } => todo!(),
-                }
+                self.interpret_superchip8(runtime, timestamp, subinstruction);
             }
             Chip8InstructionSet::XoChip(_) => {
-                *mode_guard = Chip8Mode::XoChip;
+                *self.mode.lock().unwrap() = Chip8Mode::XoChip;
 
                 todo!()
             }
+        }
+    }
+
+    #[inline]
+    fn interpret_superchip8(
+        &mut self,
+        runtime: &RuntimeHandle,
+        timestamp: &Period,
+        subinstruction: InstructionSetSuperChip8,
+    ) {
+        *self.mode.lock().unwrap() = Chip8Mode::SuperChip8;
+
+        match subinstruction {
+            InstructionSetSuperChip8::Lores => {
+                runtime
+                    .component_registry()
+                    .interact::<Chip8Display<G>, _>(&self.config.display, timestamp, |component| {
+                        component.set_hires(false);
+                    })
+                    .unwrap();
+            }
+            InstructionSetSuperChip8::Hires => {
+                runtime
+                    .component_registry()
+                    .interact::<Chip8Display<G>, _>(&self.config.display, timestamp, |component| {
+                        component.set_hires(true);
+                    })
+                    .unwrap();
+            }
+            InstructionSetSuperChip8::Scroll { direction: _ } => todo!(),
+            InstructionSetSuperChip8::Scrd { amount: _ } => todo!(),
+            InstructionSetSuperChip8::Scrr => todo!(),
+            InstructionSetSuperChip8::Scrl => todo!(),
+            InstructionSetSuperChip8::Srpl { amount: _ } => todo!(),
+            InstructionSetSuperChip8::Rrpl { amount: _ } => todo!(),
+        }
+    }
+
+    fn draw_instruction(
+        &mut self,
+        runtime: &RuntimeHandle,
+        address_space: &mut AddressSpace<'_>,
+        timestamp: &Period,
+        mode_guard: Chip8Mode,
+        coordinates: Point2<Register>,
+        height: u8,
+    ) {
+        let position = Point2::new(
+            self.state.registers.work_registers[coordinates.x as usize],
+            self.state.registers.work_registers[coordinates.y as usize],
+        );
+        let mut cursor = 0;
+
+        // SuperChip8 specializes a 16x16 sprite here
+        if height == 0 && mode_guard == Chip8Mode::SuperChip8 || mode_guard == Chip8Mode::XoChip {
+            let mut buffer = [0; 32];
+
+            for buffer_section in buffer.chunks_mut(2) {
+                address_space
+                    .read::<_, false>(
+                        self.state.registers.index as usize + cursor,
+                        timestamp,
+                        buffer_section,
+                    )
+                    .unwrap();
+                cursor += buffer_section.len();
+            }
+
+            self.state.registers.work_registers[0xf] = runtime
+                .component_registry()
+                .interact::<Chip8Display<G>, _>(&self.config.display, timestamp, |component| {
+                    u8::from(component.draw_supersized_sprite(position, buffer))
+                })
+                .unwrap();
+        } else {
+            let mut buffer =
+                heapless::Vec::<_, 16>::from_iter(std::iter::repeat_n(0, height as usize));
+
+            for buffer_section in buffer.chunks_mut(2) {
+                address_space
+                    .read::<_, false>(
+                        self.state.registers.index as usize + cursor,
+                        timestamp,
+                        buffer_section,
+                    )
+                    .unwrap();
+                cursor += buffer_section.len();
+            }
+
+            self.state.registers.work_registers[0xf] = runtime
+                .component_registry()
+                .interact::<Chip8Display<G>, _>(&self.config.display, timestamp, |component| {
+                    u8::from(component.draw_sprite(position, &buffer))
+                })
+                .unwrap();
+        }
+
+        if self.config.stall_on_draw_until_vsync {
+            self.state.execution_state = ExecutionState::AwaitingVsync;
         }
     }
 }

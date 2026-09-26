@@ -14,7 +14,7 @@ use crate::{
     scheduler::Period,
 };
 
-impl<'a> AddressSpace<'a> {
+impl AddressSpace<'_> {
     /// Read a buffer from an address
     ///
     /// If the target is a component, the component will be advanced to the timestamp before the operation

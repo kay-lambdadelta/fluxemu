@@ -21,3 +21,6 @@ tracing = { workspace = true }
 bytes = { workspace = true }
 criterion = { workspace = true }
 fluxemu-math = { workspace = true }
+
+[lints]
+workspace = true

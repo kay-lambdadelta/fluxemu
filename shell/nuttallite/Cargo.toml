@@ -66,3 +66,6 @@ bindgen = { workspace = true }
 [features]
 default = ["egui"]
 egui = ["dep:fluxemu-frontend-egui"]
+
+[lints]
+workspace = true

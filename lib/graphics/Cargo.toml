@@ -17,3 +17,6 @@ wgpu = { workspace = true, optional = true }
 
 [features]
 webgpu = ["dep:wgpu"]
+
+[lints]
+workspace = true

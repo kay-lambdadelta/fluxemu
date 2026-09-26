@@ -36,3 +36,6 @@ uuid = { workspace = true }
 
 [features]
 external-file-dialog = ["dep:rfd"]
+
+[lints]
+workspace = true

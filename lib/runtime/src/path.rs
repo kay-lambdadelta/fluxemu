@@ -163,7 +163,7 @@ impl Key for ComponentPath {
     }
 }
 
-impl<'a> From<ComponentPath> for Cow<'a, ComponentPath> {
+impl From<ComponentPath> for Cow<'_, ComponentPath> {
     fn from(path: ComponentPath) -> Self {
         Cow::Owned(path)
     }

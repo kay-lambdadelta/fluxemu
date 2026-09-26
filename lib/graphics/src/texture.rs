@@ -657,7 +657,7 @@ impl<'a, T: Clone> From<RefTexture<'a, T>> for CowTexture<'a, T> {
     }
 }
 
-impl<'a, T: Clone> From<OwnedTexture<T>> for CowTexture<'a, T> {
+impl<T: Clone> From<OwnedTexture<T>> for CowTexture<'_, T> {
     #[inline]
     fn from(texture: OwnedTexture<T>) -> Self {
         Texture {

@@ -163,236 +163,12 @@ pub struct Mos6502InstructionSet {
 }
 
 impl<V: Variant> Mos6502<V> {
+    #[inline]
+    #[allow(clippy::too_many_lines)]
     pub(super) fn push_steps_for_instruction(&mut self, instruction: &Mos6502InstructionSet) {
         let index_adjustment = Self::index_adjustment(instruction.opcode);
 
-        if let Some(addressing_mode) = instruction.addressing_mode {
-            match addressing_mode {
-                AddressingMode::Mos6502(Mos6502AddressingMode::Absolute) => {
-                    self.state.cycle_queue.extend([
-                        Cycle::new(
-                            BusMode::Read,
-                            Some(Phi1Source::InstructionPointer),
-                            [
-                                Phi2::IncrementInstructionPointer,
-                                Phi2::Move {
-                                    source: MoveSource::Data,
-                                    destination: MoveDestination::EffectiveAddress,
-                                },
-                            ],
-                        ),
-                        Cycle::new(
-                            BusMode::Read,
-                            Some(Phi1Source::InstructionPointer),
-                            [
-                                Phi2::IncrementInstructionPointer,
-                                Phi2::Move {
-                                    source: MoveSource::Data,
-                                    destination: MoveDestination::EffectiveAddress,
-                                },
-                            ],
-                        ),
-                    ]);
-                }
-                AddressingMode::Mos6502(
-                    Mos6502AddressingMode::Immediate | Mos6502AddressingMode::Relative,
-                ) => {
-                    self.state.cycle_queue.extend([Cycle::new(
-                        BusMode::Read,
-                        Some(Phi1Source::InstructionPointer),
-                        [Phi2::IncrementInstructionPointer],
-                    )]);
-                }
-                AddressingMode::Mos6502(Mos6502AddressingMode::XIndexedAbsolute) => {
-                    self.register_indexed_absolute(GeneralPurposeRegister::X, index_adjustment);
-                }
-                AddressingMode::Mos6502(Mos6502AddressingMode::YIndexedAbsolute) => {
-                    self.register_indexed_absolute(GeneralPurposeRegister::Y, index_adjustment);
-                }
-                AddressingMode::Mos6502(Mos6502AddressingMode::AbsoluteIndirect) => {
-                    self.state.cycle_queue.extend([
-                        Cycle::new(
-                            BusMode::Read,
-                            Some(Phi1Source::InstructionPointer),
-                            [
-                                Phi2::IncrementInstructionPointer,
-                                Phi2::Move {
-                                    source: MoveSource::Data,
-                                    destination: MoveDestination::EffectiveAddress,
-                                },
-                            ],
-                        ),
-                        Cycle::new(
-                            BusMode::Read,
-                            Some(Phi1Source::InstructionPointer),
-                            [
-                                Phi2::IncrementInstructionPointer,
-                                Phi2::Move {
-                                    source: MoveSource::Data,
-                                    destination: MoveDestination::EffectiveAddress,
-                                },
-                            ],
-                        ),
-                        Cycle::new(
-                            BusMode::Read,
-                            Some(Phi1Source::EffectiveAddress),
-                            [
-                                Phi2::Move {
-                                    source: MoveSource::Data,
-                                    destination: MoveDestination::EffectiveAddress,
-                                },
-                                Phi2::AddToPointerLikeRegister {
-                                    source: AddToPointerLikeRegisterSource::Constant(1),
-                                    destination: PointerLikeRegister::AddressBus,
-                                    interpretation: ArithmeticOperandInterpretation::Unsigned,
-                                    // Insert carry cycle if the bug is not present
-                                    adjustment: if V::HAS_ABSOLUTE_INDIRECT_PAGE_WRAP_ERRATA {
-                                        IndexAdjustment::Discard
-                                    } else {
-                                        IndexAdjustment::OnCarry
-                                    },
-                                },
-                            ],
-                        ),
-                        Cycle::new(
-                            BusMode::Read,
-                            None,
-                            [Phi2::Move {
-                                source: MoveSource::Data,
-                                destination: MoveDestination::EffectiveAddress,
-                            }],
-                        ),
-                    ]);
-                }
-                AddressingMode::Mos6502(Mos6502AddressingMode::XIndexedZeroPageIndirect) => {
-                    self.state.cycle_queue.extend([
-                        Cycle::new(
-                            BusMode::Read,
-                            Some(Phi1Source::InstructionPointer),
-                            [
-                                Phi2::IncrementInstructionPointer,
-                                Phi2::Move {
-                                    source: MoveSource::Data,
-                                    destination: MoveDestination::EffectiveAddress,
-                                },
-                            ],
-                        ),
-                        Cycle::new(
-                            BusMode::Read,
-                            Some(Phi1Source::EffectiveAddress),
-                            [Phi2::AddToPointerLikeRegister {
-                                source: AddToPointerLikeRegisterSource::Register(
-                                    GeneralPurposeRegister::X,
-                                ),
-                                destination: PointerLikeRegister::AddressBus,
-                                adjustment: IndexAdjustment::Discard,
-                                interpretation: ArithmeticOperandInterpretation::Unsigned,
-                            }],
-                        ),
-                        Cycle::new(
-                            BusMode::Read,
-                            None,
-                            [
-                                Phi2::Move {
-                                    source: MoveSource::Data,
-                                    destination: MoveDestination::EffectiveAddress,
-                                },
-                                Phi2::AddToPointerLikeRegister {
-                                    source: AddToPointerLikeRegisterSource::Constant(1),
-                                    destination: PointerLikeRegister::AddressBus,
-                                    interpretation: ArithmeticOperandInterpretation::Unsigned,
-                                    adjustment: IndexAdjustment::Discard,
-                                },
-                            ],
-                        ),
-                        Cycle::new(
-                            BusMode::Read,
-                            None,
-                            [Phi2::Move {
-                                source: MoveSource::Data,
-                                destination: MoveDestination::EffectiveAddress,
-                            }],
-                        ),
-                    ]);
-                }
-                AddressingMode::Mos6502(Mos6502AddressingMode::ZeroPageIndirectYIndexed) => {
-                    self.state.cycle_queue.extend([
-                        Cycle::new(
-                            BusMode::Read,
-                            Some(Phi1Source::InstructionPointer),
-                            [
-                                Phi2::IncrementInstructionPointer,
-                                Phi2::Move {
-                                    source: MoveSource::Data,
-                                    destination: MoveDestination::EffectiveAddress,
-                                },
-                            ],
-                        ),
-                        Cycle::new(
-                            BusMode::Read,
-                            Some(Phi1Source::EffectiveAddress),
-                            [
-                                Phi2::Move {
-                                    source: MoveSource::Data,
-                                    destination: MoveDestination::EffectiveAddress,
-                                },
-                                Phi2::AddToPointerLikeRegister {
-                                    source: AddToPointerLikeRegisterSource::Constant(1),
-                                    destination: PointerLikeRegister::AddressBus,
-                                    interpretation: ArithmeticOperandInterpretation::Unsigned,
-                                    adjustment: IndexAdjustment::Discard,
-                                },
-                            ],
-                        ),
-                        Cycle::new(
-                            BusMode::Read,
-                            None,
-                            [
-                                Phi2::Move {
-                                    source: MoveSource::Data,
-                                    destination: MoveDestination::EffectiveAddress,
-                                },
-                                Phi2::AddToPointerLikeRegister {
-                                    source: AddToPointerLikeRegisterSource::Register(
-                                        GeneralPurposeRegister::Y,
-                                    ),
-                                    destination: PointerLikeRegister::EffectiveAddress,
-                                    interpretation: ArithmeticOperandInterpretation::Unsigned,
-                                    adjustment: index_adjustment,
-                                },
-                            ],
-                        ),
-                    ]);
-                }
-                AddressingMode::Mos6502(Mos6502AddressingMode::XIndexedZeroPage) => {
-                    self.register_indexed_zero_page(GeneralPurposeRegister::X);
-                }
-                AddressingMode::Mos6502(Mos6502AddressingMode::YIndexedZeroPage) => {
-                    self.register_indexed_zero_page(GeneralPurposeRegister::Y);
-                }
-                AddressingMode::Mos6502(Mos6502AddressingMode::ZeroPage) => {
-                    self.state.cycle_queue.extend([Cycle::new(
-                        BusMode::Read,
-                        Some(Phi1Source::InstructionPointer),
-                        [
-                            Phi2::IncrementInstructionPointer,
-                            Phi2::Move {
-                                source: MoveSource::Data,
-                                destination: MoveDestination::EffectiveAddress,
-                            },
-                        ],
-                    )]);
-                }
-                AddressingMode::Mos6502(Mos6502AddressingMode::Accumulator) => {
-                    self.state.cycle_queue.extend([Cycle::dummy()]);
-                }
-                AddressingMode::Wdc65C02(Wdc65C02AddressingMode::ZeroPageIndirect) => {
-                    todo!()
-                }
-            }
-        } else {
-            self.state.cycle_queue.extend([Cycle::dummy()]);
-        }
+        self.push_steps_for_addressing_mode(instruction, index_adjustment);
 
         match instruction.opcode {
             Opcode::Mos6502(Mos6502Opcode::Adc) => {
@@ -500,73 +276,7 @@ impl<V: Variant> Mos6502<V> {
                 );
             }
             Opcode::Mos6502(Mos6502Opcode::Brk) => {
-                tracing::debug!("BRK occurred");
-
-                self.state.cycle_queue.clear();
-
-                self.state.cycle_queue.extend([
-                    Cycle::new(
-                        BusMode::Read,
-                        Some(Phi1Source::InstructionPointer),
-                        [Phi2::IncrementInstructionPointer],
-                    ),
-                    Cycle::new(
-                        BusMode::Write,
-                        Some(Phi1Source::Stack),
-                        [
-                            Phi2::Move {
-                                source: MoveSource::InstructionPointer { offset: 1 },
-                                destination: MoveDestination::Data,
-                            },
-                            Phi2::IncrementStack { subtract: true },
-                        ],
-                    ),
-                    Cycle::new(
-                        BusMode::Write,
-                        Some(Phi1Source::Stack),
-                        [
-                            Phi2::Move {
-                                source: MoveSource::InstructionPointer { offset: 0 },
-                                destination: MoveDestination::Data,
-                            },
-                            Phi2::IncrementStack { subtract: true },
-                        ],
-                    ),
-                    Cycle::new(
-                        BusMode::Write,
-                        Some(Phi1Source::Stack),
-                        [
-                            Phi2::Move {
-                                source: MoveSource::Flags { break_: true },
-                                destination: MoveDestination::Data,
-                            },
-                            Phi2::IncrementStack { subtract: true },
-                        ],
-                    ),
-                    Cycle::new(
-                        BusMode::Read,
-                        Some(Phi1Source::Constant(IRQ_VECTOR)),
-                        [Phi2::Move {
-                            source: MoveSource::Data,
-                            destination: MoveDestination::EffectiveAddress,
-                        }],
-                    ),
-                    Cycle::new(
-                        BusMode::Read,
-                        Some(Phi1Source::Constant(IRQ_VECTOR + 1)),
-                        [
-                            Phi2::Move {
-                                source: MoveSource::Data,
-                                destination: MoveDestination::EffectiveAddress,
-                            },
-                            Phi2::LoadInstructionPointerFromEffectiveAddress,
-                            Phi2::SetFlag {
-                                flag: Flag::InterruptDisable,
-                                value: true,
-                            },
-                        ],
-                    ),
-                ]);
+                self.push_instruction_brk();
             }
             Opcode::Mos6502(Mos6502Opcode::Clc) => {
                 self.patch_read_maybe_effective_address_dependent(
@@ -753,59 +463,7 @@ impl<V: Variant> Mos6502<V> {
                     .unwrap();
             }
             Opcode::Mos6502(Mos6502Opcode::Jsr) => {
-                self.state.cycle_queue.clear();
-
-                self.state.cycle_queue.extend([
-                    Cycle::new(
-                        BusMode::Read,
-                        Some(Phi1Source::InstructionPointer),
-                        [
-                            Phi2::IncrementInstructionPointer,
-                            Phi2::Move {
-                                source: MoveSource::Data,
-                                destination: MoveDestination::EffectiveAddress,
-                            },
-                        ],
-                    ),
-                    Cycle::new(
-                        BusMode::Write,
-                        Some(Phi1Source::Stack),
-                        [
-                            Phi2::Move {
-                                source: MoveSource::InstructionPointer { offset: 1 },
-                                destination: MoveDestination::Data,
-                            },
-                            Phi2::IncrementStack { subtract: true },
-                        ],
-                    ),
-                    Cycle::new(
-                        BusMode::Write,
-                        Some(Phi1Source::Stack),
-                        [
-                            Phi2::Move {
-                                source: MoveSource::InstructionPointer { offset: 0 },
-                                destination: MoveDestination::Data,
-                            },
-                            Phi2::IncrementStack { subtract: true },
-                        ],
-                    ),
-                    Cycle::new(
-                        BusMode::Read,
-                        Some(Phi1Source::InstructionPointer),
-                        [
-                            Phi2::IncrementInstructionPointer,
-                            Phi2::Move {
-                                source: MoveSource::Data,
-                                destination: MoveDestination::EffectiveAddress,
-                            },
-                        ],
-                    ),
-                    Cycle::new(
-                        BusMode::Read,
-                        None,
-                        [Phi2::LoadInstructionPointerFromEffectiveAddress],
-                    ),
-                ]);
+                self.push_instruction_jsr();
             }
             Opcode::Mos6502(Mos6502Opcode::Las) => {
                 self.patch_read_maybe_effective_address_dependent(
@@ -992,86 +650,10 @@ impl<V: Variant> Mos6502<V> {
                 ]);
             }
             Opcode::Mos6502(Mos6502Opcode::Rti) => {
-                self.state.cycle_queue.clear();
-
-                self.state.cycle_queue.extend([
-                    Cycle::new(
-                        BusMode::Read,
-                        None,
-                        [Phi2::IncrementStack { subtract: false }],
-                    ),
-                    Cycle::new(
-                        BusMode::Read,
-                        Some(Phi1Source::Stack),
-                        [
-                            Phi2::Move {
-                                source: MoveSource::Data,
-                                destination: MoveDestination::Flags,
-                            },
-                            Phi2::IncrementStack { subtract: false },
-                        ],
-                    ),
-                    Cycle::new(
-                        BusMode::Read,
-                        Some(Phi1Source::Stack),
-                        [
-                            Phi2::Move {
-                                source: MoveSource::Data,
-                                destination: MoveDestination::EffectiveAddress,
-                            },
-                            Phi2::IncrementStack { subtract: false },
-                        ],
-                    ),
-                    Cycle::new(
-                        BusMode::Read,
-                        Some(Phi1Source::Stack),
-                        [Phi2::Move {
-                            source: MoveSource::Data,
-                            destination: MoveDestination::EffectiveAddress,
-                        }],
-                    ),
-                    Cycle::new(
-                        BusMode::Read,
-                        None,
-                        [Phi2::LoadInstructionPointerFromEffectiveAddress],
-                    ),
-                ]);
+                self.push_instruction_rti();
             }
             Opcode::Mos6502(Mos6502Opcode::Rts) => {
-                self.state.cycle_queue.clear();
-
-                self.state.cycle_queue.extend([
-                    Cycle::new(
-                        BusMode::Read,
-                        None,
-                        [Phi2::IncrementStack { subtract: false }],
-                    ),
-                    Cycle::new(
-                        BusMode::Read,
-                        Some(Phi1Source::Stack),
-                        [
-                            Phi2::Move {
-                                source: MoveSource::Data,
-                                destination: MoveDestination::EffectiveAddress,
-                            },
-                            Phi2::IncrementStack { subtract: false },
-                        ],
-                    ),
-                    Cycle::new(
-                        BusMode::Read,
-                        Some(Phi1Source::Stack),
-                        [Phi2::Move {
-                            source: MoveSource::Data,
-                            destination: MoveDestination::EffectiveAddress,
-                        }],
-                    ),
-                    Cycle::new(
-                        BusMode::Read,
-                        None,
-                        [Phi2::LoadInstructionPointerFromEffectiveAddress],
-                    ),
-                    Cycle::new(BusMode::Read, None, [Phi2::IncrementInstructionPointer]),
-                ]);
+                self.push_instruction_rts();
             }
             Opcode::Mos6502(Mos6502Opcode::Sax) => {
                 self.insert_write_effective_address_dependent(
@@ -1299,39 +881,7 @@ impl<V: Variant> Mos6502<V> {
             | Opcode::Mos6502(Mos6502Opcode::Bmi)
             | Opcode::Mos6502(Mos6502Opcode::Bpl)
             | Opcode::Wdc65C02(Wdc65C02Opcode::Bra) => {
-                let branch_taken = match instruction.opcode {
-                    Opcode::Mos6502(Mos6502Opcode::Bvs) => self.state.flags.overflow,
-                    Opcode::Mos6502(Mos6502Opcode::Bvc) => !self.state.flags.overflow,
-                    Opcode::Mos6502(Mos6502Opcode::Beq) => self.state.flags.zero,
-                    Opcode::Mos6502(Mos6502Opcode::Bne) => !self.state.flags.zero,
-                    Opcode::Mos6502(Mos6502Opcode::Bcs) => self.state.flags.carry,
-                    Opcode::Mos6502(Mos6502Opcode::Bcc) => !self.state.flags.carry,
-                    Opcode::Mos6502(Mos6502Opcode::Bmi) => self.state.flags.negative,
-                    Opcode::Mos6502(Mos6502Opcode::Bpl) => !self.state.flags.negative,
-                    Opcode::Wdc65C02(Wdc65C02Opcode::Bra) => true,
-                    _ => unreachable!(),
-                };
-
-                if branch_taken {
-                    self.patch_read_maybe_effective_address_dependent(
-                        instruction,
-                        [Phi2::Move {
-                            source: MoveSource::Data,
-                            destination: MoveDestination::Operand,
-                        }],
-                    );
-
-                    self.state.cycle_queue.extend([Cycle::new(
-                        BusMode::Read,
-                        None,
-                        [Phi2::AddToPointerLikeRegister {
-                            adjustment: IndexAdjustment::OnCarry,
-                            source: AddToPointerLikeRegisterSource::Operand,
-                            destination: PointerLikeRegister::InstructionPointer,
-                            interpretation: ArithmeticOperandInterpretation::Signed,
-                        }],
-                    )]);
-                }
+                self.push_branch_instructions(instruction);
             }
             Opcode::Wdc65C02(Wdc65C02Opcode::Phx) => {
                 self.push_stack_item(MoveSource::Register {
@@ -1370,6 +920,491 @@ impl<V: Variant> Mos6502<V> {
             Opcode::Wdc65C02(Wdc65C02Opcode::Wai) => {
                 todo!()
             }
+        }
+    }
+
+    #[inline]
+    fn push_instruction_rts(&mut self) {
+        self.state.cycle_queue.clear();
+
+        self.state.cycle_queue.extend([
+            Cycle::new(
+                BusMode::Read,
+                None,
+                [Phi2::IncrementStack { subtract: false }],
+            ),
+            Cycle::new(
+                BusMode::Read,
+                Some(Phi1Source::Stack),
+                [
+                    Phi2::Move {
+                        source: MoveSource::Data,
+                        destination: MoveDestination::EffectiveAddress,
+                    },
+                    Phi2::IncrementStack { subtract: false },
+                ],
+            ),
+            Cycle::new(
+                BusMode::Read,
+                Some(Phi1Source::Stack),
+                [Phi2::Move {
+                    source: MoveSource::Data,
+                    destination: MoveDestination::EffectiveAddress,
+                }],
+            ),
+            Cycle::new(
+                BusMode::Read,
+                None,
+                [Phi2::LoadInstructionPointerFromEffectiveAddress],
+            ),
+            Cycle::new(BusMode::Read, None, [Phi2::IncrementInstructionPointer]),
+        ]);
+    }
+
+    #[inline]
+    fn push_instruction_rti(&mut self) {
+        self.state.cycle_queue.clear();
+
+        self.state.cycle_queue.extend([
+            Cycle::new(
+                BusMode::Read,
+                None,
+                [Phi2::IncrementStack { subtract: false }],
+            ),
+            Cycle::new(
+                BusMode::Read,
+                Some(Phi1Source::Stack),
+                [
+                    Phi2::Move {
+                        source: MoveSource::Data,
+                        destination: MoveDestination::Flags,
+                    },
+                    Phi2::IncrementStack { subtract: false },
+                ],
+            ),
+            Cycle::new(
+                BusMode::Read,
+                Some(Phi1Source::Stack),
+                [
+                    Phi2::Move {
+                        source: MoveSource::Data,
+                        destination: MoveDestination::EffectiveAddress,
+                    },
+                    Phi2::IncrementStack { subtract: false },
+                ],
+            ),
+            Cycle::new(
+                BusMode::Read,
+                Some(Phi1Source::Stack),
+                [Phi2::Move {
+                    source: MoveSource::Data,
+                    destination: MoveDestination::EffectiveAddress,
+                }],
+            ),
+            Cycle::new(
+                BusMode::Read,
+                None,
+                [Phi2::LoadInstructionPointerFromEffectiveAddress],
+            ),
+        ]);
+    }
+
+    fn push_instruction_brk(&mut self) {
+        tracing::debug!("BRK occurred");
+
+        self.state.cycle_queue.clear();
+
+        self.state.cycle_queue.extend([
+            Cycle::new(
+                BusMode::Read,
+                Some(Phi1Source::InstructionPointer),
+                [Phi2::IncrementInstructionPointer],
+            ),
+            Cycle::new(
+                BusMode::Write,
+                Some(Phi1Source::Stack),
+                [
+                    Phi2::Move {
+                        source: MoveSource::InstructionPointer { offset: 1 },
+                        destination: MoveDestination::Data,
+                    },
+                    Phi2::IncrementStack { subtract: true },
+                ],
+            ),
+            Cycle::new(
+                BusMode::Write,
+                Some(Phi1Source::Stack),
+                [
+                    Phi2::Move {
+                        source: MoveSource::InstructionPointer { offset: 0 },
+                        destination: MoveDestination::Data,
+                    },
+                    Phi2::IncrementStack { subtract: true },
+                ],
+            ),
+            Cycle::new(
+                BusMode::Write,
+                Some(Phi1Source::Stack),
+                [
+                    Phi2::Move {
+                        source: MoveSource::Flags { break_: true },
+                        destination: MoveDestination::Data,
+                    },
+                    Phi2::IncrementStack { subtract: true },
+                ],
+            ),
+            Cycle::new(
+                BusMode::Read,
+                Some(Phi1Source::Constant(IRQ_VECTOR)),
+                [Phi2::Move {
+                    source: MoveSource::Data,
+                    destination: MoveDestination::EffectiveAddress,
+                }],
+            ),
+            Cycle::new(
+                BusMode::Read,
+                Some(Phi1Source::Constant(IRQ_VECTOR + 1)),
+                [
+                    Phi2::Move {
+                        source: MoveSource::Data,
+                        destination: MoveDestination::EffectiveAddress,
+                    },
+                    Phi2::LoadInstructionPointerFromEffectiveAddress,
+                    Phi2::SetFlag {
+                        flag: Flag::InterruptDisable,
+                        value: true,
+                    },
+                ],
+            ),
+        ]);
+    }
+
+    #[inline]
+    fn push_instruction_jsr(&mut self) {
+        self.state.cycle_queue.clear();
+
+        self.state.cycle_queue.extend([
+            Cycle::new(
+                BusMode::Read,
+                Some(Phi1Source::InstructionPointer),
+                [
+                    Phi2::IncrementInstructionPointer,
+                    Phi2::Move {
+                        source: MoveSource::Data,
+                        destination: MoveDestination::EffectiveAddress,
+                    },
+                ],
+            ),
+            Cycle::new(
+                BusMode::Write,
+                Some(Phi1Source::Stack),
+                [
+                    Phi2::Move {
+                        source: MoveSource::InstructionPointer { offset: 1 },
+                        destination: MoveDestination::Data,
+                    },
+                    Phi2::IncrementStack { subtract: true },
+                ],
+            ),
+            Cycle::new(
+                BusMode::Write,
+                Some(Phi1Source::Stack),
+                [
+                    Phi2::Move {
+                        source: MoveSource::InstructionPointer { offset: 0 },
+                        destination: MoveDestination::Data,
+                    },
+                    Phi2::IncrementStack { subtract: true },
+                ],
+            ),
+            Cycle::new(
+                BusMode::Read,
+                Some(Phi1Source::InstructionPointer),
+                [
+                    Phi2::IncrementInstructionPointer,
+                    Phi2::Move {
+                        source: MoveSource::Data,
+                        destination: MoveDestination::EffectiveAddress,
+                    },
+                ],
+            ),
+            Cycle::new(
+                BusMode::Read,
+                None,
+                [Phi2::LoadInstructionPointerFromEffectiveAddress],
+            ),
+        ]);
+    }
+
+    #[inline]
+    fn push_branch_instructions(&mut self, instruction: &Mos6502InstructionSet) {
+        let branch_taken = match instruction.opcode {
+            Opcode::Mos6502(Mos6502Opcode::Bvs) => self.state.flags.overflow,
+            Opcode::Mos6502(Mos6502Opcode::Bvc) => !self.state.flags.overflow,
+            Opcode::Mos6502(Mos6502Opcode::Beq) => self.state.flags.zero,
+            Opcode::Mos6502(Mos6502Opcode::Bne) => !self.state.flags.zero,
+            Opcode::Mos6502(Mos6502Opcode::Bcs) => self.state.flags.carry,
+            Opcode::Mos6502(Mos6502Opcode::Bcc) => !self.state.flags.carry,
+            Opcode::Mos6502(Mos6502Opcode::Bmi) => self.state.flags.negative,
+            Opcode::Mos6502(Mos6502Opcode::Bpl) => !self.state.flags.negative,
+            Opcode::Wdc65C02(Wdc65C02Opcode::Bra) => true,
+            _ => unreachable!(),
+        };
+
+        if branch_taken {
+            self.patch_read_maybe_effective_address_dependent(
+                instruction,
+                [Phi2::Move {
+                    source: MoveSource::Data,
+                    destination: MoveDestination::Operand,
+                }],
+            );
+
+            self.state.cycle_queue.extend([Cycle::new(
+                BusMode::Read,
+                None,
+                [Phi2::AddToPointerLikeRegister {
+                    adjustment: IndexAdjustment::OnCarry,
+                    source: AddToPointerLikeRegisterSource::Operand,
+                    destination: PointerLikeRegister::InstructionPointer,
+                    interpretation: ArithmeticOperandInterpretation::Signed,
+                }],
+            )]);
+        }
+    }
+
+    #[inline]
+    fn push_steps_for_addressing_mode(
+        &mut self,
+        instruction: &Mos6502InstructionSet,
+        index_adjustment: IndexAdjustment,
+    ) {
+        if let Some(addressing_mode) = instruction.addressing_mode {
+            match addressing_mode {
+                AddressingMode::Mos6502(Mos6502AddressingMode::Absolute) => {
+                    self.state.cycle_queue.extend([
+                        Cycle::new(
+                            BusMode::Read,
+                            Some(Phi1Source::InstructionPointer),
+                            [
+                                Phi2::IncrementInstructionPointer,
+                                Phi2::Move {
+                                    source: MoveSource::Data,
+                                    destination: MoveDestination::EffectiveAddress,
+                                },
+                            ],
+                        ),
+                        Cycle::new(
+                            BusMode::Read,
+                            Some(Phi1Source::InstructionPointer),
+                            [
+                                Phi2::IncrementInstructionPointer,
+                                Phi2::Move {
+                                    source: MoveSource::Data,
+                                    destination: MoveDestination::EffectiveAddress,
+                                },
+                            ],
+                        ),
+                    ]);
+                }
+                AddressingMode::Mos6502(
+                    Mos6502AddressingMode::Immediate | Mos6502AddressingMode::Relative,
+                ) => {
+                    self.state.cycle_queue.extend([Cycle::new(
+                        BusMode::Read,
+                        Some(Phi1Source::InstructionPointer),
+                        [Phi2::IncrementInstructionPointer],
+                    )]);
+                }
+                AddressingMode::Mos6502(Mos6502AddressingMode::XIndexedAbsolute) => {
+                    self.register_indexed_absolute(GeneralPurposeRegister::X, index_adjustment);
+                }
+                AddressingMode::Mos6502(Mos6502AddressingMode::YIndexedAbsolute) => {
+                    self.register_indexed_absolute(GeneralPurposeRegister::Y, index_adjustment);
+                }
+                AddressingMode::Mos6502(Mos6502AddressingMode::AbsoluteIndirect) => {
+                    self.state.cycle_queue.extend([
+                        Cycle::new(
+                            BusMode::Read,
+                            Some(Phi1Source::InstructionPointer),
+                            [
+                                Phi2::IncrementInstructionPointer,
+                                Phi2::Move {
+                                    source: MoveSource::Data,
+                                    destination: MoveDestination::EffectiveAddress,
+                                },
+                            ],
+                        ),
+                        Cycle::new(
+                            BusMode::Read,
+                            Some(Phi1Source::InstructionPointer),
+                            [
+                                Phi2::IncrementInstructionPointer,
+                                Phi2::Move {
+                                    source: MoveSource::Data,
+                                    destination: MoveDestination::EffectiveAddress,
+                                },
+                            ],
+                        ),
+                        Cycle::new(
+                            BusMode::Read,
+                            Some(Phi1Source::EffectiveAddress),
+                            [
+                                Phi2::Move {
+                                    source: MoveSource::Data,
+                                    destination: MoveDestination::EffectiveAddress,
+                                },
+                                Phi2::AddToPointerLikeRegister {
+                                    source: AddToPointerLikeRegisterSource::Constant(1),
+                                    destination: PointerLikeRegister::AddressBus,
+                                    interpretation: ArithmeticOperandInterpretation::Unsigned,
+                                    // Insert carry cycle if the bug is not present
+                                    adjustment: if V::HAS_ABSOLUTE_INDIRECT_PAGE_WRAP_ERRATA {
+                                        IndexAdjustment::Discard
+                                    } else {
+                                        IndexAdjustment::OnCarry
+                                    },
+                                },
+                            ],
+                        ),
+                        Cycle::new(
+                            BusMode::Read,
+                            None,
+                            [Phi2::Move {
+                                source: MoveSource::Data,
+                                destination: MoveDestination::EffectiveAddress,
+                            }],
+                        ),
+                    ]);
+                }
+                AddressingMode::Mos6502(Mos6502AddressingMode::XIndexedZeroPageIndirect) => {
+                    self.state.cycle_queue.extend([
+                        Cycle::new(
+                            BusMode::Read,
+                            Some(Phi1Source::InstructionPointer),
+                            [
+                                Phi2::IncrementInstructionPointer,
+                                Phi2::Move {
+                                    source: MoveSource::Data,
+                                    destination: MoveDestination::EffectiveAddress,
+                                },
+                            ],
+                        ),
+                        Cycle::new(
+                            BusMode::Read,
+                            Some(Phi1Source::EffectiveAddress),
+                            [Phi2::AddToPointerLikeRegister {
+                                source: AddToPointerLikeRegisterSource::Register(
+                                    GeneralPurposeRegister::X,
+                                ),
+                                destination: PointerLikeRegister::AddressBus,
+                                adjustment: IndexAdjustment::Discard,
+                                interpretation: ArithmeticOperandInterpretation::Unsigned,
+                            }],
+                        ),
+                        Cycle::new(
+                            BusMode::Read,
+                            None,
+                            [
+                                Phi2::Move {
+                                    source: MoveSource::Data,
+                                    destination: MoveDestination::EffectiveAddress,
+                                },
+                                Phi2::AddToPointerLikeRegister {
+                                    source: AddToPointerLikeRegisterSource::Constant(1),
+                                    destination: PointerLikeRegister::AddressBus,
+                                    interpretation: ArithmeticOperandInterpretation::Unsigned,
+                                    adjustment: IndexAdjustment::Discard,
+                                },
+                            ],
+                        ),
+                        Cycle::new(
+                            BusMode::Read,
+                            None,
+                            [Phi2::Move {
+                                source: MoveSource::Data,
+                                destination: MoveDestination::EffectiveAddress,
+                            }],
+                        ),
+                    ]);
+                }
+                AddressingMode::Mos6502(Mos6502AddressingMode::ZeroPageIndirectYIndexed) => {
+                    self.state.cycle_queue.extend([
+                        Cycle::new(
+                            BusMode::Read,
+                            Some(Phi1Source::InstructionPointer),
+                            [
+                                Phi2::IncrementInstructionPointer,
+                                Phi2::Move {
+                                    source: MoveSource::Data,
+                                    destination: MoveDestination::EffectiveAddress,
+                                },
+                            ],
+                        ),
+                        Cycle::new(
+                            BusMode::Read,
+                            Some(Phi1Source::EffectiveAddress),
+                            [
+                                Phi2::Move {
+                                    source: MoveSource::Data,
+                                    destination: MoveDestination::EffectiveAddress,
+                                },
+                                Phi2::AddToPointerLikeRegister {
+                                    source: AddToPointerLikeRegisterSource::Constant(1),
+                                    destination: PointerLikeRegister::AddressBus,
+                                    interpretation: ArithmeticOperandInterpretation::Unsigned,
+                                    adjustment: IndexAdjustment::Discard,
+                                },
+                            ],
+                        ),
+                        Cycle::new(
+                            BusMode::Read,
+                            None,
+                            [
+                                Phi2::Move {
+                                    source: MoveSource::Data,
+                                    destination: MoveDestination::EffectiveAddress,
+                                },
+                                Phi2::AddToPointerLikeRegister {
+                                    source: AddToPointerLikeRegisterSource::Register(
+                                        GeneralPurposeRegister::Y,
+                                    ),
+                                    destination: PointerLikeRegister::EffectiveAddress,
+                                    interpretation: ArithmeticOperandInterpretation::Unsigned,
+                                    adjustment: index_adjustment,
+                                },
+                            ],
+                        ),
+                    ]);
+                }
+                AddressingMode::Mos6502(Mos6502AddressingMode::XIndexedZeroPage) => {
+                    self.register_indexed_zero_page(GeneralPurposeRegister::X);
+                }
+                AddressingMode::Mos6502(Mos6502AddressingMode::YIndexedZeroPage) => {
+                    self.register_indexed_zero_page(GeneralPurposeRegister::Y);
+                }
+                AddressingMode::Mos6502(Mos6502AddressingMode::ZeroPage) => {
+                    self.state.cycle_queue.extend([Cycle::new(
+                        BusMode::Read,
+                        Some(Phi1Source::InstructionPointer),
+                        [
+                            Phi2::IncrementInstructionPointer,
+                            Phi2::Move {
+                                source: MoveSource::Data,
+                                destination: MoveDestination::EffectiveAddress,
+                            },
+                        ],
+                    )]);
+                }
+                AddressingMode::Mos6502(Mos6502AddressingMode::Accumulator) => {
+                    self.state.cycle_queue.extend([Cycle::dummy()]);
+                }
+                AddressingMode::Wdc65C02(Wdc65C02AddressingMode::ZeroPageIndirect) => {
+                    todo!()
+                }
+            }
+        } else {
+            self.state.cycle_queue.extend([Cycle::dummy()]);
         }
     }
 

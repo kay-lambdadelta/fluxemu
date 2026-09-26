@@ -56,7 +56,7 @@ impl Queue {
     pub fn handle_deadlines_before(
         &self,
         timestamp: Period,
-        component_registry: &ComponentRegistry<'_>,
+        component_registry: ComponentRegistry<'_>,
     ) {
         loop {
             let mut heap_guard = self.heap.lock().unwrap();

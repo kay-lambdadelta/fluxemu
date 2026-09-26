@@ -17,9 +17,7 @@ pub trait ComponentConfig<P: Platform>: Debug + Sized + Sync + Send {
 
     /// Do setup for subsystems that cannot be initialized during [`Self::build_component`]
     #[allow(unused)]
-    fn late_initialize(component: &mut Self::Component, data: &LateContext<P>) {
-        Default::default()
-    }
+    fn late_initialize(component: &mut Self::Component, data: &LateContext<P>) {}
 }
 
 /// Late initialized data the runtime will produce for you

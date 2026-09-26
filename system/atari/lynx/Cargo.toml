@@ -24,3 +24,6 @@ wgpu = { workspace = true, optional = true }
 
 [features]
 webgpu = ["dep:wgpu", "fluxemu-graphics/webgpu"]
+
+[lints]
+workspace = true
