@@ -11,6 +11,7 @@ pub struct Rectangle<T: Scalar> {
 }
 
 impl<T: Scalar> Rectangle<T> {
+    #[inline]
     pub fn from_min_and_size(min: Point2<T>, size: Vector2<T>) -> Self
     where
         T: ClosedAddAssign + Clone,
@@ -21,6 +22,7 @@ impl<T: Scalar> Rectangle<T> {
         }
     }
 
+    #[inline]
     pub fn from_size(size: Vector2<T>) -> Self
     where
         T: ClosedAddAssign + Zero,
@@ -28,10 +30,12 @@ impl<T: Scalar> Rectangle<T> {
         Self::from_min_and_size(Point2::origin(), size)
     }
 
+    #[inline]
     pub fn from_min_and_max(min: Point2<T>, max: Point2<T>) -> Self {
         Self { min, max }
     }
 
+    #[inline]
     pub fn from_range(x: RangeInclusive<T>, y: RangeInclusive<T>) -> Self {
         Self::from_min_and_max(
             Point2::new(x.start().clone(), y.start().clone()),
@@ -39,6 +43,7 @@ impl<T: Scalar> Rectangle<T> {
         )
     }
 
+    #[inline]
     pub fn width(&self) -> T
     where
         T: ClosedSubAssign + Clone,
@@ -46,6 +51,7 @@ impl<T: Scalar> Rectangle<T> {
         self.size().x.clone()
     }
 
+    #[inline]
     pub fn height(&self) -> T
     where
         T: ClosedSubAssign + Clone,
@@ -53,6 +59,7 @@ impl<T: Scalar> Rectangle<T> {
         self.size().y.clone()
     }
 
+    #[inline]
     pub fn size(&self) -> Vector2<T>
     where
         T: ClosedSubAssign + Clone,
@@ -60,6 +67,7 @@ impl<T: Scalar> Rectangle<T> {
         self.max.clone() - self.min.clone()
     }
 
+    #[inline]
     pub fn area(&self) -> T
     where
         T: ClosedSubAssign + Clone + Mul<Output = T>,
@@ -67,6 +75,7 @@ impl<T: Scalar> Rectangle<T> {
         self.width() * self.height()
     }
 
+    #[inline]
     pub fn is_square(&self) -> bool
     where
         T: ClosedSubAssign + Clone,
@@ -74,6 +83,7 @@ impl<T: Scalar> Rectangle<T> {
         self.width() == self.height()
     }
 
+    #[inline]
     pub fn is_valid(&self) -> bool
     where
         T: ClosedSubAssign + PartialOrd,
@@ -81,6 +91,7 @@ impl<T: Scalar> Rectangle<T> {
         self.min.x <= self.max.x && self.min.y <= self.max.y
     }
 
+    #[inline]
     pub fn overlaps(&self, other: &Self) -> bool
     where
         T: ClosedAddAssign + PartialOrd,
@@ -91,6 +102,7 @@ impl<T: Scalar> Rectangle<T> {
             && self.min.y <= other.max.y
     }
 
+    #[inline]
     pub fn x_range(&self) -> RangeInclusive<T>
     where
         T: ClosedAddAssign + Clone,
@@ -98,6 +110,7 @@ impl<T: Scalar> Rectangle<T> {
         self.min.x.clone()..=self.max.x.clone()
     }
 
+    #[inline]
     pub fn y_range(&self) -> RangeInclusive<T>
     where
         T: ClosedAddAssign + Clone,
