@@ -155,8 +155,8 @@ impl<STORAGE: Storage> Texture<STORAGE> {
         let (x0, x1) = resolve_range(x, self.width());
         let (y0, y1) = resolve_range(y, self.height());
 
-        let start = Point2::new(x0, y0);
-        let end = Point2::new(x1, y1);
+        let start = Point2::new(self.view.min.x + x0, self.view.min.y + y0);
+        let end = Point2::new(self.view.min.x + x1, self.view.min.y + y1);
 
         Texture {
             storage: &self.storage,
@@ -178,8 +178,8 @@ impl<STORAGE: Storage> Texture<STORAGE> {
         let (x0, x1) = resolve_range(x, self.width());
         let (y0, y1) = resolve_range(y, self.height());
 
-        let start = Point2::new(x0, y0);
-        let end = Point2::new(x1, y1);
+        let start = Point2::new(self.view.min.x + x0, self.view.min.y + y0);
+        let end = Point2::new(self.view.min.x + x1, self.view.min.y + y1);
 
         Texture {
             storage: &mut self.storage,
@@ -194,8 +194,8 @@ impl<STORAGE: Storage> Texture<STORAGE> {
         let (x0, x1) = resolve_range(x, self.width());
         let (y0, y1) = resolve_range(y, self.height());
 
-        let start = Point2::new(x0, y0);
-        let end = Point2::new(x1, y1);
+        let start = Point2::new(self.view.min.x + x0, self.view.min.y + y0);
+        let end = Point2::new(self.view.min.x + x1, self.view.min.y + y1);
 
         Texture {
             storage: self.storage,
@@ -516,62 +516,17 @@ impl<STORAGE: Storage> Texture<STORAGE> {
             storage: bytemuck::cast_slice_mut(&mut self.storage),
         }
     }
-}
 
-impl<'a, P> Texture<&'a mut [P]> {
+    // Returns the view rectangle of this texture in absolute coordinates
     #[inline]
-    pub fn split_rows_mut(self, row: usize) -> (Texture<&'a mut [P]>, Texture<&'a mut [P]>) {
-        assert!(row <= self.height());
-
-        let global_split_row = self.view.min.y + row;
-        let split_index = global_split_row * self.storage_size.x;
-
-        let (top_storage, bottom_storage) = self.storage.split_at_mut(split_index);
-
-        let top = Texture {
-            storage: top_storage,
-            storage_size: self.storage_size,
-            view: Rectangle::from_min_and_max(
-                self.view.min,
-                Point2::new(self.view.max.x, global_split_row),
-            ),
-        };
-
-        let bottom = Texture {
-            storage: bottom_storage,
-            storage_size: self.storage_size,
-            view: Rectangle::from_min_and_max(
-                Point2::new(self.view.min.x, 0),
-                Point2::new(self.view.max.x, self.view.max.y - global_split_row),
-            ),
-        };
-
-        (top, bottom)
-    }
-
-    #[inline]
-    pub fn split_into_bands_mut(self, bands: usize) -> Vec<Texture<&'a mut [P]>> {
-        if bands <= 1 || self.height() == 0 {
-            return vec![self];
-        }
-
-        let height = self.height();
-        let band_height = height.div_ceil(bands);
-
-        let (first, rest) = self.split_rows_mut(band_height.min(height));
-        let mut result = vec![first];
-
-        if rest.height() > 0 {
-            result.extend(rest.split_into_bands_mut(bands - 1));
-        }
-
-        result
+    pub fn view_rect(&self) -> Rectangle<usize> {
+        self.view
     }
 }
 
-impl<'a, P> Texture<&'a [P]> {
+impl<'a, T> RefTexture<'a, T> {
     #[inline]
-    pub fn split_rows(self, row: usize) -> (Texture<&'a [P]>, Texture<&'a [P]>) {
+    pub fn split_rows(self, row: usize) -> (Texture<&'a [T]>, Texture<&'a [T]>) {
         assert!(row <= self.height());
 
         let global_split_row = self.view.min.y + row;
@@ -601,7 +556,7 @@ impl<'a, P> Texture<&'a [P]> {
     }
 
     #[inline]
-    pub fn split_into_bands(self, bands: usize) -> Vec<Texture<&'a [P]>> {
+    pub fn split_into_bands(self, bands: usize) -> Vec<Texture<&'a [T]>> {
         if bands <= 1 || self.height() == 0 {
             return vec![self];
         }
@@ -617,6 +572,71 @@ impl<'a, P> Texture<&'a [P]> {
         }
 
         result
+    }
+}
+
+impl<'a, T> RefMutTexture<'a, T> {
+    #[inline]
+    pub fn split_rows_mut(self, row: usize) -> (RefMutTexture<'a, T>, RefMutTexture<'a, T>) {
+        assert!(row <= self.height());
+
+        let global_split_row = self.view.min.y + row;
+        let split_index = global_split_row * self.storage_size.x;
+
+        let (top_storage, bottom_storage) = self.storage.split_at_mut(split_index);
+
+        let top = Texture {
+            storage: top_storage,
+            storage_size: self.storage_size,
+            view: Rectangle::from_min_and_max(
+                self.view.min,
+                Point2::new(self.view.max.x, global_split_row),
+            ),
+        };
+
+        let bottom = Texture {
+            storage: bottom_storage,
+            storage_size: self.storage_size,
+            view: Rectangle::from_min_and_max(
+                Point2::new(self.view.min.x, 0),
+                Point2::new(self.view.max.x, self.view.max.y - global_split_row),
+            ),
+        };
+
+        (top, bottom)
+    }
+
+    #[inline]
+    pub fn split_into_bands_mut(self, bands: usize) -> Vec<RefMutTexture<'a, T>> {
+        if bands <= 1 || self.height() == 0 {
+            return vec![self];
+        }
+
+        let height = self.height();
+        let band_height = height.div_ceil(bands);
+
+        let (first, rest) = self.split_rows_mut(band_height.min(height));
+        let mut result = vec![first];
+
+        if rest.height() > 0 {
+            result.extend(rest.split_into_bands_mut(bands - 1));
+        }
+
+        result
+    }
+}
+
+impl<T> OwnedTexture<T> {
+    #[inline]
+    pub fn cast_owned<T2: NoUninit + AnyBitPattern>(self) -> OwnedTexture<T2>
+    where
+        T: NoUninit + AnyBitPattern,
+    {
+        Texture {
+            storage_size: self.storage_size,
+            view: self.view,
+            storage: bytemuck::cast_slice_box(self.storage),
+        }
     }
 }
 
