@@ -404,70 +404,58 @@ pub fn handle_libinput_events<R: GraphicsRuntime>(
                     );
                 }
 
-                if frontend.overlay_active() {
+                if !frontend.machine_has_focus() {
                     egui_input_collector.handle_keyboard(&keyboard_event, xkb_state);
                 }
             }
-            input::Event::Pointer(pointer_event) => {
-                if !frontend.overlay_active() {
-                    continue;
+            input::Event::Pointer(pointer_event) => match pointer_event {
+                PointerEvent::Motion(motion_event) => {
+                    egui_input_collector.handle_pointer_motion(&motion_event);
                 }
-
-                match pointer_event {
-                    PointerEvent::Motion(motion_event) => {
-                        egui_input_collector.handle_pointer_motion(&motion_event);
-                    }
-                    PointerEvent::MotionAbsolute(motion_event) => {
-                        egui_input_collector.handle_pointer_motion_absolute(
-                            &motion_event,
-                            screen_width,
-                            screen_height,
-                        );
-                    }
-                    PointerEvent::Button(button_event) => {
-                        egui_input_collector.handle_pointer_button(&button_event);
-                    }
-                    PointerEvent::ScrollWheel(scroll_event) => {
-                        egui_input_collector.handle_scroll_wheel(&scroll_event);
-                    }
-                    PointerEvent::ScrollFinger(scroll_event) => {
-                        egui_input_collector.handle_scroll_finger(&scroll_event);
-                    }
-                    PointerEvent::ScrollContinuous(scroll_event) => {
-                        egui_input_collector.handle_scroll_continuous(&scroll_event);
-                    }
-                    _ => {}
+                PointerEvent::MotionAbsolute(motion_event) => {
+                    egui_input_collector.handle_pointer_motion_absolute(
+                        &motion_event,
+                        screen_width,
+                        screen_height,
+                    );
                 }
-            }
-            input::Event::Touch(touch_event) => {
-                if !frontend.overlay_active() {
-                    continue;
+                PointerEvent::Button(button_event) => {
+                    egui_input_collector.handle_pointer_button(&button_event);
                 }
-
-                match touch_event {
-                    TouchEvent::Down(down_event) => {
-                        egui_input_collector.handle_touch_down(
-                            &down_event,
-                            screen_width,
-                            screen_height,
-                        );
-                    }
-                    TouchEvent::Motion(motion_event) => {
-                        egui_input_collector.handle_touch_motion(
-                            &motion_event,
-                            screen_width,
-                            screen_height,
-                        );
-                    }
-                    TouchEvent::Up(up_event) => {
-                        egui_input_collector.handle_touch_up(&up_event);
-                    }
-                    TouchEvent::Cancel(cancel_event) => {
-                        egui_input_collector.handle_touch_cancel(&cancel_event);
-                    }
-                    _ => {}
+                PointerEvent::ScrollWheel(scroll_event) => {
+                    egui_input_collector.handle_scroll_wheel(&scroll_event);
                 }
-            }
+                PointerEvent::ScrollFinger(scroll_event) => {
+                    egui_input_collector.handle_scroll_finger(&scroll_event);
+                }
+                PointerEvent::ScrollContinuous(scroll_event) => {
+                    egui_input_collector.handle_scroll_continuous(&scroll_event);
+                }
+                _ => {}
+            },
+            input::Event::Touch(touch_event) => match touch_event {
+                TouchEvent::Down(down_event) => {
+                    egui_input_collector.handle_touch_down(
+                        &down_event,
+                        screen_width,
+                        screen_height,
+                    );
+                }
+                TouchEvent::Motion(motion_event) => {
+                    egui_input_collector.handle_touch_motion(
+                        &motion_event,
+                        screen_width,
+                        screen_height,
+                    );
+                }
+                TouchEvent::Up(up_event) => {
+                    egui_input_collector.handle_touch_up(&up_event);
+                }
+                TouchEvent::Cancel(cancel_event) => {
+                    egui_input_collector.handle_touch_cancel(&cancel_event);
+                }
+                _ => {}
+            },
             _ => {}
         }
     }

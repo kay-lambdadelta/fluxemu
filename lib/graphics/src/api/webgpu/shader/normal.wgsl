@@ -40,22 +40,5 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let viewport_aspect = uniforms.viewport_size.x / uniforms.viewport_size.y;
-    let image_aspect = uniforms.framebuffer_size.x / uniforms.framebuffer_size.y;
-
-    var uv = in.uv;
-
-    if (viewport_aspect > image_aspect) {
-        let scale = image_aspect / viewport_aspect;
-        uv.x = (uv.x - 0.5) / scale + 0.5;
-    } else {
-        let scale = viewport_aspect / image_aspect;
-        uv.y = (uv.y - 0.5) / scale + 0.5;
-    }
-
-    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
-        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
-    }
-
-    return textureSample(image, image_sampler, uv);
+    return textureSample(image, image_sampler, in.uv);
 }

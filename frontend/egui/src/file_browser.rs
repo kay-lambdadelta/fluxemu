@@ -22,7 +22,7 @@ use palette::{
 use rust_i18n::t;
 use strum::{AsRefStr, EnumIter};
 
-use crate::{MachineInitializationStep, to_egui_color, toast::ToastManager};
+use crate::{MachineInitializationStep, toast::ToastManager, utils::to_egui_color};
 
 #[derive(Clone, Debug)]
 pub struct DirectoryEntry {

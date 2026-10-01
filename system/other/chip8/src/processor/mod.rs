@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 
 use super::Chip8Mode;
 use crate::{
-    display::{Chip8Display, SupportedGraphicsApiChip8Display},
+    display::{Chip8Display, SupportedGraphicsApi},
     processor::{
         decoder::decode_instruction,
         input::{DEFAULT_MAPPINGS, PRESENT_INPUTS},
@@ -84,7 +84,7 @@ impl Default for ProcessorState {
 }
 
 #[derive(Debug)]
-pub struct Chip8Processor<G: SupportedGraphicsApiChip8Display> {
+pub struct Chip8Processor<G: SupportedGraphicsApi> {
     state: ProcessorState,
     /// Keypad virtual gamepad
     keypad: Arc<LogicalInputDevice>,
@@ -93,7 +93,7 @@ pub struct Chip8Processor<G: SupportedGraphicsApiChip8Display> {
     config: Chip8ProcessorConfig<G>,
 }
 
-impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
+impl<G: SupportedGraphicsApi> Chip8Processor<G> {
     #[inline]
     fn task(&mut self, runtime_handle: &RuntimeHandle, quanta_allocator: QuantaAllocator<'_, '_>) {
         let mut address_space = runtime_handle
@@ -189,12 +189,12 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Processor<G> {
     }
 }
 
-impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Processor<G> {
+impl<G: SupportedGraphicsApi> Component for Chip8Processor<G> {
     type Event = ();
 }
 
 #[derive(Debug)]
-pub struct Chip8ProcessorConfig<G: SupportedGraphicsApiChip8Display> {
+pub struct Chip8ProcessorConfig<G: SupportedGraphicsApi> {
     pub cpu_address_space: AddressSpaceId,
     pub display: ComponentPath,
     pub audio: ComponentPath,
@@ -206,7 +206,7 @@ pub struct Chip8ProcessorConfig<G: SupportedGraphicsApiChip8Display> {
     pub _phantom: PhantomData<fn() -> G>,
 }
 
-impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig<P>
+impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<P>
     for Chip8ProcessorConfig<P::GraphicsApi>
 {
     type Component = Chip8Processor<P::GraphicsApi>;

@@ -1,7 +1,7 @@
 use super::ReadRegisters;
-use crate::tia::{ObjectId, SupportedGraphicsApiTia, Tia, region::Region};
+use crate::tia::{ObjectId, SupportedGraphicsApi, Tia, region::Region};
 
-impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
+impl<R: Region, G: SupportedGraphicsApi> Tia<R, G> {
     pub(crate) fn handle_read_register(&self, data: &mut u8, address: ReadRegisters) {
         match address {
             ReadRegisters::Cxm0p => {

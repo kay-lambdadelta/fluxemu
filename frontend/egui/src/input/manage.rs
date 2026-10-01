@@ -7,7 +7,7 @@ use fluxemu_input::{
 };
 use indexmap::{IndexMap, IndexSet};
 
-use crate::{Frontend, MachineContext, PhysicalInputDeviceState, Platform};
+use crate::{Frontend, MachineContext, PhysicalInputDeviceState, Platform, menu_panel::TabId};
 
 impl<P: Platform> Frontend<P> {
     pub fn insert_input(
@@ -18,6 +18,8 @@ impl<P: Platform> Frontend<P> {
     ) {
         // Make sure our main loop is ran
         self.egui_context.request_repaint();
+
+        let mut machine_has_focus = self.machine_has_focus();
 
         let Some(physical_input_device_state) = self.physical_input_devices.get_mut(&origin) else {
             tracing::error!("Ignoring unknown device {}", origin);
@@ -57,22 +59,15 @@ impl<P: Platform> Frontend<P> {
 
                 match hotkey_action {
                     Hotkey::ToggleMenu => {
-                        if self.frontend_overlay_active {
-                            if let Some(MachineContext { controller, .. }) =
-                                &mut self.machine_context
-                            {
-                                // We don't allow the overlay to be deactivated if there isn't an active machine
-                                self.frontend_overlay_active = false;
-                                controller.set_paused(false);
-                            }
-                        } else {
-                            // Pause machine if one is active
-                            if let Some(MachineContext {
-                                machine,
-                                controller,
-                                ..
-                            }) = &mut self.machine_context
-                            {
+                        // Pause machine if one is active
+                        if let Some(MachineContext {
+                            machine,
+                            controller,
+                            ..
+                        }) = &mut self.machine_context
+                            && self.menu_panel.current_tab == TabId::Machine
+                        {
+                            if self.menu_panel.is_expanded {
                                 // Enter runtime
                                 let runtime_guard = machine.enter_runtime();
 
@@ -91,11 +86,14 @@ impl<P: Platform> Frontend<P> {
                                         .insert_inputs(logical_input_device_path, unset_inputs);
                                 }
 
-                                // Pause machine if one exists
+                                controller.set_paused(false);
+                                machine_has_focus = true;
+                                self.menu_panel.is_expanded = false;
+                            } else {
                                 controller.set_paused(true);
+                                machine_has_focus = false;
+                                self.menu_panel.is_expanded = true;
                             }
-
-                            self.frontend_overlay_active = true;
                         }
                     }
                     Hotkey::FastForward => {}
@@ -129,8 +127,13 @@ impl<P: Platform> Frontend<P> {
 
         // Ignore if that key participated in a hotkey(s)
         if !was_relevant_for_hotkeys {
-            if !self.frontend_overlay_active {
-                if let Some(MachineContext { machine, .. }) = &self.machine_context
+            if machine_has_focus {
+                if let Some(MachineContext {
+                    machine,
+                    controller,
+                    ..
+                }) = &self.machine_context
+                    && !controller.get_paused()
                     && let Some(program_specification) = machine.program_specification()
                 {
                     // Enter runtime
@@ -177,6 +180,8 @@ impl<P: Platform> Frontend<P> {
                 }
             }
         }
+
+        self.set_machine_focus(machine_has_focus);
     }
 
     pub fn register_gamepad(

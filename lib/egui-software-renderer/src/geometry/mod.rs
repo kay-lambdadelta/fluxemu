@@ -1,7 +1,11 @@
+use std::sync::Arc;
+
 use egui::TextureId;
 use fluxemu_math::rectangle::Rectangle;
 use nalgebra::{Point2, Vector2};
 use palette::Srgba;
+
+use crate::callback::Callback;
 
 pub mod fill;
 pub mod reduce;
@@ -37,14 +41,17 @@ pub struct SolidQuad {
 }
 
 #[derive(Debug)]
-pub struct Shape {
+pub struct Group<P: 'static> {
     pub rect: Rectangle<f32>,
-    pub texture_id: TextureId,
-    pub primitives: Vec<Primitive>,
+    pub primitives: Vec<Primitive<P>>,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum Primitive {
-    Triangle(Triangle),
+#[derive(Debug)]
+pub enum Primitive<P: 'static> {
+    Triangle {
+        shape: Triangle,
+        texture_id: TextureId,
+    },
     SolidQuad(SolidQuad),
+    Callback(Arc<Callback<P>>),
 }

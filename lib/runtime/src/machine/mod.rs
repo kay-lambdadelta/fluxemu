@@ -3,16 +3,18 @@
 //! The main runtime for the FluxEMU emulator framework
 
 use std::{
+    any::Any,
     cell::{Cell, RefCell, UnsafeCell},
     collections::{HashMap, HashSet},
     fmt::Debug,
+    hash::BuildHasher,
     marker::PhantomData,
-    ops::Deref,
     rc::{Rc, Weak},
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
+use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_input::{InputId, InputState};
 use fluxemu_program::{Manifest, ProgramManager};
 use num::FromPrimitive;
@@ -22,10 +24,12 @@ use tracing::Level;
 
 use crate::{
     RuntimeHandle,
-    component::{ComponentRegistryData, LocalComponentRegistryData},
+    component::{ComponentRegistry, ComponentRegistryData, LocalComponentRegistryData},
     input::LogicalInputDevice,
     machine::builder::MachineBuilder,
-    memory::{AddressSpaceData, AddressSpaceId, LocalMemoryRegistryData, MemoryRegistryData},
+    memory::{
+        AddressSpace, AddressSpaceData, AddressSpaceId, LocalMemoryRegistryData, MemoryRegistryData,
+    },
     path::ResourcePath,
     platform::{Platform, TestPlatform},
     scheduler::{Period, Scheduler},
@@ -50,7 +54,8 @@ where
     /// Memory Registry
     pub(crate) memory_registry_data: MemoryRegistryData,
     /// All framebuffers this machine has
-    pub(crate) framebuffers: HashSet<ResourcePath>,
+    pub(crate) framebuffers:
+        HashMap<ResourcePath, Mutex<Box<dyn Any + Send + Sync>>, FxBuildHasher>,
     /// All audio outputs this machine has
     pub(crate) audio_channels: HashSet<ResourcePath>,
     /// The program that this machine was set up with, if any
@@ -180,6 +185,32 @@ impl RuntimeGuard<'_> {
             .unwrap();
     }
 
+    /// List all the framebuffers inside this machine
+    pub fn list_framebuffers(&self) -> impl Iterator<Item = &ResourcePath> {
+        self.runtime.machine().framebuffers.keys()
+    }
+
+    pub fn read_framebuffer<G: GraphicsApi, T>(
+        &self,
+        path: &ResourcePath,
+        target_timestamp: &Period,
+        callback: impl FnOnce(&G::Framebuffer) -> T,
+    ) -> Option<T> {
+        // Ensure we are advanced to at least this timestamp
+        self.runtime.component_registry().interact_dyn(
+            path.parent().unwrap(),
+            target_timestamp,
+            |_| {
+                let framebuffer = self.runtime.machine().framebuffers.get(path)?;
+                let framebuffer_guard = framebuffer.lock().unwrap();
+
+                let framebuffer = (*framebuffer_guard).downcast_ref()?;
+
+                Some(callback(framebuffer))
+            },
+        )?
+    }
+
     /// List of paths to any audio outputs this machine was created with
     #[inline]
     pub fn audio_outputs(&self) -> &HashSet<ResourcePath> {
@@ -188,22 +219,20 @@ impl RuntimeGuard<'_> {
 
     /// Input devices this machine was created with
     #[inline]
-    pub fn input_devices(&self) -> &HashMap<ResourcePath, Arc<LogicalInputDevice>, FxBuildHasher> {
+    pub fn input_devices(
+        &self,
+    ) -> &HashMap<ResourcePath, Arc<LogicalInputDevice>, impl BuildHasher> {
         &self.runtime.machine().input_devices
     }
 
-    /// Framebuffers this machine was created with
     #[inline]
-    pub fn framebuffer_paths(&self) -> &HashSet<ResourcePath> {
-        &self.runtime.machine().framebuffers
+    pub fn address_space(&self, address_space_id: AddressSpaceId) -> Option<AddressSpace<'_>> {
+        self.runtime.address_space(address_space_id)
     }
-}
 
-impl Deref for RuntimeGuard<'_> {
-    type Target = RuntimeHandle;
-
-    fn deref(&self) -> &Self::Target {
-        &self.runtime
+    #[inline]
+    pub fn component_registry(&self) -> ComponentRegistry<'_> {
+        self.runtime.component_registry()
     }
 }
 
@@ -228,7 +257,7 @@ impl Drop for RuntimeGuard<'_> {
         unsafe { self.component_registry().release_all() };
 
         // Release all memory regions
-        self.memory_registry().release_all();
+        self.runtime.memory_registry().release_all();
     }
 }
 

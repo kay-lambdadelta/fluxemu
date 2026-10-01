@@ -94,6 +94,7 @@ ratatui = ["dep:fluxemu-frontend-ratatui", "dep:ratatui-image", "ratatui-image/c
 webgpu = [
   "dep:egui-wgpu",
   "dep:wgpu",
+  "fluxemu-frontend-egui/webgpu",
   "fluxemu-graphics/webgpu",
   "fluxemu-system-atari-2600/webgpu",
   "fluxemu-system-atari-lynx/webgpu",

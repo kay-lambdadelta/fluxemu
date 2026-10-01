@@ -11,7 +11,7 @@ use nalgebra::Point2;
 use crate::ppu::{
     ATTRIBUTE_BASE_ADDRESS, BACKGROUND_PALETTE_BASE_ADDRESS, NAMETABLE_BASE_ADDRESS, Ppu,
     SPRITE_PALETTE_BASE_ADDRESS, TOTAL_SCANLINE_LENGTH,
-    backend::SupportedGraphicsApiPpu,
+    backend::SupportedGraphicsApi,
     background::{BackgroundPipelineState, SpritePipelineState},
     color::PpuColorIndex,
     oam::{CurrentlyRenderingSprite, OamSprite, SpriteEvaluationState},
@@ -19,7 +19,7 @@ use crate::ppu::{
     state::VramAddressPointerContents,
 };
 
-impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
+impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
     #[inline]
     pub(super) fn task(
         &mut self,
@@ -188,9 +188,11 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Ppu<R, G> {
                 };
 
             if render {
+                let clamped_index = (color_index as usize).min(self.palette.len() - 1);
+
                 self.staging_buffer
                     [Point2::new(scanline_position_x, self.state.cycle_counter.y).cast()] =
-                    color_index;
+                    self.palette[clamped_index].into();
             }
 
             self.sprite_zero_check(scanline_position_x, is_background_opaque);

@@ -2,8 +2,11 @@
 
 use std::ops::BitOr;
 
-use fluxemu_graphics::api::GraphicsApi;
+use fluxemu_graphics::{api::GraphicsApi, texture::RefTexture};
+use palette::Srgba;
 use serde::{Deserialize, Serialize};
+
+use crate::ResourcePath;
 
 /// Version specifier for graphics apis
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -52,4 +55,20 @@ impl<G: GraphicsApi> Default for GraphicsRequirements<G> {
             preferred: Default::default(),
         }
     }
+}
+
+/// A display backend for components which mostly commit a CPU side framebuffer
+pub trait SimpleDisplayBackend {
+    type GraphicsApi: GraphicsApi;
+
+    fn new(initialization_data: <Self::GraphicsApi as GraphicsApi>::InitializationData) -> Self;
+    fn produce_initial_framebuffer(
+        &mut self,
+        path: &ResourcePath,
+    ) -> <Self::GraphicsApi as GraphicsApi>::Framebuffer;
+    fn commit_staging_buffer(
+        &mut self,
+        staging_buffer: RefTexture<Srgba<u8>>,
+        framebuffer: &mut <Self::GraphicsApi as GraphicsApi>::Framebuffer,
+    );
 }

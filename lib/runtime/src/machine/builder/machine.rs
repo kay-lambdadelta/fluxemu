@@ -3,7 +3,7 @@ use std::{
     collections::{HashMap, HashSet},
     marker::PhantomData,
     ops::RangeInclusive,
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 use bytes::Bytes;
@@ -17,7 +17,10 @@ use crate::{
     input::LogicalInputDevice,
     machine::{
         Machine,
-        builder::{ComponentBuilder, ComponentData, RomRequirement, SealedMachineBuilder},
+        builder::{
+            ComponentBuilder, ComponentData, FramebufferLateInitializer, RomRequirement,
+            SealedMachineBuilder,
+        },
     },
     memory::{
         Address, AddressSpaceData, AddressSpaceId, MemoryMapCommand, MemoryRegistryData,
@@ -50,7 +53,8 @@ pub struct MachineBuilder<P: Platform> {
     pub(super) address_spaces: HashMap<AddressSpaceId, AddressSpaceSetupData>,
     pub(super) component_data: HashMap<ComponentPath, ComponentData<P>>,
     pub(super) input_devices: HashMap<ResourcePath, Arc<LogicalInputDevice>, FxBuildHasher>,
-    pub(super) framebuffers: HashSet<ResourcePath>,
+    pub(super) framebuffer_late_initializers:
+        HashMap<ResourcePath, FramebufferLateInitializer<P>, FxBuildHasher>,
     pub(super) audio_channels: HashSet<ResourcePath>,
     pub(super) required_memory_regions: HashMap<ResourcePath, RegionInitializationData>,
     pub(super) scheduler: Scheduler,
@@ -70,7 +74,7 @@ impl<P: Platform> MachineBuilder<P> {
             address_spaces: HashMap::default(),
             component_data: HashMap::default(),
             input_devices: HashMap::default(),
-            framebuffers: HashSet::default(),
+            framebuffer_late_initializers: HashMap::default(),
             audio_channels: HashSet::default(),
             scheduler: Scheduler::default(),
         }
@@ -274,11 +278,20 @@ impl<P: Platform> MachineBuilder<P> {
 
         let required_memory_regions = self.required_memory_regions;
 
+        let framebuffers = self
+            .framebuffer_late_initializers
+            .keys()
+            .map(|path| {
+                // Put dummy value in hashmap until initialization is complete
+                (path.clone(), Mutex::new(Box::new(()) as Box<_>))
+            })
+            .collect();
+
         let machine = Arc::new(Machine {
             scheduler: self.scheduler,
             address_spaces,
             input_devices: self.input_devices,
-            framebuffers: self.framebuffers,
+            framebuffers,
             program_specification: self.program_specification,
             audio_channels: self.audio_channels,
             component_registry_data: self.component_registry_data,
@@ -297,6 +310,7 @@ impl<P: Platform> MachineBuilder<P> {
         SealedMachineBuilder {
             machine,
             component_late_initializers,
+            framebuffer_late_initializers: self.framebuffer_late_initializers,
             graphics_requirements,
         }
     }

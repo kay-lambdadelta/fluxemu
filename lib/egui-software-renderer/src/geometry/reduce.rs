@@ -1,33 +1,38 @@
-use egui::{Context, epaint::ClippedShape};
+use egui::{Context, PaintCallback, epaint::ClippedShape};
 use fluxemu_math::rectangle::Rectangle;
 use itertools::Itertools;
 use nalgebra::Point2;
 use palette::Srgba;
 
-use crate::geometry::{Primitive, Shape, SolidQuad, Triangle, Vertex};
+use crate::{
+    callback::Callback,
+    geometry::{Group, Primitive, SolidQuad, Triangle, Vertex},
+};
 
 const WHITE_UV: Point2<f32> = Point2::new(0.0, 0.0);
 
 #[inline]
-pub fn reduce_geometry(
+pub fn reduce_geometry<P: 'static>(
     context: &Context,
     input_shapes: Vec<ClippedShape>,
     pixels_per_point: f32,
-) -> impl Iterator<Item = Shape> {
-    let mut shapes = Vec::default();
+) -> impl Iterator<Item = Group<P>> {
+    let mut shapes: Vec<Group<_>> = Vec::default();
 
     for clipped_primitive in context.tessellate(input_shapes, pixels_per_point) {
-        match clipped_primitive.primitive {
+        let group = match clipped_primitive.primitive {
             egui::epaint::Primitive::Mesh(mesh) => {
                 let mut primitives = Vec::default();
 
                 let mut triangles = mesh
                     .indices
-                    .chunks_exact(3)
+                    .as_chunks::<3>()
+                    .0
+                    .iter()
                     .map(
                         #[inline]
                         |vertex_indexes| {
-                            let [mut v0, mut v1, mut v2]: [Vertex; 3] = [
+                            let [mut v0, mut v1, mut v2]: [Vertex; _] = [
                                 mesh.vertices[vertex_indexes[0] as usize].into(),
                                 mesh.vertices[vertex_indexes[1] as usize].into(),
                                 mesh.vertices[vertex_indexes[2] as usize].into(),
@@ -55,7 +60,10 @@ pub fn reduce_geometry(
                         primitives.push(Primitive::SolidQuad(solid_quad));
                     } else {
                         if let Some(triangle) = Triangle::new(v0, v1, v2) {
-                            primitives.push(Primitive::Triangle(triangle));
+                            primitives.push(Primitive::Triangle {
+                                shape: triangle,
+                                texture_id: mesh.texture_id,
+                            });
                         }
                     }
                 }
@@ -71,15 +79,61 @@ pub fn reduce_geometry(
                     ) * pixels_per_point,
                 );
 
-                shapes.push(Shape {
-                    rect,
-                    texture_id: mesh.texture_id,
-                    primitives,
-                });
+                Group { rect, primitives }
             }
-            egui::epaint::Primitive::Callback(_) => {
-                unreachable!("Epaint callbacks should not be sent");
+            egui::epaint::Primitive::Callback(PaintCallback { rect, callback }) => {
+                let Ok(callback) = callback.downcast::<Callback<P>>() else {
+                    tracing::error!("Wrong callback type");
+                    continue;
+                };
+
+                let full_min = Point2::new(rect.min.x, rect.min.y) * pixels_per_point;
+                let full_max = Point2::new(rect.max.x, rect.max.y) * pixels_per_point;
+
+                let full = Rectangle::from_min_and_max(full_min, full_max);
+
+                let clip_min = Point2::new(
+                    clipped_primitive.clip_rect.min.x,
+                    clipped_primitive.clip_rect.min.y,
+                ) * pixels_per_point;
+
+                let clip_max = Point2::new(
+                    clipped_primitive.clip_rect.max.x,
+                    clipped_primitive.clip_rect.max.y,
+                ) * pixels_per_point;
+
+                let clip = Rectangle::from_min_and_max(clip_min, clip_max);
+
+                let visible_min =
+                    Point2::new(full.min.x.max(clip.min.x), full.min.y.max(clip.min.y));
+
+                let visible_max =
+                    Point2::new(full.max.x.min(clip.max.x), full.max.y.min(clip.max.y));
+
+                let visible = Rectangle::from_min_and_max(visible_min, visible_max);
+
+                if !visible.is_valid() {
+                    continue;
+                }
+
+                Group {
+                    rect: visible,
+                    primitives: vec![Primitive::Callback(callback)],
+                }
             }
+        };
+
+        let is_mergeable =
+            |group: &Group<P>| !matches!(group.primitives.as_slice(), [Primitive::Callback { .. }]);
+
+        if let Some(last) = shapes.last_mut()
+            && is_mergeable(last)
+            && is_mergeable(&group)
+            && last.rect == group.rect
+        {
+            last.primitives.extend(group.primitives);
+        } else {
+            shapes.push(group);
         }
     }
 

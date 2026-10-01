@@ -22,6 +22,7 @@ fluxemu-program = { workspace = true }
 itertools = { workspace = true }
 nalgebra = { workspace = true }
 num = { workspace = true }
+palette = { workspace = true }
 rangemap = { workspace = true }
 redb = { workspace = true }
 ringbuffer = { workspace = true }

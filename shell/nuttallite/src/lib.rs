@@ -12,10 +12,7 @@ use std::{
 use egui::{FontData, FontDefinitions, FontFamily, RawInput, Rect, ViewportId, ViewportInfo};
 use fluxemu_environment::load_environment;
 use fluxemu_frontend::graphics::GraphicsRuntime as _;
-use fluxemu_frontend_egui::{
-    Frontend,
-    rendering::{DrawTarget, EguiCapableGraphicsRuntime},
-};
+use fluxemu_frontend_egui::{Frontend, rendering::EguiCapableGraphicsRuntime};
 use fluxemu_program::ProgramManager;
 use palette::named::BLACK;
 use redb::Database;
@@ -146,42 +143,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             graphics_runtime.component_initialization_data()
         });
 
-        if frontend.overlay_active() {
-            let raw_input = RawInput {
-                viewport_id: ViewportId::ROOT,
-                viewports: HashMap::from_iter([(
-                    ViewportId::ROOT,
-                    ViewportInfo {
-                        focused: Some(true),
-                        fullscreen: Some(true),
-                        native_pixels_per_point: Some(1.0),
-                        ..Default::default()
-                    },
-                )]),
-                screen_rect: Some(Rect {
-                    min: [0.0, 0.0].into(),
-                    max: [
-                        graphics_runtime.texture.width() as f32,
-                        graphics_runtime.texture.height() as f32,
-                    ]
-                    .into(),
-                }),
-                time: Some(start_time.elapsed().as_secs_f64()),
-                focused: true,
-                ..Default::default()
-            };
+        let raw_input = RawInput {
+            viewport_id: ViewportId::ROOT,
+            viewports: HashMap::from_iter([(
+                ViewportId::ROOT,
+                ViewportInfo {
+                    focused: Some(true),
+                    fullscreen: Some(true),
+                    native_pixels_per_point: Some(1.0),
+                    ..Default::default()
+                },
+            )]),
+            screen_rect: Some(Rect {
+                min: [0.0, 0.0].into(),
+                max: [
+                    graphics_runtime.texture.width() as f32,
+                    graphics_runtime.texture.height() as f32,
+                ]
+                .into(),
+            }),
+            time: Some(start_time.elapsed().as_secs_f64()),
+            focused: true,
+            ..Default::default()
+        };
 
-            let full_output = frontend.run_menu(raw_input);
+        let full_output = frontend.run(raw_input, &mut graphics_runtime);
 
-            graphics_runtime.present(
-                BLACK,
-                [DrawTarget::Gui {
-                    context: frontend.egui_context(),
-                    full_output,
-                }],
-            );
-        } else if let Some(machine) = frontend.machine() {
-            graphics_runtime.present(BLACK, [DrawTarget::Machine { machine }]);
-        }
+        graphics_runtime.present(frontend.egui_context(), BLACK, full_output);
     }
 }

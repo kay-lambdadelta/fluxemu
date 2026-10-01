@@ -59,11 +59,11 @@ pub fn simulation_controller_loop(
     let mut sleep_overshoot_ema = 0.0;
 
     loop {
-        if shared.should_exit.load(Ordering::Acquire) {
+        if shared.should_exit.load(Ordering::Relaxed) {
             break;
         }
 
-        if shared.paused.load(Ordering::Acquire) {
+        if shared.paused.load(Ordering::Relaxed) {
             std::thread::park();
             next_deadline = None;
             continue;

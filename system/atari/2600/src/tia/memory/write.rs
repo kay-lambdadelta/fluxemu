@@ -1,6 +1,8 @@
 use fluxemu_definition_mos6502::{Mos6502, Mos6502Event, Pin, variant::Mos6507};
+use fluxemu_graphics::texture::AsViewTexture;
 use fluxemu_runtime::{
     RuntimeHandle,
+    graphics::SimpleDisplayBackend,
     scheduler::{Period, event::EventMode},
 };
 use nalgebra::Point2;
@@ -8,10 +10,10 @@ use nalgebra::Point2;
 use super::WriteRegisters;
 use crate::tia::{
     DelayChangeGraphicPlayer, DelayEnableChangeBall, InputControl, SCANLINE_LENGTH,
-    SupportedGraphicsApiTia, Tia, backend::TiaDisplayBackend, color::TiaColor, region::Region,
+    SupportedGraphicsApi, Tia, color::TiaColor, region::Region,
 };
 
-impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
+impl<R: Region, G: SupportedGraphicsApi> Tia<R, G> {
     pub(crate) fn handle_write_register(&mut self, data: u8, address: WriteRegisters) {
         match address {
             WriteRegisters::Vsync => {
@@ -23,10 +25,14 @@ impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
                     self.state.in_vsync = false;
 
                     // Commit frame
-                    self.backend
-                        .as_mut()
-                        .unwrap()
-                        .commit_staging_buffer(&self.state.staging_buffer);
+                    RuntimeHandle::with_current(|handle| {
+                        handle.write_framebuffer::<G, _>(&self.framebuffer_path, |framebuffer| {
+                            self.backend.as_mut().unwrap().commit_staging_buffer(
+                                self.state.staging_buffer.as_view(),
+                                framebuffer,
+                            );
+                        });
+                    });
                 }
             }
             WriteRegisters::Vblank => {

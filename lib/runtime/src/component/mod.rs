@@ -64,13 +64,6 @@ pub trait Component: Send + Sync + Debug + Any {
         unreachable!()
     }
 
-    /// Returns the framebuffer with the given name, based upon what this component registered
-    ///
-    /// This should be downcasted to [`GraphicsApi::Framebuffer`](fluxemu_graphics::api::GraphicsApi::Framebuffer)
-    fn get_framebuffer(&mut self, name: &str) -> &dyn Any {
-        unreachable!()
-    }
-
     /// Handle an event targeted towards this component
     fn handle_event(&mut self, event: Box<dyn Event>) {}
 

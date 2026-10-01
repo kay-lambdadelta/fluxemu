@@ -1,7 +1,9 @@
 use std::{rc::Rc, sync::Arc};
 
+use fluxemu_graphics::api::GraphicsApi;
+
 use crate::{
-    ComponentPath,
+    ComponentPath, ResourcePath,
     component::{Component, ComponentRegistry},
     machine::{
         CURRENT_DISPATCH_TIMESTAMP, CURRENT_THREAD_RUNTIME_HANDLE, Machine, ThreadLocalData,
@@ -104,6 +106,20 @@ impl RuntimeHandle {
         data: C::Event,
     ) {
         self.schedule_event_at::<C>(target_path, mode, self.current_timestamp(), data);
+    }
+
+    /// Write to a framebuffer
+    pub fn write_framebuffer<G: GraphicsApi, T>(
+        &self,
+        path: &ResourcePath,
+        callback: impl FnOnce(&mut G::Framebuffer) -> T,
+    ) -> Option<T> {
+        let framebuffer = self.machine.framebuffers.get(path)?;
+        let mut framebuffer_guard = framebuffer.lock().unwrap();
+
+        let framebuffer = (*framebuffer_guard).downcast_mut()?;
+
+        Some(callback(framebuffer))
     }
 
     /// Get the current timestamp of your component

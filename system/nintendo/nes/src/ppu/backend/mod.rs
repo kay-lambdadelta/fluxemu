@@ -1,51 +1,14 @@
 use std::fmt::Debug;
 
-use fluxemu_graphics::{
-    api::GraphicsApi,
-    texture::{CopyMode, RefMutTexture, RefTexture},
-};
-use palette::{Srgb, Srgba};
+use fluxemu_graphics::api::GraphicsApi;
+use fluxemu_runtime::graphics::SimpleDisplayBackend;
 
-use crate::ppu::{color::PpuColorIndex, region::Region};
+use crate::ppu::region::Region;
 
 pub mod software;
 #[cfg(feature = "webgpu")]
 pub mod webgpu;
 
-pub(crate) trait PpuDisplayBackend<R: Region>:
-    Send + Sync + Debug + Sized + 'static
-{
-    type GraphicsApi: GraphicsApi;
-
-    fn new(initialization_data: <Self::GraphicsApi as GraphicsApi>::InitializationData) -> Self;
-    fn framebuffer(&mut self) -> &<Self::GraphicsApi as GraphicsApi>::Framebuffer;
-    fn commit_staging_buffer(
-        &mut self,
-        palette: &[Srgb<u8>; 64],
-        staging_buffer: RefTexture<PpuColorIndex>,
-    );
-}
-
-pub(crate) trait SupportedGraphicsApiPpu: GraphicsApi {
-    type Backend<R: Region>: PpuDisplayBackend<R, GraphicsApi = Self>;
-}
-
-#[inline]
-fn convert_paletted_staging_buffer<R: Region>(
-    palette: &[Srgb<u8>; 64],
-    staging_buffer: RefTexture<PpuColorIndex>,
-    mut framebuffer: RefMutTexture<Srgba<u8>>,
-) {
-    assert_eq!(staging_buffer.size(), framebuffer.size());
-
-    framebuffer.map_from(
-        staging_buffer,
-        CopyMode::Nearest,
-        #[inline]
-        |index| {
-            let clamped_index = (index as usize).min(palette.len() - 1);
-
-            palette[clamped_index].into()
-        },
-    );
+pub(crate) trait SupportedGraphicsApi: GraphicsApi {
+    type Backend<R: Region>: SimpleDisplayBackend<GraphicsApi = Self> + Send + Sync + Debug;
 }

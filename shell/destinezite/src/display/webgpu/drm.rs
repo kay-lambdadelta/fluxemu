@@ -1,4 +1,7 @@
-use std::os::fd::AsRawFd;
+use std::{
+    os::fd::AsRawFd,
+    sync::{Arc, Mutex},
+};
 
 use fluxemu_frontend::graphics::ProducableGraphicsRuntime;
 use fluxemu_graphics::api::webgpu::Webgpu;
@@ -28,6 +31,7 @@ impl ProducableGraphicsRuntime<DrmContext> for WebgpuGraphicsRuntime<DrmContext>
 
         WebgpuGraphicsRuntime {
             display_handle: context.clone(),
+            gpu_submission_lock: Arc::new(Mutex::new(())),
             configuration_dependent_data: Some(configuration_dependent_data),
         }
     }

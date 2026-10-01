@@ -35,8 +35,8 @@ pub struct Controller {
 
 impl Drop for Controller {
     fn drop(&mut self) {
-        self.shared.should_exit.store(true, Ordering::Release);
-        self.shared.paused.store(false, Ordering::Release);
+        self.shared.should_exit.store(true, Ordering::Relaxed);
+        self.shared.paused.store(false, Ordering::Relaxed);
 
         let handle = self.handle.take().unwrap();
         handle.thread().unpark();
@@ -71,9 +71,13 @@ impl Controller {
     }
 
     pub fn set_paused(&self, paused: bool) {
-        self.shared.paused.store(paused, Ordering::Release);
+        self.shared.paused.store(paused, Ordering::Relaxed);
 
         self.handle.as_ref().unwrap().thread().unpark();
+    }
+
+    pub fn get_paused(&self) -> bool {
+        self.shared.paused.load(Ordering::Relaxed)
     }
 
     pub fn get_state_snapshot(&self) -> SimulationControllerState {

@@ -1,12 +1,11 @@
-use fluxemu_egui_software_renderer::Renderer;
-use fluxemu_frontend::graphics::present_machine_software;
-use fluxemu_frontend_egui::rendering::{DrawTarget, EguiCapableGraphicsRuntime};
+use fluxemu_egui_software_renderer::{Renderer, callback::Callback};
+use fluxemu_frontend_egui::rendering::{EguiCapableGraphicsRuntime, software::FramebufferCallback};
 use fluxemu_graphics::{
     api::{GraphicsApi, software::Software},
-    texture::{AsViewTexture, CowTexture, OwnedTexture},
+    texture::{AsViewTexture, CopyMode, CowTexture, OwnedTexture},
 };
 use fluxemu_runtime::graphics::GraphicsRequirements;
-use palette::{Srgb, Srgba};
+use palette::{Srgb, Srgba, cast::Packed, named::BLACK, rgb::channels::Bgra};
 
 pub struct GraphicsRuntime {
     egui_renderer: Renderer,
@@ -44,26 +43,29 @@ impl fluxemu_frontend::graphics::GraphicsRuntime for GraphicsRuntime {
 }
 
 impl EguiCapableGraphicsRuntime for GraphicsRuntime {
-    fn present<'a>(
-        &'a mut self,
+    fn present(
+        &mut self,
+        context: &egui::Context,
         clear_color: Srgb<u8>,
-        targets: impl IntoIterator<Item = DrawTarget<'a>>,
+        full_output: egui::FullOutput,
     ) {
         self.texture.fill(clear_color.into());
 
-        for target in targets {
-            match target {
-                DrawTarget::Gui {
-                    context,
-                    full_output,
-                } => {
-                    self.egui_renderer
-                        .render::<_, 2>(context, full_output, &mut self.texture);
-                }
-                DrawTarget::Machine { machine } => {
-                    present_machine_software(machine, &mut self.texture);
-                }
-            }
-        }
+        self.egui_renderer
+            .render::<_, 2>(context, full_output, &mut self.texture);
+    }
+
+    fn produce_callback_for_framebuffer(
+        &mut self,
+        rect: egui::Rect,
+        framebuffer: &<Self::GraphicsApi as GraphicsApi>::Framebuffer,
+    ) -> egui::PaintCallback {
+        let mut converted_framebuffer =
+            OwnedTexture::from_value(framebuffer.width(), framebuffer.height(), BLACK.into());
+        converted_framebuffer.map_from(framebuffer, CopyMode::Nearest, From::from);
+
+        let callback = FramebufferCallback::new(converted_framebuffer);
+
+        Callback::<Packed<Bgra, [u8; 4]>>::new_paint_callback(rect, callback)
     }
 }

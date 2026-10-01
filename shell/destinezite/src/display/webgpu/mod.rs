@@ -1,5 +1,8 @@
+use std::sync::{Arc, Mutex};
+
 use egui_wgpu::{Renderer, RendererOptions};
 use fluxemu_frontend::graphics::{DisplayContext, GraphicsRuntime};
+use fluxemu_frontend_egui::rendering::webgpu::Resources;
 use fluxemu_graphics::{
     api::{
         GraphicsApi,
@@ -12,19 +15,8 @@ use nalgebra::Vector2;
 use palette::Srgba;
 use pollster::FutureExt;
 use wgpu::{
-    Adapter, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType,
-    BlendState, Buffer, BufferBindingType, BufferDescriptor, BufferUsages, ColorTargetState,
-    ColorWrites, CreateSurfaceError, Device, DeviceDescriptor, ExperimentalFeatures, FilterMode,
-    FragmentState, Instance, MemoryHints, MultisampleState, PipelineCompilationOptions,
-    PipelineLayoutDescriptor, PrimitiveState, Queue, RenderPipeline, RenderPipelineDescriptor,
-    Sampler, SamplerBindingType, SamplerDescriptor, ShaderModuleDescriptor, ShaderSource,
-    ShaderStages, Surface, TextureSampleType, TextureViewDimension, Trace, VertexState,
-    util::initialize_adapter_from_env_or_default,
-};
-
-use crate::display::webgpu::{
-    egui::find_egui_texture_view_format,
-    shader::{NORMAL_SHADER, ShaderUniform},
+    CreateSurfaceError, Device, DeviceDescriptor, ExperimentalFeatures, Instance, MemoryHints,
+    Queue, Surface, Trace, util::initialize_adapter_from_env_or_default,
 };
 
 #[cfg(feature = "windowing")]
@@ -36,10 +28,9 @@ mod drm;
 #[cfg(feature = "egui")]
 mod egui;
 
-mod shader;
-
 pub struct WebgpuGraphicsRuntime<D> {
     configuration_dependent_data: Option<ConfigurationDependentData>,
+    gpu_submission_lock: Arc<Mutex<()>>,
     display_handle: D,
 }
 
@@ -79,6 +70,7 @@ impl<D: WebgpuCompatibleDisplayContext> GraphicsRuntime for WebgpuGraphicsRuntim
         InitializationData {
             device: device.clone(),
             queue: queue.clone(),
+            gpu_submission_lock: self.gpu_submission_lock.clone(),
         }
     }
 
@@ -97,15 +89,11 @@ impl<D: WebgpuCompatibleDisplayContext> GraphicsRuntime for WebgpuGraphicsRuntim
 }
 
 struct ConfigurationDependentData {
-    adapter: Adapter,
     device: Device,
     queue: Queue,
-    bind_group_layout: BindGroupLayout,
-    pipeline: RenderPipeline,
-    uniform_buffer: Buffer,
-    machine_draw_sampler: Sampler,
     renderer: Renderer,
     surface: Surface<'static>,
+    framebuffer_callback_resources: Arc<Resources>,
 }
 
 impl ConfigurationDependentData {
@@ -153,106 +141,18 @@ impl ConfigurationDependentData {
             panic!("Failed to create device");
         };
 
-        let mut surface_config = surface
+        let surface_config = surface
             .get_default_config(&adapter, dimensions.x, dimensions.y)
             .unwrap();
 
-        let egui_texture_view_format = find_egui_texture_view_format(
-            surface_config.format,
-            adapter.get_downlevel_capabilities(),
-        );
-
-        if surface_config.format != egui_texture_view_format {
-            surface_config.view_formats.push(egui_texture_view_format);
-        }
-
         surface.configure(&device, &surface_config);
 
-        let shader = device.create_shader_module(ShaderModuleDescriptor {
-            label: None,
-            source: ShaderSource::Wgsl(NORMAL_SHADER.into()),
-        });
-
-        let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: None,
-            entries: &[
-                BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: ShaderStages::VERTEX_FRAGMENT,
-                    ty: BindingType::Buffer {
-                        ty: BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Texture {
-                        multisampled: false,
-                        view_dimension: TextureViewDimension::D2,
-                        sample_type: TextureSampleType::Float { filterable: true },
-                    },
-                    count: None,
-                },
-                BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Sampler(SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
-
-        let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            label: None,
-            bind_group_layouts: &[Some(&bind_group_layout)],
-            immediate_size: 0,
-        });
-
-        let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-            label: None,
-            layout: Some(&pipeline_layout),
-            vertex: VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[],
-                compilation_options: PipelineCompilationOptions::default(),
-            },
-            fragment: Some(FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(ColorTargetState {
-                    format: surface_config.format,
-                    blend: Some(BlendState::REPLACE),
-                    write_mask: ColorWrites::ALL,
-                })],
-                compilation_options: PipelineCompilationOptions::default(),
-            }),
-            primitive: PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
-
-        let uniform_buffer = device.create_buffer(&BufferDescriptor {
-            label: None,
-            size: size_of::<ShaderUniform>() as u64,
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let machine_draw_sampler = device.create_sampler(&SamplerDescriptor {
-            mag_filter: FilterMode::Nearest,
-            min_filter: FilterMode::Linear,
-            ..Default::default()
-        });
+        let framebuffer_callback_resources =
+            Resources::new(device.clone(), queue.clone(), surface_config.format);
 
         let renderer = Renderer::new(
             &device,
-            egui_texture_view_format,
+            surface_config.format,
             RendererOptions {
                 msaa_samples: 0,
                 depth_stencil_format: None,
@@ -262,15 +162,11 @@ impl ConfigurationDependentData {
         );
 
         ConfigurationDependentData {
-            adapter,
             device,
             queue,
-            bind_group_layout,
-            pipeline,
-            uniform_buffer,
-            machine_draw_sampler,
             renderer,
             surface,
+            framebuffer_callback_resources,
         }
     }
 }

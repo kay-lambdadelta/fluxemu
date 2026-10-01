@@ -1,8 +1,15 @@
 use core::ops::BitOr;
 
-use wgpu::{Device, Features, Limits, Queue, Texture, TextureUsages};
+use alloc::sync::Arc;
+use wgpu::{Device, Features, Limits, Queue, Texture, TextureFormat, TextureUsages};
 
-use crate::api::GraphicsApi;
+use crate::api::{Framebuffer, GraphicsApi};
+
+use std::sync::Mutex;
+
+extern crate std;
+
+pub mod shader;
 
 #[derive(Default, Debug)]
 pub struct Webgpu;
@@ -11,6 +18,7 @@ pub struct Webgpu;
 pub struct InitializationData {
     pub device: Device,
     pub queue: Queue,
+    pub gpu_submission_lock: Arc<Mutex<()>>,
 }
 
 #[derive(Debug, Clone)]
@@ -39,6 +47,16 @@ impl BitOr for Requirements {
     }
 }
 
+impl Framebuffer for Texture {
+    fn width(&self) -> usize {
+        self.width() as usize
+    }
+
+    fn height(&self) -> usize {
+        self.height() as usize
+    }
+}
+
 impl GraphicsApi for Webgpu {
     type Framebuffer = Texture;
     type InitializationData = InitializationData;
@@ -49,4 +67,9 @@ impl GraphicsApi for Webgpu {
 #[must_use]
 pub fn suggested_framebuffer_texture_usages() -> TextureUsages {
     TextureUsages::COPY_DST | TextureUsages::COPY_SRC | TextureUsages::TEXTURE_BINDING
+}
+
+#[must_use]
+pub fn suggested_framebuffer_texture_format() -> TextureFormat {
+    TextureFormat::Rgba8UnormSrgb
 }

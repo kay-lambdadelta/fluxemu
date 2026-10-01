@@ -9,10 +9,7 @@ use fluxemu_frontend::{
     graphics::{DisplayContext, GraphicsRuntime, ProducableGraphicsRuntime},
     machine::FactoryManager,
 };
-use fluxemu_frontend_egui::{
-    Frontend,
-    rendering::{DrawTarget, EguiCapableGraphicsRuntime},
-};
+use fluxemu_frontend_egui::{Frontend, rendering::EguiCapableGraphicsRuntime};
 use fluxemu_input::{InputId, InputState, physical::PhysicalInputDeviceId};
 use fluxemu_program::{ProgramManager, RomId};
 use fluxemu_runtime::graphics::GraphicsRequirements;
@@ -156,15 +153,8 @@ impl<R: ProducableGraphicsRuntime<Window> + EguiCapableGraphicsRuntime> Applicat
         } = self.windowing_context.as_mut().unwrap();
         let mut frontend = self.frontend.lock().unwrap();
 
-        // Pass events to egui if the frontend overlay is active
-        let repaint = if frontend.overlay_active() {
-            let response = egui_winit_context.on_window_event(&window.0, &event);
-
-            // We have our own redrawing logic
-            response.repaint && event != WindowEvent::RedrawRequested
-        } else {
-            true
-        };
+        let response = egui_winit_context.on_window_event(&window.0, &event);
+        let repaint = response.repaint && event != WindowEvent::RedrawRequested;
 
         if repaint {
             window.0.request_redraw();
@@ -179,23 +169,13 @@ impl<R: ProducableGraphicsRuntime<Window> + EguiCapableGraphicsRuntime> Applicat
                     graphics_runtime.refresh_surface();
                 }
 
-                if frontend.overlay_active() {
-                    let raw_input = egui_winit_context.take_egui_input(&window.0);
-                    let full_output = frontend.run_menu(raw_input);
+                let raw_input = egui_winit_context.take_egui_input(&window.0);
+                let full_output = frontend.run(raw_input, graphics_runtime);
 
-                    egui_winit_context
-                        .handle_platform_output(&window.0, full_output.platform_output.clone());
+                egui_winit_context
+                    .handle_platform_output(&window.0, full_output.platform_output.clone());
 
-                    graphics_runtime.present(
-                        BLACK,
-                        [DrawTarget::Gui {
-                            context: frontend.egui_context(),
-                            full_output,
-                        }],
-                    );
-                } else if let Some(machine) = frontend.machine() {
-                    graphics_runtime.present(BLACK, [DrawTarget::Machine { machine }]);
-                }
+                graphics_runtime.present(frontend.egui_context(), BLACK, full_output);
             }
             WindowEvent::KeyboardInput {
                 event,
@@ -267,10 +247,6 @@ impl<R: ProducableGraphicsRuntime<Window> + EguiCapableGraphicsRuntime> Applicat
                 component_initialization_data
             },
         );
-    }
-
-    fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
-        self.frontend.lock().unwrap().save_environment();
     }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Message) {

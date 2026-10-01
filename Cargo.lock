@@ -1985,10 +1985,13 @@ dependencies = [
 name = "fluxemu-frontend-egui"
 version = "0.0.1"
 dependencies = [
+ "bytemuck",
  "egui",
  "egui-toast",
+ "egui-wgpu",
  "egui_extras",
  "fluxemu-audio",
+ "fluxemu-egui-software-renderer",
  "fluxemu-environment",
  "fluxemu-frontend",
  "fluxemu-graphics",
@@ -2011,6 +2014,7 @@ dependencies = [
  "strum",
  "tracing",
  "uuid",
+ "wgpu",
 ]
 
 [[package]]
@@ -2108,6 +2112,7 @@ dependencies = [
  "itertools 0.15.0",
  "nalgebra",
  "num",
+ "palette",
  "rangemap",
  "redb",
  "ringbuffer",

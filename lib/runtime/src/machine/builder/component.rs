@@ -4,6 +4,7 @@ use std::{
 };
 
 use bytes::Bytes;
+use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_input::InputId;
 use fluxemu_program::{ProgramManager, RomId};
 
@@ -107,12 +108,28 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
         (self, resource_path)
     }
 
-    pub fn framebuffer(self, name: impl Into<Cow<'static, str>>) -> (Self, ResourcePath) {
+    pub fn framebuffer(
+        self,
+        name: impl Into<Cow<'static, str>>,
+        produce_initial_framebuffer: impl FnOnce(
+            &mut C,
+            &ResourcePath,
+        )
+            -> <P::GraphicsApi as GraphicsApi>::Framebuffer
+        + Send
+        + Sync
+        + 'static,
+    ) -> (Self, ResourcePath) {
         let resource_path = self.path.clone().into_resource(name).unwrap();
 
-        self.machine_builder
-            .framebuffers
-            .insert(resource_path.clone());
+        self.machine_builder.framebuffer_late_initializers.insert(
+            resource_path.clone(),
+            Box::new(|component, path| {
+                let component = (component as &mut dyn Any).downcast_mut().unwrap();
+
+                produce_initial_framebuffer(component, path)
+            }),
+        );
 
         (self, resource_path)
     }

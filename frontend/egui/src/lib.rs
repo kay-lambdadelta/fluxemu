@@ -2,16 +2,18 @@
 
 mod file_browser;
 mod input;
+mod menu_panel;
 pub mod rendering;
 mod settings;
 mod simulation_controller;
 mod toast;
+mod utils;
 
 use std::{borrow::Cow, collections::HashMap, ops::Deref, sync::Arc, thread::JoinHandle};
 
 use egui::{
-    Align, Button, CentralPanel, Color32, FontDefinitions, FontFamily, Frame, FullOutput, Layout,
-    Panel, RawInput, RichText, TextStyle,
+    Align, CentralPanel, FontDefinitions, Frame, FullOutput, Id, Layout, RawInput, Rect, Sense,
+    pos2, vec2,
 };
 use egui_toast::ToastKind;
 use fluxemu_environment::{ENVIRONMENT_LOCATION, Environment};
@@ -21,7 +23,7 @@ use fluxemu_frontend::{
     machine::FactoryManager,
     simulation_controller::Controller,
 };
-use fluxemu_graphics::api::GraphicsApi;
+use fluxemu_graphics::api::{Framebuffer, GraphicsApi};
 use fluxemu_input::{InputId, InputState, physical::PhysicalInputDeviceId};
 use fluxemu_program::{Manifest, ProgramManager, RomId};
 use fluxemu_runtime::{
@@ -29,46 +31,27 @@ use fluxemu_runtime::{
     machine::{Machine, builder::SealedMachineBuilder},
 };
 use indexmap::{IndexMap, IndexSet};
-use palette::Srgba;
+use nalgebra::Vector2;
+use palette::{
+    WithAlpha,
+    named::{BLACK, WHITE},
+};
 use ron::ser::PrettyConfig;
-use strum::{AsRefStr, EnumIter, IntoEnumIterator};
 
 use crate::{
     file_browser::{FileBrowser, FileBrowserState},
     input::translator::EguiInputTranslator,
+    menu_panel::{MenuPanel, TabId},
+    rendering::EguiCapableGraphicsRuntime,
     toast::ToastManager,
+    utils::{allocate_fill_aspect, setup_egui_context, to_egui_color},
 };
 
 rust_i18n::i18n!("locales", fallback = "en");
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, AsRefStr)]
-pub enum TabId {
-    Library,
-    FileBrowser,
-    Settings,
-    Log,
-    Controller,
-    Debug,
-    About,
-}
-
-impl TabId {
-    fn icon(self) -> &'static str {
-        match self {
-            Self::FileBrowser => "📁",
-            Self::Library => "📚",
-            Self::Settings => "⚙️",
-            Self::Log => "📝",
-            Self::Controller => "🎮",
-            Self::Debug => "🐞",
-            Self::About => "ℹ️",
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 struct PhysicalInputDeviceState {
-    // Should the runtime translate this input device into something egui can understand
+    /// Should the runtime translate this input device into something egui can understand
     pub rely_on_frontend_input_handling: bool,
     pub name: Cow<'static, str>,
     pub gui_relevant_input_state: IndexMap<InputId, InputState>,
@@ -92,20 +75,15 @@ enum MachineInitializationStep<P: Platform> {
     },
 }
 
-/// Frontend for the emulator
-#[allow(clippy::type_complexity)]
 pub struct Frontend<P: Platform> {
-    environment: Environment,
     machine_context: Option<MachineContext>,
     pending_machine: Option<SealedMachineBuilder<P>>,
     machine_factory_manager: Arc<FactoryManager<P>>,
     program_manager: Arc<ProgramManager>,
-    machine_loading: bool,
-    frontend_overlay_active: bool,
-    current_tab: TabId,
     physical_input_devices: HashMap<PhysicalInputDeviceId, PhysicalInputDeviceState>,
     egui_context: egui::Context,
     file_browser_state: FileBrowserState,
+    menu_panel: MenuPanel,
     machine_initialization_step: Option<MachineInitializationStep<P>>,
     toast_manager: ToastManager,
     font_definitions: FontDefinitions,
@@ -113,6 +91,9 @@ pub struct Frontend<P: Platform> {
     #[allow(unused)]
     audio_runtime: P::AudioRuntime,
     audio_mixer: Arc<AudioMixer>,
+    /// ID of area where framebuffers will be drawn
+    machine_framebuffer_display_area: Id,
+    environment: Environment,
 }
 
 impl<P: Platform> Frontend<P> {
@@ -143,9 +124,7 @@ impl<P: Platform> Frontend<P> {
             audio_runtime,
             machine_factory_manager: Arc::new(machine_factories),
             program_manager,
-            machine_loading: false,
-            frontend_overlay_active: true,
-            current_tab: TabId::Library,
+            menu_panel: MenuPanel::default(),
             physical_input_devices: HashMap::default(),
             egui_context: setup_egui_context(font_definitions.clone()),
             audio_mixer,
@@ -157,6 +136,10 @@ impl<P: Platform> Frontend<P> {
             environment,
             font_definitions,
             egui_input_translator: EguiInputTranslator::default(),
+            machine_framebuffer_display_area: Id::new(format!(
+                "{}/machine_framebuffer_display_area",
+                env!("CARGO_CRATE_NAME")
+            )),
         }
     }
 
@@ -168,10 +151,6 @@ impl<P: Platform> Frontend<P> {
         self.machine_context
             .as_ref()
             .map(|context| &context.machine)
-    }
-
-    pub fn overlay_active(&self) -> bool {
-        self.frontend_overlay_active
     }
 
     fn bring_down_current_machine(&mut self) {
@@ -192,7 +171,7 @@ impl<P: Platform> Frontend<P> {
         let handle = std::thread::spawn(move || {
             machine_factories
                 .construct_machine(ron::Value::from(()), machine_builder)
-                .map(|r| r.unwrap())
+                .map(|result| result.unwrap())
         });
 
         self.machine_initialization_step =
@@ -241,12 +220,20 @@ impl<P: Platform> Frontend<P> {
                 controller_ui_state: simulation_controller::State::default(),
             });
 
-            self.machine_loading = false;
-            self.frontend_overlay_active = false;
+            self.set_machine_focus(true);
+            self.menu_panel.is_expanded = false;
+            self.menu_panel.current_tab = TabId::Machine;
         }
     }
 
-    pub fn run_menu(&mut self, mut external_input: RawInput) -> FullOutput {
+    pub fn run(
+        &mut self,
+        mut external_input: RawInput,
+        graphics_runtime: &mut P::GraphicsRuntime,
+    ) -> FullOutput
+    where
+        P::GraphicsRuntime: EguiCapableGraphicsRuntime,
+    {
         external_input
             .events
             .extend(self.egui_input_translator.drain_events());
@@ -258,30 +245,21 @@ impl<P: Platform> Frontend<P> {
 
             self.toast_manager.show(ui);
 
-            Panel::top("menu_selection")
-                .resizable(false)
-                .show(ui, |ui| {
-                    Frame::default().inner_margin(8.0).show(ui, |ui| {
-                        ui.horizontal_centered(|ui| {
-                            for tab in TabId::iter() {
-                                let mut item_icon = RichText::new(tab.icon()).size(32.0);
+            ui.add(&mut self.menu_panel);
 
-                                if self.current_tab == tab {
-                                    item_icon = item_icon.strong();
-                                }
+            // Remove the margin on the machine tab
+            let panel_frame = if let TabId::Machine = self.menu_panel.current_tab {
+                Frame::central_panel(ui.style()).inner_margin(0.0)
+            } else {
+                Frame::central_panel(ui.style())
+            };
 
-                                let button = Button::new(item_icon).min_size([32.0, 32.0].into());
-                                if ui.add(button).clicked() {
-                                    self.current_tab = tab;
-                                }
-                            }
-                        });
-                    })
-                });
-
-            CentralPanel::default().show(ui, |ui| {
+            CentralPanel::default().frame(panel_frame).show(ui, |ui| {
                 ui.with_layout(Layout::top_down_justified(Align::LEFT), |ui| {
-                    Frame::new().show(ui, |ui| match self.current_tab {
+                    Frame::new().show(ui, |ui| match self.menu_panel.current_tab {
+                        TabId::Machine => {
+                            self.draw_machine_framebuffers(ui, graphics_runtime);
+                        }
                         TabId::Library => {}
                         TabId::FileBrowser => {
                             ui.add(FileBrowser {
@@ -312,6 +290,76 @@ impl<P: Platform> Frontend<P> {
                 });
             });
         })
+    }
+
+    fn draw_machine_framebuffers(
+        &mut self,
+        ui: &mut egui::Ui,
+        graphics_runtime: &mut P::GraphicsRuntime,
+    ) where
+        P::GraphicsRuntime: EguiCapableGraphicsRuntime,
+    {
+        if let Some(MachineContext {
+            machine,
+            controller,
+            ..
+        }) = &self.machine_context
+        {
+            let runtime = machine.enter_runtime();
+            let framebuffer = runtime.list_framebuffers().next().unwrap();
+
+            let callback = runtime
+                .read_framebuffer::<P::GraphicsApi, _>(
+                    framebuffer,
+                    &runtime.safe_advance_timestamp(),
+                    |framebuffer| {
+                        let size =
+                            Vector2::new(framebuffer.width() as f32, framebuffer.height() as f32);
+
+                        let (rect, response) = allocate_fill_aspect(
+                            ui,
+                            size,
+                            self.machine_framebuffer_display_area,
+                            Sense::click(),
+                        );
+
+                        if response.clicked() {
+                            self.menu_panel.is_expanded = false;
+                            controller.set_paused(false);
+                        }
+
+                        graphics_runtime.produce_callback_for_framebuffer(rect, framebuffer)
+                    },
+                )
+                .unwrap();
+
+            let rect = callback.rect;
+            let painter = ui.painter_at(rect);
+
+            painter.add(callback);
+
+            if controller.get_paused() {
+                // Grey out framebuffer
+                painter.rect_filled(rect, 0.0, to_egui_color(BLACK.with_alpha(140)));
+
+                // Draw rudimentary pause symbol
+                let center = rect.center();
+                let bar_height = rect.width().min(rect.height()) * 0.2;
+                let bar_width = bar_height * 0.3;
+                let gap = bar_height * 0.25;
+
+                for side in [-1.0, 1.0] {
+                    let bar_center =
+                        pos2(center.x + side * (gap / 2.0 + bar_width / 2.0), center.y);
+                    let bar = Rect::from_center_size(bar_center, vec2(bar_width, bar_height));
+
+                    painter.rect_filled(bar, bar_width * 0.2, to_egui_color(WHITE.with_alpha(230)));
+                }
+            } else {
+                // Repaint as soon as possible, in reality limited to vsync
+                self.egui_context.request_repaint();
+            }
+        }
     }
 
     fn service_machine_initialization_step(&mut self, step: MachineInitializationStep<P>) {
@@ -374,7 +422,7 @@ impl<P: Platform> Frontend<P> {
         }
     }
 
-    pub fn save_environment(&mut self) {
+    fn save_environment(&mut self) {
         if let Ok(environment) = ron::Options::default()
             .to_string_pretty(&self.environment, PrettyConfig::new())
             .map_err(|err| {
@@ -388,6 +436,23 @@ impl<P: Platform> Frontend<P> {
             tracing::error!("Could not save environment: {}", err);
         }
     }
+
+    /// Check if any framebuffer currently has UI focus
+    pub fn machine_has_focus(&self) -> bool {
+        self.egui_context
+            .memory(|memory| memory.has_focus(self.machine_framebuffer_display_area))
+    }
+
+    /// Set the focus state of the machine
+    pub fn set_machine_focus(&mut self, focus: bool) {
+        self.egui_context.memory_mut(|memory| {
+            if focus {
+                memory.request_focus(self.machine_framebuffer_display_area);
+            } else {
+                memory.surrender_focus(self.machine_framebuffer_display_area);
+            }
+        })
+    }
 }
 
 impl<P: Platform> Drop for Frontend<P> {
@@ -395,36 +460,6 @@ impl<P: Platform> Drop for Frontend<P> {
     fn drop(&mut self) {
         self.save_environment();
     }
-}
-
-fn setup_egui_context(font_definitions: FontDefinitions) -> egui::Context {
-    let egui_context = egui::Context::default();
-
-    egui_context.global_style_mut(|style| {
-        style.text_styles.insert(
-            TextStyle::Body,
-            egui::FontId::new(18.0, FontFamily::Proportional),
-        );
-        style.text_styles.insert(
-            TextStyle::Button,
-            egui::FontId::new(20.0, FontFamily::Proportional),
-        );
-        style.text_styles.insert(
-            TextStyle::Heading,
-            egui::FontId::new(24.0, FontFamily::Proportional),
-        );
-    });
-
-    egui_context.set_fonts(font_definitions);
-
-    egui_context
-}
-
-#[inline]
-fn to_egui_color(color: impl Into<Srgba<u8>>) -> Color32 {
-    let color = color.into();
-
-    Color32::from_rgba_unmultiplied(color.red, color.green, color.blue, color.alpha)
 }
 
 struct MachineContext {

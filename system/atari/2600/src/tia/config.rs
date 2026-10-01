@@ -4,6 +4,7 @@ use fluxemu_graphics::texture::Texture;
 use fluxemu_math::range::ContiguousRange;
 use fluxemu_runtime::{
     component::config::{ComponentConfig, LateContext},
+    graphics::SimpleDisplayBackend,
     machine::builder::ComponentBuilder,
     memory::{AddressSpaceId, MemoryMapCommand, Permissions},
     path::ComponentPath,
@@ -17,7 +18,7 @@ use strum::IntoEnumIterator;
 use super::{Tia, region::Region};
 use crate::tia::{
     InputControl, State, VISIBLE_SCANLINE_LENGTH,
-    backend::{SupportedGraphicsApiTia, TiaDisplayBackend},
+    backend::SupportedGraphicsApi,
     memory::{ReadRegisters, WriteRegisters},
 };
 
@@ -28,13 +29,13 @@ pub(crate) struct TiaConfig<R: Region> {
     pub _phantom: PhantomData<R>,
 }
 
-impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>> ComponentConfig<P>
+impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<P>
     for TiaConfig<R>
 {
     type Component = Tia<R, P::GraphicsApi>;
 
     fn late_initialize(component: &mut Self::Component, data: &LateContext<P>) {
-        let backend = <P::GraphicsApi as SupportedGraphicsApiTia>::Backend::new(
+        let backend = <P::GraphicsApi as SupportedGraphicsApi>::Backend::new(
             data.graphics_initialization_data.clone(),
         );
         component.backend = Some(backend);
@@ -44,13 +45,19 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>> ComponentConf
         self,
         component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
-        let (mut component_builder, _) = component_builder
+        let (mut component_builder, framebuffer_path) = component_builder
             .task(
                 "synchronization",
                 Mode::OnDemand,
                 FrequencyBased::new(R::frequency(), Self::Component::task),
             )
-            .framebuffer("framebuffer");
+            .framebuffer("framebuffer", |component, path| {
+                component
+                    .backend
+                    .as_mut()
+                    .unwrap()
+                    .produce_initial_framebuffer(path)
+            });
 
         let my_path = component_builder.path().clone();
 
@@ -66,6 +73,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>> ComponentConf
                 }),
             ),
         );
+
         component_builder.map_memory(
             self.cpu_address_space,
             MemoryMapCommand::with_component(
@@ -88,6 +96,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiTia>> ComponentConf
         Ok(Tia {
             backend: None,
             cpu_path: self.cpu,
+            framebuffer_path,
             state: State {
                 collision_matrix: HashMap::default(),
                 vblank_active: false,

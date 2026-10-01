@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use fluxemu_frontend::graphics::ProducableGraphicsRuntime;
 use fluxemu_graphics::api::webgpu::Webgpu;
 use fluxemu_runtime::graphics::GraphicsRequirements;
@@ -23,6 +25,7 @@ impl ProducableGraphicsRuntime<Window> for WebgpuGraphicsRuntime<Window> {
 
         WebgpuGraphicsRuntime {
             display_handle: window.clone(),
+            gpu_submission_lock: Arc::new(Mutex::new(())),
             configuration_dependent_data: Some(configuration_dependent_data),
         }
     }

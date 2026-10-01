@@ -1,14 +1,15 @@
-use std::{any::Any, marker::PhantomData, ops::RangeInclusive};
+use std::{marker::PhantomData, ops::RangeInclusive};
 
 use fluxemu_definition_mos6502::{Mos6502, Mos6502Event, Pin, variant::Ricoh2A0x};
 use fluxemu_graphics::texture::{AsViewTexture, OwnedTexture, Texture};
 use fluxemu_math::range::ContiguousRange;
 use fluxemu_runtime::{
-    RuntimeHandle,
+    ResourcePath, RuntimeHandle,
     component::{
         Component,
         config::{ComponentConfig, LateContext},
     },
+    graphics::SimpleDisplayBackend,
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId, MemoryError, MemoryMapCommand, Permissions},
     path::ComponentPath,
@@ -20,14 +21,13 @@ use fluxemu_runtime::{
     },
 };
 use nalgebra::Point2;
-use palette::Srgb;
+use palette::{Srgb, Srgba, named::BLACK};
 use serde::{Deserialize, Serialize};
 use strum::FromRepr;
 
 use crate::ppu::{
-    backend::{PpuDisplayBackend, SupportedGraphicsApiPpu},
+    backend::SupportedGraphicsApi,
     background::{BackgroundPipelineState, BackgroundState, SpritePipelineState},
-    color::{PPU_BLACK_INDEX, PpuColorIndex},
     oam::{OamState, SpriteEvaluationState},
     region::Region,
     state::{State, VramAddressPointerContents},
@@ -89,25 +89,26 @@ pub struct PpuConfig<R: Region> {
 }
 
 #[derive(Debug)]
-pub struct Ppu<R: Region, G: SupportedGraphicsApiPpu> {
+pub struct Ppu<R: Region, G: SupportedGraphicsApi> {
     state: State,
     backend: Option<G::Backend<R>>,
     cpu_address_space: AddressSpaceId,
     ppu_address_space: AddressSpaceId,
     processor_path: ComponentPath,
-    staging_buffer: OwnedTexture<PpuColorIndex>,
+    staging_buffer: OwnedTexture<Srgba<u8>>,
     palette: [Srgb<u8>; 64],
     path: ComponentPath,
+    framebuffer_path: ResourcePath,
     period: Period,
 }
 
-impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConfig<P>
+impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<P>
     for PpuConfig<R>
 {
     type Component = Ppu<R, P::GraphicsApi>;
 
     fn late_initialize(component: &mut Self::Component, data: &LateContext<P>) {
-        let backend = <P::GraphicsApi as SupportedGraphicsApiPpu>::Backend::new(
+        let backend = <P::GraphicsApi as SupportedGraphicsApi>::Backend::new(
             data.graphics_initialization_data.clone(),
         );
         component.backend = Some(backend);
@@ -119,13 +120,19 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
         let frequency = R::master_clock() / R::PPU_CLOCK_DIVISOR as u128;
 
-        let (component_builder, _) = component_builder
+        let (component_builder, framebuffer_path) = component_builder
             .task(
                 "synchronization",
                 Mode::OnDemand,
                 FrequencyBased::new(frequency, Self::Component::task),
             )
-            .framebuffer("framebuffer");
+            .framebuffer("framebuffer", |component, path| {
+                component
+                    .backend
+                    .as_mut()
+                    .unwrap()
+                    .produce_initial_framebuffer(path)
+            });
 
         let my_path = component_builder.path().clone();
 
@@ -185,7 +192,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
         let staging_buffer = Texture::from_value(
             VISIBLE_SCANLINE_LENGTH as usize,
             R::VISIBLE_SCANLINES as usize,
-            PPU_BLACK_INDEX,
+            BLACK.into(),
         );
 
         Ok(Ppu {
@@ -241,11 +248,12 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApiPpu>> ComponentConf
             palette: R::generate_palette(),
             path: component_builder.path().clone(),
             period: frequency.recip(),
+            framebuffer_path,
         })
     }
 }
 
-impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
+impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
     type Event = PpuEvent;
 
     fn memory_read(
@@ -545,10 +553,12 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                         },
                     );
 
-                    self.backend
-                        .as_mut()
-                        .unwrap()
-                        .commit_staging_buffer(&self.palette, self.staging_buffer.as_view());
+                    runtime.write_framebuffer::<G, _>(&self.framebuffer_path, |framebuffer| {
+                        self.backend
+                            .as_mut()
+                            .unwrap()
+                            .commit_staging_buffer(self.staging_buffer.as_view(), framebuffer);
+                    });
 
                     let lines_until_next_vblank = R::TOTAL_SCANLINES - R::VBLANK_LENGTH;
                     let mut cycles_until_next_vblank =
@@ -572,10 +582,6 @@ impl<R: Region, G: SupportedGraphicsApiPpu> Component for Ppu<R, G> {
                 }
             }
         });
-    }
-
-    fn get_framebuffer(&mut self, _name: &str) -> &dyn Any {
-        self.backend.as_mut().unwrap().framebuffer()
     }
 }
 

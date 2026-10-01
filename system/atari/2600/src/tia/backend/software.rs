@@ -1,49 +1,49 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, marker::PhantomData};
 
 use fluxemu_graphics::{
     api::{GraphicsApi, software::Software},
-    texture::{CopyMode, OwnedTexture, Texture},
+    texture::{CopyMode, RefTexture, Texture},
 };
+use fluxemu_runtime::{ResourcePath, graphics::SimpleDisplayBackend};
 use palette::{Srgba, named::BLACK};
 
-use super::{SupportedGraphicsApiTia, TiaDisplayBackend};
+use super::SupportedGraphicsApi;
 use crate::tia::{VISIBLE_SCANLINE_LENGTH, region::Region};
 
-pub struct SoftwareState {
-    framebuffer: OwnedTexture<Srgba<u8>>,
+#[derive(Debug)]
+pub struct State<R: Region> {
+    _phantom: PhantomData<fn() -> R>,
 }
 
-// elide the buffers
-
-impl Debug for SoftwareState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SoftwareState").finish()
-    }
-}
-
-impl<R: Region> TiaDisplayBackend<R> for SoftwareState {
+impl<R: Region> SimpleDisplayBackend for State<R> {
     type GraphicsApi = Software;
 
     fn new(_: ()) -> Self {
-        SoftwareState {
-            framebuffer: Texture::from_value(
-                VISIBLE_SCANLINE_LENGTH as usize,
-                R::TOTAL_SCANLINES as usize,
-                BLACK.into(),
-            ),
+        State {
+            _phantom: PhantomData,
         }
     }
 
-    fn framebuffer(&mut self) -> &<Self::GraphicsApi as GraphicsApi>::Framebuffer {
-        &self.framebuffer
+    fn produce_initial_framebuffer(
+        &mut self,
+        _path: &ResourcePath,
+    ) -> <Self::GraphicsApi as GraphicsApi>::Framebuffer {
+        Texture::from_value(
+            VISIBLE_SCANLINE_LENGTH as usize,
+            R::TOTAL_SCANLINES as usize,
+            BLACK.into(),
+        )
     }
 
-    fn commit_staging_buffer(&mut self, staging_buffer: &OwnedTexture<Srgba<u8>>) {
-        self.framebuffer
-            .copy_from(staging_buffer, CopyMode::Nearest);
+    fn commit_staging_buffer(
+        &mut self,
+        staging_buffer: RefTexture<Srgba<u8>>,
+        framebuffer: &mut <Self::GraphicsApi as GraphicsApi>::Framebuffer,
+    ) {
+        framebuffer.copy_from(staging_buffer, CopyMode::Nearest);
     }
 }
 
-impl SupportedGraphicsApiTia for Software {
-    type Backend<R: Region> = SoftwareState;
+impl SupportedGraphicsApi for Software {
+    type Backend<R: Region> = State<R>;
 }

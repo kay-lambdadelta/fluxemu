@@ -1,15 +1,16 @@
-use std::{any::Any, fmt::Debug};
+use std::fmt::Debug;
 
 use fluxemu_graphics::{
     api::GraphicsApi,
-    texture::{CopyMode, OwnedTexture, Texture},
+    texture::{AsViewTexture, CopyMode, OwnedTexture, Texture},
 };
 use fluxemu_runtime::{
-    RuntimeHandle,
+    ResourcePath, RuntimeHandle,
     component::{
         Component,
         config::{ComponentConfig, LateContext},
     },
+    graphics::SimpleDisplayBackend,
     machine::builder::ComponentBuilder,
     platform::Platform,
     scheduler::{
@@ -31,16 +32,17 @@ const LORES: Vector2<u8> = Vector2::new(64, 32);
 const HIRES: Vector2<u8> = Vector2::new(128, 64);
 
 #[derive(Debug)]
-pub struct Chip8Display<G: SupportedGraphicsApiChip8Display> {
+pub struct Chip8Display<G: SupportedGraphicsApi> {
     backend: Option<G::Backend>,
     /// The cpu reads this to see if it can continue execution post draw call
     vsync_occurred: bool,
     staging_buffer: OwnedTexture<Srgba<u8>>,
     hires: bool,
     config: Chip8DisplayConfig,
+    framebuffer_path: ResourcePath,
 }
 
-impl<G: SupportedGraphicsApiChip8Display> Chip8Display<G> {
+impl<G: SupportedGraphicsApi> Chip8Display<G> {
     pub fn vsync_occurred(&self) -> bool {
         self.vsync_occurred
     }
@@ -156,7 +158,7 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Display<G> {
     }
 
     #[inline]
-    fn task(&mut self, _runtime_handle: &RuntimeHandle, quanta_allocator: QuantaAllocator<'_, '_>) {
+    fn task(&mut self, runtime_handle: &RuntimeHandle, quanta_allocator: QuantaAllocator<'_, '_>) {
         let mut commit_staging_buffer = false;
 
         for _ in quanta_allocator {
@@ -166,28 +168,18 @@ impl<G: SupportedGraphicsApiChip8Display> Chip8Display<G> {
         }
 
         if commit_staging_buffer {
-            self.backend
-                .as_mut()
-                .unwrap()
-                .commit_staging_buffer(&self.staging_buffer);
+            runtime_handle.write_framebuffer::<G, _>(&self.framebuffer_path, |framebuffer| {
+                self.backend
+                    .as_mut()
+                    .unwrap()
+                    .commit_staging_buffer(self.staging_buffer.as_view(), framebuffer);
+            });
         }
     }
 }
 
-impl<G: SupportedGraphicsApiChip8Display> Component for Chip8Display<G> {
+impl<G: SupportedGraphicsApi> Component for Chip8Display<G> {
     type Event = ();
-
-    fn get_framebuffer(&mut self, _name: &str) -> &dyn Any {
-        self.backend.as_mut().unwrap().framebuffer()
-    }
-}
-
-pub(crate) trait Chip8DisplayBackend: Send + Sync + Debug + 'static {
-    type GraphicsApi: GraphicsApi;
-
-    fn new(initialization_data: <Self::GraphicsApi as GraphicsApi>::InitializationData) -> Self;
-    fn framebuffer(&mut self) -> &<Self::GraphicsApi as GraphicsApi>::Framebuffer;
-    fn commit_staging_buffer(&mut self, staging_buffer: &OwnedTexture<Srgba<u8>>);
 }
 
 #[derive(Debug, Default)]
@@ -195,13 +187,11 @@ pub struct Chip8DisplayConfig {
     pub clear_on_resolution_change: bool,
 }
 
-impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig<P>
-    for Chip8DisplayConfig
-{
+impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<P> for Chip8DisplayConfig {
     type Component = Chip8Display<P::GraphicsApi>;
 
     fn late_initialize(component: &mut Self::Component, data: &LateContext<P>) {
-        let backend = <P::GraphicsApi as SupportedGraphicsApiChip8Display>::Backend::new(
+        let backend = <P::GraphicsApi as SupportedGraphicsApi>::Backend::new(
             data.graphics_initialization_data.clone(),
         );
         component.backend = Some(backend);
@@ -211,24 +201,31 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> ComponentConfig
         self,
         component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
-        component_builder
+        let (_, framebuffer_path) = component_builder
             .task(
                 "synchronization",
                 Mode::OnDemand,
                 FrequencyBased::new(Frequency::from_num(60), Self::Component::task),
             )
-            .framebuffer("framebuffer");
+            .framebuffer("framebuffer", |component, path| {
+                component
+                    .backend
+                    .as_mut()
+                    .unwrap()
+                    .produce_initial_framebuffer(path)
+            });
 
         Ok(Chip8Display {
             backend: None,
             hires: false,
             vsync_occurred: false,
             staging_buffer: Texture::from_value(LORES.x as usize, LORES.y as usize, BLACK.into()),
+            framebuffer_path,
             config: self,
         })
     }
 }
 
-pub(crate) trait SupportedGraphicsApiChip8Display: GraphicsApi {
-    type Backend: Chip8DisplayBackend<GraphicsApi = Self>;
+pub(crate) trait SupportedGraphicsApi: GraphicsApi {
+    type Backend: SimpleDisplayBackend<GraphicsApi = Self> + Send + Sync + Debug;
 }

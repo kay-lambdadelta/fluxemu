@@ -7,10 +7,13 @@ repository = { workspace = true }
 license = { workspace = true }
 
 [dependencies]
+bytemuck = { workspace = true }
 egui = { workspace = true, features = ["rayon"] }
 egui_extras = { workspace = true }
 egui-toast = { workspace = true }
+egui-wgpu = { workspace = true, optional = true }
 fluxemu-audio = { workspace = true }
+fluxemu-egui-software-renderer = { workspace = true }
 fluxemu-environment = { workspace = true }
 fluxemu-frontend = { workspace = true }
 fluxemu-graphics = { workspace = true }
@@ -33,9 +36,11 @@ serde = { workspace = true }
 strum = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
+wgpu = { workspace = true, optional = true }
 
 [features]
 external-file-dialog = ["dep:rfd"]
+webgpu = ["dep:egui-wgpu", "dep:wgpu"]
 
 [lints]
 workspace = true

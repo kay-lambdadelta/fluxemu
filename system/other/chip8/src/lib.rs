@@ -17,7 +17,7 @@ use processor::Chip8ProcessorConfig;
 use serde::{Deserialize, Serialize};
 use timer::Chip8TimerConfig;
 
-use crate::display::SupportedGraphicsApiChip8Display;
+use crate::display::SupportedGraphicsApi;
 
 mod audio;
 mod display;
@@ -38,7 +38,7 @@ pub enum Chip8Mode {
 #[derive(Debug, Default)]
 pub struct Chip8;
 
-impl<P: Platform<GraphicsApi: SupportedGraphicsApiChip8Display>> System<P> for Chip8 {
+impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Chip8 {
     type Quirks = ();
 
     const ID: SystemId = SystemId::Other(OtherSystem::Chip8);

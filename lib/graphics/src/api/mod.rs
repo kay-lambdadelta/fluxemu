@@ -12,7 +12,7 @@ pub trait GraphicsApi: Debug + Any + Sized + Send + Sync + 'static {
     /// Data components need to do their graphics operations
     type InitializationData: Clone + Debug + 'static;
     /// The component framebuffer type
-    type Framebuffer: Any + Send + Sync + Debug + 'static;
+    type Framebuffer: Framebuffer;
     /// How components describe what they require out of a graphics context
     type Requirements: Default
         + BitOr<Output = Self::Requirements>
@@ -21,4 +21,9 @@ pub trait GraphicsApi: Debug + Any + Sized + Send + Sync + 'static {
         + Send
         + Sync
         + 'static;
+}
+
+pub trait Framebuffer: Any + Send + Sync + Debug + 'static {
+    fn width(&self) -> usize;
+    fn height(&self) -> usize;
 }

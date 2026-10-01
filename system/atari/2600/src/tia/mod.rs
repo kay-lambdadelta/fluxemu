@@ -1,14 +1,13 @@
 use std::{
-    any::Any,
     collections::{HashMap, HashSet},
     fmt::Debug,
 };
 
-pub(crate) use backend::SupportedGraphicsApiTia;
+pub(crate) use backend::SupportedGraphicsApi;
 use color::TiaColor;
 use fluxemu_graphics::texture::OwnedTexture;
 use fluxemu_runtime::{
-    ComponentPath, RuntimeHandle,
+    ComponentPath, ResourcePath, RuntimeHandle,
     component::Component,
     memory::{Address, AddressSpaceId, MemoryError},
     scheduler::QuantaAllocator,
@@ -19,10 +18,7 @@ use palette::Srgba;
 use region::Region;
 use serde::{Deserialize, Serialize};
 
-use crate::tia::{
-    backend::TiaDisplayBackend,
-    memory::{ReadRegisters, WriteRegisters},
-};
+use crate::tia::memory::{ReadRegisters, WriteRegisters};
 
 mod backend;
 mod color;
@@ -122,13 +118,14 @@ struct State {
 }
 
 #[derive(Debug)]
-pub(crate) struct Tia<R: Region, G: SupportedGraphicsApiTia> {
+pub(crate) struct Tia<R: Region, G: SupportedGraphicsApi> {
     state: State,
     backend: Option<G::Backend<R>>,
     cpu_path: ComponentPath,
+    framebuffer_path: ResourcePath,
 }
 
-impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
+impl<R: Region, G: SupportedGraphicsApi> Component for Tia<R, G> {
     type Event = ();
 
     fn memory_read(
@@ -169,13 +166,9 @@ impl<R: Region, G: SupportedGraphicsApiTia> Component for Tia<R, G> {
             unreachable!("{:x}", address);
         }
     }
-
-    fn get_framebuffer(&mut self, _name: &str) -> &dyn Any {
-        self.backend.as_mut().unwrap().framebuffer()
-    }
 }
 
-impl<R: Region, G: SupportedGraphicsApiTia> Tia<R, G> {
+impl<R: Region, G: SupportedGraphicsApi> Tia<R, G> {
     #[inline]
     fn task(&mut self, _runtime_handle: &RuntimeHandle, quanta_allocator: QuantaAllocator<'_, '_>) {
         for _ in quanta_allocator {

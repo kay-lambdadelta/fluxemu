@@ -8,7 +8,10 @@ use core::{fmt::Debug, ops::BitOr};
 
 use palette::Srgba;
 
-use crate::{api::GraphicsApi, texture::OwnedTexture};
+use crate::{
+    api::{Framebuffer, GraphicsApi},
+    texture::OwnedTexture,
+};
 
 /// Marker trait for software rendering
 ///
@@ -27,6 +30,16 @@ impl BitOr for Requirements {
 
     fn bitor(self, rhs: Self) -> Self::Output {
         rhs
+    }
+}
+
+impl Framebuffer for OwnedTexture<Srgba<u8>> {
+    fn width(&self) -> usize {
+        self.width()
+    }
+
+    fn height(&self) -> usize {
+        self.height()
     }
 }
 

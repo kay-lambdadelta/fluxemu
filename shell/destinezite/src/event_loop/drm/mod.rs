@@ -13,10 +13,7 @@ use fluxemu_frontend::{
     graphics::{DisplayContext, GraphicsRuntime, ProducableGraphicsRuntime},
     machine::FactoryManager,
 };
-use fluxemu_frontend_egui::{
-    Frontend,
-    rendering::{DrawTarget, EguiCapableGraphicsRuntime},
-};
+use fluxemu_frontend_egui::{Frontend, rendering::EguiCapableGraphicsRuntime};
 use fluxemu_program::{ProgramManager, RomId};
 use fluxemu_runtime::graphics::GraphicsRequirements;
 use libseat::{Seat, SeatEvent};
@@ -187,49 +184,35 @@ pub fn run<R: ProducableGraphicsRuntime<DrmContext> + EguiCapableGraphicsRuntime
             );
 
             // Make sure we actually drop the guard before presenting
-            if frontend.overlay_active() {
-                let events = egui_input_collector.take_events();
+            let events = egui_input_collector.take_events();
 
-                let raw_input = RawInput {
-                    viewport_id: ViewportId::ROOT,
-                    viewports: HashMap::from_iter([(
-                        ViewportId::ROOT,
-                        ViewportInfo {
-                            focused: Some(true),
-                            fullscreen: Some(true),
-                            native_pixels_per_point: Some(scale_factor),
-                            ..Default::default()
-                        },
-                    )]),
-                    screen_rect: Some(Rect {
-                        min: [0.0, 0.0].into(),
-                        max: [width as f32 / scale_factor, height as f32 / scale_factor].into(),
-                    }),
-                    time: Some(start_time.elapsed().as_secs_f64()),
-                    focused: true,
-                    events,
-                    ..Default::default()
-                };
+            let raw_input = RawInput {
+                viewport_id: ViewportId::ROOT,
+                viewports: HashMap::from_iter([(
+                    ViewportId::ROOT,
+                    ViewportInfo {
+                        focused: Some(true),
+                        fullscreen: Some(true),
+                        native_pixels_per_point: Some(scale_factor),
+                        ..Default::default()
+                    },
+                )]),
+                screen_rect: Some(Rect {
+                    min: [0.0, 0.0].into(),
+                    max: [width as f32 / scale_factor, height as f32 / scale_factor].into(),
+                }),
+                time: Some(start_time.elapsed().as_secs_f64()),
+                focused: true,
+                events,
+                ..Default::default()
+            };
 
-                let full_output = frontend.run_menu(raw_input);
-                let context = frontend.egui_context().clone();
+            let full_output = frontend.run(raw_input, &mut graphics_runtime);
+            let context = frontend.egui_context().clone();
 
-                drop(frontend_state_guard);
+            drop(frontend_state_guard);
 
-                graphics_runtime.present(
-                    BLACK,
-                    [DrawTarget::Gui {
-                        context: &context,
-                        full_output,
-                    }],
-                );
-            } else if let Some(machine) = frontend.machine() {
-                let machine = machine.clone();
-
-                drop(frontend_state_guard);
-
-                graphics_runtime.present(BLACK, [DrawTarget::Machine { machine: &machine }]);
-            }
+            graphics_runtime.present(&context, BLACK, full_output);
         }
     })
 }

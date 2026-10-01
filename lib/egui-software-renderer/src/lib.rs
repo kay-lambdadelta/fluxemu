@@ -1,8 +1,8 @@
-use std::{collections::HashMap, ops::RangeInclusive};
+use std::{collections::HashMap, fmt::Debug, ops::RangeInclusive};
 
 use egui::{FullOutput, TextureId};
 use fluxemu_graphics::texture::{
-    AsViewTexture, AsViewTextureMut, CopyMode, OwnedTexture, StorageMut, Texture,
+    AsViewTexture, AsViewTextureMut, CopyMode, OwnedTexture, RefMutTexture, StorageMut, Texture,
 };
 use fluxemu_math::{range::ContiguousRange, rectangle::Rectangle};
 use nalgebra::{Point2, Vector2};
@@ -10,12 +10,16 @@ use palette::{Srgb, Srgba, blend::PreAlpha, named::BLACK};
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use rustc_hash::FxBuildHasher;
 
-use crate::geometry::{
-    Primitive,
-    fill::{fill_quad, fill_triangle},
-    reduce::reduce_geometry,
+use crate::{
+    callback::CallbackInfo,
+    geometry::{
+        Group, Primitive,
+        fill::{fill_quad, fill_triangle},
+        reduce::reduce_geometry,
+    },
 };
 
+pub mod callback;
 mod geometry;
 mod powerof2;
 
@@ -53,93 +57,6 @@ impl Renderer {
         for remove_texture_id in to_free {
             tracing::trace!("Freeing egui texture {:?}", remove_texture_id);
             self.textures.remove(&remove_texture_id);
-        }
-
-        #[inline]
-        #[multiversion::multiversion(targets(
-            "x86_64+avx512f+avx512dq+avx512bw+avx512vl+fma",
-            "x86_64+avx2+fma",
-            "x86_64+sse4.1",
-            "x86_64+ssse3",
-            "x86+sse2",
-            "x86+sse",
-            "aarch64+sve2",
-            "aarch64+sve",
-            "aarch64+neon",
-        ))]
-        fn render_inner<
-            P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'static,
-            const BATCH_SIZE: usize,
-        >(
-            context: &egui::Context,
-            full_output: FullOutput,
-            mut target_texture: Texture<impl StorageMut<Pixel = P>>,
-            textures: &mut HashMap<TextureId, OwnedTexture<PreAlpha<Srgb<f32>>>, FxBuildHasher>,
-        ) {
-            assert_ne!(target_texture.width(), 0);
-            assert_ne!(target_texture.height(), 0);
-
-            let target_texture = target_texture.as_view_mut();
-
-            let shapes: Vec<_> =
-                reduce_geometry(context, full_output.shapes, full_output.pixels_per_point)
-                    .collect();
-
-            let band_count = rayon::current_num_threads().clamp(1, target_texture.height());
-            let bands = target_texture.split_into_bands_mut(band_count);
-
-            let mut cursor = 0;
-            let ranges: Vec<_> = bands
-                .iter()
-                .map(|band| {
-                    let range = RangeInclusive::from_start_and_length(cursor, band.height());
-
-                    cursor += band.height();
-
-                    range
-                })
-                .collect();
-
-            bands
-                .into_par_iter()
-                .zip(ranges)
-                .for_each(|(mut band, band_range)| {
-                    let offset = *band_range.start() as f32;
-
-                    for shape in &shapes {
-                        let clip_min = Point2::new(shape.rect.min.x, shape.rect.min.y - offset);
-                        let clip_max = Point2::new(shape.rect.max.x, shape.rect.max.y - offset);
-
-                        let clip = Rectangle::from_min_and_max(clip_min, clip_max);
-
-                        if !clip.is_valid() || !shape.rect.is_valid() {
-                            continue;
-                        }
-
-                        for primitive in shape.primitives.iter().copied() {
-                            match primitive {
-                                Primitive::SolidQuad(mut quad) => {
-                                    quad.rectangle.min.y -= offset;
-                                    quad.rectangle.max.y -= offset;
-
-                                    fill_quad(clip, quad, band.as_view_mut());
-                                }
-                                Primitive::Triangle(mut triangle) => {
-                                    triangle.v0.position.y -= offset;
-                                    triangle.v1.position.y -= offset;
-                                    triangle.v2.position.y -= offset;
-
-                                    fill_triangle::<_, BATCH_SIZE>(
-                                        clip,
-                                        triangle,
-                                        textures[&shape.texture_id].as_view(),
-                                        band.as_view_mut(),
-                                    );
-                                }
-                            }
-                        }
-                    }
-                });
         }
     }
 
@@ -202,4 +119,148 @@ impl Renderer {
                 .copy_from(&source_texture_view, CopyMode::Nearest);
         }
     }
+}
+
+#[inline]
+#[multiversion::multiversion(targets(
+    "x86_64+avx512f+avx512dq+avx512bw+avx512vl+fma",
+    "x86_64+avx2+fma",
+    "x86_64+sse4.1",
+    "x86_64+ssse3",
+    "x86+sse2",
+    "x86+sse",
+    "aarch64+sve2",
+    "aarch64+sve",
+    "aarch64+neon",
+))]
+fn render_inner<
+    P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'static,
+    const BATCH_SIZE: usize,
+>(
+    context: &egui::Context,
+    full_output: FullOutput,
+    mut target_texture: Texture<impl StorageMut<Pixel = P>>,
+    textures: &mut HashMap<TextureId, OwnedTexture<PreAlpha<Srgb<f32>>>, FxBuildHasher>,
+) {
+    assert_ne!(target_texture.width(), 0);
+    assert_ne!(target_texture.height(), 0);
+
+    let pixels_per_point = full_output.pixels_per_point;
+    let mut target_texture = target_texture.as_view_mut();
+
+    let groups: Vec<_> =
+        reduce_geometry::<P>(context, full_output.shapes, pixels_per_point).collect();
+
+    let mut run_start = 0;
+
+    for (index, group) in groups.iter().enumerate() {
+        let [Primitive::Callback(callback)] = group.primitives.as_slice() else {
+            continue;
+        };
+
+        raster_groups::<_, BATCH_SIZE>(
+            &groups[run_start..index],
+            textures,
+            target_texture.as_view_mut(),
+        );
+        run_start = index + 1;
+
+        let min = Point2::new(
+            group.rect.min.x.max(0.0).floor() as usize,
+            group.rect.min.y.max(0.0).floor() as usize,
+        );
+        let max = Point2::new(
+            group.rect.max.x.min(target_texture.width() as f32).ceil() as usize,
+            group.rect.max.y.min(target_texture.height() as f32).ceil() as usize,
+        );
+
+        let rect = Rectangle::from_min_and_max(min, max);
+
+        if !rect.is_valid() {
+            continue;
+        }
+
+        callback.0.paint(
+            CallbackInfo { pixels_per_point },
+            target_texture.view_mut(rect.min.x..rect.max.x, rect.min.y..rect.max.y),
+        );
+    }
+
+    raster_groups::<_, BATCH_SIZE>(&groups[run_start..], textures, target_texture);
+}
+
+#[inline(always)]
+fn raster_groups<
+    P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'static,
+    const BATCH_SIZE: usize,
+>(
+    groups: &[Group<P>],
+    textures: &HashMap<TextureId, OwnedTexture<PreAlpha<Srgb<f32>>>, FxBuildHasher>,
+    target: RefMutTexture<'_, P>,
+) {
+    if groups.is_empty() {
+        return;
+    }
+
+    let band_count = rayon::current_num_threads().clamp(1, target.height());
+    let bands = target.split_into_bands_mut(band_count);
+
+    let mut cursor = 0;
+    let ranges: Vec<_> = bands
+        .iter()
+        .map(|band| {
+            let range = RangeInclusive::from_start_and_length(cursor, band.height());
+            cursor += band.height();
+            range
+        })
+        .collect();
+
+    bands
+        .into_par_iter()
+        .zip(ranges)
+        .for_each(|(mut band, band_range)| {
+            let offset = *band_range.start() as f32;
+
+            for group in groups {
+                let clip = Rectangle::from_min_and_max(
+                    Point2::new(group.rect.min.x, group.rect.min.y - offset),
+                    Point2::new(group.rect.max.x, group.rect.max.y - offset),
+                );
+
+                if !clip.is_valid() || !group.rect.is_valid() {
+                    continue;
+                }
+
+                for primitive in group.primitives.iter() {
+                    match primitive {
+                        Primitive::SolidQuad(quad) => {
+                            let mut quad = *quad;
+                            quad.rectangle.min.y -= offset;
+                            quad.rectangle.max.y -= offset;
+
+                            fill_quad(clip, quad, band.as_view_mut());
+                        }
+                        Primitive::Triangle {
+                            shape: triangle,
+                            texture_id,
+                        } => {
+                            let mut triangle = *triangle;
+                            triangle.v0.position.y -= offset;
+                            triangle.v1.position.y -= offset;
+                            triangle.v2.position.y -= offset;
+
+                            fill_triangle::<_, BATCH_SIZE>(
+                                clip,
+                                triangle,
+                                textures[texture_id].as_view(),
+                                band.as_view_mut(),
+                            );
+                        }
+                        Primitive::Callback { .. } => {
+                            unreachable!()
+                        }
+                    }
+                }
+            }
+        });
 }
