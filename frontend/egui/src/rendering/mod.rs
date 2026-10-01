@@ -4,6 +4,7 @@ use fluxemu_graphics::api::GraphicsApi;
 use palette::Srgb;
 
 pub mod software;
+#[cfg(feature = "webgpu")]
 pub mod webgpu;
 
 pub trait EguiCapableGraphicsRuntime: GraphicsRuntime {
