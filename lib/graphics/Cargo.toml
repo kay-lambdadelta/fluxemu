@@ -7,7 +7,7 @@ repository = { workspace = true }
 license = { workspace = true }
 
 [dependencies]
-bytemuck = { workspace = true }
+bytemuck = { workspace = true, features = ["extern_crate_alloc"] }
 fluxemu-math = { workspace = true }
 nalgebra = { workspace = true }
 palette = { workspace = true }
