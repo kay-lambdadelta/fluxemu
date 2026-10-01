@@ -11,7 +11,7 @@ members = [
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.95"
+rust-version = "1.96"
 repository = "https://github.com/kay-lambdadelta/fluxemu"
 license = "GPL-3.0-or-later"
 
