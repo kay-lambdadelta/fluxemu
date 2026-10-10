@@ -145,11 +145,15 @@ fn try_as_zip<'a>(
             continue;
         }
 
-        tracing::debug!("Processing ZIP entry {}", file.name());
+        if let Ok(file_name) = file.name() {
+            tracing::debug!("Processing ZIP entry {}", file_name);
+        }
 
         let mut buffer = Vec::new();
         if let Err(err) = file.read_to_end(&mut buffer) {
-            tracing::warn!("Failed to buffer ZIP entry {}: {}", file.name(), err);
+            if let Ok(file_name) = file.name() {
+                tracing::warn!("Failed to buffer ZIP entry {}: {}", file_name, err);
+            }
 
             continue;
         }
