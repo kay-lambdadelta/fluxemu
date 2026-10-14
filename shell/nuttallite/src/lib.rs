@@ -11,7 +11,9 @@ use std::{
 
 use egui::{FontData, FontDefinitions, FontFamily, RawInput, Rect, ViewportId, ViewportInfo};
 use fluxemu_environment::load_environment;
-use fluxemu_frontend::graphics::GraphicsRuntime as _;
+use fluxemu_frontend::{
+    FrontendCore, graphics::GraphicsRuntime as _, notification::notification_channel,
+};
 use fluxemu_frontend_egui::{Frontend, rendering::EguiCapableGraphicsRuntime};
 use fluxemu_program::ProgramManager;
 use palette::named::BLACK;
@@ -85,8 +87,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_thread_names(true)
         .with_thread_ids(false);
 
-    let subscriber_builder =
-        tracing_subscriber::registry().with(stderr_layer.with_filter(filter.clone() as Arc<_>));
+    let (notification_layer, notifications) = notification_channel();
+
+    let subscriber_builder = tracing_subscriber::registry()
+        .with(stderr_layer.with_filter(filter.clone() as Arc<_>))
+        .with(notification_layer.with_filter(filter.clone() as Arc<_>));
 
     if let Ok(file) = File::create(&environment.log_location) {
         let file_layer = tracing_subscriber::fmt::layer()
@@ -124,14 +129,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .into_iter()
         .collect(),
     };
-    let mut frontend = Frontend::<Platform>::new(
+    let core = FrontendCore::<Platform>::new(
         environment,
         get_software_factories(),
         program_manager,
         AudioRuntime,
         None,
-        font_definitions,
     );
+    let mut frontend = Frontend::new(core, notifications, font_definitions);
 
     let mut graphics_runtime = GraphicsRuntime::default();
 

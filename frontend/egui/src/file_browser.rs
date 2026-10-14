@@ -2,7 +2,6 @@ use std::{
     ffi::OsString,
     fs::{File, read_dir},
     path::{Path, PathBuf},
-    sync::Arc,
     thread::JoinHandle,
     time::SystemTime,
 };
@@ -11,9 +10,7 @@ use egui::{
     Align, Button, ComboBox, Frame, Layout, Response, ScrollArea, Sense, TextEdit, TextWrapMode,
     Widget,
 };
-use egui_toast::ToastKind;
-use fluxemu_frontend::Platform;
-use fluxemu_program::ProgramManager;
+use fluxemu_frontend::{FrontendCore, Platform};
 use indexmap::IndexMap;
 use palette::{
     WithAlpha,
@@ -22,7 +19,7 @@ use palette::{
 use rust_i18n::t;
 use strum::{AsRefStr, EnumIter};
 
-use crate::{MachineInitializationStep, toast::ToastManager, utils::to_egui_color};
+use crate::utils::to_egui_color;
 
 #[derive(Clone, Debug)]
 pub struct DirectoryEntry {
@@ -80,9 +77,7 @@ impl FileBrowserState {
 
 pub struct FileBrowser<'a, P: Platform> {
     pub state: &'a mut FileBrowserState,
-    pub machine_initialization_step: &'a mut Option<MachineInitializationStep<P>>,
-    pub program_manager: &'a Arc<ProgramManager>,
-    pub toast_manager: &'a mut ToastManager,
+    pub core: &'a mut FrontendCore<P>,
 }
 
 impl<P: Platform> Widget for FileBrowser<'_, P> {
@@ -118,25 +113,12 @@ impl<P: Platform> Widget for FileBrowser<'_, P> {
                                 native_file_picker_dialog_job.join().unwrap()
                             && !file_handles.is_empty()
                         {
-                            let program_manager = self.program_manager.clone();
-
-                            let job = std::thread::Builder::new()
-                                .name(t!("browser.thread_name_rom_id_calculator").to_string())
-                                .spawn(move || {
-                                    let mut rom_ids = Vec::default();
-
-                                    for handle in file_handles {
-                                        rom_ids.push(
-                                            program_manager.register_external_rom(handle.path())?,
-                                        );
-                                    }
-
-                                    Ok(rom_ids)
-                                })
-                                .expect("Could not launch thread to process rom for its id!");
-
-                            *self.machine_initialization_step =
-                                Some(MachineInitializationStep::CalculatingRomIds { job });
+                            self.core.load_roms(
+                                file_handles
+                                    .iter()
+                                    .map(|handle| handle.path().to_path_buf())
+                                    .collect(),
+                            );
                         }
                     }
                     None if clicked => {
@@ -197,9 +179,9 @@ impl<P: Platform> Widget for FileBrowser<'_, P> {
                                 if is_accessible_dir {
                                     *directory_to_navigate_to = Some(pathbuf);
                                 } else {
-                                    self.toast_manager.toast(
-                                        ToastKind::Error,
-                                        t!("browser.cannot_navigate_to_directory"),
+                                    tracing::error!(
+                                        "{}",
+                                        t!("browser.cannot_navigate_to_directory")
                                     );
                                 }
                             }
@@ -256,10 +238,7 @@ impl<P: Platform> Widget for FileBrowser<'_, P> {
                         *current_directory_contents = new_contents;
                     }
                     Err(err) => {
-                        self.toast_manager.toast(
-                            ToastKind::Error,
-                            format!("Could not refresh directory: {}", err),
-                        );
+                        tracing::error!("Could not refresh directory: {}", err);
                     }
                 }
             }
@@ -305,19 +284,7 @@ impl<P: Platform> Widget for FileBrowser<'_, P> {
                             if *is_directory {
                                 *directory_to_navigate_to = Some(path.clone());
                             } else {
-                                let program_manager = self.program_manager.clone();
-
-                                let job = std::thread::Builder::new()
-                                    .name(t!("browser.thread_name_rom_id_calculator").to_string())
-                                    .spawn(move || {
-                                        let rom_id = program_manager.register_external_rom(path)?;
-
-                                        Ok(vec![rom_id])
-                                    })
-                                    .expect("Could not launch thread to process ROM for its ID!");
-
-                                *self.machine_initialization_step =
-                                    Some(MachineInitializationStep::CalculatingRomIds { job });
+                                self.core.load_roms(vec![path]);
                             }
                         }
                     }

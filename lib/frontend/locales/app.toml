@@ -1,0 +1,7 @@
+_version = 2
+
+[simulation_controller.invalid_measurement]
+en = "Invalid time measurement taken from guest machine execution (for scheduling), is your OS's timer busted?"
+
+[machine_initialization.thread_name_rom_id_calculator]
+en = "Thread ID Calculator"

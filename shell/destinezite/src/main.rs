@@ -28,6 +28,7 @@ use std::{fs::File, sync::Arc};
 use clap::Parser;
 use cli::{Cli, CliAction};
 use fluxemu_environment::load_environment;
+use fluxemu_frontend::notification::notification_channel;
 use fluxemu_program::ProgramManager;
 use redb::Database;
 use tracing::level_filters::LevelFilter;
@@ -57,7 +58,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_default_directive(LevelFilter::INFO.into())
             .from_env_lossy()
             .add_directive("cosmic_text=info".parse().unwrap())
-            .add_directive("winit=info".parse().unwrap()),
+            .add_directive("winit=info".parse().unwrap())
+            .add_directive("egui_wgpu::renderer=off".parse().unwrap()),
     );
 
     let stderr_layer = tracing_subscriber::fmt::layer()
@@ -67,8 +69,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_thread_names(true)
         .with_thread_ids(false);
 
+    let (notification_layer, notifications) = notification_channel();
+
     let subscriber_builder = tracing_subscriber::registry()
-        .with(stderr_layer.with_filter(filter.clone() as Arc<dyn Filter<_> + Send + Sync>));
+        .with(stderr_layer.with_filter(filter.clone() as Arc<dyn Filter<_> + Send + Sync>))
+        .with(notification_layer.with_filter(filter.clone() as Arc<dyn Filter<_> + Send + Sync>));
 
     if let Ok(file) = File::create(&environment.log_location) {
         let file_layer = tracing_subscriber::fmt::layer()
@@ -120,6 +125,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     program_manager.clone(),
                     build_machine::get_software_factories(),
                     initial_program.clone(),
+                    notifications,
                 )?;
             }
             #[cfg(feature = "drm")]
@@ -129,6 +135,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     program_manager.clone(),
                     build_machine::get_software_factories(),
                     initial_program.clone(),
+                    notifications,
                 )?;
             }
             #[cfg(feature = "ratatui")]
@@ -148,6 +155,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         program_manager.clone(),
                         build_machine::get_webgpu_factories(),
                         initial_program.clone(),
+                        notifications,
                     )?;
                 }
                 #[cfg(feature = "drm")]
@@ -157,6 +165,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         program_manager.clone(),
                         build_machine::get_webgpu_factories(),
                         initial_program.clone(),
+                        notifications,
                     )?;
                 }
                 #[cfg(feature = "ratatui")]

@@ -1,9 +1,6 @@
-use std::ops::Deref;
-
 use egui::{ComboBox, RichText, Slider};
-use fluxemu_environment::{ENVIRONMENT_LOCATION, graphics::GraphicsApi};
+use fluxemu_environment::graphics::GraphicsApi;
 use fluxemu_frontend::Platform;
-use ron::ser::PrettyConfig;
 use strum::IntoEnumIterator;
 
 use crate::Frontend;
@@ -18,38 +15,32 @@ impl<P: Platform> Frontend<P> {
                 .on_hover_text("Save environment to disk")
                 .clicked()
             {
-                let environment_string =
-                    ron::ser::to_string_pretty(&self.environment, PrettyConfig::default()).unwrap();
-
-                std::thread::spawn(|| {
-                    if let Err(err) =
-                        std::fs::write(ENVIRONMENT_LOCATION.deref(), environment_string)
-                    {
-                        tracing::error!("Failed to save environment: {}", err);
-                    }
-                });
+                self.core.save_environment();
             }
         });
 
+        let environment = self.core.environment_mut();
+
         ComboBox::from_label("Graphics Api")
-            .selected_text(self.environment.graphics.api.to_string())
+            .selected_text(environment.graphics.api.to_string())
             .show_ui(ui, |ui| {
                 for api in GraphicsApi::iter() {
-                    ui.selectable_value(&mut self.environment.graphics.api, api, api.to_string());
+                    ui.selectable_value(&mut environment.graphics.api, api, api.to_string());
                 }
             });
 
         ui.horizontal(|ui| {
-            let old_volume = self.environment.audio.volume;
+            let old_volume = self.core.environment().audio.volume;
+            let mut volume = old_volume;
 
-            let text = if self.environment.audio.volume == 0.0 {
+            let text = if volume == 0.0 {
                 "Global Volume 🔇"
             } else {
                 "Global Volume 🔊"
             };
 
             ui.add(
-                Slider::new(&mut self.environment.audio.volume, 0.0..=1.0)
+                Slider::new(&mut volume, 0.0..=1.0)
                     .text(text)
                     .custom_formatter(|value, _| format!("{:.0}%", value * 100.0))
                     .custom_parser(|s| {
@@ -61,8 +52,8 @@ impl<P: Platform> Frontend<P> {
                     }),
             );
 
-            if self.environment.audio.volume != old_volume {
-                self.audio_mixer.set_volume(self.environment.audio.volume);
+            if volume != old_volume {
+                self.core.set_volume(volume);
             }
         });
     }

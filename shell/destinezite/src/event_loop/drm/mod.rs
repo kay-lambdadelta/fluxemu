@@ -10,8 +10,10 @@ use drm::control::Device;
 use egui::{RawInput, Rect, ViewportId, ViewportInfo};
 use fluxemu_environment::Environment;
 use fluxemu_frontend::{
+    FrontendCore,
     graphics::{DisplayContext, GraphicsRuntime, ProducableGraphicsRuntime},
     machine::FactoryManager,
+    notification::NotificationReceiver,
 };
 use fluxemu_frontend_egui::{Frontend, rendering::EguiCapableGraphicsRuntime};
 use fluxemu_program::{ProgramManager, RomId};
@@ -43,6 +45,7 @@ pub fn run<R: ProducableGraphicsRuntime<DrmContext> + EguiCapableGraphicsRuntime
     program_manager: Arc<ProgramManager>,
     machine_factories: FactoryManager<DesktopPlatform<R, false>>,
     initial_program: Option<Vec<RomId>>,
+    notifications: NotificationReceiver,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Open the seat we need
     let mut seat = Seat::open(|seat, event| match event {
@@ -74,14 +77,14 @@ pub fn run<R: ProducableGraphicsRuntime<DrmContext> + EguiCapableGraphicsRuntime
     );
 
     // Set up the input collector/translator and the frontend
-    let mut frontend = Frontend::new(
+    let core = FrontendCore::new(
         environment,
         machine_factories,
         program_manager,
         audio_runtime,
         initial_program,
-        load_fonts(),
     );
+    let mut frontend = Frontend::new(core, notifications, load_fonts());
     let gamepad_context = GamepadContext::new(&mut frontend);
 
     let egui_input_collector = EguiInputCollector::new(scale_factor);

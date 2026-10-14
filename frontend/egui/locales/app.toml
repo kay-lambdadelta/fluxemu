@@ -12,14 +12,8 @@ en = "Realtime throughput factor"
 [simulation_controller.jitter_ratio]
 en = "Jitter Ratio"
 
-[simulation_controller.invalid_measurement]
-en = "Invalid time measurement taken from guest machine execution (for scheduling), is your OS's timer busted?"
-
 [browser.cannot_navigate_to_directory]
 en = "Not a directory that can accessed, check permissions"
-
-[browser.thread_name_rom_id_calculator]
-en = "Thread ID Calculator"
 
 [browser.open_native_file_dialog]
 en = "Open your operating systems native file dialog"

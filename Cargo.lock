@@ -1968,12 +1968,14 @@ name = "fluxemu-frontend"
 version = "0.0.1"
 dependencies = [
  "fluxemu-audio",
+ "fluxemu-environment",
  "fluxemu-graphics",
  "fluxemu-input",
  "fluxemu-math",
  "fluxemu-program",
  "fluxemu-runtime",
  "fluxemu-system",
+ "indexmap 2.14.2",
  "nalgebra",
  "palette",
  "rand 0.10.3",
@@ -1981,6 +1983,7 @@ dependencies = [
  "ron",
  "rust-i18n",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1999,7 +2002,6 @@ dependencies = [
  "fluxemu-graphics",
  "fluxemu-input",
  "fluxemu-math",
- "fluxemu-program",
  "fluxemu-runtime",
  "fluxemu-system",
  "indexmap 2.14.2",
@@ -2009,7 +2011,6 @@ dependencies = [
  "rand 0.10.3",
  "rfd",
  "ringbuffer",
- "ron",
  "rust-i18n",
  "rustc-hash 2.1.3",
  "serde",

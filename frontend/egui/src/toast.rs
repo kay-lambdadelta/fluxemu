@@ -1,7 +1,9 @@
-use std::{borrow::Cow, time::Duration};
+use std::time::Duration;
 
 use egui::{Align2, Order, Ui};
 use egui_toast::{Toast, ToastKind, ToastOptions, ToastStyle, Toasts};
+use fluxemu_frontend::notification::Notification;
+use tracing::Level;
 
 pub struct ToastManager {
     toasts: Toasts,
@@ -18,30 +20,16 @@ impl Default for ToastManager {
 }
 
 impl ToastManager {
-    pub fn toast(&mut self, kind: ToastKind, message: impl Into<Cow<'static, str>>) {
-        let message = message.into();
-
-        match kind {
-            ToastKind::Info => {
-                tracing::info!("{}", message);
-            }
-            ToastKind::Warning => {
-                tracing::warn!("{}", message);
-            }
-            ToastKind::Error => {
-                tracing::error!("{}", message);
-            }
-            ToastKind::Success => {
-                tracing::info!("{}", message);
-            }
-            ToastKind::Custom(_) => {
-                tracing::info!("{}", message);
-            }
+    pub fn toast(&mut self, notification: Notification) {
+        let kind = match notification.level {
+            Level::ERROR => ToastKind::Error,
+            Level::WARN => ToastKind::Warning,
+            _ => ToastKind::Info,
         };
 
         self.toasts.add(Toast {
-            kind: ToastKind::Error,
-            text: message.into(),
+            kind,
+            text: notification.message.into(),
             options: ToastOptions::default()
                 .duration(Some(Duration::from_secs(5)))
                 .show_icon(true)
