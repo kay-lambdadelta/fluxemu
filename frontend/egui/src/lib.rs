@@ -2,11 +2,11 @@
 
 mod file_browser;
 mod input;
+mod marquee;
 mod menu_panel;
 pub mod rendering;
 mod settings;
 mod simulation_controller;
-mod toast;
 mod utils;
 
 use std::sync::Arc;
@@ -27,9 +27,9 @@ use palette::{
 use crate::{
     file_browser::{FileBrowser, FileBrowserState},
     input::translator::EguiInputTranslator,
+    marquee::NotificationMarquee,
     menu_panel::{MenuPanel, TabId},
     rendering::EguiCapableGraphicsRuntime,
-    toast::ToastManager,
     utils::{allocate_fill_aspect, setup_egui_context, to_egui_color},
 };
 
@@ -42,7 +42,7 @@ pub struct Frontend<P: Platform> {
     file_browser_state: FileBrowserState,
     menu_panel: MenuPanel,
     simulation_controller_ui_state: simulation_controller::State,
-    toast_manager: ToastManager,
+    notification_marquee: NotificationMarquee,
     font_definitions: FontDefinitions,
     egui_input_translator: EguiInputTranslator,
     /// ID of area where framebuffers will be drawn
@@ -65,7 +65,7 @@ impl<P: Platform> Frontend<P> {
             file_browser_state,
             menu_panel: MenuPanel::default(),
             simulation_controller_ui_state: simulation_controller::State::default(),
-            toast_manager: ToastManager::default(),
+            notification_marquee: NotificationMarquee::default(),
             font_definitions,
             egui_input_translator: EguiInputTranslator::default(),
             machine_framebuffer_display_area: Id::new(format!(
@@ -123,7 +123,7 @@ impl<P: Platform> Frontend<P> {
         self.handle_core_events();
 
         let full_output = self.egui_context.clone().run_ui(external_input, |ui| {
-            self.toast_manager.show(ui);
+            self.notification_marquee.show(ui);
 
             ui.add(&mut self.menu_panel);
 
@@ -174,7 +174,7 @@ impl<P: Platform> Frontend<P> {
 
     fn handle_core_events(&mut self) {
         for notification in self.notifications.drain() {
-            self.toast_manager.toast(notification);
+            self.notification_marquee.push(notification);
             self.egui_context.request_repaint();
         }
 

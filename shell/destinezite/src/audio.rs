@@ -27,16 +27,16 @@ impl Debug for CpalAudioRuntime {
 impl CpalAudioRuntime {
     pub fn new() -> Result<Self, ()> {
         let host = cpal::default_host();
-        tracing::info!("Selecting audio api {:?}", host.id());
+        tracing::debug!("Selecting audio api {:?}", host.id());
 
         let device = host
             .default_output_device()
             .expect("failed to get default output device");
 
         if let Ok(description) = device.description() {
-            tracing::info!("Selected audio device with properties {:?}", description);
+            tracing::debug!("Selected audio device with properties {:?}", description);
         } else {
-            tracing::info!("Selected audio device");
+            tracing::debug!("Selected audio device");
         }
 
         let default_output_config = device.default_output_config().unwrap();
@@ -52,7 +52,7 @@ impl CpalAudioRuntime {
             .unwrap();
 
         let config = config_range.with_sample_rate(default_output_config.sample_rate());
-        tracing::info!("Selected audio device with config: {:#?}", config);
+        tracing::debug!("Selected audio device with config: {:#?}", config);
 
         let mixer: Arc<OnceLock<_>> = Arc::default();
 

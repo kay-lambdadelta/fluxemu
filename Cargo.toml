@@ -36,7 +36,6 @@ dyn-clone = "1.0"
 egui = { version = "0.36", default-features = false }
 egui_demo_lib = "0.36"
 egui_extras = "0.36"
-egui-toast = "0.22"
 egui-wgpu = "0.36"
 egui-winit = "0.36"
 evdev = "0.13"

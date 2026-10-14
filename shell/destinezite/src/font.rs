@@ -26,7 +26,7 @@ fn load_face(
     if let Some(font_info) = font_info
         && let Some(blob) = font_info.load(Some(source_cache))
     {
-        tracing::info!("Loading font: {}", font_name);
+        tracing::debug!("Loading font: {}", font_name);
 
         return Some((font_name.to_string(), blob.data().to_vec()));
     }

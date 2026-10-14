@@ -10,7 +10,6 @@ license = { workspace = true }
 bytemuck = { workspace = true }
 egui = { workspace = true, features = ["rayon"] }
 egui_extras = { workspace = true }
-egui-toast = { workspace = true }
 egui-wgpu = { workspace = true, optional = true }
 fluxemu-audio = { workspace = true }
 fluxemu-egui-software-renderer = { workspace = true }

@@ -1568,15 +1568,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "egui-toast"
-version = "0.22.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3df032159d3428ab76bdb8c580b2f807cc10976cc09e815abdce74d640f7c0f"
-dependencies = [
- "egui",
-]
-
-[[package]]
 name = "egui-wgpu"
 version = "0.36.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1992,7 +1983,6 @@ version = "0.0.1"
 dependencies = [
  "bytemuck",
  "egui",
- "egui-toast",
  "egui-wgpu",
  "egui_extras",
  "fluxemu-audio",
