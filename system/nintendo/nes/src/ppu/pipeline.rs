@@ -32,9 +32,9 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
 
         for timestamp in quanta_allocator {
             if (0..R::VISIBLE_SCANLINES).contains(&self.state.cycle_counter.y) {
-                self.handle_visible_scanlines(&mut ppu_address_space, &timestamp);
+                self.handle_visible_scanlines(&mut ppu_address_space, timestamp);
             } else if self.state.cycle_counter.y == R::PRERENDER_SCANLINE {
-                self.handle_prerender(&mut ppu_address_space, &timestamp);
+                self.handle_prerender(&mut ppu_address_space, timestamp);
             }
 
             if self.state.cycle_counter.y == R::PRERENDER_SCANLINE
@@ -61,7 +61,7 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
     pub(super) fn handle_prerender(
         &mut self,
         ppu_address_space: &mut AddressSpace<'_>,
-        timestamp: &Period,
+        timestamp: Period,
     ) {
         if self.state.cycle_counter.x == 1 {
             self.state.oam.sprite_zero_hit = false;
@@ -109,7 +109,7 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
     pub(super) fn handle_visible_scanlines(
         &mut self,
         ppu_address_space: &mut AddressSpace<'_>,
-        timestamp: &Period,
+        timestamp: Period,
     ) {
         self.process_scanline(ppu_address_space, timestamp, true);
     }
@@ -118,7 +118,7 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
     pub(super) fn process_scanline(
         &mut self,
         ppu_address_space: &mut AddressSpace<'_>,
-        timestamp: &Period,
+        timestamp: Period,
         render: bool,
     ) {
         if self.state.cycle_counter.x == 1 {
@@ -350,7 +350,7 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
     pub(crate) fn drive_sprite_pipeline(
         &mut self,
         ppu_address_space: &mut AddressSpace<'_>,
-        timestamp: &Period,
+        timestamp: Period,
     ) {
         if !self.state.oam.awaiting_memory_access {
             let currently_relevant_sprite_index = (self.state.cycle_counter.x - 257) / 8;
@@ -428,7 +428,7 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
     pub(crate) fn drive_background_pipeline(
         &mut self,
         ppu_address_space: &mut AddressSpace<'_>,
-        timestamp: &Period,
+        timestamp: Period,
     ) {
         if !self.state.background.awaiting_memory_access {
             self.drive_background_pipeline_inner(ppu_address_space, timestamp);
@@ -442,7 +442,7 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
     fn drive_background_pipeline_inner(
         &mut self,
         ppu_address_space: &mut AddressSpace<'_>,
-        timestamp: &Period,
+        timestamp: Period,
     ) {
         let mut vram_address_pointer_contents =
             VramAddressPointerContents::from(self.state.vram_address_pointer);
@@ -558,7 +558,7 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
     pub fn calculate_background_color(
         &self,
         ppu_address_space: &mut AddressSpace<'_>,
-        timestamp: &Period,
+        timestamp: Period,
         attribute: u8,
         color: u8,
     ) -> PpuColorIndex {
@@ -580,7 +580,7 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
     pub fn calculate_sprite_color(
         &self,
         ppu_address_space: &mut AddressSpace<'_>,
-        timestamp: &Period,
+        timestamp: Period,
         sprite: OamSprite,
         color: u8,
     ) -> PpuColorIndex {

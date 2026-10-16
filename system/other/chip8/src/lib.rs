@@ -90,8 +90,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Chip8 {
             .unwrap();
 
         let rom = machine_builder
-            .open_rom(rom_id, RomRequirement::Required)
-            .unwrap()
+            .open_rom(rom_id, RomRequirement::Required)?
             .unwrap();
 
         let chip8_font = bytemuck::cast_slice(&CHIP8_FONT);

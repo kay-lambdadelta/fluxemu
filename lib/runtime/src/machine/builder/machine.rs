@@ -50,13 +50,14 @@ pub struct MachineBuilder<P: Platform> {
     pub(super) program_specification: Option<Manifest>,
     pub(super) next_address_space_id: AddressSpaceId,
     pub(super) component_registry_data: ComponentRegistryData,
-    pub(super) address_spaces: HashMap<AddressSpaceId, AddressSpaceSetupData>,
-    pub(super) component_data: HashMap<ComponentPath, ComponentData<P>>,
+    pub(super) address_spaces: HashMap<AddressSpaceId, AddressSpaceSetupData, FxBuildHasher>,
+    pub(super) component_data: HashMap<ComponentPath, ComponentData<P>, FxBuildHasher>,
     pub(super) input_devices: HashMap<ResourcePath, Arc<LogicalInputDevice>, FxBuildHasher>,
     pub(super) framebuffer_late_initializers:
         HashMap<ResourcePath, FramebufferLateInitializer<P>, FxBuildHasher>,
-    pub(super) audio_channels: HashSet<ResourcePath>,
-    pub(super) required_memory_regions: HashMap<ResourcePath, RegionInitializationData>,
+    pub(super) audio_channels: HashSet<ResourcePath, FxBuildHasher>,
+    pub(super) required_memory_regions:
+        HashMap<ResourcePath, RegionInitializationData, FxBuildHasher>,
     pub(super) scheduler: Scheduler,
 }
 
@@ -98,7 +99,7 @@ impl<P: Platform> MachineBuilder<P> {
         &self,
         id: RomId,
         requirement: RomRequirement,
-    ) -> Result<Option<Bytes>, fluxemu_program::Error> {
+    ) -> Result<Option<Bytes>, MachineError> {
         match self.program_manager.load(id)? {
             Some(bytes) => Ok(Some(bytes)),
             None => match requirement {
@@ -125,7 +126,7 @@ impl<P: Platform> MachineBuilder<P> {
                         id
                     );
 
-                    Ok(None)
+                    Err(MachineError::CouldNotFindEssentialRom)
                 }
             },
         }
@@ -153,7 +154,7 @@ impl<P: Platform> MachineBuilder<P> {
         self.component_registry_data.insert_component(
             path.clone(),
             component,
-            component_data.systems.drain(),
+            component_data.tasks.drain(),
         );
 
         self.component_data.insert(path, component_data);
@@ -210,15 +211,7 @@ impl<P: Platform> MachineBuilder<P> {
         initial_contents: impl IntoIterator<Item = (RangeInclusive<Address>, Bytes)>,
     ) -> (Self, ResourcePath) {
         let path = ResourcePath::new(None, name).unwrap();
-
-        self.required_memory_regions.insert(
-            path.clone(),
-            RegionInitializationData {
-                size,
-                sram: false,
-                initial_contents: initial_contents.into_iter().collect(),
-            },
-        );
+        self.insert_memory_region(path.clone(), size, false, initial_contents);
 
         (self, path)
     }
@@ -231,15 +224,7 @@ impl<P: Platform> MachineBuilder<P> {
         initial_contents: impl IntoIterator<Item = (RangeInclusive<Address>, Bytes)>,
     ) -> (Self, ResourcePath) {
         let path = ResourcePath::new(None, name).unwrap();
-
-        self.required_memory_regions.insert(
-            path.clone(),
-            RegionInitializationData {
-                size,
-                sram: true,
-                initial_contents: initial_contents.into_iter().collect(),
-            },
-        );
+        self.insert_memory_region(path.clone(), size, true, initial_contents);
 
         (self, path)
     }
@@ -249,20 +234,47 @@ impl<P: Platform> MachineBuilder<P> {
         address_space: AddressSpaceId,
         commands: impl IntoIterator<Item = MemoryMapCommand>,
     ) -> Self {
-        self.address_spaces
-            .get_mut(&address_space)
-            .unwrap()
-            .commands
-            .extend(commands);
+        self.insert_memory_map_commands(address_space, commands);
 
         self
+    }
+
+    pub(super) fn insert_memory_region(
+        &mut self,
+        path: ResourcePath,
+        size: usize,
+        sram: bool,
+        initial_contents: impl IntoIterator<Item = (RangeInclusive<Address>, Bytes)>,
+    ) {
+        let previous = self.required_memory_regions.insert(
+            path.clone(),
+            RegionInitializationData {
+                size,
+                sram,
+                initial_contents: initial_contents.into_iter().collect(),
+            },
+        );
+
+        assert!(previous.is_none(), "Duplicate memory region path: {path}");
+    }
+
+    pub(super) fn insert_memory_map_commands(
+        &mut self,
+        address_space: AddressSpaceId,
+        commands: impl IntoIterator<Item = MemoryMapCommand>,
+    ) {
+        self.address_spaces
+            .get_mut(&address_space)
+            .expect("Address space does not exist")
+            .commands
+            .extend(commands);
     }
 
     /// Seal the machine
     pub fn seal(self) -> SealedMachineBuilder<P> {
         let mut component_late_initializers = HashMap::default();
         let mut graphics_requirements = GraphicsRequirements::default();
-        let mut remapping_commands = HashMap::new();
+        let mut remapping_commands = Vec::new();
         let mut address_spaces = HashMap::default();
 
         for (path, component_data) in self.component_data {
@@ -273,7 +285,7 @@ impl<P: Platform> MachineBuilder<P> {
 
         for (id, AddressSpaceSetupData { data, commands }) in self.address_spaces {
             address_spaces.insert(id, data);
-            remapping_commands.insert(id, commands);
+            remapping_commands.push((id, commands));
         }
 
         let required_memory_regions = self.required_memory_regions;
@@ -303,7 +315,7 @@ impl<P: Platform> MachineBuilder<P> {
         for (id, commands) in remapping_commands {
             let mut address_space = runtime_guard.address_space(id).unwrap();
 
-            address_space.remap(&Period::default(), commands);
+            address_space.remap(Period::ZERO, commands);
         }
         drop(runtime_guard);
 

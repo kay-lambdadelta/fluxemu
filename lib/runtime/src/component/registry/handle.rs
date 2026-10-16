@@ -18,7 +18,7 @@ pub struct ComponentHandle {
 #[derive(Debug)]
 pub struct MutableData {
     pub component: Box<dyn Component>,
-    pub systems: HashMap<Cow<'static, str>, TaskEntry>,
+    pub tasks: HashMap<Cow<'static, str>, TaskEntry>,
 }
 
 #[derive(Debug)]

@@ -179,7 +179,7 @@ impl Component for Mos6532Riot {
                                 .address_space(self.config.assigned_address_space)
                                 .unwrap()
                                 .remap(
-                                    &timestamp,
+                                    timestamp,
                                     [MemoryMapCommand::Map {
                                         range: address..=address,
                                         target: MapTarget::Component(swacnt.clone()),
@@ -207,7 +207,7 @@ impl Component for Mos6532Riot {
                                 .address_space(self.config.assigned_address_space)
                                 .unwrap()
                                 .remap(
-                                    &timestamp,
+                                    timestamp,
                                     [MemoryMapCommand::Map {
                                         range: address..=address,
                                         target: MapTarget::Component(swbcnt.clone()),
@@ -302,7 +302,7 @@ impl<P: Platform> ComponentConfig<P> for Mos6532RiotConfig {
             runtime
                 .address_space(component.config.assigned_address_space)
                 .unwrap()
-                .remap(&Period::ZERO, mapping_commands);
+                .remap(Period::ZERO, mapping_commands);
         });
     }
 

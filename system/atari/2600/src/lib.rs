@@ -65,8 +65,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Atari2600 {
             .unwrap();
 
         let rom = machine_builder
-            .open_rom(rom_id, RomRequirement::Required)
-            .unwrap()
+            .open_rom(rom_id, RomRequirement::Required)?
             .unwrap();
 
         let cart_type = CartType::detect(&rom);

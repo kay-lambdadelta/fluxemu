@@ -1,14 +1,17 @@
-use std::{rc::Rc, sync::Arc};
+use std::{
+    cell::{Cell, RefCell, UnsafeCell},
+    marker::PhantomData,
+    rc::{Rc, Weak},
+    sync::Arc,
+};
 
 use fluxemu_graphics::api::GraphicsApi;
 
 use crate::{
     ComponentPath, ResourcePath,
-    component::{Component, ComponentRegistry},
-    machine::{
-        CURRENT_DISPATCH_TIMESTAMP, CURRENT_THREAD_RUNTIME_HANDLE, Machine, ThreadLocalData,
-    },
-    memory::{AddressSpace, AddressSpaceId},
+    component::{Component, ComponentRegistry, LocalComponentRegistryData},
+    machine::Machine,
+    memory::{AddressSpace, AddressSpaceId, LocalMemoryRegistryData},
     scheduler::{Period, event::EventMode},
 };
 
@@ -129,5 +132,52 @@ impl RuntimeHandle {
         CURRENT_DISPATCH_TIMESTAMP
             .with(|timestamp| timestamp.get())
             .expect("This function only works within an interact call")
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct ThreadLocalData {
+    pub component_registry_data: UnsafeCell<LocalComponentRegistryData>,
+    pub memory_registry_data: UnsafeCell<LocalMemoryRegistryData>,
+    // Ensure this is !Send and !Sync
+    _phantom: PhantomData<*const ()>,
+}
+
+impl ThreadLocalData {
+    pub fn new(machine: &Machine) -> Self {
+        Self {
+            component_registry_data: UnsafeCell::new(LocalComponentRegistryData::new(
+                &machine.component_registry_data,
+            )),
+            memory_registry_data: UnsafeCell::new(LocalMemoryRegistryData::new(
+                &machine.memory_registry_data,
+            )),
+            _phantom: PhantomData,
+        }
+    }
+}
+
+thread_local! {
+    pub(crate) static CURRENT_THREAD_RUNTIME_HANDLE: RefCell<Weak<RuntimeHandle>> = const { RefCell::new(Weak::new()) };
+    pub(crate) static CURRENT_DISPATCH_TIMESTAMP: Cell<Option<Period>> = const { Cell::new(None) };
+}
+
+pub(crate) struct TimestampGuard {
+    previous: Option<Period>,
+}
+
+impl TimestampGuard {
+    #[inline]
+    pub fn enter(timestamp: Period) -> Self {
+        let previous = CURRENT_DISPATCH_TIMESTAMP.replace(Some(timestamp));
+
+        Self { previous }
+    }
+}
+
+impl Drop for TimestampGuard {
+    #[inline]
+    fn drop(&mut self) {
+        CURRENT_DISPATCH_TIMESTAMP.set(self.previous);
     }
 }

@@ -217,7 +217,7 @@ impl<P: Platform> Frontend<P> {
             let callback = runtime
                 .read_framebuffer::<P::GraphicsApi, _>(
                     framebuffer,
-                    &runtime.safe_advance_timestamp(),
+                    runtime.safe_advance_timestamp(),
                     |framebuffer| {
                         let size =
                             Vector2::new(framebuffer.width() as f32, framebuffer.height() as f32);

@@ -10,20 +10,16 @@ use std::{
 use rustc_hash::FxBuildHasher;
 
 use crate::{
-    RuntimeHandle,
+    RuntimeHandle, TimestampGuard,
     component::{
         Component, ComponentId,
-        registry::{
-            handle::{ComponentHandle, MutableData},
-            timestamp_guard::TimestampGuard,
-        },
+        registry::handle::{ComponentHandle, MutableData},
     },
     path::ComponentPath,
     scheduler::{Context, Period, task::Mode},
 };
 
 mod handle;
-pub(crate) mod timestamp_guard;
 
 pub(crate) use handle::TaskEntry;
 
@@ -55,9 +51,12 @@ impl ComponentRegistryData {
         &mut self,
         path: ComponentPath,
         component: C,
-        systems: impl IntoIterator<Item = (Cow<'static, str>, TaskEntry)>,
+        tasks: impl IntoIterator<Item = (Cow<'static, str>, TaskEntry)>,
     ) {
-        let mut sync_state_guard = self.state.lock().unwrap();
+        assert!(
+            !self.metadata.contains_key(&path),
+            "Component with the path {path} already exists"
+        );
 
         let id = ComponentId(self.next_component_id);
         self.next_component_id = self
@@ -65,22 +64,16 @@ impl ComponentRegistryData {
             .checked_add(1)
             .expect("Too many components");
 
-        if sync_state_guard
-            .global_component_store
-            .insert(
-                id,
-                ComponentHandle {
-                    data: Some(MutableData {
-                        component: Box::new(component),
-                        systems: systems.into_iter().collect(),
-                    }),
-                    path: path.clone(),
-                },
-            )
-            .is_some()
-        {
-            panic!("Component with the same path already exists")
-        }
+        self.state.get_mut().unwrap().global_component_store.insert(
+            id,
+            ComponentHandle {
+                data: Some(MutableData {
+                    component: Box::new(component),
+                    tasks: tasks.into_iter().collect(),
+                }),
+                path: path.clone(),
+            },
+        );
 
         self.metadata.insert(path, GlobalComponentMetadata { id });
     }
@@ -117,7 +110,7 @@ impl<'a> ComponentRegistry<'a> {
     pub fn interact<'b, C: Component, T>(
         &'b self,
         id: impl Into<ComponentIdentifier<'b>>,
-        target_timestamp: &Period,
+        target_timestamp: Period,
         callback: impl FnOnce(&mut C) -> T,
     ) -> Option<T> {
         self.interact_dyn(
@@ -139,13 +132,13 @@ impl<'a> ComponentRegistry<'a> {
     pub(crate) unsafe fn interact_dyn_id_unchecked<T>(
         &self,
         id: ComponentId,
-        target_timestamp: &Period,
+        target_timestamp: Period,
         callback: impl FnOnce(&mut dyn Component) -> T,
     ) -> T {
-        self.synchronize_component(id, *target_timestamp);
+        self.synchronize_component(id, target_timestamp);
 
         let mut data = {
-            let store = unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
+            let store = unsafe { &mut *self.local_data().get() };
 
             store
                 .get_slot(id)
@@ -157,12 +150,11 @@ impl<'a> ComponentRegistry<'a> {
         };
 
         // Record the current timestamp on the thread local
-        let _guard = TimestampGuard::enter(*target_timestamp);
+        let _guard = TimestampGuard::enter(target_timestamp);
 
         let item = callback(data.component.as_mut());
 
-        let store = unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
-        unsafe { store.get_slot(id).as_mut().unwrap_unchecked() }.data = Some(data);
+        self.return_data(id, data);
 
         item
     }
@@ -181,7 +173,7 @@ impl<'a> ComponentRegistry<'a> {
     pub fn interact_dyn<'b, T>(
         &'b self,
         id: impl Into<ComponentIdentifier<'b>>,
-        target_timestamp: &Period,
+        target_timestamp: Period,
         callback: impl FnOnce(&mut dyn Component) -> T,
     ) -> Option<T> {
         let id = self.convert_identifier(id)?;
@@ -219,11 +211,8 @@ impl<'a> ComponentRegistry<'a> {
                 )
             };
 
-            if data.systems.is_empty() {
-                let store =
-                    unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
-
-                store.get_slot(id).as_mut().unwrap().data = Some(data);
+            if data.tasks.is_empty() {
+                self.return_data(id, data);
 
                 return;
             }
@@ -231,7 +220,7 @@ impl<'a> ComponentRegistry<'a> {
             let mut earliest_hazard = Period::MAX;
             let mut any_incomplete = false;
 
-            for (name, entry) in &mut data.systems {
+            for (name, entry) in &mut data.tasks {
                 let delta = target_timestamp.saturating_sub(entry.current_timestamp);
 
                 // Attempt to allocate time for the task
@@ -290,8 +279,7 @@ impl<'a> ComponentRegistry<'a> {
                 }
             }
 
-            let store = unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
-            store.get_slot(id).as_mut().unwrap().data = Some(data);
+            self.return_data(id, data);
 
             if !any_incomplete {
                 break;
@@ -301,8 +289,15 @@ impl<'a> ComponentRegistry<'a> {
                 .machine()
                 .scheduler
                 .queue
-                .handle_deadlines_before(earliest_hazard, *self);
+                .handle_deadlines_until(earliest_hazard, *self);
         }
+    }
+
+    #[inline]
+    fn return_data(&self, id: ComponentId, data: MutableData) {
+        let store = unsafe { &mut *self.local_data().get() };
+
+        store.get_slot(id).as_mut().unwrap().data = Some(data);
     }
 
     #[inline]
@@ -333,6 +328,9 @@ impl<'a> ComponentRegistry<'a> {
                 // Give components back so others can potentially access them
                 self.release_all_inner(&mut sync_state_guard, local_data);
 
+                // SAFETY: Memory slices never outlive a single memory operation, which cannot contain a component acquisition
+                unsafe { self.runtime.memory_registry().release_all() };
+
                 // Get condvar
                 let condvar = sync_state_guard
                     .component_condvars
@@ -356,7 +354,7 @@ impl<'a> ComponentRegistry<'a> {
 
     pub(crate) unsafe fn release_all(&self) {
         let mut sync_state_guard = self.data().state.lock().unwrap();
-        let local_data = unsafe { &mut *self.runtime.local_data().component_registry_data.get() };
+        let local_data = unsafe { &mut *self.local_data().get() };
 
         self.release_all_inner(&mut sync_state_guard, local_data);
     }

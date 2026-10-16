@@ -1,10 +1,5 @@
-//! FluxEMU Runtime
-//!
-//! The main runtime for the FluxEMU emulator framework
-
 use std::{
     any::Any,
-    cell::{Cell, RefCell, UnsafeCell},
     collections::{HashMap, HashSet},
     fmt::Debug,
     hash::BuildHasher,
@@ -23,13 +18,11 @@ use rustc_hash::FxBuildHasher;
 use tracing::Level;
 
 use crate::{
-    RuntimeHandle,
-    component::{ComponentRegistry, ComponentRegistryData, LocalComponentRegistryData},
+    CURRENT_DISPATCH_TIMESTAMP, CURRENT_THREAD_RUNTIME_HANDLE, RuntimeHandle,
+    component::{ComponentRegistry, ComponentRegistryData},
     input::LogicalInputDevice,
     machine::builder::MachineBuilder,
-    memory::{
-        AddressSpace, AddressSpaceData, AddressSpaceId, LocalMemoryRegistryData, MemoryRegistryData,
-    },
+    memory::{AddressSpace, AddressSpaceData, AddressSpaceId, MemoryRegistryData},
     path::ResourcePath,
     platform::{Platform, TestPlatform},
     scheduler::{Period, Scheduler},
@@ -57,7 +50,7 @@ where
     pub(crate) framebuffers:
         HashMap<ResourcePath, Mutex<Box<dyn Any + Send + Sync>>, FxBuildHasher>,
     /// All audio outputs this machine has
-    pub(crate) audio_channels: HashSet<ResourcePath>,
+    pub(crate) audio_channels: HashSet<ResourcePath, FxBuildHasher>,
     /// The program that this machine was set up with, if any
     pub(crate) program_specification: Option<Manifest>,
 }
@@ -173,7 +166,7 @@ impl RuntimeGuard<'_> {
         self.component_registry()
             .interact_dyn(
                 path.parent().unwrap(),
-                &self.safe_advance_timestamp(),
+                self.safe_advance_timestamp(),
                 |component| {
                     for (input_id, state) in inputs {
                         logical_input_device.set_state(input_id, state);
@@ -193,7 +186,7 @@ impl RuntimeGuard<'_> {
     pub fn read_framebuffer<G: GraphicsApi, T>(
         &self,
         path: &ResourcePath,
-        target_timestamp: &Period,
+        target_timestamp: Period,
         callback: impl FnOnce(&G::Framebuffer) -> T,
     ) -> Option<T> {
         // Ensure we are advanced to at least this timestamp
@@ -213,7 +206,7 @@ impl RuntimeGuard<'_> {
 
     /// List of paths to any audio outputs this machine was created with
     #[inline]
-    pub fn audio_outputs(&self) -> &HashSet<ResourcePath> {
+    pub fn audio_outputs(&self) -> &HashSet<ResourcePath, impl BuildHasher> {
         &self.runtime.machine().audio_channels
     }
 
@@ -257,33 +250,8 @@ impl Drop for RuntimeGuard<'_> {
         unsafe { self.component_registry().release_all() };
 
         // Release all memory regions
-        self.runtime.memory_registry().release_all();
+        //
+        // SAFETY: No memory operation can be in progress outside of the runtime
+        unsafe { self.runtime.memory_registry().release_all() };
     }
-}
-
-#[derive(Debug)]
-pub(crate) struct ThreadLocalData {
-    pub component_registry_data: UnsafeCell<LocalComponentRegistryData>,
-    pub memory_registry_data: UnsafeCell<LocalMemoryRegistryData>,
-    // Ensure this is !Send and !Sync
-    _phantom: PhantomData<*const ()>,
-}
-
-impl ThreadLocalData {
-    pub fn new(machine: &Machine) -> Self {
-        Self {
-            component_registry_data: UnsafeCell::new(LocalComponentRegistryData::new(
-                &machine.component_registry_data,
-            )),
-            memory_registry_data: UnsafeCell::new(LocalMemoryRegistryData::new(
-                &machine.memory_registry_data,
-            )),
-            _phantom: PhantomData,
-        }
-    }
-}
-
-thread_local! {
-    pub(crate) static CURRENT_THREAD_RUNTIME_HANDLE: RefCell<Weak<RuntimeHandle>> = const { RefCell::new(Weak::new()) };
-    pub(crate) static CURRENT_DISPATCH_TIMESTAMP: Cell<Option<Period>> = const { Cell::new(None) };
 }

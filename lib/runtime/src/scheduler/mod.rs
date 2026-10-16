@@ -32,7 +32,7 @@ impl Scheduler {
         let target = self.safe_advance_timestamp() + allocated_time;
 
         self.queue
-            .handle_deadlines_before(target, component_registry);
+            .handle_deadlines_until(target, component_registry);
 
         let mut safe_advance_timestamp = self.safe_advance_timestamp.lock().unwrap();
         *safe_advance_timestamp = (*safe_advance_timestamp).max(target);

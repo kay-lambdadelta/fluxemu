@@ -4,7 +4,6 @@ use std::{
     str::FromStr,
 };
 
-use itertools::Itertools;
 use redb::{Key, TypeName, Value};
 use serde::{Deserialize, Serialize};
 
@@ -35,13 +34,8 @@ pub struct ComponentPath(Cow<'static, str>);
 impl ComponentPath {
     pub fn new(component: impl Into<Cow<'static, str>>) -> Result<Self, Error> {
         let component = component.into();
-        let segments: Vec<&str> = component.split('/').collect();
 
-        if segments.is_empty() {
-            return Err(Error::TooShort);
-        }
-
-        validate_segments(segments)?;
+        validate_segments(component.split('/'))?;
 
         Ok(ComponentPath(component))
     }
@@ -59,19 +53,13 @@ impl ComponentPath {
     }
 
     pub fn parent(&self) -> Option<ComponentPath> {
-        let segment_count = self.iter().count();
+        let (parent, _) = self.0.rsplit_once('/')?;
 
-        if segment_count < 2 {
-            return None;
-        }
-
-        let path = self.iter().take(segment_count - 1).join("/");
-
-        Some(ComponentPath(Cow::from(path)))
+        Some(ComponentPath(Cow::Owned(parent.to_owned())))
     }
 
     pub fn name(&self) -> &str {
-        self.iter().last().unwrap()
+        self.0.rsplit_once('/').map_or(&self.0, |(_, name)| name)
     }
 
     pub fn into_resource(
@@ -116,53 +104,6 @@ impl FromStr for ComponentPath {
     }
 }
 
-impl Serialize for ComponentPath {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&self.to_string())
-    }
-}
-
-impl<'de> Deserialize<'de> for ComponentPath {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        String::deserialize(deserializer)?
-            .parse()
-            .map_err(serde::de::Error::custom)
-    }
-}
-
-impl Value for ComponentPath {
-    type AsBytes<'a> = String;
-    type SelfType<'a> = Self;
-
-    fn fixed_width() -> Option<usize> {
-        None
-    }
-
-    fn from_bytes<'a>(data: &'a [u8]) -> Self::SelfType<'a>
-    where
-        Self: 'a,
-    {
-        String::from_bytes(data).parse().unwrap()
-    }
-
-    fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
-    where
-        Self: 'b,
-    {
-        value.to_string()
-    }
-
-    fn type_name() -> TypeName {
-        TypeName::new("component_path")
-    }
-}
-
-impl Key for ComponentPath {
-    fn compare(data1: &[u8], data2: &[u8]) -> std::cmp::Ordering {
-        String::from_utf8_lossy(data1).cmp(&String::from_utf8_lossy(data2))
-    }
-}
-
 impl From<ComponentPath> for Cow<'_, ComponentPath> {
     fn from(path: ComponentPath) -> Self {
         Cow::Owned(path)
@@ -196,7 +137,7 @@ impl ResourcePath {
         })
     }
 
-    /// Returns the full owning `ComponentId`.
+    /// Returns the owning [`ComponentPath`], if any.
     pub fn parent(&self) -> Option<&ComponentPath> {
         self.component.as_ref()
     }
@@ -211,7 +152,7 @@ impl Display for ResourcePath {
         f.write_str(":resource/")?;
 
         if let Some(component) = &self.component {
-            f.write_str(&component.iter().join("/"))?;
+            f.write_str(&component.0)?;
             f.write_char('/')?;
         }
 
@@ -252,52 +193,59 @@ impl FromStr for ResourcePath {
     }
 }
 
-impl Serialize for ResourcePath {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&self.to_string())
-    }
+macro_rules! impl_string_encoding {
+    ($path:ty, $type_name:literal) => {
+        impl Serialize for $path {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                serializer.collect_str(self)
+            }
+        }
+
+        impl<'de> Deserialize<'de> for $path {
+            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                String::deserialize(deserializer)?
+                    .parse()
+                    .map_err(serde::de::Error::custom)
+            }
+        }
+
+        impl Value for $path {
+            type AsBytes<'a> = String;
+            type SelfType<'a> = Self;
+
+            fn fixed_width() -> Option<usize> {
+                None
+            }
+
+            fn from_bytes<'a>(data: &'a [u8]) -> Self::SelfType<'a>
+            where
+                Self: 'a,
+            {
+                String::from_bytes(data).parse().unwrap()
+            }
+
+            fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
+            where
+                Self: 'b,
+            {
+                value.to_string()
+            }
+
+            fn type_name() -> TypeName {
+                TypeName::new($type_name)
+            }
+        }
+
+        impl Key for $path {
+            fn compare(data1: &[u8], data2: &[u8]) -> std::cmp::Ordering {
+                data1.cmp(data2)
+            }
+        }
+    };
 }
 
-impl<'de> Deserialize<'de> for ResourcePath {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        String::deserialize(deserializer)?
-            .parse()
-            .map_err(serde::de::Error::custom)
-    }
-}
-
-impl Value for ResourcePath {
-    type AsBytes<'a> = String;
-    type SelfType<'a> = Self;
-
-    fn fixed_width() -> Option<usize> {
-        None
-    }
-
-    fn from_bytes<'a>(data: &'a [u8]) -> Self::SelfType<'a>
-    where
-        Self: 'a,
-    {
-        String::from_bytes(data).parse().unwrap()
-    }
-
-    fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
-    where
-        Self: 'b,
-    {
-        value.to_string()
-    }
-
-    fn type_name() -> TypeName {
-        TypeName::new("resource_path")
-    }
-}
-
-impl Key for ResourcePath {
-    fn compare(data1: &[u8], data2: &[u8]) -> std::cmp::Ordering {
-        String::from_utf8_lossy(data1).cmp(&String::from_utf8_lossy(data2))
-    }
-}
+impl_string_encoding!(ComponentPath, "component_path");
+impl_string_encoding!(ResourcePath, "resource_path");
 
 fn validate_segments<'a>(segments: impl IntoIterator<Item = &'a str> + 'a) -> Result<(), Error> {
     for segment in segments {

@@ -6,7 +6,7 @@ use crate::{
     scheduler::{Context, Frequency, Period, QuantaAllocator, task::Task},
 };
 
-/// System that wraps a closure to conveniently provide frequency based ticking with less boilerplate
+/// Task that wraps a closure to conveniently provide frequency based ticking with less boilerplate
 pub struct FrequencyBased<C, MC> {
     period: Period,
     callback: MC,

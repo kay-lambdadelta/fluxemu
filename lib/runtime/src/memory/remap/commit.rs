@@ -20,17 +20,18 @@ impl PageTable {
 
     #[inline]
     pub fn commit(
-        &mut self,
-        previous_table: &Self,
+        &self,
         master: &RangeInclusiveMap<Address, MasterTableEntry>,
         dirty: &RangeInclusiveSet<Address>,
         runtime: &RuntimeHandle,
-    ) {
-        for page_index in 0..self.0.len() {
+    ) -> Self {
+        let mut pages: Vec<Arc<[PageTableEntry]>> = Vec::with_capacity(self.0.len());
+
+        for (page_index, previous_page) in self.0.iter().enumerate() {
             let page_address_range =
                 RangeInclusive::from_start_and_length(page_index * CHUNK_SIZE, CHUNK_SIZE);
 
-            self.0[page_index] = if dirty.overlaps(&page_address_range) {
+            let page = if dirty.overlaps(&page_address_range) {
                 let mut page_contents = Vec::default();
 
                 // Compile master table entries into this page
@@ -111,77 +112,56 @@ impl PageTable {
                 // Deduplicate
                 page_contents.dedup_by(
                     #[inline]
-                    |a, b| match (&a.target, &b.target) {
-                        (
-                            PageTableTarget::Component {
-                                offset: offset_a,
-                                id: id_a,
-                            },
-                            PageTableTarget::Component {
-                                offset: offset_b,
-                                id: id_b,
-                            },
-                        ) => {
-                            // Same component check
-                            if id_a != id_b {
-                                return false;
-                            }
+                    |a, b| {
+                        let physically_contiguous = match (&a.target, &b.target) {
+                            (
+                                PageTableTarget::Component {
+                                    offset: offset_a,
+                                    id: id_a,
+                                },
+                                PageTableTarget::Component {
+                                    offset: offset_b,
+                                    id: id_b,
+                                },
+                            ) => id_a == id_b && *offset_a == offset_b + b.range.len(),
+                            (
+                                PageTableTarget::Memory {
+                                    offset: offset_a,
+                                    id: id_a,
+                                },
+                                PageTableTarget::Memory {
+                                    offset: offset_b,
+                                    id: id_b,
+                                },
+                            ) => id_a == id_b && *offset_a == offset_b + b.range.len(),
+                            _ => false,
+                        };
 
-                            // Virtual contiguous check
-                            if !a.range.is_adjacent(&b.range) {
-                                return false;
-                            }
-
-                            // Physical contiguous check
-                            if *offset_a != offset_b + b.range.len() {
-                                return false;
-                            }
-
-                            // Merge them
+                        if physically_contiguous && a.range.is_adjacent(&b.range) {
                             b.range = (b.range.start..=a.range.last).into();
 
                             true
+                        } else {
+                            false
                         }
-                        (
-                            PageTableTarget::Memory {
-                                offset: offset_a,
-                                id: id_a,
-                            },
-                            PageTableTarget::Memory {
-                                offset: offset_b,
-                                id: id_b,
-                            },
-                        ) => {
-                            if id_a != id_b {
-                                return false;
-                            }
-                            if !a.range.is_adjacent(&b.range) {
-                                return false;
-                            }
-                            if *offset_a != offset_b + b.range.len() {
-                                return false;
-                            }
-                            b.range = (b.range.start..=a.range.last).into();
-
-                            true
-                        }
-                        _ => false,
                     },
                 );
 
-                let previous_page = page_index.checked_sub(1).map(|index| &self.0[index]);
-
-                if let Some(previous_page) = previous_page
-                    && pages_have_same_mapping(previous_page, &page_contents)
+                if let Some(last_page) = pages.last()
+                    && pages_have_same_mapping(last_page, &page_contents)
                 {
-                    previous_page.clone()
+                    last_page.clone()
                 } else {
                     Arc::from(page_contents)
                 }
             } else {
-                previous_table.0[page_index].clone()
+                previous_page.clone()
             };
+
+            pages.push(page);
         }
+
+        PageTable(pages.into_boxed_slice())
     }
 
     #[inline]

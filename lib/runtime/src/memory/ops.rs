@@ -26,7 +26,7 @@ impl AddressSpace<'_> {
     pub fn read<B: NumBytes + ?Sized, const AVOID_SIDE_EFFECTS: bool>(
         &mut self,
         address: Address,
-        current_timestamp: &Period,
+        current_timestamp: Period,
         buffer: &mut B,
     ) -> Result<(), MemoryError> {
         let page_table = self.data.get_read_table(&self.guard);
@@ -101,7 +101,7 @@ impl AddressSpace<'_> {
     pub fn read_le_value<T: FromBytes, const AVOID_SIDE_EFFECTS: bool>(
         &mut self,
         address: Address,
-        current_timestamp: &Period,
+        current_timestamp: Period,
     ) -> Result<T, MemoryError>
     where
         T::Bytes: Default,
@@ -118,7 +118,7 @@ impl AddressSpace<'_> {
     pub fn read_be_value<T: FromBytes, const AVOID_SIDE_EFFECTS: bool>(
         &mut self,
         address: Address,
-        current_timestamp: &Period,
+        current_timestamp: Period,
     ) -> Result<T, MemoryError>
     where
         T::Bytes: Default,
@@ -137,7 +137,7 @@ impl AddressSpace<'_> {
     pub fn write<B: NumBytes + ?Sized>(
         &mut self,
         address: Address,
-        current_timestamp: &Period,
+        current_timestamp: Period,
         buffer: &B,
     ) -> Result<(), MemoryError> {
         let page_table = self.data.get_write_table(&self.guard);
@@ -198,7 +198,7 @@ impl AddressSpace<'_> {
     pub fn write_le_value<T: ToBytes>(
         &mut self,
         address: Address,
-        current_timestamp: &Period,
+        current_timestamp: Period,
         value: T,
     ) -> Result<(), MemoryError> {
         self.write(address, current_timestamp, &value.to_le_bytes())
@@ -211,7 +211,7 @@ impl AddressSpace<'_> {
     pub fn write_be_value<T: ToBytes>(
         &mut self,
         address: Address,
-        current_timestamp: &Period,
+        current_timestamp: Period,
         value: T,
     ) -> Result<(), MemoryError> {
         self.write(address, current_timestamp, &value.to_be_bytes())
@@ -385,7 +385,7 @@ fn visit_page_entries<BUFFER: SplitableBuffer>(
 #[inline]
 fn virtual_memory_read<const AVOID_SIDE_EFFECTS: bool>(
     id: ComponentId,
-    timestamp: &Period,
+    timestamp: Period,
     destination: usize,
     address_space_id: AddressSpaceId,
     runtime: &RuntimeHandle,
@@ -408,7 +408,7 @@ fn virtual_memory_read<const AVOID_SIDE_EFFECTS: bool>(
 #[inline]
 fn virtual_memory_write(
     id: ComponentId,
-    timestamp: &Period,
+    timestamp: Period,
     destination: usize,
     address_space_id: AddressSpaceId,
     runtime: &RuntimeHandle,

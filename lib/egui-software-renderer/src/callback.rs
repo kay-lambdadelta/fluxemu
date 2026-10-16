@@ -1,6 +1,7 @@
+use std::{fmt::Debug, sync::Arc};
+
 use egui::{PaintCallback, Rect};
 use fluxemu_graphics::texture::RefMutTexture;
-use std::{fmt::Debug, sync::Arc};
 
 pub trait CallbackTrait<P>: Send + Sync + 'static {
     fn paint(&self, callback_info: CallbackInfo, texture: RefMutTexture<'_, P>);

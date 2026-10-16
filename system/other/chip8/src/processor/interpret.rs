@@ -26,7 +26,7 @@ impl<G: SupportedGraphicsApi> Chip8Processor<G> {
         &mut self,
         runtime: &RuntimeHandle,
         address_space: &mut AddressSpace<'_>,
-        timestamp: &Period,
+        timestamp: Period,
         instruction: Chip8InstructionSet,
     ) {
         match instruction {
@@ -364,7 +364,7 @@ impl<G: SupportedGraphicsApi> Chip8Processor<G> {
     fn interpret_superchip8(
         &mut self,
         runtime: &RuntimeHandle,
-        timestamp: &Period,
+        timestamp: Period,
         subinstruction: InstructionSetSuperChip8,
     ) {
         *self.mode.lock().unwrap() = Chip8Mode::SuperChip8;
@@ -399,7 +399,7 @@ impl<G: SupportedGraphicsApi> Chip8Processor<G> {
         &mut self,
         runtime: &RuntimeHandle,
         address_space: &mut AddressSpace<'_>,
-        timestamp: &Period,
+        timestamp: Period,
         mode_guard: Chip8Mode,
         coordinates: Point2<Register>,
         height: u8,

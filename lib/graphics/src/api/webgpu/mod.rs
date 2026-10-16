@@ -1,11 +1,10 @@
-use core::ops::BitOr;
-
 use alloc::sync::Arc;
+use core::ops::BitOr;
+use std::sync::Mutex;
+
 use wgpu::{Device, Features, Limits, Queue, Texture, TextureFormat, TextureUsages};
 
 use crate::api::{Framebuffer, GraphicsApi};
-
-use std::sync::Mutex;
 
 extern crate std;
 

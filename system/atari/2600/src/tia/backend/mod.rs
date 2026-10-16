@@ -1,6 +1,7 @@
+use std::fmt::Debug;
+
 use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_runtime::graphics::SimpleDisplayBackend;
-use std::fmt::Debug;
 
 use crate::tia::region::Region;
 

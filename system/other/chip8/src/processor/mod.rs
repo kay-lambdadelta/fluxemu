@@ -109,7 +109,7 @@ impl<G: SupportedGraphicsApi> Chip8Processor<G> {
                         address_space
                             .read::<_, false>(
                                 self.state.registers.program as usize,
-                                &timestamp,
+                                timestamp,
                                 &mut instruction,
                             )
                             .unwrap();
@@ -122,7 +122,7 @@ impl<G: SupportedGraphicsApi> Chip8Processor<G> {
                         self.interpret_instruction(
                             runtime_handle,
                             &mut address_space,
-                            &timestamp,
+                            timestamp,
                             instruction,
                         );
                     }
@@ -170,7 +170,7 @@ impl<G: SupportedGraphicsApi> Chip8Processor<G> {
                             .component_registry()
                             .interact::<Chip8Display<G>, _>(
                                 &self.config.display,
-                                &timestamp,
+                                timestamp,
                                 |component| component.vsync_occurred(),
                             )
                             .unwrap();

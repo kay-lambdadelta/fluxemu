@@ -1,5 +1,4 @@
 use std::{
-    alloc::Layout,
     cell::UnsafeCell,
     collections::HashMap,
     ptr::NonNull,
@@ -16,7 +15,8 @@ use rustc_hash::FxBuildHasher;
 
 use crate::{ResourcePath, RuntimeHandle, memory::CHUNK_SIZE};
 
-pub type MemoryId = u16;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct MemoryId(u16);
 
 #[derive(Debug)]
 pub(crate) struct RegionInitializationData {
@@ -36,8 +36,7 @@ struct LocalMemoryRegionData {
 
 #[derive(Debug)]
 struct MemoryRegion {
-    /// Pointer to the allocation
-    base_ptr: NonNull<[u8]>,
+    storage: Box<[UnsafeCell<u8>]>,
     /// Chunk borrowed tracker
     ///
     /// Note that the last chunk can be smaller than [CHUNK_SIZE]
@@ -46,36 +45,55 @@ struct MemoryRegion {
 }
 
 impl MemoryRegion {
+    fn new(size: usize, initial_contents: RangeInclusiveMap<usize, Bytes>) -> Self {
+        let mut contents = vec![0u8; size].into_boxed_slice();
+
+        for (addresses, bytes) in initial_contents {
+            contents[addresses].copy_from_slice(&bytes);
+        }
+
+        // SAFETY: UnsafeCell<u8> is transparent over u8
+        let storage = unsafe { Box::from_raw(Box::into_raw(contents) as *mut [UnsafeCell<u8>]) };
+
+        Self {
+            borrowed_chunks: Mutex::new(BitVec::from_elem_general(
+                size.div_ceil(CHUNK_SIZE),
+                false,
+            )),
+            storage,
+            condvar: Condvar::new(),
+        }
+    }
+
+    fn base_ptr(&self) -> NonNull<[u8]> {
+        let base = NonNull::new(UnsafeCell::raw_get(self.storage.as_ptr())).unwrap();
+
+        NonNull::slice_from_raw_parts(base, self.storage.len())
+    }
+
     /// Get the number of chunks required to store this region
     ///
     /// Note that the length of all chunks * [CHUNK_SIZE] is often larger than the actual region sizes
     fn chunk_count(&self) -> usize {
-        self.base_ptr.len().div_ceil(CHUNK_SIZE)
+        self.storage.len().div_ceil(CHUNK_SIZE)
     }
 }
 
-impl Drop for MemoryRegion {
-    fn drop(&mut self) {
-        unsafe {
-            std::alloc::dealloc(
-                self.base_ptr.cast().as_ptr(),
-                Layout::array::<u8>(self.base_ptr.len()).unwrap(),
-            );
-        }
-    }
-}
+// SAFETY: Access to the region contents is serialized through `borrowed_chunks`
+unsafe impl Sync for MemoryRegion {}
 
 #[derive(Debug)]
 pub struct MemoryRegistryData {
-    regions: HashMap<MemoryId, MemoryRegion, FxBuildHasher>,
+    regions: Vec<MemoryRegion>,
     id_for_path: HashMap<ResourcePath, MemoryId, FxBuildHasher>,
 }
 
 impl MemoryRegistryData {
-    pub fn new(required_regions: HashMap<ResourcePath, RegionInitializationData>) -> Self {
-        let mut regions = HashMap::default();
+    pub fn new(
+        required_regions: impl IntoIterator<Item = (ResourcePath, RegionInitializationData)>,
+    ) -> Self {
+        let mut regions = Vec::new();
         let mut id_for_path = HashMap::default();
-        let mut next_id: MemoryId = 0;
 
         for (
             path,
@@ -85,39 +103,12 @@ impl MemoryRegistryData {
                 initial_contents,
             },
         ) in required_regions
+            .into_iter()
+            .sorted_by(|(a, _), (b, _)| a.cmp(b))
         {
-            let id = next_id;
-            next_id = next_id.checked_add(1).expect("Too many regions");
+            let id = MemoryId(regions.len().try_into().expect("Too many regions"));
 
-            let region_chunk_count = size.div_ceil(CHUNK_SIZE);
-            let layout = Layout::array::<u8>(size).expect("Invalid memory region layout");
-
-            let allocation = unsafe { std::alloc::alloc_zeroed(layout) };
-            let mut base_ptr = NonNull::slice_from_raw_parts(
-                NonNull::new(allocation).unwrap_or_else(|| std::alloc::handle_alloc_error(layout)),
-                size,
-            );
-
-            if !initial_contents.is_empty() {
-                // SAFETY: We validated that this pointer is a valid allocation
-                let representation_slice = unsafe { base_ptr.as_mut() };
-
-                for (addresses, bytes) in initial_contents {
-                    representation_slice[addresses].copy_from_slice(&bytes);
-                }
-            }
-
-            regions.insert(
-                id,
-                MemoryRegion {
-                    base_ptr,
-                    borrowed_chunks: Mutex::new(BitVec::from_elem_general(
-                        region_chunk_count,
-                        false,
-                    )),
-                    condvar: Condvar::new(),
-                },
-            );
+            regions.push(MemoryRegion::new(size, initial_contents));
 
             assert!(
                 id_for_path.insert(path.clone(), id).is_none(),
@@ -134,11 +125,12 @@ impl MemoryRegistryData {
     pub fn id_for_path(&self, path: &ResourcePath) -> Option<MemoryId> {
         self.id_for_path.get(path).copied()
     }
-}
 
-// SAFETY: We manage the raw pointers to memory ourselves
-unsafe impl Send for MemoryRegistryData {}
-unsafe impl Sync for MemoryRegistryData {}
+    #[inline]
+    fn region(&self, id: MemoryId) -> &MemoryRegion {
+        &self.regions[id.0 as usize]
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct MemoryRegistry<'a> {
@@ -171,7 +163,7 @@ impl<'a> MemoryRegistry<'a> {
         assert!(!range.is_empty());
 
         let local_data = unsafe { &mut *self.local_data().get() };
-        let region_data = local_data.region_data_cache.get_mut(id as usize).unwrap();
+        let region_data = &local_data.region_data_cache[id.0 as usize];
 
         // This check is sufficient because we assert earlier that the range is a valid range in which "last" is larger or equal to "start"
         assert!(range.last < region_data.base_ptr.len());
@@ -187,8 +179,10 @@ impl<'a> MemoryRegistry<'a> {
         });
 
         if needs_acquisition {
-            self.acquire_unowned_chunks(id, chunk_range, &mut region_data.owned_chunks);
+            self.acquire_unowned_chunks(id, chunk_range, local_data);
         }
+
+        let region_data = &local_data.region_data_cache[id.0 as usize];
 
         // SAFETY: The start offset is within a chunk that we own, and within the allocation we made
         let slice_base_ptr = unsafe { region_data.base_ptr.cast::<u8>().as_ptr().add(range.start) };
@@ -198,7 +192,7 @@ impl<'a> MemoryRegistry<'a> {
         // The range length is additionally guaranteed to be equal to or smaller than the chunks
         //
         // The lifetime of the slice is constrained to the lifetime of the callback
-        callback(unsafe { std::slice::from_raw_parts_mut(slice_base_ptr.cast(), range.len()) })
+        callback(unsafe { std::slice::from_raw_parts_mut(slice_base_ptr, range.len()) })
     }
 
     #[cold]
@@ -207,50 +201,58 @@ impl<'a> MemoryRegistry<'a> {
         &self,
         id: MemoryId,
         chunk_range: RangeInclusive<usize>,
-        owned_chunks: &mut BitVec<usize>,
+        local_data: &mut LocalMemoryRegistryData,
     ) {
-        let region = self.data().regions.get(&id).unwrap();
-
+        let region = self.data().region(id);
         let mut currently_borrowed_chunks = region.borrowed_chunks.lock().unwrap();
-        let mut claimed_this_attempt = Vec::new();
 
-        'attempt: loop {
-            claimed_this_attempt.clear();
+        loop {
+            let owned_chunks = &mut local_data.region_data_cache[id.0 as usize].owned_chunks;
 
-            for chunk_index in chunk_range {
-                if owned_chunks[chunk_index] {
-                    continue;
-                }
+            let contended = chunk_range.into_iter().any(|chunk_index| {
+                !owned_chunks[chunk_index] && currently_borrowed_chunks[chunk_index]
+            });
 
-                if currently_borrowed_chunks[chunk_index] {
-                    for &claimed in &claimed_this_attempt {
-                        currently_borrowed_chunks.set(claimed, false);
+            if !contended {
+                for chunk_index in chunk_range {
+                    if !owned_chunks[chunk_index] {
+                        currently_borrowed_chunks.set(chunk_index, true);
+                        owned_chunks.set(chunk_index, true);
                     }
-                    region.condvar.notify_all();
-
-                    currently_borrowed_chunks =
-                        region.condvar.wait(currently_borrowed_chunks).unwrap();
-
-                    continue 'attempt;
                 }
 
-                currently_borrowed_chunks.set(chunk_index, true);
-                claimed_this_attempt.push(chunk_index);
+                return;
             }
 
-            for &chunk_index in &claimed_this_attempt {
-                owned_chunks.set(chunk_index, true);
-            }
+            drop(currently_borrowed_chunks);
+            self.release_all_inner(local_data);
+            currently_borrowed_chunks = region.borrowed_chunks.lock().unwrap();
 
-            break;
+            while chunk_range
+                .into_iter()
+                .any(|chunk_index| currently_borrowed_chunks[chunk_index])
+            {
+                currently_borrowed_chunks = region.condvar.wait(currently_borrowed_chunks).unwrap();
+            }
         }
     }
 
-    pub fn release_all(&self) {
+    /// # Safety
+    ///
+    /// No slices handed out by this thread's memory registry may be alive
+    pub(crate) unsafe fn release_all(&self) {
         let local_data = unsafe { &mut *self.local_data().get() };
 
+        self.release_all_inner(local_data);
+    }
+
+    fn release_all_inner(&self, local_data: &mut LocalMemoryRegistryData) {
         for (id, local_region) in local_data.region_data_cache.iter_mut().enumerate() {
-            let region = self.data().regions.get(&(id as MemoryId)).unwrap();
+            if local_region.owned_chunks.none() {
+                continue;
+            }
+
+            let region = &self.data().regions[id];
 
             let mut currently_borrowed_chunks = region.borrowed_chunks.lock().unwrap();
 
@@ -309,7 +311,7 @@ impl<'a> MemoryRegistry<'a> {
     pub fn region_size(&self, path: &ResourcePath) -> Option<usize> {
         let id = self.id_for_path(path)?;
 
-        Some(self.data().regions[&id].base_ptr.len())
+        Some(self.data().region(id).storage.len())
     }
 }
 
@@ -320,15 +322,14 @@ pub struct LocalMemoryRegistryData {
 impl LocalMemoryRegistryData {
     pub fn new(data: &MemoryRegistryData) -> Self {
         Self {
-            region_data_cache: Vec::from_iter(
-                data.regions
-                    .iter()
-                    .sorted_by_key(|(id, _)| *id)
-                    .map(|(_, region)| LocalMemoryRegionData {
-                        base_ptr: region.base_ptr,
-                        owned_chunks: BitVec::from_elem_general(region.chunk_count(), false),
-                    }),
-            ),
+            region_data_cache: data
+                .regions
+                .iter()
+                .map(|region| LocalMemoryRegionData {
+                    base_ptr: region.base_ptr(),
+                    owned_chunks: BitVec::from_elem_general(region.chunk_count(), false),
+                })
+                .collect(),
         }
     }
 }

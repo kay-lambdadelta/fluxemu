@@ -8,7 +8,6 @@ use crate::{
     RuntimeHandle,
     memory::{
         Address, AddressSpaceData, MapTarget, MasterTableEntry, MasterTables, MemoryMapCommand,
-        PageTable,
     },
     scheduler::Period,
 };
@@ -19,7 +18,7 @@ impl AddressSpaceData {
     #[inline]
     pub fn remap(
         &self,
-        _timestamp: &Period,
+        _timestamp: Period,
         guard: &Guard,
         runtime: &RuntimeHandle,
         commands: impl IntoIterator<Item = MemoryMapCommand>,
@@ -56,41 +55,14 @@ impl AddressSpaceData {
                          {max:04x?}"
                     );
 
-                    if permissions.read {
-                        dirty_read.insert(range.clone());
-                    }
-
-                    if permissions.write {
-                        dirty_write.insert(range.clone());
-                    }
-
-                    match target {
+                    let entry = match target {
                         MapTarget::Component(component_path) => {
-                            if permissions.read {
-                                master_read.insert(
-                                    range.clone(),
-                                    MasterTableEntry::Component(component_path.clone()),
-                                );
-                            }
-
-                            if permissions.write {
-                                master_write.insert(
-                                    range.clone(),
-                                    MasterTableEntry::Component(component_path),
-                                );
-                            }
+                            MasterTableEntry::Component(component_path)
                         }
                         MapTarget::ImmutableMemory(bytes) => {
-                            if permissions.read {
-                                master_read.insert(
-                                    range.clone(),
-                                    MasterTableEntry::ImmutableMemory(bytes.clone()),
-                                );
-                            }
+                            assert!(!permissions.write, "Buffers are read only");
 
-                            if permissions.write {
-                                unreachable!("Buffers are read only");
-                            }
+                            MasterTableEntry::ImmutableMemory(bytes)
                         }
                         MapTarget::Mirror { destination } => {
                             assert!(
@@ -106,59 +78,40 @@ impl AddressSpaceData {
                                 "Mirror source and destination ranges must have the same length"
                             );
 
-                            if permissions.read {
-                                master_read.insert(
-                                    range.clone(),
-                                    MasterTableEntry::Mirror {
-                                        source_base: *range.start(),
-                                        destination_base: *destination.start(),
-                                    },
-                                );
-                            }
-
-                            if permissions.write {
-                                master_write.insert(
-                                    range.clone(),
-                                    MasterTableEntry::Mirror {
-                                        source_base: *range.start(),
-                                        destination_base: *destination.start(),
-                                    },
-                                );
+                            MasterTableEntry::Mirror {
+                                source_base: *range.start(),
+                                destination_base: *destination.start(),
                             }
                         }
                         MapTarget::Memory { path, subrange } => {
-                            let region_size = runtime.memory_registry().region_size(&path).unwrap();
+                            let region_size = runtime
+                                .memory_registry()
+                                .region_size(&path)
+                                .unwrap_or_else(|| panic!("Memory region {path} does not exist"));
 
-                            let subrange = subrange.clone().unwrap_or_else(|| {
+                            let subrange = subrange.unwrap_or_else(|| {
                                 RangeInclusive::from_start_and_length(0, region_size)
                             });
 
                             assert!(range.len() <= subrange.len());
 
-                            if permissions.read {
-                                master_read.insert(
-                                    range.clone(),
-                                    MasterTableEntry::Memory {
-                                        path: path.clone(),
-                                        source_base: *range.start(),
-                                        region_base: *subrange.start(),
-                                        length: range.len(),
-                                    },
-                                );
-                            }
-
-                            if permissions.write {
-                                master_write.insert(
-                                    range.clone(),
-                                    MasterTableEntry::Memory {
-                                        path: path.clone(),
-                                        source_base: *range.start(),
-                                        region_base: *subrange.start(),
-                                        length: range.len(),
-                                    },
-                                );
+                            MasterTableEntry::Memory {
+                                path,
+                                source_base: *range.start(),
+                                region_base: *subrange.start(),
+                                length: range.len(),
                             }
                         }
+                    };
+
+                    if permissions.read {
+                        dirty_read.insert(range.clone());
+                        master_read.insert(range.clone(), entry.clone());
+                    }
+
+                    if permissions.write {
+                        dirty_write.insert(range.clone());
+                        master_write.insert(range, entry);
                     }
                 }
                 MemoryMapCommand::Unmap { range, permissions } => {
@@ -179,11 +132,7 @@ impl AddressSpaceData {
         mirror_dirtying_pass(master_write, &mut dirty_write);
 
         if !dirty_read.is_empty() {
-            let mut read_table = PageTable(
-                vec![Default::default(); current_read_page_table.0.len()].into_boxed_slice(),
-            );
-
-            read_table.commit(current_read_page_table, master_read, &dirty_read, runtime);
+            let read_table = current_read_page_table.commit(master_read, &dirty_read, runtime);
 
             let _ = self
                 .read_table
@@ -191,16 +140,7 @@ impl AddressSpaceData {
         };
 
         if !dirty_write.is_empty() {
-            let mut write_table = PageTable(
-                vec![Default::default(); current_write_page_table.0.len()].into_boxed_slice(),
-            );
-
-            write_table.commit(
-                current_write_page_table,
-                master_write,
-                &dirty_write,
-                runtime,
-            );
+            let write_table = current_write_page_table.commit(master_write, &dirty_write, runtime);
 
             let _ = self
                 .write_table

@@ -12,8 +12,8 @@ use crate::{
     component::{Component, TaskEntry, config::ComponentConfig},
     graphics::GraphicsRequirements,
     input::{LogicalInputDevice, LogicalInputDeviceMetadata},
-    machine::builder::{ComponentLateInitializer, MachineBuilder, RomRequirement},
-    memory::{AddressSpaceId, MemoryMapCommand, RegionInitializationData},
+    machine::builder::{ComponentLateInitializer, MachineBuilder, MachineError, RomRequirement},
+    memory::{Address, AddressSpaceId, MemoryMapCommand},
     path::{ComponentPath, ResourcePath},
     platform::Platform,
     scheduler::{
@@ -27,7 +27,7 @@ use crate::{
 pub(super) struct ComponentData<P: Platform> {
     pub late_initializer: ComponentLateInitializer<P>,
     pub graphics_requirements: GraphicsRequirements<P::GraphicsApi>,
-    pub systems: HashMap<Cow<'static, str>, TaskEntry>,
+    pub tasks: HashMap<Cow<'static, str>, TaskEntry>,
 }
 
 impl<P: Platform> ComponentData<P> {
@@ -40,7 +40,7 @@ impl<P: Platform> ComponentData<P> {
                 B::late_initialize(component, data);
             }),
             graphics_requirements: GraphicsRequirements::default(),
-            systems: HashMap::new(),
+            tasks: HashMap::new(),
         }
     }
 }
@@ -65,7 +65,7 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
         &self,
         id: RomId,
         requirement: RomRequirement,
-    ) -> Result<Option<Bytes>, fluxemu_program::Error> {
+    ) -> Result<Option<Bytes>, MachineError> {
         self.machine_builder.open_rom(id, requirement)
     }
 
@@ -79,8 +79,7 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
         name: impl Into<Cow<'static, str>>,
         config: B,
     ) -> (Self, ComponentPath) {
-        let component_path = self.path.clone();
-        let component_path = component_path.join(&name.into()).unwrap();
+        let component_path = self.path.join(&name.into()).unwrap();
 
         self.machine_builder
             .insert_component_with_path(component_path.clone(), config);
@@ -101,9 +100,12 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
     pub fn audio_channel(self, name: impl Into<Cow<'static, str>>) -> (Self, ResourcePath) {
         let resource_path = self.path.clone().into_resource(name).unwrap();
 
-        self.machine_builder
-            .audio_channels
-            .insert(resource_path.clone());
+        assert!(
+            self.machine_builder
+                .audio_channels
+                .insert(resource_path.clone()),
+            "Duplicate audio channel path: {resource_path}"
+        );
 
         (self, resource_path)
     }
@@ -122,13 +124,18 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
     ) -> (Self, ResourcePath) {
         let resource_path = self.path.clone().into_resource(name).unwrap();
 
-        self.machine_builder.framebuffer_late_initializers.insert(
+        let previous = self.machine_builder.framebuffer_late_initializers.insert(
             resource_path.clone(),
             Box::new(|component, path| {
                 let component = (component as &mut dyn Any).downcast_mut().unwrap();
 
                 produce_initial_framebuffer(component, path)
             }),
+        );
+
+        assert!(
+            previous.is_none(),
+            "Duplicate framebuffer path: {resource_path}"
         );
 
         (self, resource_path)
@@ -151,9 +158,15 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
             default_mappings: default_mappings.into_iter().collect(),
         }));
 
-        self.machine_builder
+        let previous = self
+            .machine_builder
             .input_devices
-            .insert(resource_path, device.clone());
+            .insert(resource_path.clone(), device.clone());
+
+        assert!(
+            previous.is_none(),
+            "Duplicate input device path: {resource_path}"
+        );
 
         (self, device)
     }
@@ -163,18 +176,11 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
         self,
         name: impl Into<Cow<'static, str>>,
         size: usize,
-        initial_contents: impl IntoIterator<Item = (RangeInclusive<usize>, Bytes)>,
+        initial_contents: impl IntoIterator<Item = (RangeInclusive<Address>, Bytes)>,
     ) -> (Self, ResourcePath) {
-        let path = ResourcePath::new(None, name).unwrap();
-
-        self.machine_builder.required_memory_regions.insert(
-            path.clone(),
-            RegionInitializationData {
-                size,
-                sram: false,
-                initial_contents: initial_contents.into_iter().collect(),
-            },
-        );
+        let path = self.path.clone().into_resource(name).unwrap();
+        self.machine_builder
+            .insert_memory_region(path.clone(), size, false, initial_contents);
 
         (self, path)
     }
@@ -184,18 +190,11 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
         self,
         name: impl Into<Cow<'static, str>>,
         size: usize,
-        initial_contents: impl IntoIterator<Item = (RangeInclusive<usize>, Bytes)>,
+        initial_contents: impl IntoIterator<Item = (RangeInclusive<Address>, Bytes)>,
     ) -> (Self, ResourcePath) {
-        let path = ResourcePath::new(None, name).unwrap();
-
-        self.machine_builder.required_memory_regions.insert(
-            path.clone(),
-            RegionInitializationData {
-                size,
-                sram: true,
-                initial_contents: initial_contents.into_iter().collect(),
-            },
-        );
+        let path = self.path.clone().into_resource(name).unwrap();
+        self.machine_builder
+            .insert_memory_region(path.clone(), size, true, initial_contents);
 
         (self, path)
     }
@@ -206,11 +205,7 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
         commands: impl IntoIterator<Item = MemoryMapCommand>,
     ) -> Self {
         self.machine_builder
-            .address_spaces
-            .get_mut(&address_space)
-            .unwrap()
-            .commands
-            .extend(commands);
+            .insert_memory_map_commands(address_space, commands);
 
         self
     }
@@ -246,7 +241,7 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
         self,
         name: impl Into<Cow<'static, str>>,
         mode: task::Mode,
-        system: impl Task<Component = C>,
+        task: impl Task<Component = C>,
     ) -> Self {
         let name = name.into();
 
@@ -259,9 +254,12 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
                 .reschedule_task(path, Period::ZERO);
         }
 
-        self.component_data
-            .systems
-            .insert(name, TaskEntry::new(mode, system));
+        let previous = self
+            .component_data
+            .tasks
+            .insert(name.clone(), TaskEntry::new(mode, task));
+
+        assert!(previous.is_none(), "Duplicate task name: {name}");
 
         self
     }

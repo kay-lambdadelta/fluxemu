@@ -157,8 +157,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Nes {
             );
 
         let rom = machine_builder
-            .open_rom(rom_id, RomRequirement::Required)
-            .unwrap()
+            .open_rom(rom_id, RomRequirement::Required)?
             .unwrap();
 
         let header = INes::parse(rom[0..16].try_into().unwrap()).unwrap();

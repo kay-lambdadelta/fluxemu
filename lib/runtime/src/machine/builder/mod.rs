@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ops::DerefMut, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     ResourcePath,
@@ -66,8 +66,8 @@ impl<P: Platform> SealedMachineBuilder<P> {
         for (path, initializer) in self.component_late_initializers.drain() {
             runtime_guard
                 .component_registry()
-                .interact_dyn(&path, &Period::ZERO, |mut component| {
-                    initializer(component.deref_mut(), &late_initialized_data);
+                .interact_dyn(&path, Period::ZERO, |component| {
+                    initializer(component, &late_initialized_data);
                 })
                 .unwrap();
         }
@@ -75,8 +75,8 @@ impl<P: Platform> SealedMachineBuilder<P> {
         for (path, initializer) in self.framebuffer_late_initializers.drain() {
             let framebuffer = runtime_guard
                 .component_registry()
-                .interact_dyn(path.parent().unwrap(), &Period::ZERO, |mut component| {
-                    initializer(component.deref_mut(), &path)
+                .interact_dyn(path.parent().unwrap(), Period::ZERO, |component| {
+                    initializer(component, &path)
                 })
                 .unwrap();
 

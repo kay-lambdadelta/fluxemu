@@ -306,7 +306,7 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
 
                         if avoid_side_effects {
                             *buffer = ppu_address_space
-                                .read_le_value::<_, true>(vram_address_pointer, &timestamp)?;
+                                .read_le_value::<_, true>(vram_address_pointer, timestamp)?;
                         } else {
                             // RGB models do not have this quirk
                             let bypass_read_buffer = R::BYPASS_READ_BUFFER_FOR_PPUDATA_PALETTE_READS
@@ -319,7 +319,7 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
 
                             if bypass_read_buffer {
                                 let data: u8 = ppu_address_space
-                                    .read_le_value::<_, false>(vram_address_pointer, &timestamp)?;
+                                    .read_le_value::<_, false>(vram_address_pointer, timestamp)?;
 
                                 *buffer = (*buffer & 0b1100_0000) | (data & 0b0011_1111);
 
@@ -328,10 +328,10 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
                                 // This should work, but it is a hack
                                 let underlying_address = (vram_address_pointer & 0x0fff) | 0x2000;
                                 self.state.vram_read_buffer = ppu_address_space
-                                    .read_le_value::<_, false>(underlying_address, &timestamp)?;
+                                    .read_le_value::<_, false>(underlying_address, timestamp)?;
                             } else {
                                 let data = ppu_address_space
-                                    .read_le_value::<_, false>(vram_address_pointer, &timestamp)?;
+                                    .read_le_value::<_, false>(vram_address_pointer, timestamp)?;
 
                                 // Delay the read through the buffer
                                 *buffer = std::mem::replace(&mut self.state.vram_read_buffer, data);
@@ -448,7 +448,7 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
                         // Redirect into the ppu address space
                         ppu_address_space.write_le_value(
                             self.state.vram_address_pointer as usize,
-                            &timestamp,
+                            timestamp,
                             *buffer,
                         )?;
 
@@ -495,7 +495,7 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
                         // have any side effects
                         let _ = cpu_address_space.read::<_, false>(
                             page as usize,
-                            &timestamp,
+                            timestamp,
                             &mut self.state.oam.data,
                         );
 
