@@ -18,7 +18,7 @@ use rustc_hash::FxBuildHasher;
 use tracing::Level;
 
 use crate::{
-    CURRENT_DISPATCH_TIMESTAMP, CURRENT_THREAD_RUNTIME_HANDLE, RuntimeHandle,
+    CURRENT_THREAD_RUNTIME_HANDLE, DispatchGuard, RuntimeHandle,
     component::{ComponentRegistry, ComponentRegistryData},
     input::LogicalInputDevice,
     machine::builder::MachineBuilder,
@@ -231,9 +231,7 @@ impl RuntimeGuard<'_> {
 
 impl Drop for RuntimeGuard<'_> {
     fn drop(&mut self) {
-        CURRENT_DISPATCH_TIMESTAMP.with(|timestamp| {
-            timestamp.set(None);
-        });
+        DispatchGuard::clear();
         CURRENT_THREAD_RUNTIME_HANDLE.with_borrow_mut(|runtime| {
             *runtime = Weak::new();
         });

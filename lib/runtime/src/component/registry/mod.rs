@@ -10,7 +10,7 @@ use std::{
 use rustc_hash::FxBuildHasher;
 
 use crate::{
-    RuntimeHandle, TimestampGuard,
+    DispatchGuard, RuntimeHandle,
     component::{
         Component, ComponentId,
         registry::handle::{ComponentHandle, MutableData},
@@ -149,8 +149,7 @@ impl<'a> ComponentRegistry<'a> {
                 .expect("Component is reentrant on itself")
         };
 
-        // Record the current timestamp on the thread local
-        let _guard = TimestampGuard::enter(target_timestamp);
+        let _guard = DispatchGuard::enter(id, target_timestamp);
 
         let item = callback(data.component.as_mut());
 
@@ -225,6 +224,8 @@ impl<'a> ComponentRegistry<'a> {
 
                 // Attempt to allocate time for the task
                 if entry.required_next_allocation <= delta {
+                    let guard = DispatchGuard::enter(id, entry.current_timestamp);
+
                     let mut context = Context {
                         runtime: self.runtime,
                         current_timestamp: &mut entry.current_timestamp,
@@ -234,6 +235,7 @@ impl<'a> ComponentRegistry<'a> {
 
                     // Run task
                     entry.task.run(data.component.as_mut(), &mut context);
+                    drop(guard);
 
                     // Ensure the requested time allocation was not meaningless
                     assert_ne!(

@@ -9,7 +9,7 @@ use fluxemu_graphics::api::GraphicsApi;
 
 use crate::{
     ComponentPath, ResourcePath,
-    component::{Component, ComponentRegistry, LocalComponentRegistryData},
+    component::{Component, ComponentId, ComponentRegistry, LocalComponentRegistryData},
     machine::Machine,
     memory::{AddressSpace, AddressSpaceId, LocalMemoryRegistryData},
     scheduler::{Period, event::EventMode},
@@ -129,9 +129,25 @@ impl RuntimeHandle {
     ///
     /// This will NOT be reliable within a system call, and will give the time when the system call started!
     pub fn current_timestamp(&self) -> Period {
-        CURRENT_DISPATCH_TIMESTAMP
-            .with(|timestamp| timestamp.get())
+        self.current_dispatch()
             .expect("This function only works within an interact call")
+            .timestamp
+    }
+
+    pub fn current_component(&self) -> ComponentId {
+        self.current_dispatch()
+            .expect("This function only works within an interact call")
+            .component
+    }
+
+    #[inline]
+    pub(crate) fn current_dispatch(&self) -> Option<Dispatch> {
+        let component = CURRENT_DISPATCH_COMPONENT.get()?;
+
+        Some(Dispatch {
+            component,
+            timestamp: CURRENT_DISPATCH_TIMESTAMP.get(),
+        })
     }
 }
 
@@ -159,25 +175,45 @@ impl ThreadLocalData {
 
 thread_local! {
     pub(crate) static CURRENT_THREAD_RUNTIME_HANDLE: RefCell<Weak<RuntimeHandle>> = const { RefCell::new(Weak::new()) };
-    pub(crate) static CURRENT_DISPATCH_TIMESTAMP: Cell<Option<Period>> = const { Cell::new(None) };
+    static CURRENT_DISPATCH_COMPONENT: Cell<Option<ComponentId>> = const { Cell::new(None) };
+    static CURRENT_DISPATCH_TIMESTAMP: Cell<Period> = const { Cell::new(Period::ZERO) };
 }
 
-pub(crate) struct TimestampGuard {
-    previous: Option<Period>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Dispatch {
+    pub component: ComponentId,
+    pub timestamp: Period,
 }
 
-impl TimestampGuard {
+pub(crate) struct DispatchGuard {
+    previous_component: Option<ComponentId>,
+    previous_timestamp: Period,
+}
+
+impl DispatchGuard {
     #[inline]
-    pub fn enter(timestamp: Period) -> Self {
-        let previous = CURRENT_DISPATCH_TIMESTAMP.replace(Some(timestamp));
+    pub fn enter(component: ComponentId, timestamp: Period) -> Self {
+        Self {
+            previous_component: CURRENT_DISPATCH_COMPONENT.replace(Some(component)),
+            previous_timestamp: CURRENT_DISPATCH_TIMESTAMP.replace(timestamp),
+        }
+    }
 
-        Self { previous }
+    #[inline]
+    pub fn advance(timestamp: Period) {
+        CURRENT_DISPATCH_TIMESTAMP.set(timestamp);
+    }
+
+    pub fn clear() {
+        CURRENT_DISPATCH_COMPONENT.set(None);
+        CURRENT_DISPATCH_TIMESTAMP.set(Period::ZERO);
     }
 }
 
-impl Drop for TimestampGuard {
+impl Drop for DispatchGuard {
     #[inline]
     fn drop(&mut self) {
-        CURRENT_DISPATCH_TIMESTAMP.set(self.previous);
+        CURRENT_DISPATCH_COMPONENT.set(self.previous_component);
+        CURRENT_DISPATCH_TIMESTAMP.set(self.previous_timestamp);
     }
 }

@@ -3,7 +3,7 @@ use std::{fmt::Debug, sync::Mutex};
 use fixed::{FixedU128, types::extra::U64};
 
 use crate::{
-    RuntimeHandle,
+    DispatchGuard, RuntimeHandle,
     component::ComponentRegistry,
     scheduler::queue::{Generation, Queue},
 };
@@ -123,6 +123,7 @@ impl Iterator for QuantaAllocator<'_, '_> {
 
         let next_timestamp = *self.context.current_timestamp + self.period;
         *self.context.current_timestamp = next_timestamp;
+        DispatchGuard::advance(next_timestamp);
 
         Some(next_timestamp)
     }
