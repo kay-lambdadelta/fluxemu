@@ -6,7 +6,8 @@ use std::{
 };
 
 use egui::{
-    Event, Modifiers, MouseWheelUnit, PointerButton, Pos2, TouchDeviceId, TouchId, TouchPhase,
+    Event, Modifiers, MouseWheelSource, MouseWheelUnit, PointerButton, Pos2, TouchDeviceId,
+    TouchId, TouchPhase,
 };
 use evdev::KeyCode;
 use fluxemu_frontend::graphics::GraphicsRuntime;
@@ -205,6 +206,7 @@ impl EguiInputCollector {
             delta: [dx, -dy].into(),
             modifiers: self.modifiers,
             phase: TouchPhase::Move,
+            source: MouseWheelSource::Wheel,
         });
     }
 
@@ -220,6 +222,7 @@ impl EguiInputCollector {
             delta: [dx, -dy].into(),
             modifiers: self.modifiers,
             phase: TouchPhase::Move,
+            source: MouseWheelSource::Trackpad,
         });
     }
 
@@ -235,6 +238,7 @@ impl EguiInputCollector {
             delta: [dx, -dy].into(),
             modifiers: self.modifiers,
             phase: TouchPhase::Move,
+            source: MouseWheelSource::Unknown,
         });
     }
 
