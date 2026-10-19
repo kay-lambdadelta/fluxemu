@@ -27,6 +27,7 @@ clap = { workspace = true }
 cpal = { workspace = true }
 digest-io = { workspace = true }
 egui = { workspace = true, optional = true }
+epaint = { workspace = true, optional = true, features = ["color_fonts"] }
 fluxemu-audio = { workspace = true }
 fluxemu-egui-software-renderer = { workspace = true, optional = true }
 fluxemu-environment = { workspace = true }
@@ -89,7 +90,7 @@ fluxemu-system-other-chip8 = {
 [features]
 default = ["webgpu", "windowing"]
 drm = ["dep:drm", "dep:evdev", "dep:input", "dep:libseat", "dep:nix", "dep:udev", "dep:xkbcommon", "egui", "wgpu/drm"]
-egui = ["dep:egui", "dep:fluxemu-egui-software-renderer", "dep:fluxemu-frontend-egui"]
+egui = ["dep:egui", "dep:epaint", "dep:fluxemu-egui-software-renderer", "dep:fluxemu-frontend-egui"]
 ratatui = ["dep:fluxemu-frontend-ratatui", "dep:ratatui-image", "ratatui-image/chafa-dyn"]
 webgpu = [
   "dep:egui-wgpu",

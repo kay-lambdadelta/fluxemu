@@ -33,11 +33,12 @@ digest-io = "0.1"
 dirs = "7.0"
 drm = "0.15"
 dyn-clone = "1.0"
-egui = { version = "0.36", default-features = false }
-egui_demo_lib = "0.36"
-egui_extras = "0.36"
-egui-wgpu = "0.36"
-egui-winit = "0.36"
+egui = { version = "0.37", default-features = false }
+egui_demo_lib = "0.37"
+egui_extras = "0.37"
+egui-wgpu = "0.37"
+egui-winit = "0.37"
+epaint = { version = "0.37", default-features = false }
 evdev = "0.13"
 fixed = { version = "1.31", features = ["num-traits", "serde"] }
 fontique = "0.12"

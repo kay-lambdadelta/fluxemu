@@ -68,7 +68,7 @@ impl<P: Platform> Frontend<P> {
             notification_marquee: NotificationMarquee::default(),
             font_definitions,
             egui_input_translator: EguiInputTranslator::default(),
-            machine_framebuffer_display_area: Id::new(format!(
+            machine_framebuffer_display_area: Id::unique(format!(
                 "{}/machine_framebuffer_display_area",
                 env!("CARGO_CRATE_NAME")
             )),

@@ -34,14 +34,7 @@ fn load_face(
     tracing::warn!("Could not find desired font: {}", font_name);
 
     let ids = collection.generic_families(generic).collect::<Vec<_>>();
-    let family_id = ids.into_iter().find(|family_id| {
-        let Some(family_name) = collection.family_name(*family_id) else {
-            return false;
-        };
-
-        // FIXME: Find a more robust way to filter color emojis
-        family_name != "Noto Color Emoji"
-    })?;
+    let family_id = ids.into_iter().next()?;
 
     let family_name = collection.family_name(family_id)?.to_string();
     let family = collection.family(family_id)?;
@@ -80,7 +73,7 @@ pub fn load_fonts() -> FontDefinitions {
     let emoji = load_face(
         &mut collection,
         &mut source_cache,
-        "Noto Emoji",
+        "Noto Color Emoji",
         GenericFamily::Emoji,
     );
 
