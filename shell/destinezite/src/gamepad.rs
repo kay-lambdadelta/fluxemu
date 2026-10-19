@@ -1,8 +1,6 @@
 use std::{collections::HashMap, io::Write, time::Duration};
 
 use digest_io::IoWrapper;
-use fluxemu_frontend::Platform;
-use fluxemu_frontend_egui::Frontend;
 use fluxemu_input::{GamepadInputId, InputId, InputState, physical::PhysicalInputDeviceId};
 use gilrs::{Axis, Button, Event, GamepadId, Gilrs, GilrsBuilder};
 use sha2::{Digest, Sha256};
@@ -112,6 +110,42 @@ fn calculate_gamepad_id(gamepad: gilrs::Gamepad<'_>) -> PhysicalInputDeviceId {
     }
 }
 
+pub trait GamepadSink {
+    fn register_gamepad(&mut self, id: PhysicalInputDeviceId, name: String);
+    fn unregister_gamepad(&mut self, id: PhysicalInputDeviceId);
+    fn insert_input(&mut self, id: PhysicalInputDeviceId, input_id: InputId, state: InputState);
+}
+
+#[cfg(feature = "egui")]
+impl<P: fluxemu_frontend::Platform> GamepadSink for fluxemu_frontend_egui::Frontend<P> {
+    fn register_gamepad(&mut self, id: PhysicalInputDeviceId, name: String) {
+        self.register_gamepad(id, name, true);
+    }
+
+    fn unregister_gamepad(&mut self, id: PhysicalInputDeviceId) {
+        self.unregister_gamepad(id);
+    }
+
+    fn insert_input(&mut self, id: PhysicalInputDeviceId, input_id: InputId, state: InputState) {
+        self.insert_input(id, input_id, state);
+    }
+}
+
+#[cfg(feature = "ratatui")]
+impl GamepadSink for fluxemu_frontend_ratatui::ExternalInputSender {
+    fn register_gamepad(&mut self, id: PhysicalInputDeviceId, name: String) {
+        fluxemu_frontend_ratatui::ExternalInputSender::register_gamepad(self, id, name);
+    }
+
+    fn unregister_gamepad(&mut self, id: PhysicalInputDeviceId) {
+        fluxemu_frontend_ratatui::ExternalInputSender::unregister_gamepad(self, id);
+    }
+
+    fn insert_input(&mut self, id: PhysicalInputDeviceId, input_id: InputId, state: InputState) {
+        fluxemu_frontend_ratatui::ExternalInputSender::insert_input(self, id, input_id, state);
+    }
+}
+
 #[derive(Debug)]
 struct IdMappings(HashMap<GamepadId, PhysicalInputDeviceId>);
 
@@ -123,7 +157,7 @@ pub struct GamepadContext {
 
 impl GamepadContext {
     #[allow(clippy::result_large_err)]
-    pub fn new<P: Platform>(frontend: &mut Frontend<P>) -> Result<Self, gilrs::Error> {
+    pub fn new<S: GamepadSink>(frontend: &mut S) -> Result<Self, gilrs::Error> {
         let gilrs = GilrsBuilder::new()
             .add_env_mappings(true)
             .add_included_mappings(true)
@@ -137,20 +171,20 @@ impl GamepadContext {
             let physical_id = calculate_gamepad_id(gamepad);
             id_mappings.0.insert(gamepad_id, physical_id);
 
-            frontend.register_gamepad(physical_id, gamepad.name().to_string(), true);
+            frontend.register_gamepad(physical_id, gamepad.name().to_string());
         }
 
         Ok(Self { id_mappings, gilrs })
     }
 
     #[must_use]
-    pub fn poll_gamepad_events<P: Platform>(
+    pub fn poll_gamepad_events<S: GamepadSink>(
         &mut self,
         timeout: Option<Duration>,
-    ) -> Option<impl FnOnce(&mut Frontend<P>)> {
+    ) -> Option<impl FnOnce(&mut S)> {
         let Event { id, event, .. } = self.gilrs.next_event_blocking(timeout)?;
 
-        Some(move |frontend: &mut Frontend<P>| {
+        Some(move |frontend: &mut S| {
             let gamepad = self.gilrs.gamepad(id);
 
             match event {
@@ -158,7 +192,7 @@ impl GamepadContext {
                     let physical_id = calculate_gamepad_id(gamepad);
                     self.id_mappings.0.insert(id, physical_id);
 
-                    frontend.register_gamepad(physical_id, gamepad.name().to_string(), true);
+                    frontend.register_gamepad(physical_id, gamepad.name().to_string());
                 }
                 gilrs::EventType::Disconnected => {
                     let physical_id = self.id_mappings.0[&id];

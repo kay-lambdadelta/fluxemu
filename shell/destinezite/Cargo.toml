@@ -27,7 +27,7 @@ clap = { workspace = true }
 cpal = { workspace = true }
 digest-io = { workspace = true }
 egui = { workspace = true, optional = true }
-epaint = { workspace = true, optional = true, features = ["color_fonts"] }
+epaint = { workspace = true, features = ["color_fonts"], optional = true }
 fluxemu-audio = { workspace = true }
 fluxemu-egui-software-renderer = { workspace = true, optional = true }
 fluxemu-environment = { workspace = true }
@@ -43,7 +43,6 @@ gilrs = { workspace = true }
 nalgebra = { workspace = true }
 palette = { workspace = true }
 pollster = { workspace = true }
-ratatui-image = { workspace = true, optional = true }
 raw-window-handle = { workspace = true, optional = true }
 redb = { workspace = true }
 sha2 = { workspace = true }
@@ -70,6 +69,9 @@ nix = { workspace = true, features = ["event", "poll"], optional = true }
 udev = { workspace = true, optional = true }
 xkbcommon = { workspace = true, optional = true }
 
+# Ratatui required stuff
+ratatui-image = { workspace = true, optional = true }
+
 # Machines
 fluxemu-system-atari-2600 = {
   workspace = true,
@@ -88,7 +90,7 @@ fluxemu-system-other-chip8 = {
 }
 
 [features]
-default = ["webgpu", "windowing"]
+default = ["ratatui", "webgpu", "windowing"]
 drm = ["dep:drm", "dep:evdev", "dep:input", "dep:libseat", "dep:nix", "dep:udev", "dep:xkbcommon", "egui", "wgpu/drm"]
 egui = ["dep:egui", "dep:epaint", "dep:fluxemu-egui-software-renderer", "dep:fluxemu-frontend-egui"]
 ratatui = ["dep:fluxemu-frontend-ratatui", "dep:ratatui-image", "ratatui-image/chafa-dyn"]

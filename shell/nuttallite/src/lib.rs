@@ -1,22 +1,16 @@
 use std::{
-    collections::HashMap,
+    ffi::{CStr, c_char},
     fs::File,
     io::LineWriter,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::Instant,
 };
 
-use egui::{FontData, FontDefinitions, FontFamily, RawInput, Rect, ViewportId, ViewportInfo};
 use fluxemu_environment::load_environment;
-use fluxemu_frontend::{
-    FrontendCore, graphics::GraphicsRuntime as _, notification::notification_channel,
-};
-use fluxemu_frontend_egui::{Frontend, rendering::EguiCapableGraphicsRuntime};
+use fluxemu_frontend::notification::notification_channel;
 use fluxemu_program::ProgramManager;
-use palette::named::BLACK;
 use redb::Database;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{
@@ -26,36 +20,51 @@ use tracing_subscriber::{
     util::SubscriberInitExt,
 };
 
-use crate::{
-    build_machine::get_software_factories,
-    platform::Platform,
-    runtime::{AudioRuntime, GraphicsRuntime},
-};
-
 mod build_machine;
+mod frontend;
 mod platform;
 mod runtime;
 
-#[cfg(not(feature = "egui"))]
-compile_error!("No frontend enabled, please enable the egui feature");
+#[cfg(all(not(feature = "egui"), not(feature = "ratatui")))]
+compile_error!(
+    "No frontend enabled, please enable one of the supported frontends (egui and/or ratatui)"
+);
 
 #[cfg(target_os = "nuttx")]
 mod storage;
 #[cfg(target_os = "nuttx")]
 mod sys;
 
-const UNSCII_FONT: &[u8] = include_bytes!("../../../external/unscii/fontfiles/unscii-16.otf");
 static ALREADY_RAN: AtomicBool = AtomicBool::new(false);
 
 #[unsafe(no_mangle)]
-unsafe extern "C" fn fluxemu_shell_nuttallite_main(_argc: i32, _argv: *const *const u8) -> i32 {
+unsafe extern "C" fn fluxemu_shell_nuttallite_main(argc: i32, argv: *const *const u8) -> i32 {
     if ALREADY_RAN.swap(true, Ordering::AcqRel) {
         println!("Cannot run again");
 
         return 1;
     }
 
-    match main() {
+    // FIXME: Our intended way to run nuttallite skips nsh, which means this code would be dead in our provided builds
+    // TODO: Make this use clap somehow
+
+    let argument_count = if argv.is_null() {
+        0
+    } else {
+        usize::try_from(argc).unwrap_or(0)
+    };
+
+    let arguments = (1..argument_count)
+        .map(|index| unsafe { *argv.add(index) })
+        .filter(|argument| !argument.is_null())
+        .map(|argument| {
+            unsafe { CStr::from_ptr(argument.cast::<c_char>()) }
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<Vec<_>>();
+
+    match main(&arguments) {
         Ok(_) => 0,
         Err(err) => {
             println!("{}", err);
@@ -65,13 +74,39 @@ unsafe extern "C" fn fluxemu_shell_nuttallite_main(_argc: i32, _argv: *const *co
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum FrontendSelection {
+    #[cfg(feature = "egui")]
+    #[default]
+    Egui,
+    #[cfg(feature = "ratatui")]
+    #[cfg_attr(not(feature = "egui"), default)]
+    Ratatui,
+}
+
+impl FrontendSelection {
+    fn from_arguments(arguments: &[String]) -> Self {
+        arguments
+            .iter()
+            .find_map(|argument| match argument.as_str() {
+                #[cfg(feature = "egui")]
+                "egui" => Some(Self::Egui),
+                #[cfg(feature = "ratatui")]
+                "ratatui" => Some(Self::Ratatui),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+}
+
+fn main(arguments: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_os = "nuttx")]
     {
         storage::mount_storage_partition()?;
     }
 
     let environment = load_environment();
+    let frontend_selection = FrontendSelection::from_arguments(arguments);
 
     let filter = Arc::new(
         EnvFilter::builder()
@@ -86,6 +121,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_span_events(FmtSpan::CLOSE)
         .with_thread_names(true)
         .with_thread_ids(false);
+
+    #[cfg(feature = "ratatui")]
+    let stderr_layer = (frontend_selection != FrontendSelection::Ratatui).then_some(stderr_layer);
 
     let (notification_layer, notifications) = notification_channel();
 
@@ -115,65 +153,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database = Database::create(&environment.database_location)?;
     let program_manager = ProgramManager::new(database, environment.rom_store_directories.clone())?;
 
-    let font_definitions = FontDefinitions {
-        font_data: [(
-            "unscii".to_string(),
-            Arc::new(FontData::from_static(UNSCII_FONT)),
-        )]
-        .into_iter()
-        .collect(),
-        families: [
-            (FontFamily::Proportional, vec!["unscii".to_string()]),
-            (FontFamily::Monospace, vec!["unscii".to_string()]),
-        ]
-        .into_iter()
-        .collect(),
-    };
-    let core = FrontendCore::<Platform>::new(
-        environment,
-        get_software_factories(),
-        program_manager,
-        AudioRuntime,
-        None,
-    );
-    let mut frontend = Frontend::new(core, notifications, font_definitions);
-
-    let mut graphics_runtime = GraphicsRuntime::default();
-
-    let start_time = Instant::now();
-
-    loop {
-        frontend.maybe_reset_graphics_to_meet_machine_requirements(|_, sealed_machine_builder| {
-            graphics_runtime.reconfigure(sealed_machine_builder.graphics_requirements());
-            graphics_runtime.component_initialization_data()
-        });
-
-        let raw_input = RawInput {
-            viewport_id: ViewportId::ROOT,
-            viewports: HashMap::from_iter([(
-                ViewportId::ROOT,
-                ViewportInfo {
-                    focused: Some(true),
-                    fullscreen: Some(true),
-                    native_pixels_per_point: Some(1.0),
-                    ..Default::default()
-                },
-            )]),
-            screen_rect: Some(Rect {
-                min: [0.0, 0.0].into(),
-                max: [
-                    graphics_runtime.texture.width() as f32,
-                    graphics_runtime.texture.height() as f32,
-                ]
-                .into(),
-            }),
-            time: Some(start_time.elapsed().as_secs_f64()),
-            focused: true,
-            ..Default::default()
-        };
-
-        let full_output = frontend.run(raw_input, &mut graphics_runtime);
-
-        graphics_runtime.present(frontend.egui_context(), BLACK, full_output);
+    match frontend_selection {
+        #[cfg(feature = "egui")]
+        FrontendSelection::Egui => frontend::egui::run(environment, program_manager, notifications),
+        #[cfg(feature = "ratatui")]
+        FrontendSelection::Ratatui => {
+            frontend::ratatui::run(environment, program_manager, notifications)
+        }
     }
 }

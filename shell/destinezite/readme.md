@@ -25,7 +25,7 @@ The instructions for listed distros should work for downstream distros also (ie:
 | Arch     | `alsa-lib systemd base-devel`                                        |
 | openSUSE | `alsa-lib-devel libudev-devel pkg-config`                            |
 
-Feature specific dependencies (`webgpu`, `windowing`, `egui` are on by default, the rest are not):
+Feature specific dependencies (`webgpu`, `windowing`, `egui`, `ratatui` are on by default, the rest are not):
 
 #### `webgpu` — WebGPU backend for graphics rendering (via [wgpu](https://crates.io/crates/wgpu))
 

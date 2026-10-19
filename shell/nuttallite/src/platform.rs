@@ -1,17 +1,30 @@
+use std::marker::PhantomData;
+
+use fluxemu_frontend::graphics::GraphicsRuntime;
 use fluxemu_graphics::api::software::Software;
 
-use crate::runtime::{AudioRuntime, GraphicsRuntime};
+use crate::runtime::AudioRuntime;
 
-#[derive(Debug, Clone)]
-pub struct Platform;
+#[derive(Debug)]
+pub struct Platform<R: GraphicsRuntime<GraphicsApi = Software>> {
+    _phantom: PhantomData<fn() -> R>,
+}
 
-impl fluxemu_runtime::Platform for Platform {
+impl<R: GraphicsRuntime<GraphicsApi = Software>> Clone for Platform<R> {
+    fn clone(&self) -> Self {
+        Self {
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<R: GraphicsRuntime<GraphicsApi = Software>> fluxemu_runtime::Platform for Platform<R> {
     type GraphicsApi = Software;
 }
 
-impl fluxemu_frontend::Platform for Platform {
+impl<R: GraphicsRuntime<GraphicsApi = Software>> fluxemu_frontend::Platform for Platform<R> {
     type AudioRuntime = AudioRuntime;
-    type GraphicsRuntime = GraphicsRuntime;
+    type GraphicsRuntime = R;
 
     const EXTERNAL_FILE_DIALOGS_SUPPORTED: bool = false;
 }

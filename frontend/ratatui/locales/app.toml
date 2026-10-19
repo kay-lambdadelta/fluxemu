@@ -1,0 +1,40 @@
+_version = 2
+
+[tab.machine]
+en = "Machine"
+
+[tab.files]
+en = "Files"
+
+[tab.log]
+en = "Log"
+
+[tab.debug]
+en = "Debug"
+
+[machine.none]
+en = "No machine is running, open a ROM from the Files tab"
+
+[files.cannot_navigate]
+en = "Could not navigate to directory"
+
+[hint.machine_focused]
+en = "F1: menu  Ctrl+C: quit"
+
+[hint.machine_paused]
+en = "Tab: switch tab  F1/Esc: resume  q: quit"
+
+[hint.no_machine]
+en = "Tab: switch tab  Enter: open ROM  q: quit"
+
+[simulation_controller.execution_timeslice]
+en = "Execution timeslice"
+
+[simulation_controller.target_timeslice]
+en = "Target timeslice"
+
+[simulation_controller.hardware_speed]
+en = "Realtime throughput factor"
+
+[simulation_controller.jitter_ratio]
+en = "Jitter ratio"

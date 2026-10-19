@@ -21,6 +21,7 @@ compile_error!(
 #[cfg(all(feature = "drm", not(target_os = "linux")))]
 compile_error!("The DRM/KMS backend is only compatible with Linux");
 
+#[cfg(feature = "egui")]
 mod font;
 
 use std::{fs::File, sync::Arc};
@@ -39,11 +40,12 @@ use tracing_subscriber::{
     util::SubscriberInitExt,
 };
 
-use crate::{display::software::SoftwareGraphicsRuntime, event_loop::DisplayBackend};
+use crate::event_loop::DisplayBackend;
 
 mod audio;
 mod build_machine;
 mod cli;
+#[cfg(feature = "egui")]
 mod display;
 mod event_loop;
 mod gamepad;
@@ -51,6 +53,7 @@ mod platform;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let environment = load_environment();
+    let cli = Cli::parse();
 
     let filter = Arc::new(
         EnvFilter::builder()
@@ -70,6 +73,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_thread_ids(false);
 
     let (notification_layer, notifications) = notification_channel();
+
+    // Do not break ratatui if its active
+    #[cfg(feature = "ratatui")]
+    let stderr_layer = (cli.display_backend != DisplayBackend::Ratatui).then_some(stderr_layer);
 
     let subscriber_builder = tracing_subscriber::registry()
         .with(stderr_layer.with_filter(filter.clone() as Arc<dyn Filter<_> + Send + Sync>))
@@ -97,8 +104,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database = Database::create(&environment.database_location)?;
     let program_manager = ProgramManager::new(database, environment.rom_store_directories.clone())?;
 
-    let cli = Cli::parse();
-
     let mut initial_program = None;
 
     if let Some(action) = cli.action {
@@ -115,12 +120,61 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
     }
 
+    #[cfg(feature = "ratatui")]
+    if cli.display_backend == DisplayBackend::Ratatui {
+        use fluxemu_frontend_ratatui::TerminalGraphicsRuntime;
+
+        use crate::{audio::CpalAudioRuntime, gamepad::GamepadContext, platform::DesktopPlatform};
+
+        let (mut external_input_sender, external_input_receiver) =
+            fluxemu_frontend_ratatui::external_input_channel();
+
+        match GamepadContext::new(&mut external_input_sender) {
+            Ok(mut context) => {
+                std::thread::Builder::new()
+                    .name("Gamepad Poll Thread".to_string())
+                    .spawn(move || {
+                        loop {
+                            if let Some(callback) = context.poll_gamepad_events(None) {
+                                callback(&mut external_input_sender);
+                            }
+                        }
+                    })?;
+            }
+            Err(err) => {
+                tracing::error!(
+                    "Gamepad context could not be created: {}, you will not have gamepad support",
+                    err
+                );
+            }
+        }
+
+        let audio_runtime =
+            CpalAudioRuntime::new().map_err(|_| "Could not initialize audio runtime")?;
+
+        fluxemu_frontend_ratatui::run::<DesktopPlatform<TerminalGraphicsRuntime, false>>(
+            environment,
+            program_manager,
+            // TODO: Support webgpu for the ratatui backend
+            build_machine::get_software_factories(),
+            audio_runtime,
+            initial_program,
+            notifications,
+            external_input_receiver,
+        )?;
+
+        return Ok(());
+    }
+
+    #[cfg(feature = "egui")]
     match environment.graphics.api {
         // Software backend is always available
         fluxemu_environment::graphics::GraphicsApi::Software => match cli.display_backend {
             #[cfg(feature = "windowing")]
             DisplayBackend::Windowing => {
-                crate::event_loop::windowing::run::<SoftwareGraphicsRuntime<_>>(
+                crate::event_loop::windowing::run::<
+                    crate::display::software::SoftwareGraphicsRuntime<_>,
+                >(
                     environment.clone(),
                     program_manager.clone(),
                     build_machine::get_software_factories(),
@@ -130,7 +184,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             #[cfg(feature = "drm")]
             DisplayBackend::Drm => {
-                crate::event_loop::drm::run::<SoftwareGraphicsRuntime<_>>(
+                crate::event_loop::drm::run::<crate::display::software::SoftwareGraphicsRuntime<_>>(
                     environment.clone(),
                     program_manager.clone(),
                     build_machine::get_software_factories(),
@@ -140,7 +194,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             #[cfg(feature = "ratatui")]
             DisplayBackend::Ratatui => {
-                todo!()
+                unreachable!()
             }
         },
         #[cfg(feature = "webgpu")]
@@ -170,7 +224,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 #[cfg(feature = "ratatui")]
                 DisplayBackend::Ratatui => {
-                    todo!()
+                    unreachable!()
                 }
             }
         }

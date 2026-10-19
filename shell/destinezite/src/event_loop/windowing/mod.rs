@@ -66,7 +66,7 @@ pub fn run<R: ProducableGraphicsRuntime<Window> + EguiCapableGraphicsRuntime>(
                     loop {
                         if let Some(callback) = context.poll_gamepad_events(None) {
                             let mut frontend = frontend.lock().unwrap();
-                            callback(&mut frontend);
+                            callback(&mut *frontend);
                         }
                     }
                 })

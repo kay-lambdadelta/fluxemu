@@ -2034,10 +2034,18 @@ dependencies = [
  "crossterm",
  "fluxemu-environment",
  "fluxemu-frontend",
+ "fluxemu-graphics",
+ "fluxemu-input",
  "fluxemu-program",
+ "fluxemu-runtime",
+ "image",
+ "palette",
  "ratatui",
  "ratatui-explorer",
  "ratatui-image",
+ "rust-i18n",
+ "strum",
+ "tracing",
 ]
 
 [[package]]
@@ -2201,6 +2209,7 @@ dependencies = [
  "fluxemu-environment",
  "fluxemu-frontend",
  "fluxemu-frontend-egui",
+ "fluxemu-frontend-ratatui",
  "fluxemu-graphics",
  "fluxemu-input",
  "fluxemu-program",

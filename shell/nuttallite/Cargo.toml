@@ -29,12 +29,13 @@ firmware-file = "nuttx.uf2"
 crate-type = ["staticlib"]
 
 [dependencies]
-egui = { workspace = true }
+egui = { workspace = true, optional = true }
 fluxemu-audio = { workspace = true }
-fluxemu-egui-software-renderer = { workspace = true }
+fluxemu-egui-software-renderer = { workspace = true, optional = true }
 fluxemu-environment = { workspace = true }
 fluxemu-frontend = { workspace = true }
 fluxemu-frontend-egui = { workspace = true, optional = true }
+fluxemu-frontend-ratatui = { workspace = true, optional = true }
 fluxemu-graphics = { workspace = true }
 fluxemu-input = { workspace = true }
 fluxemu-program = { workspace = true }
@@ -64,8 +65,9 @@ fluxemu-system-other-chip8 = {
 bindgen = { workspace = true }
 
 [features]
-default = ["egui"]
-egui = ["dep:fluxemu-frontend-egui"]
+default = ["ratatui"]
+egui = ["dep:egui", "dep:fluxemu-egui-software-renderer", "dep:fluxemu-frontend-egui"]
+ratatui = ["dep:fluxemu-frontend-ratatui"]
 
 [lints]
 workspace = true
