@@ -3,7 +3,8 @@ use std::{collections::HashMap, hint::black_box};
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use egui::{Context, RawInput, Rect, ViewportId, ViewportInfo};
 use egui_demo_lib::DemoWindows;
-use fluxemu_egui_software_renderer::Renderer;
+use fixed::types::{I16F16, I32F32};
+use fluxemu_egui_software_renderer::{Intermediate, Renderer};
 use fluxemu_graphics::texture::{AsViewTextureMut, OwnedTexture};
 use palette::{
     Srgba, WithAlpha,
@@ -13,12 +14,13 @@ use palette::{
 };
 
 fn render<
+    I: Intermediate,
     P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'static,
     const W: usize,
     const H: usize,
     const BATCH_SIZE: usize,
 >(
-    renderer: &mut Renderer,
+    renderer: &mut Renderer<I>,
     context: &Context,
     demo_windows: &mut DemoWindows,
     mut texture: impl AsViewTextureMut<P>,
@@ -52,31 +54,36 @@ fn render<
 
 // Combinational macro to save copy pastes
 macro_rules! bench_combinations {
-    ($group:ident, [$(($w:expr, $h:expr)),+ $(,)?], $formats:tt, $batches:tt) => {
+    ($group:ident, $numbers:tt, [$(($w:expr, $h:expr)),+ $(,)?], $formats:tt, $batches:tt) => {
         $(
-            bench_combinations!(@expand_size $group, ($w, $h), $formats, $batches);
+            bench_combinations!(@expand_size $group, $numbers, ($w, $h), $formats, $batches);
         )+
     };
-    (@expand_size $group:ident, ($w:expr, $h:expr), [$($name:literal => $t:ty),+ $(,)?], $batches:tt) => {
+    (@expand_size $group:ident, [$($number_name:literal => $number:ty),+ $(,)?], ($w:expr, $h:expr), $formats:tt, $batches:tt) => {
         $(
-            bench_combinations!(@expand_format $group, ($w, $h), ($name, $t), $batches);
+            bench_combinations!(@expand_number $group, ($number_name, $number), ($w, $h), $formats, $batches);
         )+
     };
-    (@expand_format $group:ident, ($w:expr, $h:expr), ($name:literal, $t:ty), [$($batch:expr),+ $(,)?]) => {
+    (@expand_number $group:ident, $number:tt, ($w:expr, $h:expr), [$($name:literal => $t:ty),+ $(,)?], $batches:tt) => {
+        $(
+            bench_combinations!(@expand_format $group, $number, ($w, $h), ($name, $t), $batches);
+        )+
+    };
+    (@expand_format $group:ident, ($number_name:literal, $number:ty), ($w:expr, $h:expr), ($name:literal, $t:ty), [$($batch:expr),+ $(,)?]) => {
         $(
             {
-                let mut renderer = Renderer::default();
+                let mut renderer = Renderer::<$number>::default();
                 let context = Context::default();
                 let mut texture = OwnedTexture::from_value($w, $h, BLACK.with_alpha(u8::MAX).into());
 
                 let bench_name = format!("{}x{}", $w, $h);
-                let param_combo = format!("{} @ Batch Size {}", $name, $batch);
+                let param_combo = format!("{} {} @ Batch Size {}", $number_name, $name, $batch);
 
                 let mut demo_windows = DemoWindows::default();
 
                 $group.bench_function(BenchmarkId::new(bench_name, param_combo), |b| {
                     b.iter(|| {
-                        render::<$t, $w, $h, $batch>(
+                        render::<$number, $t, $w, $h, $batch>(
                             &mut renderer,
                             &context,
                             &mut demo_windows,
@@ -94,6 +101,12 @@ fn bench_egui_software(c: &mut Criterion) {
 
     bench_combinations!(
         group,
+        [
+            "f32" => f32,
+            "f64" => f64,
+            "Q16.16" => I16F16,
+            "Q32.32" => I32F32,
+        ],
         // 3 most common screen sizes to my knowledge
         [
             (640, 480),

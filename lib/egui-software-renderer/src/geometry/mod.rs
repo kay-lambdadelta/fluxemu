@@ -5,53 +5,56 @@ use fluxemu_math::rectangle::Rectangle;
 use nalgebra::{Point2, Vector2};
 use palette::Srgba;
 
-use crate::callback::Callback;
+use crate::{
+    callback::Callback,
+    intermediate::{Channel, Intermediate},
+};
 
 pub mod fill;
 pub mod reduce;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Vertex {
-    pub position: Point2<f32>,
-    pub uv: Point2<f32>,
-    pub color: Srgba<f32>,
+pub struct Vertex<T: Intermediate> {
+    pub position: Point2<T>,
+    pub uv: Point2<T>,
+    pub color: Srgba<Channel<T>>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Triangle {
+pub struct Triangle<I: Intermediate> {
     // Vertexes
-    pub v0: Vertex,
-    pub v1: Vertex,
-    pub v2: Vertex,
+    pub v0: Vertex<I>,
+    pub v1: Vertex<I>,
+    pub v2: Vertex<I>,
 
     // Edges
-    pub edge0: Vector2<f32>,
-    pub edge1: Vector2<f32>,
-    pub edge2: Vector2<f32>,
+    pub edge0: Vector2<I>,
+    pub edge1: Vector2<I>,
+    pub edge2: Vector2<I>,
 
     // Double area
-    pub signed_double_area: f32,
+    pub signed_double_area: I,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub struct SolidQuad {
-    pub rectangle: Rectangle<f32>,
+pub struct SolidQuad<I: Intermediate> {
+    pub rectangle: Rectangle<I>,
     // This is only for single color quads
-    pub color: Srgba<f32>,
+    pub color: Srgba<Channel<I>>,
 }
 
 #[derive(Debug)]
-pub struct Group<P: 'static> {
-    pub rect: Rectangle<f32>,
-    pub primitives: Vec<Primitive<P>>,
+pub struct Group<P: 'static, I: Intermediate> {
+    pub rect: Rectangle<I>,
+    pub primitives: Vec<Primitive<P, I>>,
 }
 
 #[derive(Debug)]
-pub enum Primitive<P: 'static> {
+pub enum Primitive<P: 'static, I: Intermediate> {
     Triangle {
-        shape: Triangle,
+        shape: Triangle<I>,
         texture_id: TextureId,
     },
-    SolidQuad(SolidQuad),
+    SolidQuad(SolidQuad<I>),
     Callback(Arc<Callback<P>>),
 }

@@ -17,22 +17,41 @@ use crate::{
         fill::{fill_quad, fill_triangle},
         reduce::reduce_geometry,
     },
+    intermediate::{Channel, ceil, floor, from_usize, max_int, to_index},
 };
 
 pub mod callback;
 mod geometry;
+mod intermediate;
 mod powerof2;
+
+pub use intermediate::Intermediate;
 
 // NOTE: https://github.com/emilk/egui/pull/2071
 //
 // ^^ Read that before touching this
 
-#[derive(Debug, Default)]
-pub struct Renderer {
-    textures: HashMap<TextureId, OwnedTexture<PreAlpha<Srgb<f32>>>, FxBuildHasher>,
+type TextureMap<T> = HashMap<TextureId, OwnedTexture<PreAlpha<Srgb<Channel<T>>>>, FxBuildHasher>;
+
+#[derive(Debug)]
+pub struct Renderer<T: Intermediate = f32> {
+    textures: TextureMap<T>,
 }
 
-impl Renderer {
+impl<T: Intermediate> Default for Renderer<T> {
+    fn default() -> Self {
+        Self {
+            textures: HashMap::default(),
+        }
+    }
+}
+
+impl<T: Intermediate> Renderer<T> {
+    /// Get the max texture size this instance of the renderer can represent
+    pub fn max_texture_size(&self) -> u32 {
+        max_int::<T>().to_u32().unwrap_or(u32::MAX)
+    }
+
     /// Render to a surface
     #[inline]
     pub fn render<
@@ -52,7 +71,7 @@ impl Renderer {
         let to_free = full_output.textures_delta.free.clone();
         let target_texture = target_texture.as_view_mut();
 
-        render_inner::<_, BATCH_SIZE>(context, full_output, target_texture, &mut self.textures);
+        render_inner::<_, _, BATCH_SIZE>(context, full_output, target_texture, &mut self.textures);
 
         for remove_texture_id in to_free {
             tracing::trace!("Freeing egui texture {:?}", remove_texture_id);
@@ -61,6 +80,8 @@ impl Renderer {
     }
 
     fn update_textures(&mut self, full_output: &mut FullOutput) {
+        let max_texture_size = self.max_texture_size() as usize;
+
         for (new_texture_id, image_delta) in full_output
             .textures_delta
             .set
@@ -86,9 +107,9 @@ impl Renderer {
             assert_ne!(destination_texture.width(), 0);
             assert_ne!(destination_texture.height(), 0);
 
-            // Make sure an absurdly large texture isn't emitted, as we use u32 indexes in pixel_rounds
-            assert!(destination_texture.width() <= u32::MAX as usize);
-            assert!(destination_texture.height() <= u32::MAX as usize);
+            // Make sure an absurdly large texture isn't emitted
+            assert!(destination_texture.width() <= max_texture_size);
+            assert!(destination_texture.height() <= max_texture_size);
 
             let source_texture_view = match &image_delta.image {
                 egui::ImageData::Color(image) => {
@@ -135,12 +156,13 @@ impl Renderer {
 ))]
 fn render_inner<
     P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'static,
+    T: Intermediate,
     const BATCH_SIZE: usize,
 >(
     context: &egui::Context,
     full_output: FullOutput,
     mut target_texture: Texture<impl StorageMut<Pixel = P>>,
-    textures: &mut HashMap<TextureId, OwnedTexture<PreAlpha<Srgb<f32>>>, FxBuildHasher>,
+    textures: &mut TextureMap<T>,
 ) {
     assert_ne!(target_texture.width(), 0);
     assert_ne!(target_texture.height(), 0);
@@ -149,7 +171,7 @@ fn render_inner<
     let mut target_texture = target_texture.as_view_mut();
 
     let groups: Vec<_> =
-        reduce_geometry::<P>(context, full_output.shapes, pixels_per_point).collect();
+        reduce_geometry::<P, T>(context, full_output.shapes, pixels_per_point).collect();
 
     let mut run_start = 0;
 
@@ -158,20 +180,17 @@ fn render_inner<
             continue;
         };
 
-        raster_groups::<_, BATCH_SIZE>(
+        raster_groups::<_, _, BATCH_SIZE>(
             &groups[run_start..index],
             textures,
             target_texture.as_view_mut(),
         );
         run_start = index + 1;
 
-        let min = Point2::new(
-            group.rect.min.x.max(0.0).floor() as usize,
-            group.rect.min.y.max(0.0).floor() as usize,
-        );
+        let min = group.rect.min.map(|component| to_index(floor(component)));
         let max = Point2::new(
-            group.rect.max.x.min(target_texture.width() as f32).ceil() as usize,
-            group.rect.max.y.min(target_texture.height() as f32).ceil() as usize,
+            to_index(ceil(group.rect.max.x)).min(target_texture.width()),
+            to_index(ceil(group.rect.max.y)).min(target_texture.height()),
         );
 
         let rect = Rectangle::from_min_and_max(min, max);
@@ -186,81 +205,82 @@ fn render_inner<
         );
     }
 
-    raster_groups::<_, BATCH_SIZE>(&groups[run_start..], textures, target_texture);
-}
+    raster_groups::<_, _, BATCH_SIZE>(&groups[run_start..], textures, target_texture);
 
-#[inline(always)]
-fn raster_groups<
-    P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'static,
-    const BATCH_SIZE: usize,
->(
-    groups: &[Group<P>],
-    textures: &HashMap<TextureId, OwnedTexture<PreAlpha<Srgb<f32>>>, FxBuildHasher>,
-    target: RefMutTexture<'_, P>,
-) {
-    if groups.is_empty() {
-        return;
-    }
+    #[multiversion::inherit_target]
+    fn raster_groups<
+        P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'static,
+        T: Intermediate,
+        const BATCH_SIZE: usize,
+    >(
+        groups: &[Group<P, T>],
+        textures: &TextureMap<T>,
+        target: RefMutTexture<'_, P>,
+    ) {
+        if groups.is_empty() {
+            return;
+        }
 
-    let band_count = rayon::current_num_threads().clamp(1, target.height());
-    let bands = target.split_into_bands_mut(band_count);
+        let band_count = rayon::current_num_threads().clamp(1, target.height());
+        let bands = target.split_into_bands_mut(band_count);
 
-    let mut cursor = 0;
-    let ranges: Vec<_> = bands
-        .iter()
-        .map(|band| {
-            let range = RangeInclusive::from_start_and_length(cursor, band.height());
-            cursor += band.height();
-            range
-        })
-        .collect();
+        let mut cursor = 0;
+        let ranges: Vec<_> = bands
+            .iter()
+            .map(|band| {
+                let range = RangeInclusive::from_start_and_length(cursor, band.height());
+                cursor += band.height();
+                range
+            })
+            .collect();
 
-    bands
-        .into_par_iter()
-        .zip(ranges)
-        .for_each(|(mut band, band_range)| {
-            let offset = *band_range.start() as f32;
+        bands.into_par_iter().zip(ranges).for_each(
+            #[inline]
+            |(mut band, band_range)| {
+                let offset = from_usize::<T>(*band_range.start());
 
-            for group in groups {
-                let clip = Rectangle::from_min_and_max(
-                    Point2::new(group.rect.min.x, group.rect.min.y - offset),
-                    Point2::new(group.rect.max.x, group.rect.max.y - offset),
-                );
+                for group in groups {
+                    let clip = Rectangle::from_min_and_max(
+                        Point2::new(group.rect.min.x, group.rect.min.y - offset),
+                        Point2::new(group.rect.max.x, group.rect.max.y - offset),
+                    );
 
-                if !clip.is_valid() || !group.rect.is_valid() {
-                    continue;
-                }
+                    if !clip.is_valid() || !group.rect.is_valid() {
+                        continue;
+                    }
 
-                for primitive in group.primitives.iter() {
-                    match primitive {
-                        Primitive::SolidQuad(quad) => {
-                            let mut quad = *quad;
-                            quad.rectangle.min.y -= offset;
-                            quad.rectangle.max.y -= offset;
+                    for primitive in group.primitives.iter() {
+                        match primitive {
+                            Primitive::SolidQuad(quad) => {
+                                let mut quad = *quad;
+                                quad.rectangle.min.y -= offset;
+                                quad.rectangle.max.y -= offset;
 
-                            fill_quad(clip, quad, band.as_view_mut());
-                        }
-                        Primitive::Triangle {
-                            shape: triangle,
-                            texture_id,
-                        } => {
-                            let mut triangle = *triangle;
-                            triangle.v0.position.y -= offset;
-                            triangle.v1.position.y -= offset;
-                            triangle.v2.position.y -= offset;
+                                fill_quad(clip, quad, band.as_view_mut());
+                            }
+                            Primitive::Triangle {
+                                shape: triangle,
+                                texture_id,
+                            } => {
+                                let mut triangle = *triangle;
+                                triangle.v0.position.y -= offset;
+                                triangle.v1.position.y -= offset;
+                                triangle.v2.position.y -= offset;
 
-                            fill_triangle::<_, BATCH_SIZE>(
-                                clip,
-                                triangle,
-                                textures[texture_id].as_view(),
-                                band.as_view_mut(),
-                            );
-                        }
-                        Primitive::Callback { .. } => {
-                            unreachable!()
+                                fill_triangle::<_, _, BATCH_SIZE>(
+                                    clip,
+                                    triangle,
+                                    textures[texture_id].as_view(),
+                                    band.as_view_mut(),
+                                );
+                            }
+                            Primitive::Callback { .. } => {
+                                unreachable!()
+                            }
                         }
                     }
                 }
-            }
-        });
+            },
+        );
+    }
 }

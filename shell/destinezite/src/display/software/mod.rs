@@ -41,7 +41,7 @@ impl<D: SoftwareCompatibleDisplayContext> GraphicsRuntime for SoftwareGraphicsRu
     }
 
     fn max_texture_side(&self) -> u32 {
-        u32::MAX
+        self.renderer.max_texture_size()
     }
 
     fn screenshot(&self) -> CowTexture<'_, Srgba<u8>> {

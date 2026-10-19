@@ -10,31 +10,37 @@ use palette::{
 
 use crate::{
     geometry::{SolidQuad, Triangle},
+    intermediate::{
+        self, Channel, Intermediate, ceil, floor, from_usize, half, to_index, to_texel_index,
+    },
     powerof2::PowerOfTwoIter,
 };
 
 #[inline(always)]
-pub fn fill_quad<P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'static>(
-    clip: Rectangle<f32>,
-    solid_quad: SolidQuad,
+pub fn fill_quad<
+    P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'static,
+    I: Intermediate,
+>(
+    clip: Rectangle<I>,
+    solid_quad: SolidQuad<I>,
     mut target_texture: Texture<impl StorageMut<Pixel = P>>,
 ) {
-    let texture_max = Point2::from(target_texture.size().cast() - Vector2::from_element(1.0));
+    let texture_max = Point2::from(target_texture.size().map(|size| from_usize::<I>(size - 1)));
 
-    let min = solid_quad
-        .rectangle
-        .min
-        .sup(&clip.min)
-        .sup(&Point2::new(0.0, 0.0));
-    let max = solid_quad.rectangle.max.inf(&clip.max).inf(&texture_max);
+    let min = intermediate::component_max(solid_quad.rectangle.min, clip.min)
+        .map(|component| intermediate::max(component, I::zero()));
+
+    let max = intermediate::component_min(
+        intermediate::component_min(solid_quad.rectangle.max, clip.max),
+        texture_max,
+    );
 
     let rect = Rectangle::from_min_and_max(min, max);
     if !rect.is_valid() {
         return;
     }
 
-    let rect =
-        Rectangle::from_min_and_max(rect.min.map(|c| c as usize), rect.max.map(|c| c as usize));
+    let rect = Rectangle::from_min_and_max(rect.min.map(to_index), rect.max.map(to_index));
 
     target_texture
         .view_mut(rect.x_range(), rect.y_range())
@@ -44,59 +50,45 @@ pub fn fill_quad<P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'st
 #[inline(always)]
 pub fn fill_triangle<
     P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'static,
+    I: Intermediate,
     const BATCH_SIZE: usize,
 >(
-    clip: Rectangle<f32>,
-    triangle: Triangle,
-    source_texture: Texture<impl Storage<Pixel = PreAlpha<Srgb<f32>>>>,
+    clip: Rectangle<I>,
+    triangle: Triangle<I>,
+    source_texture: Texture<impl Storage<Pixel = PreAlpha<Srgb<Channel<I>>>>>,
     mut destination_texture: Texture<impl StorageMut<Pixel = P>>,
 ) {
     let source_texture = source_texture.as_view();
-    let target_texture_dimensions = destination_texture.size().cast();
-    let max_texture_coordinates =
-        Point2::from(target_texture_dimensions - Vector2::from_element(1.0));
 
-    let vector_max = Point2::new(
-        Vector3::new(
-            triangle.v0.position.x,
-            triangle.v1.position.x,
-            triangle.v2.position.x,
-        )
-        .max(),
-        Vector3::new(
-            triangle.v0.position.y,
-            triangle.v1.position.y,
-            triangle.v2.position.y,
-        )
-        .max(),
+    let max_texture_coordinates = Point2::from(
+        destination_texture
+            .size()
+            .map(|size| from_usize::<I>(size - 1)),
+    );
+
+    let vector_max = intermediate::component_max(
+        intermediate::component_max(triangle.v0.position, triangle.v1.position),
+        triangle.v2.position,
     );
 
     // Clip the clipping box by the target texture size
-    let clip_max = clip.max.inf(&max_texture_coordinates);
+    let clip_max = intermediate::component_min(clip.max, max_texture_coordinates);
 
     // Clip the triangle
-    let triangle_bounding_max = vector_max.inf(&clip_max).map(|c| c.floor());
+    let triangle_bounding_max = intermediate::component_min(vector_max, clip_max).map(floor);
 
-    let vertex_min = Point2::new(
-        Vector3::new(
-            triangle.v0.position.x,
-            triangle.v1.position.x,
-            triangle.v2.position.x,
-        )
-        .min(),
-        Vector3::new(
-            triangle.v0.position.y,
-            triangle.v1.position.y,
-            triangle.v2.position.y,
-        )
-        .min(),
+    let vertex_min = intermediate::component_min(
+        intermediate::component_min(triangle.v0.position, triangle.v1.position),
+        triangle.v2.position,
     );
 
     // Ensure negative clip values do not exist
-    let clip_min = clip.min.sup(&Point2::new(0.0, 0.0));
+    let clip_min = clip
+        .min
+        .map(|component| intermediate::max(component, I::zero()));
 
     // Clip the triangle again
-    let triangle_bounding_min = vertex_min.sup(&clip_min).map(|c| c.ceil());
+    let triangle_bounding_min = intermediate::component_max(vertex_min, clip_min).map(ceil);
 
     // Guard against degenerate triangles
     if triangle_bounding_min.x > triangle_bounding_max.x
@@ -107,7 +99,7 @@ pub fn fill_triangle<
 
     let mut barycentric_coordinates = barycentric_coordinates(
         // Offset to the center of the pixel
-        triangle_bounding_min + Vector2::from_element(0.5),
+        triangle_bounding_min + Vector2::from_element(half::<I>()),
         &triangle,
     );
     let mut row_start_barycentric_coordinates = barycentric_coordinates;
@@ -132,69 +124,68 @@ pub fn fill_triangle<
     );
 
     let step_color = Srgba::new(
-        step_x.dot(&Vector3::new(
-            triangle.v0.color.red,
-            triangle.v1.color.red,
-            triangle.v2.color.red,
-        )),
-        step_x.dot(&Vector3::new(
-            triangle.v0.color.green,
-            triangle.v1.color.green,
-            triangle.v2.color.green,
-        )),
-        step_x.dot(&Vector3::new(
-            triangle.v0.color.blue,
-            triangle.v1.color.blue,
-            triangle.v2.color.blue,
-        )),
-        step_x.dot(&Vector3::new(
-            triangle.v0.color.alpha,
-            triangle.v1.color.alpha,
-            triangle.v2.color.alpha,
-        )),
+        Channel(step_x.dot(&Vector3::new(
+            triangle.v0.color.red.0,
+            triangle.v1.color.red.0,
+            triangle.v2.color.red.0,
+        ))),
+        Channel(step_x.dot(&Vector3::new(
+            triangle.v0.color.green.0,
+            triangle.v1.color.green.0,
+            triangle.v2.color.green.0,
+        ))),
+        Channel(step_x.dot(&Vector3::new(
+            triangle.v0.color.blue.0,
+            triangle.v1.color.blue.0,
+            triangle.v2.color.blue.0,
+        ))),
+        Channel(step_x.dot(&Vector3::new(
+            triangle.v0.color.alpha.0,
+            triangle.v1.color.alpha.0,
+            triangle.v2.color.alpha.0,
+        ))),
     );
 
-    let texture_dimensions: Vector2<f32> = source_texture.size().cast();
+    let texture_dimensions = source_texture.size().map(from_usize::<I>);
 
-    for y in triangle_bounding_min.y as usize..=triangle_bounding_max.y as usize {
+    for y in to_index(triangle_bounding_min.y)..=to_index(triangle_bounding_max.y) {
         // This calculates the enter and exit point of which this particular scanline will be relevant
         // to the triangle we are drawing
-
         let x_enter = (0..3)
             .map(|index| {
-                (if step_x[index] > 0.0 {
+                (if step_x[index] > I::zero() {
                     triangle_bounding_min.x
                         - row_start_barycentric_coordinates[index] / step_x[index]
                 } else {
                     triangle_bounding_min.x
-                }) - 0.5
+                }) - half::<I>()
             })
-            .fold(triangle_bounding_min.x, f32::max)
-            .ceil() as usize;
+            .fold(triangle_bounding_min.x, intermediate::max);
+        let x_enter = to_index(ceil(x_enter));
 
         let x_exit = (0..3)
             .map(|index| {
-                (if step_x[index] < 0.0 {
+                (if step_x[index] < I::zero() {
                     triangle_bounding_min.x
                         - row_start_barycentric_coordinates[index] / step_x[index]
                 } else {
                     triangle_bounding_max.x
-                }) + 0.5
+                }) + half::<I>()
             })
-            .fold(triangle_bounding_max.x, f32::min)
-            .floor() as usize;
+            .fold(triangle_bounding_max.x, intermediate::min);
+        let x_exit = to_index(floor(x_exit));
 
         // Advance coordinates
-        barycentric_coordinates =
-            row_start_barycentric_coordinates + step_x * (x_enter as f32 - triangle_bounding_min.x);
+        barycentric_coordinates = row_start_barycentric_coordinates
+            + step_x * (from_usize::<I>(x_enter) - triangle_bounding_min.x);
 
         let mut current_uv = triangle.v0.uv.coords * barycentric_coordinates.x
             + triangle.v1.uv.coords * barycentric_coordinates.y
             + triangle.v2.uv.coords * barycentric_coordinates.z;
 
-        let mut current_color = triangle.v0.color * barycentric_coordinates.x
-            + triangle.v1.color * barycentric_coordinates.y
-            + triangle.v2.color * barycentric_coordinates.z;
+        let mut current_color = triangle.v0.color * Channel(barycentric_coordinates.x)
+            + triangle.v1.color * Channel(barycentric_coordinates.y)
+            + triangle.v2.color * Channel(barycentric_coordinates.z);
 
         let x_range = x_enter..=x_exit;
         let mut x = *x_range.start();
@@ -205,7 +196,7 @@ pub fn fill_triangle<
                 destination_texture.view_mut(RangeInclusive::from_start_and_length(x, len), y..=y);
 
             match len {
-                32 => pixel_rounds::<32, P>(
+                32 => pixel_rounds::<32, P, I>(
                     target_row,
                     source_texture,
                     texture_dimensions,
@@ -214,7 +205,7 @@ pub fn fill_triangle<
                     step_uv,
                     step_color,
                 ),
-                16 => pixel_rounds::<16, P>(
+                16 => pixel_rounds::<16, P, I>(
                     target_row,
                     source_texture,
                     texture_dimensions,
@@ -223,7 +214,7 @@ pub fn fill_triangle<
                     step_uv,
                     step_color,
                 ),
-                8 => pixel_rounds::<8, P>(
+                8 => pixel_rounds::<8, P, I>(
                     target_row,
                     source_texture,
                     texture_dimensions,
@@ -232,7 +223,7 @@ pub fn fill_triangle<
                     step_uv,
                     step_color,
                 ),
-                4 => pixel_rounds::<4, P>(
+                4 => pixel_rounds::<4, P, I>(
                     target_row,
                     source_texture,
                     texture_dimensions,
@@ -241,7 +232,7 @@ pub fn fill_triangle<
                     step_uv,
                     step_color,
                 ),
-                2 => pixel_rounds::<2, P>(
+                2 => pixel_rounds::<2, P, I>(
                     target_row,
                     source_texture,
                     texture_dimensions,
@@ -250,7 +241,7 @@ pub fn fill_triangle<
                     step_uv,
                     step_color,
                 ),
-                1 => pixel_rounds::<1, P>(
+                1 => pixel_rounds::<1, P, I>(
                     target_row,
                     source_texture,
                     texture_dimensions,
@@ -266,9 +257,10 @@ pub fn fill_triangle<
 
             // Advance everything
             x += len;
-            barycentric_coordinates += step_x * len as f32;
-            current_uv += step_uv * len as f32;
-            current_color += step_color * len as f32;
+            let len_number = from_usize::<I>(len);
+            barycentric_coordinates += step_x * len_number;
+            current_uv += step_uv * len_number;
+            current_color += step_color * Channel(len_number);
         }
 
         row_start_barycentric_coordinates += step_y;
@@ -283,14 +275,15 @@ pub fn fill_triangle<
 fn pixel_rounds<
     const C: usize,
     P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'static,
+    I: Intermediate,
 >(
     mut target_row: Texture<impl StorageMut<Pixel = P>>,
-    texture: Texture<impl Storage<Pixel = PreAlpha<Srgb<f32>>>>,
-    texture_dimensions: Vector2<f32>,
-    current_uv: Vector2<f32>,
-    current_color: Srgba<f32>,
-    step_uv: Vector2<f32>,
-    step_color: Srgba<f32>,
+    texture: Texture<impl Storage<Pixel = PreAlpha<Srgb<Channel<I>>>>>,
+    texture_dimensions: Vector2<I>,
+    current_uv: Vector2<I>,
+    current_color: Srgba<Channel<I>>,
+    step_uv: Vector2<I>,
+    step_color: Srgba<Channel<I>>,
 ) {
     // Assert these dimensions so the compiler doesn't forget
     //
@@ -298,23 +291,23 @@ fn pixel_rounds<
     assert_eq!(target_row.width(), C);
     assert_eq!(target_row.height(), 1);
 
-    let mut interpolated_uvs: SMatrix<_, C, 2> = SMatrix::from_element(0.0);
+    let mut interpolated_uvs: SMatrix<_, C, 2> = SMatrix::from_element(I::zero());
     for index in 0..C {
-        let uv = current_uv + (step_uv * index as f32);
+        let uv = current_uv + (step_uv * from_usize::<I>(index));
 
         interpolated_uvs.row_mut(index).copy_from(&uv.transpose());
     }
 
-    let mut interpolated_colors: SMatrix<_, C, 4> = SMatrix::from_element(0.0);
+    let mut interpolated_colors: SMatrix<_, C, 4> = SMatrix::from_element(Channel(I::zero()));
     for index in 0..C {
-        let color = current_color + (step_color * index as f32);
+        let color = current_color + (step_color * Channel(from_usize::<I>(index)));
 
         interpolated_colors
             .row_mut(index)
             .copy_from_slice(color.premultiply().as_ref());
     }
 
-    let mut scaled_uvs: SMatrix<_, C, 2> = SMatrix::from_element(0.0);
+    let mut scaled_uvs: SMatrix<_, C, 2> = SMatrix::from_element(I::zero());
     for index in 0..C {
         let scaled_uv = texture_dimensions
             .transpose()
@@ -326,34 +319,24 @@ fn pixel_rounds<
     // A coordinate being emitted somehow that ended up being beyond u32::MAX would be absurd, but clamp just in case
     //
     // We guard against any zero sized textures appearing already (in reduce.rs), so this can't underflow
-    let max_possible_texture_coordinate = (texture.size().cast() - Vector2::from_element(1))
-        .zip_map(&Vector2::from_element(u32::MAX as usize), |a, b| a.min(b));
+    let max_possible_texture_coordinate = texture
+        .size()
+        .map(|size| (size - 1).min(u32::MAX as usize) as u32);
 
     let mut texture_coordinates: SMatrix<_, C, 2> = SMatrix::from_element(0);
     for index in 0..C {
         let texture_coordinate = scaled_uvs
             .row(index)
             .transpose()
-            .map(|c| {
-                // SAFETY:
-                //  We guard against any NaN values by clamping to the range [0, u32::MAX]
-                //  This has to be done before the `to_int_unchecked` call to avoid Rust UB
-                //
-                // HACK:
-                //  This is technically a hack to avoid some bad llvm.fptoui.sat codegen on x86/x86-64.
-                //  It usually ends up scalarizing without using `to_int_unchecked`
-                //  Revisit it once our MSRV is raised (written as of 1.95.0)
-                unsafe { c.max(0.0).min(u32::MAX as f32).to_int_unchecked::<u32>() }
-            })
             // Clamp to the edge
-            .zip_map(&max_possible_texture_coordinate, |a, b| a.min(b as u32));
+            .zip_map(&max_possible_texture_coordinate, to_texel_index);
 
         texture_coordinates
             .row_mut(index)
             .copy_from(&texture_coordinate.transpose());
     }
 
-    let mut sampled_texture_color: SMatrix<_, C, 4> = SMatrix::from_element(0.0);
+    let mut sampled_texture_color: SMatrix<_, C, 4> = SMatrix::from_element(Channel(I::zero()));
     for index in 0..C {
         let texture_coordinate = texture_coordinates.row(index).transpose().cast();
 
@@ -366,7 +349,7 @@ fn pixel_rounds<
             .copy_from_slice(texture_pixel.as_ref());
     }
 
-    let mut source_colors: SMatrix<_, C, 4> = SMatrix::from_element(0.0);
+    let mut source_colors: SMatrix<_, C, 4> = SMatrix::from_element(Channel(I::zero()));
     for index in 0..C {
         let interpolated_color = interpolated_colors.row(index);
         let sampled_texture_color = sampled_texture_color.row(index);
@@ -376,22 +359,23 @@ fn pixel_rounds<
         source_colors.row_mut(index).copy_from(&source_color);
     }
 
-    let mut destination_colors: SMatrix<_, C, 4> = SMatrix::from_element(0.0);
+    let mut destination_colors: SMatrix<_, C, 4> = SMatrix::from_element(Channel(I::zero()));
     for index in 0..C {
-        let destination_color = target_row[Point2::new(index, 0)].into().into_format();
+        let destination_color: Srgba<Channel<I>> =
+            target_row[Point2::new(index, 0)].into().into_format();
 
         destination_colors
             .row_mut(index)
             .copy_from_slice(destination_color.premultiply().as_ref());
     }
 
-    let mut output_colors: SMatrix<_, C, 4> = SMatrix::from_element(0.0);
+    let mut output_colors: SMatrix<_, C, 4> = SMatrix::from_element(Channel(I::zero()));
     for index in 0..C {
         let source_color = source_colors.row(index).transpose();
-        let source_color: PreAlpha<Srgb<f32>> = PreAlpha::from(<[_; 4]>::from(source_color));
+        let source_color: PreAlpha<Srgb<Channel<I>>> = PreAlpha::from(<[_; 4]>::from(source_color));
 
         let destination_color = destination_colors.row(index).transpose();
-        let destination_color: PreAlpha<Srgb<f32>> =
+        let destination_color: PreAlpha<Srgb<Channel<I>>> =
             PreAlpha::from(<[_; 4]>::from(destination_color));
 
         let output_color = source_color.over(destination_color);
@@ -403,14 +387,17 @@ fn pixel_rounds<
 
     for index in 0..C {
         let output_color = output_colors.row(index).transpose();
-        let output_color: PreAlpha<Srgb<f32>> = PreAlpha::from(<[_; 4]>::from(output_color));
+        let output_color: PreAlpha<Srgb<Channel<I>>> = PreAlpha::from(<[_; 4]>::from(output_color));
 
         target_row[Point2::new(index, 0)] = output_color.unpremultiply().into_format().into();
     }
 }
 
 #[inline]
-fn barycentric_coordinates(point: Point2<f32>, triangle: &Triangle) -> Vector3<f32> {
+fn barycentric_coordinates<T: Intermediate>(
+    point: Point2<T>,
+    triangle: &Triangle<T>,
+) -> Vector3<T> {
     let v0p = triangle.v0.position - point;
     let v1p = triangle.v1.position - point;
     let v2p = triangle.v2.position - point;
