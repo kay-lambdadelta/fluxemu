@@ -121,6 +121,8 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<
         let frequency = R::master_clock() / R::PPU_CLOCK_DIVISOR as u128;
 
         let (component_builder, framebuffer_path) = component_builder
+            .bus_master(self.cpu_address_space)
+            .bus_master(self.ppu_address_space)
             .task(
                 "synchronization",
                 Mode::OnDemand,

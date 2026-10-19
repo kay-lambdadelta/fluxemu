@@ -28,6 +28,7 @@ pub(super) struct ComponentData<P: Platform> {
     pub late_initializer: ComponentLateInitializer<P>,
     pub graphics_requirements: GraphicsRequirements<P::GraphicsApi>,
     pub tasks: HashMap<Cow<'static, str>, TaskEntry>,
+    pub bus_masters: Vec<AddressSpaceId>,
 }
 
 impl<P: Platform> ComponentData<P> {
@@ -41,6 +42,7 @@ impl<P: Platform> ComponentData<P> {
             }),
             graphics_requirements: GraphicsRequirements::default(),
             tasks: HashMap::new(),
+            bus_masters: Vec::new(),
         }
     }
 }
@@ -233,6 +235,22 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
     ) -> Self {
         self.component_data.graphics_requirements =
             self.component_data.graphics_requirements.clone() | requirements;
+
+        self
+    }
+
+    /// Set the bus master for this component, so synchronization occurs on bus remaps
+    pub fn bus_master(self, address_space: AddressSpaceId) -> Self {
+        assert!(
+            self.machine_builder
+                .address_spaces
+                .contains_key(&address_space),
+            "Address space does not exist"
+        );
+
+        if !self.component_data.bus_masters.contains(&address_space) {
+            self.component_data.bus_masters.push(address_space);
+        }
 
         self
     }

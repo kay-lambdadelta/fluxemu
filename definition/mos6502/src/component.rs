@@ -67,11 +67,13 @@ impl<P: Platform, V: Variant> ComponentConfig<P> for Config<V> {
         self,
         component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn core::error::Error>> {
-        component_builder.task(
-            "synchronization",
-            Mode::Always,
-            FrequencyBased::new(self.frequency, Self::Component::task),
-        );
+        component_builder
+            .bus_master(self.assigned_address_space)
+            .task(
+                "synchronization",
+                Mode::Always,
+                FrequencyBased::new(self.frequency, Self::Component::task),
+            );
 
         let mut component = Mos6502 {
             state: State {

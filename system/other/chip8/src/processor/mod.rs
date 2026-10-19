@@ -219,6 +219,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<P>
         let state = ProcessorState::default();
 
         let (_component_builder, keypad) = component_builder
+            .bus_master(self.cpu_address_space)
             .task(
                 "synchronization",
                 Mode::Always,

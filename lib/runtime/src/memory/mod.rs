@@ -71,6 +71,12 @@ impl<'a> AddressSpace<'a> {
         // This informs `sdd` that cleanup should happen sooner rather than later
         self.guard.accelerate();
 
+        // Bus masters must not observe the new mapping before the timestamp it takes effect at
+        let component_registry = self.runtime.component_registry();
+        for id in &self.data.bus_masters {
+            component_registry.synchronize_unless_running(*id, timestamp);
+        }
+
         self.data
             .remap(timestamp, &self.guard, self.runtime, commands);
     }
@@ -209,6 +215,7 @@ pub(crate) struct AddressSpaceData {
     read_table: AtomicOwned<PageTable>,
     write_table: AtomicOwned<PageTable>,
     master: Mutex<MasterTables>,
+    pub(crate) bus_masters: Vec<ComponentId>,
 }
 
 impl AddressSpaceData {
@@ -227,6 +234,7 @@ impl AddressSpaceData {
             read_table: AtomicOwned::new(PageTable::new(width)),
             write_table: AtomicOwned::new(PageTable::new(width)),
             master: Mutex::default(),
+            bus_masters: Vec::new(),
         }
     }
 

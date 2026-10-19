@@ -151,11 +151,20 @@ impl<P: Platform> MachineBuilder<P> {
             .build_component(component_builder)
             .expect("Failed to build component");
 
-        self.component_registry_data.insert_component(
+        let id = self.component_registry_data.insert_component(
             path.clone(),
             component,
             component_data.tasks.drain(),
         );
+
+        for address_space in component_data.bus_masters.drain(..) {
+            self.address_spaces
+                .get_mut(&address_space)
+                .unwrap()
+                .data
+                .bus_masters
+                .push(id);
+        }
 
         self.component_data.insert(path, component_data);
     }
@@ -299,6 +308,8 @@ impl<P: Platform> MachineBuilder<P> {
             })
             .collect();
 
+        let memory_registry_data = MemoryRegistryData::new(required_memory_regions);
+
         let machine = Arc::new(Machine {
             scheduler: self.scheduler,
             address_spaces,
@@ -307,7 +318,7 @@ impl<P: Platform> MachineBuilder<P> {
             program_specification: self.program_specification,
             audio_channels: self.audio_channels,
             component_registry_data: self.component_registry_data,
-            memory_registry_data: MemoryRegistryData::new(required_memory_regions),
+            memory_registry_data,
         });
 
         // Initialize address spaces

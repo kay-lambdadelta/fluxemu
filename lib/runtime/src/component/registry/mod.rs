@@ -52,7 +52,7 @@ impl ComponentRegistryData {
         path: ComponentPath,
         component: C,
         tasks: impl IntoIterator<Item = (Cow<'static, str>, TaskEntry)>,
-    ) {
+    ) -> ComponentId {
         assert!(
             !self.metadata.contains_key(&path),
             "Component with the path {path} already exists"
@@ -76,6 +76,8 @@ impl ComponentRegistryData {
         );
 
         self.metadata.insert(path, GlobalComponentMetadata { id });
+
+        id
     }
 }
 
@@ -156,6 +158,22 @@ impl<'a> ComponentRegistry<'a> {
         self.return_data(id, data);
 
         item
+    }
+
+    /// Advance a component to the timestamp, unless this thread is already running it further up the call stack
+    pub(crate) fn synchronize_unless_running(&self, id: ComponentId, target_timestamp: Period) {
+        let store = unsafe { &mut *self.local_data().get() };
+
+        if store
+            .get_slot(id)
+            .as_ref()
+            .is_some_and(|handle| handle.data.is_none())
+        {
+            return;
+        }
+
+        // SAFETY: Component IDs stored by the runtime are always valid for the registry
+        unsafe { self.interact_dyn_id_unchecked(id, target_timestamp, |_| {}) };
     }
 
     /// Interact with a component by its ID or path via a closure, returning the output of that closure if the component could be found
