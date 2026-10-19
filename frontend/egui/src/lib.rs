@@ -46,7 +46,7 @@ pub struct Frontend<P: Platform> {
     font_definitions: FontDefinitions,
     egui_input_translator: EguiInputTranslator,
     /// ID of area where framebuffers will be drawn
-    machine_framebuffer_display_area: Id,
+    machine_view_area: Id,
 }
 
 impl<P: Platform> Frontend<P> {
@@ -68,7 +68,7 @@ impl<P: Platform> Frontend<P> {
             notification_marquee: NotificationMarquee::default(),
             font_definitions,
             egui_input_translator: EguiInputTranslator::default(),
-            machine_framebuffer_display_area: Id::unique(format!(
+            machine_view_area: Id::unique(format!(
                 "{}/machine_framebuffer_display_area",
                 env!("CARGO_CRATE_NAME")
             )),
@@ -138,7 +138,7 @@ impl<P: Platform> Frontend<P> {
                 ui.with_layout(Layout::top_down_justified(Align::LEFT), |ui| {
                     Frame::new().show(ui, |ui| match self.menu_panel.current_tab {
                         TabId::Machine => {
-                            self.draw_machine_framebuffers(ui, graphics_runtime);
+                            self.draw_machine_view_area(ui, graphics_runtime);
                         }
                         TabId::Library => {}
                         TabId::FileBrowser => {
@@ -201,7 +201,7 @@ impl<P: Platform> Frontend<P> {
         }
     }
 
-    fn draw_machine_framebuffers(
+    fn draw_machine_view_area(
         &mut self,
         ui: &mut egui::Ui,
         graphics_runtime: &mut P::GraphicsRuntime,
@@ -222,12 +222,8 @@ impl<P: Platform> Frontend<P> {
                         let size =
                             Vector2::new(framebuffer.width() as f32, framebuffer.height() as f32);
 
-                        let (rect, response) = allocate_fill_aspect(
-                            ui,
-                            size,
-                            self.machine_framebuffer_display_area,
-                            Sense::click(),
-                        );
+                        let (rect, response) =
+                            allocate_fill_aspect(ui, size, self.machine_view_area, Sense::click());
 
                         if response.clicked() {
                             self.menu_panel.is_expanded = false;
@@ -271,16 +267,16 @@ impl<P: Platform> Frontend<P> {
     /// Check if any framebuffer currently has UI focus
     pub fn machine_has_focus(&self) -> bool {
         self.egui_context
-            .memory(|memory| memory.has_focus(self.machine_framebuffer_display_area))
+            .memory(|memory| memory.has_focus(self.machine_view_area))
     }
 
     /// Set the focus state of the machine
     pub fn set_machine_focus(&mut self, focus: bool) {
         self.egui_context.memory_mut(|memory| {
             if focus {
-                memory.request_focus(self.machine_framebuffer_display_area);
+                memory.request_focus(self.machine_view_area);
             } else {
-                memory.surrender_focus(self.machine_framebuffer_display_area);
+                memory.surrender_focus(self.machine_view_area);
             }
         })
     }
