@@ -81,7 +81,6 @@ jobs:
     needs:
       - debian-trixie-x86_64
       - windows-x86_64
-      - apache-nuttx-raspberrypi-pico-2
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v8
