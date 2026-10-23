@@ -93,7 +93,7 @@ fluxemu-system-other-chip8 = {
 default = ["ratatui", "webgpu", "windowing"]
 drm = ["dep:drm", "dep:evdev", "dep:input", "dep:libseat", "dep:nix", "dep:udev", "dep:xkbcommon", "egui", "wgpu/drm"]
 egui = ["dep:egui", "dep:epaint", "dep:fluxemu-egui-software-renderer", "dep:fluxemu-frontend-egui"]
-ratatui = ["dep:fluxemu-frontend-ratatui", "dep:ratatui-image", "ratatui-image/chafa-dyn"]
+ratatui = ["dep:fluxemu-frontend-ratatui", "dep:ratatui-image"]
 webgpu = [
   "dep:egui-wgpu",
   "dep:wgpu",
