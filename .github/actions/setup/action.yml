@@ -1,0 +1,25 @@
+name: "Setup"
+
+inputs:
+  platform:
+    required: true
+  shell:
+    required: false
+    default: "destinezite"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Debian dependencies
+      if: inputs.platform == 'debian'
+      shell: bash
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: xargs apt-get install -y --no-install-recommends < .github/dependencies/debian
+
+    - name: Switch shell
+      if: inputs.shell != 'destinezite'
+      shell: bash
+      run: cargo run -p xtask -- switch ${{ inputs.shell }}
+
+    - uses: Swatinem/rust-cache@v2

@@ -7,6 +7,7 @@ members = [
   "shell/*",
   "system/*/*",
   "utils/",
+  "xtask",
 ]
 
 [workspace.package]

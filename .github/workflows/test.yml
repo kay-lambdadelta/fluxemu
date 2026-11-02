@@ -7,7 +7,7 @@ on:
 jobs:
   cargo-deny:
     name: Run cargo-deny
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
       - uses: actions/checkout@v7
@@ -18,45 +18,50 @@ jobs:
         with:
           log-level: error
 
-  debian-trixie-x86_64:
-    name: Debian Trixie (x86_64-unknown-linux-gnu)
-    runs-on: ubuntu-latest
-    container: debian:trixie
+  check:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Debian Trixie (x86_64-unknown-linux-gnu)
+            runner: ubuntu-26.04
+            container: debian:trixie
+            platform: debian
+            check: |
+              cargo clippy -p fluxemu-shell-destinezite --all-features
+              cargo clippy -p fluxemu-utils
+            test: RUSTFLAGS="-C opt-level=0" cargo test
+
+          - name: Debian Trixie (aarch64-unknown-linux-gnu)
+            runner: ubuntu-26.04-arm
+            container: debian:trixie
+            platform: debian
+            check: |
+              cargo clippy -p fluxemu-shell-destinezite --all-features
+              cargo clippy -p fluxemu-utils
+            test: RUSTFLAGS="-C opt-level=0" cargo test
+
     steps:
-      - name: Install Linux dependencies
+      - name: Install checkout dependencies
+        if: matrix.platform == 'debian'
         run: |
-          apt update
-          apt install -y --no-install-recommends \
-            rustup \
-            ca-certificates \
-            curl \
-            git \
-            build-essential \
-            pkg-config \
-            libasound2-dev \
-            libudev-dev \
-            libvulkan-dev \
-            libgl-dev \
-            libx11-dev \
-            libxkbcommon-dev \
-            libwayland-dev \
-            libinput-dev \
-            libseat-dev \
-            libbz2-dev \
-            libfontconfig-dev \
-            libchafa-dev
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
 
       - uses: actions/checkout@v7
         with:
           submodules: "true"
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: ./.github/actions/setup
+        with:
+          platform: ${{ matrix.platform }}
 
-      - name: Check destinezite
-        run: cargo clippy -p fluxemu-shell-destinezite --all-features
-
-      - name: Check utils
-        run: cargo clippy -p fluxemu-utils
+      - name: Check
+        run: ${{ matrix.check }}
 
       - name: Test
-        run: RUSTFLAGS="-C opt-level=0" cargo test
+        if: matrix.test
+        run: ${{ matrix.test }}

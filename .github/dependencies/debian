@@ -1,0 +1,16 @@
+build-essential
+rustup
+curl
+pkg-config
+libasound2-dev
+libudev-dev
+libvulkan-dev
+libgl-dev
+libx11-dev
+libxkbcommon-dev
+libwayland-dev
+libinput-dev
+libseat-dev
+libbz2-dev
+libfontconfig-dev
+libchafa-dev

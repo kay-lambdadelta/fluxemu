@@ -6,81 +6,75 @@ on:
   workflow_dispatch:
 
 jobs:
-  debian-trixie-x86_64:
-    name: Debian Trixie (x86_64-unknown-linux-gnu)
-    runs-on: ubuntu-latest
-    container: debian:trixie
+  package:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Debian Trixie (x86_64-unknown-linux-gnu)
+            runner: ubuntu-26.04
+            container: debian:trixie
+            platform: debian
+            tools: cargo install cargo-deb --locked
+            build: cargo deb -p fluxemu-shell-destinezite --features drm,ratatui-image/chafa-dyn --target x86_64-unknown-linux-gnu
+            artifact_name: fluxemu-shell-destinezite-(debian-trixie-x86_64)-deb
+            artifact_path: target/debian/fluxemu-shell-destinezite_*_amd64.deb
+
+          - name: Debian Trixie (aarch64-unknown-linux-gnu)
+            runner: ubuntu-26.04-arm
+            container: debian:trixie
+            platform: debian
+            tools: cargo install cargo-deb --locked
+            build: cargo deb -p fluxemu-shell-destinezite --features drm,ratatui-image/chafa-dyn --target aarch64-unknown-linux-gnu
+            artifact_name: fluxemu-shell-destinezite-(debian-trixie-aarch64)-deb
+            artifact_path: target/debian/fluxemu-shell-destinezite_*_arm64.deb
+
+          - name: Windows (x86_64-pc-windows-msvc)
+            runner: windows-latest
+            platform: windows
+            build: cargo build -p fluxemu-shell-destinezite --release
+            artifact_name: fluxemu-shell-destinezite-(windows-x86_64)-portable
+            artifact_path: target/release/fluxemu-shell-destinezite.exe
+
     steps:
-      - name: Install Linux dependencies
+      - name: Install checkout dependencies
+        if: matrix.platform == 'debian'
         run: |
-          apt update
-          apt install -y --no-install-recommends \
-            rustup \
-            ca-certificates \
-            curl \
-            git \
-            build-essential \
-            pkg-config \
-            libasound2-dev \
-            libudev-dev \
-            libvulkan-dev \
-            libgl-dev \
-            libx11-dev \
-            libxkbcommon-dev \
-            libwayland-dev \
-            libinput-dev \
-            libseat-dev \
-            libbz2-dev \
-            libfontconfig-dev \
-            libchafa-dev
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
 
       - uses: actions/checkout@v7
         with:
           submodules: "true"
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: ./.github/actions/setup
+        with:
+          platform: ${{ matrix.platform }}
 
-      - name: Install cargo-deb
-        run: cargo install cargo-deb --locked
+      - name: Install tools
+        if: matrix.tools
+        run: ${{ matrix.tools }}
 
       - name: Build
-        run: cargo deb -p fluxemu-shell-destinezite --features drm,ratatui-image/chafa-dyn --target x86_64-unknown-linux-gnu
+        run: ${{ matrix.build }}
 
-      - name: Upload Debian package
+      - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: fluxemu-shell-destinezite-(debian-trixie-x86_64)-deb
-          path: target/debian/fluxemu-shell-destinezite_*_amd64.deb
-          if-no-files-found: error
-
-  windows-x86_64:
-    name: Windows (x86_64-pc-windows-msvc)
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: "true"
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Build
-        run: cargo build -p fluxemu-shell-destinezite --release
-
-      - name: Upload Windows binary
-        uses: actions/upload-artifact@v7
-        with:
-          name: fluxemu-shell-destinezite-(windows-x86_64)-portable
-          path: target/release/fluxemu-shell-destinezite.exe
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_path }}
           if-no-files-found: error
 
   nightly-release:
     name: Publish nightly release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
     needs:
-      - debian-trixie-x86_64
-      - windows-x86_64
+      - package
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v8
