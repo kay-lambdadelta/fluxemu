@@ -2,7 +2,8 @@ use std::{error::Error, fs::create_dir_all, path::PathBuf};
 
 use fluxemu_database::{PROGRAM_INFORMATION_TABLE, ProgramDatabase};
 use fluxemu_environment::Environment;
-use rayon::iter::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
+use fluxemu_program::RomStoreSpecification;
+use rayon::iter::{ParallelBridge, ParallelIterator};
 use redb::{ReadableDatabase, ReadableMultimapTable};
 
 use crate::cli::ExportStyle;
@@ -40,10 +41,11 @@ pub fn export(
                 file_names.iter().map(|file_name| (*rom_id, file_name))
             }) {
                 let Some(source_rom_path) = environment
-                    .rom_store_directories
-                    .par_iter()
+                    .rom_stores
+                    .values()
+                    .filter_map(RomStoreSpecification::filesystem_root)
                     .map(|store| store.join(rom_id.to_string()))
-                    .find_first(|rom_path| rom_path.exists())
+                    .find(|rom_path| rom_path.exists())
                 else {
                     continue;
                 };

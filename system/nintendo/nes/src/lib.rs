@@ -41,7 +41,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Nes {
 
     const ID: SystemId = SystemId::Nintendo(NintendoSystem::NintendoEntertainmentSystem);
 
-    fn build(
+    async fn build(
         &self,
         _quirks: Self::Quirks,
         machine_builder: MachineBuilder<P>,
@@ -157,7 +157,8 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Nes {
             );
 
         let rom = machine_builder
-            .open_rom(rom_id, RomRequirement::Required)?
+            .open_rom(rom_id, RomRequirement::Required)
+            .await?
             .unwrap();
 
         let header = INes::parse(rom[0..16].try_into().unwrap()).unwrap();

@@ -9,6 +9,7 @@ use fluxemu_frontend::{
 use fluxemu_frontend_egui::{Frontend, rendering::EguiCapableGraphicsRuntime};
 use fluxemu_program::ProgramManager;
 use palette::named::BLACK;
+use tokio::runtime::Handle;
 
 use crate::{
     build_machine::get_software_factories,
@@ -19,6 +20,7 @@ use crate::{
 const UNSCII_FONT: &[u8] = include_bytes!("../../../../external/unscii/fontfiles/unscii-16.otf");
 
 pub fn run(
+    runtime: Handle,
     environment: Environment,
     program_manager: Arc<ProgramManager>,
     program_database: Arc<ProgramDatabase>,
@@ -39,6 +41,7 @@ pub fn run(
         .collect(),
     };
     let core = FrontendCore::<Platform<GraphicsRuntime>>::new(
+        runtime,
         environment,
         get_software_factories(),
         program_manager,

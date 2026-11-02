@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error, fmt::Debug};
+use std::{collections::HashMap, error::Error, fmt::Debug, pin::Pin};
 
 use fluxemu_program::SystemId;
 use fluxemu_runtime::{
@@ -8,7 +8,11 @@ use fluxemu_runtime::{
 use fluxemu_system::System;
 
 type MachineConstructor<P> = Box<
-    dyn Fn(ron::Value, MachineBuilder<P>) -> Result<SealedMachineBuilder<P>, Box<dyn Error>>
+    dyn Fn(
+            ron::Value,
+            MachineBuilder<P>,
+        )
+            -> Pin<Box<dyn Future<Output = Result<SealedMachineBuilder<P>, Box<dyn Error>>> + Send>>
         + Send
         + Sync,
 >;
@@ -27,24 +31,26 @@ impl<P: Platform> FactoryManager<P> {
     pub fn insert<S: System<P> + Default>(&mut self) {
         self.0.insert(
             S::ID,
-            Box::new(|quirks, machine_builder| {
-                let factory = S::default();
-                let quirks = quirks.into_rust().unwrap();
+            Box::new(|quirks: ron::Value, machine_builder| {
+                Box::pin(async {
+                    let factory = S::default();
+                    let quirks = quirks.into_rust().unwrap();
 
-                factory.build(quirks, machine_builder)
+                    factory.build(quirks, machine_builder).await
+                })
             }),
         );
     }
 
     /// Construct a machine based upon the factories
-    pub fn construct_machine(
+    pub async fn construct_machine(
         &self,
         quirks: ron::Value,
         machine_builder: MachineBuilder<P>,
     ) -> Option<Result<SealedMachineBuilder<P>, Box<dyn Error>>> {
         let system = machine_builder.system_id()?;
 
-        Some(self.0.get(&system)?(quirks, machine_builder))
+        Some(self.0.get(&system)?(quirks, machine_builder).await)
     }
 }
 

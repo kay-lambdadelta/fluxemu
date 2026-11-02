@@ -1,60 +1,92 @@
-use egui::{ComboBox, RichText, Slider};
+use egui::{Align, ComboBox, Grid, Layout, ScrollArea, Slider, Ui, WidgetText};
 use fluxemu_environment::graphics::GraphicsApi;
 use fluxemu_frontend::Platform;
+use rust_i18n::t;
 use strum::IntoEnumIterator;
 
 use crate::Frontend;
 
 impl<P: Platform> Frontend<P> {
-    pub fn handle_settings(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal_top(|ui| {
-            let button_text = RichText::new("💾").size(32.0);
+    pub fn handle_settings(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            ui.heading(t!("settings.heading"));
 
-            if ui
-                .button(button_text)
-                .on_hover_text("Save environment to disk")
-                .clicked()
-            {
-                self.core.save_environment();
-            }
-        });
-
-        let environment = self.core.environment_mut();
-
-        ComboBox::from_label("Graphics Api")
-            .selected_text(environment.graphics.api.to_string())
-            .show_ui(ui, |ui| {
-                for api in GraphicsApi::iter() {
-                    ui.selectable_value(&mut environment.graphics.api, api, api.to_string());
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if ui
+                    .button(t!("settings.save"))
+                    .on_hover_text(t!("settings.save_hint"))
+                    .clicked()
+                {
+                    self.core.save_environment();
                 }
             });
+        });
+        ui.separator();
 
-        ui.horizontal(|ui| {
-            let old_volume = self.core.environment().audio.volume;
-            let mut volume = old_volume;
+        ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
+            section(ui, t!("settings.graphics"), |ui| {
+                Grid::new("graphics_settings")
+                    .num_columns(2)
+                    .spacing([24.0, 8.0])
+                    .show(ui, |ui| {
+                        let environment = self.core.environment_mut();
 
-            let text = if volume == 0.0 {
-                "Global Volume 🔇"
-            } else {
-                "Global Volume 🔊"
-            };
+                        ui.label(t!("settings.graphics_api"))
+                            .on_hover_text(t!("settings.requires_restart"));
+                        ComboBox::from_id_salt("graphics_api")
+                            .selected_text(environment.graphics.api.to_string())
+                            .show_ui(ui, |ui| {
+                                for api in GraphicsApi::iter() {
+                                    ui.selectable_value(
+                                        &mut environment.graphics.api,
+                                        api,
+                                        api.to_string(),
+                                    );
+                                }
+                            });
+                        ui.end_row();
+                    });
+            });
 
-            ui.add(
-                Slider::new(&mut volume, 0.0..=1.0)
-                    .text(text)
-                    .custom_formatter(|value, _| format!("{:.0}%", value * 100.0))
-                    .custom_parser(|s| {
-                        s.replace('%', "")
-                            .trim()
-                            .parse::<f64>()
-                            .map(|p| p / 100.0)
-                            .ok()
-                    }),
-            );
+            section(ui, t!("settings.audio"), |ui| {
+                Grid::new("audio_settings")
+                    .num_columns(2)
+                    .spacing([24.0, 8.0])
+                    .show(ui, |ui| {
+                        let old_volume = self.core.environment().audio.volume;
+                        let mut volume = old_volume;
 
-            if volume != old_volume {
-                self.core.set_volume(volume);
-            }
+                        ui.label(t!("settings.volume"));
+                        ui.add(
+                            Slider::new(&mut volume, 0.0..=1.0)
+                                .custom_formatter(|value, _| format!("{:.0}%", value * 100.0))
+                                .custom_parser(|text| {
+                                    text.replace('%', "")
+                                        .trim()
+                                        .parse::<f64>()
+                                        .map(|percentage| percentage / 100.0)
+                                        .ok()
+                                }),
+                        );
+                        ui.end_row();
+
+                        if volume != old_volume {
+                            self.core.set_volume(volume);
+                        }
+                    });
+            });
+
+            section(ui, t!("rom_stores.heading"), |ui| {
+                self.rom_store_editor.show(ui, &mut self.core);
+            });
         });
     }
+}
+
+fn section(ui: &mut Ui, title: impl Into<WidgetText>, add_contents: impl FnOnce(&mut Ui)) {
+    ui.add_space(8.0);
+    ui.label(title.into().heading());
+    ui.add_space(4.0);
+    ui.indent(ui.scope_id().with("section"), add_contents);
+    ui.add_space(12.0);
 }

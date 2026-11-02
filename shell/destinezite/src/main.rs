@@ -33,6 +33,7 @@ use fluxemu_environment::load_environment;
 use fluxemu_frontend::notification::notification_channel;
 use fluxemu_program::ProgramManager;
 use redb::Database;
+use tokio::runtime::Runtime;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{
     EnvFilter, Layer,
@@ -102,24 +103,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!("FluxEMU v{}", env!("CARGO_PKG_VERSION"));
 
+    let runtime = Runtime::new()?;
     let program_database = ProgramDatabase::new(Database::create(&environment.database_location)?)?;
-    let program_manager = ProgramManager::new(environment.rom_store_directories.clone());
+    let program_manager = ProgramManager::new(environment.rom_stores.clone())?;
 
     let mut initial_program = None;
 
-    if let Some(action) = cli.action {
-        match action {
-            CliAction::Run { roms } => {
-                let mut rom_ids = Vec::default();
+    runtime.block_on(async {
+        if let Some(action) = cli.action {
+            match action {
+                CliAction::Run { roms } => {
+                    let mut rom_ids = Vec::default();
 
-                for rom in &roms {
-                    rom_ids.push(program_manager.register_external_rom(rom)?);
+                    for rom in &roms {
+                        rom_ids.push(program_manager.register_external_rom(rom).await?);
+                    }
+
+                    initial_program = Some(rom_ids);
                 }
+            };
+        }
 
-                initial_program = Some(rom_ids);
-            }
-        };
-    }
+        Ok::<_, Box<dyn std::error::Error>>(())
+    })?;
 
     #[cfg(feature = "ratatui")]
     if cli.display_backend == DisplayBackend::Ratatui {
@@ -155,6 +161,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             CpalAudioRuntime::new().map_err(|_| "Could not initialize audio runtime")?;
 
         let core = FrontendCore::<DesktopPlatform<TerminalGraphicsRuntime, false>>::new(
+            runtime.handle().clone(),
             environment,
             // TODO: Support webgpu for the ratatui backend
             build_machine::get_software_factories(),
@@ -178,6 +185,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 crate::event_loop::windowing::run::<
                     crate::display::software::SoftwareGraphicsRuntime<_>,
                 >(
+                    runtime.handle().clone(),
                     environment.clone(),
                     program_manager.clone(),
                     program_database.clone(),
@@ -189,6 +197,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(feature = "drm")]
             DisplayBackend::Drm => {
                 crate::event_loop::drm::run::<crate::display::software::SoftwareGraphicsRuntime<_>>(
+                    runtime.handle().clone(),
                     environment.clone(),
                     program_manager.clone(),
                     program_database.clone(),
@@ -210,6 +219,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 #[cfg(feature = "windowing")]
                 DisplayBackend::Windowing => {
                     crate::event_loop::windowing::run::<WebgpuGraphicsRuntime<_>>(
+                        runtime.handle().clone(),
                         environment.clone(),
                         program_manager.clone(),
                         program_database.clone(),
@@ -221,6 +231,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 #[cfg(feature = "drm")]
                 DisplayBackend::Drm => {
                     crate::event_loop::drm::run::<WebgpuGraphicsRuntime<_>>(
+                        runtime.handle().clone(),
                         environment.clone(),
                         program_manager.clone(),
                         program_database.clone(),

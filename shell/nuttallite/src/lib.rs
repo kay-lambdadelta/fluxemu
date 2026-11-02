@@ -13,6 +13,7 @@ use fluxemu_environment::load_environment;
 use fluxemu_frontend::notification::notification_channel;
 use fluxemu_program::ProgramManager;
 use redb::Database;
+use tokio::runtime::Runtime;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{
     EnvFilter, Layer,
@@ -151,12 +152,14 @@ fn main(arguments: &[String]) -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!("FluxEMU v{}", env!("CARGO_PKG_VERSION"));
 
+    let runtime = Runtime::new()?;
     let program_database = ProgramDatabase::new(Database::create(&environment.database_location)?)?;
-    let program_manager = ProgramManager::new(environment.rom_store_directories.clone());
+    let program_manager = ProgramManager::new(environment.rom_stores.clone())?;
 
     match frontend_selection {
         #[cfg(feature = "egui")]
         FrontendSelection::Egui => frontend::egui::run(
+            runtime.handle().clone(),
             environment,
             program_manager,
             program_database,
@@ -164,6 +167,7 @@ fn main(arguments: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         ),
         #[cfg(feature = "ratatui")]
         FrontendSelection::Ratatui => frontend::ratatui::run(
+            runtime.handle().clone(),
             environment,
             program_manager,
             program_database,

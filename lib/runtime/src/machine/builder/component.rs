@@ -63,12 +63,12 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
         self.path
     }
 
-    pub fn open_rom(
+    pub async fn open_rom(
         &self,
         id: RomId,
         requirement: RomRequirement,
     ) -> Result<Option<Bytes>, MachineError> {
-        self.machine_builder.open_rom(id, requirement)
+        self.machine_builder.open_rom(id, requirement).await
     }
 
     pub fn program_manager(&self) -> &ProgramManager {

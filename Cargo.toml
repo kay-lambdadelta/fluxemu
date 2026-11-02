@@ -64,6 +64,7 @@ nalgebra = {
 }
 nix = "0.31"
 num = { version = "0.4", features = ["serde"] }
+opendal = { version = "0.59", default-features = false }
 palette = { version = "0.7", features = ["bytemuck", "named", "serializing"] }
 pollster = "1.0"
 proc-macro2 = "1.0"
@@ -93,6 +94,7 @@ syn = { version = "3.0", features = ["full"] }
 tempfile = "3.27"
 thin-vec = "0.2"
 thiserror = "2.0"
+tokio = "1.54"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 udev = "0.9"

@@ -17,3 +17,69 @@ en = "Not a directory that can accessed, check permissions"
 
 [browser.open_native_file_dialog]
 en = "Open your operating systems native file dialog"
+
+[rom_stores.heading]
+en = "ROM Stores"
+
+[rom_stores.store]
+en = "Store"
+
+[rom_stores.name]
+en = "Name"
+
+[rom_stores.invalid_names]
+en = "Every ROM store needs a unique, non-empty name"
+
+[rom_stores.scheme]
+en = "Scheme"
+
+[rom_stores.documentation]
+en = "Options reference"
+
+[rom_stores.option_key]
+en = "Option"
+
+[rom_stores.option_value]
+en = "Value"
+
+[rom_stores.add_option]
+en = "Add option"
+
+[rom_stores.remove_option]
+en = "Remove option"
+
+[rom_stores.add_store]
+en = "Add store"
+
+[rom_stores.remove_store]
+en = "Remove store"
+
+[rom_stores.apply]
+en = "Apply"
+
+[rom_stores.revert]
+en = "Revert"
+
+[settings.heading]
+en = "Settings"
+
+[settings.save]
+en = "Save"
+
+[settings.save_hint]
+en = "Save environment to disk"
+
+[settings.graphics]
+en = "Graphics"
+
+[settings.graphics_api]
+en = "Graphics API"
+
+[settings.requires_restart]
+en = "Takes effect after restarting"
+
+[settings.audio]
+en = "Audio"
+
+[settings.volume]
+en = "Volume"

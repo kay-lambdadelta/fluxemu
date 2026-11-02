@@ -95,12 +95,12 @@ impl<P: Platform> MachineBuilder<P> {
         &self.program_manager
     }
 
-    pub fn open_rom(
+    pub async fn open_rom(
         &self,
         id: RomId,
         requirement: RomRequirement,
     ) -> Result<Option<Bytes>, MachineError> {
-        match self.program_manager.load(id)? {
+        match self.program_manager.load(id).await? {
             Some(bytes) => Ok(Some(bytes)),
             None => match requirement {
                 RomRequirement::Sometimes => {

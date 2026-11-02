@@ -31,7 +31,7 @@ impl<P: Platform> System<P> for AtariLynx {
 
     const ID: SystemId = SystemId::Atari(AtariSystem::Lynx);
 
-    fn build(
+    async fn build(
         &self,
         _quirks: Self::Quirks,
         machine_builder: MachineBuilder<P>,
@@ -68,6 +68,7 @@ impl<P: Platform> System<P> for AtariLynx {
                 // "[BIOS] Atari Lynx (World).lyx"
                 RomId::from_str("e4ed47fae31693e016b081c6bda48da5b70d7ccb").unwrap(),
             )
+            .await
             .unwrap()
             .unwrap();
 

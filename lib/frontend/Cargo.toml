@@ -23,6 +23,7 @@ rand = { workspace = true }
 ringbuffer = { workspace = true }
 ron = { workspace = true }
 rust-i18n = { workspace = true }
+tokio = { workspace = true, features = ["rt"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 

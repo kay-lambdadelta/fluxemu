@@ -119,9 +119,12 @@ pub enum RomSource {
 }
 
 impl RomSource {
-    pub fn to_id(&self, program_manager: &ProgramManager) -> Result<RomId, fluxemu_program::Error> {
+    pub async fn to_id(
+        &self,
+        program_manager: &ProgramManager,
+    ) -> Result<RomId, fluxemu_program::Error> {
         match self {
-            RomSource::Path(path) => program_manager.register_external_rom(path),
+            RomSource::Path(path) => program_manager.register_external_rom(path).await,
             RomSource::Id(id) => Ok(*id),
         }
     }

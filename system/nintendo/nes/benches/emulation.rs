@@ -8,6 +8,7 @@ use fluxemu_runtime::machine::Machine;
 use fluxemu_system::System;
 use fluxemu_system_nintendo_nes::Nes;
 use redb::Database;
+use tokio::runtime::Runtime;
 
 fn emulation_performance(c: &mut Criterion) {
     let roms = [
@@ -43,9 +44,10 @@ fn emulation_performance(c: &mut Criterion) {
 
     let environment = load_environment();
 
+    let runtime = Runtime::new().unwrap();
     let program_database =
         ProgramDatabase::new(Database::create(environment.database_location).unwrap()).unwrap();
-    let program_manager = ProgramManager::new(environment.rom_store_directories.clone());
+    let program_manager = ProgramManager::new(environment.rom_stores.clone()).unwrap();
 
     let mut group = c.benchmark_group(format!("{}/emulation_performance", env!("CARGO_PKG_NAME")));
     group.throughput(Throughput::Elements(1));
@@ -53,21 +55,26 @@ fn emulation_performance(c: &mut Criterion) {
     for (program_name, rom_id) in roms {
         let rom_id = rom_id.parse().unwrap();
 
-        if let Some(specification) = program_database
-            .identify_program([rom_id])
-            .map(|mut entries| {
-                if entries.is_empty() {
-                    program_manager.auto_generate_specification(rom_id).unwrap()
-                } else {
-                    Some(entries.remove(0))
-                }
-            })
-            .unwrap()
-            && program_manager.load(rom_id).unwrap().is_some()
-        {
-            let machine = Machine::build_test(Some(specification), program_manager.clone());
-            let machine = Nes.build((), machine).unwrap().build(());
+        let mut specifications = program_database.identify_program([rom_id]).unwrap();
 
+        let machine = runtime.block_on(async {
+            let specification = if specifications.is_empty() {
+                program_manager
+                    .auto_generate_specification(rom_id)
+                    .await
+                    .unwrap()?
+            } else {
+                specifications.remove(0)
+            };
+
+            program_manager.load(rom_id).await.unwrap()?;
+
+            let machine = Machine::build_test(Some(specification), program_manager.clone());
+
+            Some(Nes.build((), machine).await.unwrap().build(()))
+        });
+
+        if let Some(machine) = machine {
             group.bench_function(program_name, |b| {
                 b.iter(|| {
                     let runtime_guard = machine.enter_runtime();

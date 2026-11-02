@@ -43,10 +43,12 @@ fluxemu-program = { workspace = true }
 fluxemu-runtime = { workspace = true }
 libc = { workspace = true }
 nalgebra = { workspace = true }
+opendal = { workspace = true }
 palette = { workspace = true }
 redb = { workspace = true }
 ringbuffer = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }

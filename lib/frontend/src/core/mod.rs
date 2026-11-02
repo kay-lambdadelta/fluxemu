@@ -1,13 +1,14 @@
-use std::{collections::HashMap, ops::Deref, path::PathBuf, sync::Arc, thread::JoinHandle};
+use std::{collections::HashMap, ops::Deref, path::PathBuf, sync::Arc};
 
 use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::{ENVIRONMENT_LOCATION, Environment};
 use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_input::{InputState, physical::PhysicalInputDeviceId};
-use fluxemu_program::{Manifest, ProgramManager, RomId};
+use fluxemu_program::{ProgramManager, RomId, RomStoreSpecification};
 use fluxemu_runtime::machine::{Machine, builder::SealedMachineBuilder};
+use indexmap::IndexMap;
 use ron::ser::PrettyConfig;
-use rust_i18n::t;
+use tokio::{runtime::Handle, task::JoinHandle};
 
 pub use self::input::InputRouting;
 use self::input::PhysicalInputDeviceState;
@@ -25,32 +26,16 @@ pub enum FrontendEvent {
     MenuToggleRequested,
 }
 
-#[derive(Debug)]
-enum MachineInitializationStep<P: Platform> {
-    /// Step 1: Compute ROM ids for recognition
-    CalculatingRomIds {
-        job: JoinHandle<Result<Vec<RomId>, fluxemu_program::Error>>,
-    },
-    /// Step 2: Search for programs that match the collection of given ROMs
-    FindingMatchingSpecification {
-        roms: Vec<RomId>,
-        job: JoinHandle<Result<Vec<Manifest>, fluxemu_database::Error>>,
-    },
-    /// Step 3: Create and seal a machine builder given the specification
-    BuildingMachineBuilder {
-        job: JoinHandle<Option<SealedMachineBuilder<P>>>,
-    },
-}
-
 struct MachineContext {
     machine: Arc<Machine>,
     controller: Controller,
 }
 
 pub struct FrontendCore<P: Platform> {
+    runtime: Handle,
     machine_context: Option<MachineContext>,
     pending_machine: Option<SealedMachineBuilder<P>>,
-    machine_initialization_step: Option<MachineInitializationStep<P>>,
+    machine_initialization: Option<JoinHandle<Option<SealedMachineBuilder<P>>>>,
     machine_factory_manager: Arc<FactoryManager<P>>,
     program_manager: Arc<ProgramManager>,
     program_database: Arc<ProgramDatabase>,
@@ -64,6 +49,7 @@ pub struct FrontendCore<P: Platform> {
 
 impl<P: Platform> FrontendCore<P> {
     pub fn new(
+        runtime: Handle,
         environment: Environment,
         machine_factories: FactoryManager<P>,
         program_manager: Arc<ProgramManager>,
@@ -76,9 +62,10 @@ impl<P: Platform> FrontendCore<P> {
         audio_runtime.set_audio_mixer(audio_mixer.clone());
 
         let mut core = Self {
+            runtime,
             machine_context: None,
             pending_machine: None,
-            machine_initialization_step: None,
+            machine_initialization: None,
             machine_factory_manager: Arc::new(machine_factories),
             program_manager,
             program_database,
@@ -90,7 +77,7 @@ impl<P: Platform> FrontendCore<P> {
         };
 
         if let Some(roms) = initial_program {
-            core.identify_program(roms);
+            core.start_machine_initialization(async move { Some(roms) });
         }
 
         core
@@ -124,6 +111,16 @@ impl<P: Platform> FrontendCore<P> {
             .map(|context| &context.controller)
     }
 
+    pub fn set_rom_stores(
+        &mut self,
+        rom_stores: IndexMap<String, RomStoreSpecification>,
+    ) -> Result<(), fluxemu_program::Error> {
+        self.program_manager.set_rom_stores(rom_stores.clone())?;
+        self.environment.rom_stores = rom_stores;
+
+        Ok(())
+    }
+
     pub fn set_volume(&mut self, volume: f32) {
         self.environment.audio.volume = volume;
         self.audio_mixer.set_volume(volume);
@@ -137,67 +134,32 @@ impl<P: Platform> FrontendCore<P> {
     pub fn load_roms(&mut self, paths: Vec<PathBuf>) {
         let program_manager = self.program_manager.clone();
 
-        let job = std::thread::Builder::new()
-            .name(t!("machine_initialization.thread_name_rom_id_calculator").to_string())
-            .spawn(move || {
-                paths
-                    .into_iter()
-                    .map(|path| program_manager.register_external_rom(path))
-                    .collect()
-            })
-            .expect("Could not launch thread to process ROM for its ID!");
+        self.start_machine_initialization(async move {
+            let mut roms = Vec::with_capacity(paths.len());
 
-        self.machine_initialization_step =
-            Some(MachineInitializationStep::CalculatingRomIds { job });
+            for path in paths {
+                match program_manager.register_external_rom(path).await {
+                    Ok(rom) => roms.push(rom),
+                    Err(err) => {
+                        tracing::error!("Failed to calculate ROM ids: {}", err);
+
+                        return None;
+                    }
+                }
+            }
+
+            Some(roms)
+        });
     }
 
     /// Advance any in progress machine initialization
     pub fn poll(&mut self) {
-        let Some(step) = self.machine_initialization_step.take() else {
+        let Some(job) = self.machine_initialization.take_if(|job| job.is_finished()) else {
             return;
         };
 
-        match step {
-            MachineInitializationStep::CalculatingRomIds { job } if job.is_finished() => {
-                match job.join().unwrap() {
-                    Ok(roms) => self.identify_program(roms),
-                    Err(err) => tracing::error!("Failed to calculate ROM ids: {}", err),
-                }
-            }
-            MachineInitializationStep::FindingMatchingSpecification { job, roms }
-                if job.is_finished() =>
-            {
-                match job.join().unwrap() {
-                    Ok(mut specifications) => {
-                        let specification = if !specifications.is_empty() {
-                            specifications.remove(0)
-                        } else {
-                            let Ok(Some(program_specification)) =
-                                self.program_manager.auto_generate_specification(roms[0])
-                            else {
-                                tracing::error!("Could not properly identify program");
-
-                                return;
-                            };
-
-                            program_specification
-                        };
-
-                        self.build_machine_for_specification(specification);
-                    }
-                    Err(err) => {
-                        tracing::error!("Failed to find matching specification: {}", err);
-                    }
-                }
-            }
-            MachineInitializationStep::BuildingMachineBuilder { job } if job.is_finished() => {
-                if let Some(sealed) = job.join().unwrap() {
-                    self.pending_machine = Some(sealed);
-                } else {
-                    tracing::error!("Could not construct machine for program");
-                }
-            }
-            unfinished => self.machine_initialization_step = Some(unfinished),
+        if let Some(sealed) = self.runtime.block_on(job).unwrap() {
+            self.pending_machine = Some(sealed);
         }
     }
 
@@ -299,30 +261,23 @@ impl<P: Platform> FrontendCore<P> {
         }
     }
 
-    fn identify_program(&mut self, roms: Vec<RomId>) {
-        let program_database = self.program_database.clone();
-
-        self.machine_initialization_step =
-            Some(MachineInitializationStep::FindingMatchingSpecification {
-                roms: roms.clone(),
-                job: std::thread::spawn(move || program_database.identify_program(roms)),
-            });
-    }
-
-    fn build_machine_for_specification(&mut self, specification: Manifest) {
+    fn start_machine_initialization(
+        &mut self,
+        roms: impl Future<Output = Option<Vec<RomId>>> + Send + 'static,
+    ) {
         let program_manager = self.program_manager.clone();
+        let program_database = self.program_database.clone();
         let machine_factories = self.machine_factory_manager.clone();
 
-        let machine_builder = Machine::build(Some(specification), program_manager);
-
-        let handle = std::thread::spawn(move || {
-            machine_factories
-                .construct_machine(ron::Value::from(()), machine_builder)
-                .map(|result| result.unwrap())
-        });
-
-        self.machine_initialization_step =
-            Some(MachineInitializationStep::BuildingMachineBuilder { job: handle });
+        self.machine_initialization = Some(self.runtime.spawn(async move {
+            initialize_machine(
+                program_manager,
+                program_database,
+                machine_factories,
+                roms.await?,
+            )
+            .await
+        }));
     }
 
     fn bring_down_current_machine(&mut self) {
@@ -340,4 +295,55 @@ impl<P: Platform> Drop for FrontendCore<P> {
     fn drop(&mut self) {
         self.save_environment();
     }
+}
+
+async fn initialize_machine<P: Platform>(
+    program_manager: Arc<ProgramManager>,
+    program_database: Arc<ProgramDatabase>,
+    machine_factories: Arc<FactoryManager<P>>,
+    roms: Vec<RomId>,
+) -> Option<SealedMachineBuilder<P>> {
+    let specifications = tokio::task::spawn_blocking({
+        let roms = roms.clone();
+
+        move || program_database.identify_program(roms)
+    })
+    .await
+    .unwrap();
+
+    let mut specifications = match specifications {
+        Ok(specifications) => specifications,
+        Err(err) => {
+            tracing::error!("Failed to find matching specification: {}", err);
+
+            return None;
+        }
+    };
+
+    let specification = if !specifications.is_empty() {
+        specifications.remove(0)
+    } else {
+        let Ok(Some(program_specification)) =
+            program_manager.auto_generate_specification(roms[0]).await
+        else {
+            tracing::error!("Could not properly identify program");
+
+            return None;
+        };
+
+        program_specification
+    };
+
+    let machine_builder = Machine::build(Some(specification), program_manager);
+
+    let sealed = machine_factories
+        .construct_machine(ron::Value::from(()), machine_builder)
+        .await
+        .map(|result| result.unwrap());
+
+    if sealed.is_none() {
+        tracing::error!("Could not construct machine for program");
+    }
+
+    sealed
 }

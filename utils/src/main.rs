@@ -3,9 +3,10 @@ use std::{error::Error, path::PathBuf, process::ExitCode, sync::Arc};
 use clap::Parser;
 use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::load_environment;
-use fluxemu_program::{ProgramManager, SystemId};
+use fluxemu_program::{ProgramManager, RomStoreSpecification, SystemId};
 use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator};
 use redb::Database;
+use tokio::runtime::Runtime;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{
     EnvFilter, Layer,
@@ -37,102 +38,118 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
-    let environment = load_environment();
+    Runtime::new()?.block_on(async {
+        let environment = load_environment();
 
-    let filter = Arc::new(
-        EnvFilter::builder()
-            .with_regex(true)
-            .with_default_directive(LevelFilter::INFO.into())
-            .from_env_lossy(),
-    );
-    let stderr_layer = tracing_subscriber::fmt::layer()
-        .with_writer(std::io::stderr)
-        .with_ansi(true)
-        .with_span_events(FmtSpan::CLOSE)
-        .with_thread_names(true)
-        .with_thread_ids(false);
-    tracing_subscriber::registry()
-        .with(stderr_layer.with_filter(filter.clone() as Arc<dyn Filter<_> + Send + Sync>))
-        .init();
+        let filter = Arc::new(
+            EnvFilter::builder()
+                .with_regex(true)
+                .with_default_directive(LevelFilter::INFO.into())
+                .from_env_lossy(),
+        );
+        let stderr_layer = tracing_subscriber::fmt::layer()
+            .with_writer(std::io::stderr)
+            .with_ansi(true)
+            .with_span_events(FmtSpan::CLOSE)
+            .with_thread_names(true)
+            .with_thread_ids(false);
+        tracing_subscriber::registry()
+            .with(stderr_layer.with_filter(filter.clone() as Arc<dyn Filter<_> + Send + Sync>))
+            .init();
 
-    let args = Cli::parse();
+        let args = Cli::parse();
 
-    let program_database = ProgramDatabase::new(Database::create(&environment.database_location)?)?;
-    let program_manager = ProgramManager::new(environment.rom_store_directories.clone());
+        let program_database =
+            ProgramDatabase::new(Database::create(&environment.database_location)?)?;
+        let program_manager = ProgramManager::new(environment.rom_stores.clone())?;
 
-    match args {
-        Cli::Database(command) => match command {
-            DatabaseCommand::Import { paths } => {
-                database::native::import(&program_database, walk_for_files(paths))?;
-            }
-        },
-        Cli::Rom(command) => match command {
-            RomCommand::Import { paths, symlink } => {
-                rom::import(
-                    &program_database,
-                    &environment.rom_store_directories[0],
+        match args {
+            Cli::Database(command) => match command {
+                DatabaseCommand::Import { paths } => {
+                    database::native::import(&program_database, walk_for_files(paths))?;
+                }
+            },
+            Cli::Rom(command) => match command {
+                RomCommand::Import { paths, symlink } => {
+                    let rom_store = environment
+                        .rom_stores
+                        .values()
+                        .find_map(RomStoreSpecification::filesystem_root)
+                        .ok_or("No ROM store is a local directory")?;
+
+                    rom::import(
+                        &program_database,
+                        &rom_store,
+                        symlink,
+                        walk_for_files(paths),
+                    )?;
+                }
+                RomCommand::Export {
                     symlink,
-                    walk_for_files(paths),
-                )?;
-            }
-            RomCommand::Export {
-                symlink,
-                style,
-                destination,
-            } => {
-                rom::export(&program_database, &environment, destination, symlink, style)?;
-            }
-            RomCommand::Patch {
-                source,
-                patch,
-                add_to_database,
-            } => {
-                let source = source.to_id(&program_manager)?;
-
-                rom::patch(
-                    &program_manager,
-                    &program_database,
-                    &environment,
+                    style,
+                    destination,
+                } => {
+                    rom::export(&program_database, &environment, destination, symlink, style)?;
+                }
+                RomCommand::Patch {
                     source,
-                    &patch,
+                    patch,
                     add_to_database,
-                )?;
-            }
-            RomCommand::Verify => {}
-        },
-        Cli::Manifest(command) => match command {
-            ManifestCommand::Import { paths } => {
-                manifest::import(&program_database, walk_for_files(paths))?;
-            }
-            ManifestCommand::Export { output_directory } => {
-                manifest::export(&program_database, &output_directory)?;
-            }
-        },
-        Cli::Logiqx(command) => match command {
-            LogiqxCommand::Import { paths } => {
-                logiqx::import(&program_database, walk_for_files(paths))?;
-            }
-            LogiqxCommand::DownloadRedump { system_filter } => {
-                if system_filter.is_empty() {
-                    for machine_id in SystemId::iter() {
-                        if !system_filter.contains(&machine_id)
-                            && let Ok(redump_system) = RedumpSystem::try_from(machine_id)
-                        {
-                            download_and_import_redump_system(&program_database, redump_system)?;
+                } => {
+                    let source = source.to_id(&program_manager).await?;
+
+                    rom::patch(
+                        &program_manager,
+                        &program_database,
+                        &environment,
+                        source,
+                        &patch,
+                        add_to_database,
+                    )
+                    .await?;
+                }
+                RomCommand::Verify => {}
+            },
+            Cli::Manifest(command) => match command {
+                ManifestCommand::Import { paths } => {
+                    manifest::import(&program_database, walk_for_files(paths))?;
+                }
+                ManifestCommand::Export { output_directory } => {
+                    manifest::export(&program_database, &output_directory)?;
+                }
+            },
+            Cli::Logiqx(command) => match command {
+                LogiqxCommand::Import { paths } => {
+                    logiqx::import(&program_database, walk_for_files(paths))?;
+                }
+                LogiqxCommand::DownloadRedump { system_filter } => {
+                    if system_filter.is_empty() {
+                        for machine_id in SystemId::iter() {
+                            if !system_filter.contains(&machine_id)
+                                && let Ok(redump_system) = RedumpSystem::try_from(machine_id)
+                            {
+                                download_and_import_redump_system(
+                                    &program_database,
+                                    redump_system,
+                                )?;
+                            }
                         }
-                    }
-                } else {
-                    for machine_id in system_filter {
-                        if let Ok(redump_system) = RedumpSystem::try_from(machine_id) {
-                            download_and_import_redump_system(&program_database, redump_system)?;
+                    } else {
+                        for machine_id in system_filter {
+                            if let Ok(redump_system) = RedumpSystem::try_from(machine_id) {
+                                download_and_import_redump_system(
+                                    &program_database,
+                                    redump_system,
+                                )?;
+                            }
                         }
                     }
                 }
-            }
-        },
-    }
+            },
+        }
 
-    Ok(())
+        Ok(())
+    })
 }
 
 /// Turns the paths into a walkdir that automatically walks through links and filters to files

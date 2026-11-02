@@ -5,6 +5,7 @@ mod input;
 mod marquee;
 mod menu_panel;
 pub mod rendering;
+mod rom_stores;
 mod settings;
 mod simulation_controller;
 mod utils;
@@ -30,6 +31,7 @@ use crate::{
     marquee::NotificationMarquee,
     menu_panel::{MenuPanel, TabId},
     rendering::EguiCapableGraphicsRuntime,
+    rom_stores::RomStoreEditor,
     utils::{allocate_fill_aspect, setup_egui_context, to_egui_color},
 };
 
@@ -41,6 +43,7 @@ pub struct Frontend<P: Platform> {
     egui_context: egui::Context,
     file_browser_state: FileBrowserState,
     menu_panel: MenuPanel,
+    rom_store_editor: RomStoreEditor,
     simulation_controller_ui_state: simulation_controller::State,
     notification_marquee: NotificationMarquee,
     font_definitions: FontDefinitions,
@@ -57,6 +60,7 @@ impl<P: Platform> Frontend<P> {
     ) -> Self {
         let file_browser_state =
             FileBrowserState::new(core.environment().file_browser_home_directory.clone());
+        let rom_store_editor = RomStoreEditor::new(&core.environment().rom_stores);
 
         Self {
             core,
@@ -64,6 +68,7 @@ impl<P: Platform> Frontend<P> {
             egui_context: setup_egui_context(font_definitions.clone()),
             file_browser_state,
             menu_panel: MenuPanel::default(),
+            rom_store_editor,
             simulation_controller_ui_state: simulation_controller::State::default(),
             notification_marquee: NotificationMarquee::default(),
             font_definitions,

@@ -21,6 +21,7 @@ use palette::named::BLACK;
 use raw_window_handle::{
     DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle,
 };
+use tokio::runtime::Handle;
 use winit::{
     application::ApplicationHandler,
     event::{ElementState, StartCause, WindowEvent},
@@ -36,6 +37,7 @@ use crate::{
 mod key;
 
 pub fn run<R: ProducableGraphicsRuntime<Window> + EguiCapableGraphicsRuntime>(
+    runtime: Handle,
     environment: Environment,
     program_manager: Arc<ProgramManager>,
     program_database: Arc<ProgramDatabase>,
@@ -47,6 +49,7 @@ pub fn run<R: ProducableGraphicsRuntime<Window> + EguiCapableGraphicsRuntime>(
     let audio_runtime = CpalAudioRuntime::new().unwrap();
 
     let core = FrontendCore::new(
+        runtime,
         environment,
         machine_factories,
         program_manager,

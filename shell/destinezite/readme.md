@@ -102,6 +102,16 @@ The `drm` feature also requires a working Vulkan implementation (for WebGPU supp
 cargo build -p fluxemu-shell-destinezite --release
 ```
 
+### ROM store backends
+
+ROM stores are accessed through [OpenDAL](https://crates.io/crates/opendal), and only the local filesystem backend (`services-fs`) is built in by default. Other backends can be enabled by passing OpenDAL's features directly:
+
+```bash
+cargo build -p fluxemu-shell-destinezite --release --features opendal/services-ftp
+```
+
+The full list of backends is available in [OpenDAL's documentation](https://docs.rs/opendal/latest/opendal/services/index.html).
+
 ## Packaging
 
 ### Debian

@@ -15,7 +15,7 @@ impl<P: Platform> System<P> for Gameboy {
 
     const ID: SystemId = SystemId::Nintendo(NintendoSystem::GameBoy);
 
-    fn build(
+    async fn build(
         &self,
         _quirks: Self::Quirks,
         _machine_builder: MachineBuilder<P>,

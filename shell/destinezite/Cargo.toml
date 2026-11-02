@@ -42,12 +42,14 @@ fluxemu-runtime = { workspace = true }
 fontique = { workspace = true }
 gilrs = { workspace = true }
 nalgebra = { workspace = true }
+opendal = { workspace = true }
 palette = { workspace = true }
 pollster = { workspace = true }
 raw-window-handle = { workspace = true, optional = true }
 redb = { workspace = true }
 sha2 = { workspace = true }
 strum = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }

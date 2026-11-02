@@ -8,7 +8,7 @@ use std::{
 
 use fluxemu_database::{HASH_ALIAS_TABLE, PROGRAM_INFORMATION_TABLE, ProgramDatabase};
 use fluxemu_environment::Environment;
-use fluxemu_program::{ProgramInfo, ProgramManager, RomId};
+use fluxemu_program::{ProgramInfo, ProgramManager, RomId, RomStoreSpecification};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use tempfile::tempfile;
 
@@ -27,7 +27,7 @@ pub trait PatchFormat {
     ) -> Result<(), Self::Error>;
 }
 
-pub fn patch(
+pub async fn patch(
     program_manager: &ProgramManager,
     program_database: &ProgramDatabase,
     environment: &Environment,
@@ -35,7 +35,10 @@ pub fn patch(
     patch: &Path,
     add_to_database: bool,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let rom = program_manager.load(source)?.expect("Could not find rom");
+    let rom = program_manager
+        .load(source)
+        .await?
+        .expect("Could not find rom");
 
     if let Some(extension) = patch
         .extension()
@@ -57,7 +60,12 @@ pub fn patch(
         let patched_rom_id = RomId::new_sha1(&destination_file)?;
         destination_file.rewind()?;
 
-        let rom_store_path = environment.rom_store_directories[0].join(patched_rom_id.to_string());
+        let rom_store_path = environment
+            .rom_stores
+            .values()
+            .find_map(RomStoreSpecification::filesystem_root)
+            .ok_or("No ROM store is a local directory")?
+            .join(patched_rom_id.to_string());
         tracing::info!(
             "Patch {:?} produced a ROM of ID {} (outputted at path: {:?})",
             patch,

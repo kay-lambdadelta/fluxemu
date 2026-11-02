@@ -43,7 +43,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Chip8 {
 
     const ID: SystemId = SystemId::Other(OtherSystem::Chip8);
 
-    fn build(
+    async fn build(
         &self,
         _quirks: Self::Quirks,
         machine_builder: MachineBuilder<P>,
@@ -90,7 +90,8 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Chip8 {
             .unwrap();
 
         let rom = machine_builder
-            .open_rom(rom_id, RomRequirement::Required)?
+            .open_rom(rom_id, RomRequirement::Required)
+            .await?
             .unwrap();
 
         let chip8_font = bytemuck::cast_slice(&CHIP8_FONT);

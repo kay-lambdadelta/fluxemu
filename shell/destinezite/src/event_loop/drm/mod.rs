@@ -26,6 +26,7 @@ use nix::{
     sys::epoll::{Epoll, EpollCreateFlags, EpollEvent, EpollFlags},
 };
 use palette::named::BLACK;
+use tokio::runtime::Handle;
 
 use crate::{
     audio::CpalAudioRuntime,
@@ -42,6 +43,7 @@ pub mod card;
 mod input;
 
 pub fn run<R: ProducableGraphicsRuntime<DrmContext> + EguiCapableGraphicsRuntime>(
+    runtime: Handle,
     environment: Environment,
     program_manager: Arc<ProgramManager>,
     program_database: Arc<ProgramDatabase>,
@@ -80,6 +82,7 @@ pub fn run<R: ProducableGraphicsRuntime<DrmContext> + EguiCapableGraphicsRuntime
 
     // Set up the input collector/translator and the frontend
     let core = FrontendCore::new(
+        runtime,
         environment,
         machine_factories,
         program_manager,

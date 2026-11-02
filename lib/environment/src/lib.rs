@@ -6,6 +6,8 @@ use std::{
 use audio::AudioSettings;
 use confique::Config;
 use fluxemu_input::physical::PhysicalInputDeviceId;
+use fluxemu_program::RomStoreSpecification;
+use indexmap::IndexMap;
 use ron::{Options, extensions::Extensions};
 use serde::{Deserialize, Serialize};
 
@@ -32,8 +34,7 @@ pub struct Environment {
     pub save_directory: PathBuf,
     #[config(env = "FLUXEMU_SNAPSHOT_DIRECTORY")]
     pub snapshot_directory: PathBuf,
-    #[config(env = "FLUXEMU_ROM_STORE_DIRECTORIES")]
-    pub rom_store_directories: Vec<PathBuf>,
+    pub rom_stores: IndexMap<String, RomStoreSpecification>,
     pub active_snapshot_slot: Wrapping<u8>,
 }
 
@@ -69,7 +70,10 @@ pub fn load_environment() -> Environment {
         database_location: STORAGE_DIRECTORY.join("database.redb"),
         save_directory: STORAGE_DIRECTORY.join("saves"),
         snapshot_directory: STORAGE_DIRECTORY.join("snapshot"),
-        rom_store_directories: vec![STORAGE_DIRECTORY.join("roms")],
+        rom_stores: IndexMap::from_iter([(
+            "default".to_string(),
+            RomStoreSpecification::filesystem(STORAGE_DIRECTORY.join("roms")),
+        )]),
         active_snapshot_slot: Wrapping(0),
     })
     .unwrap();
@@ -104,7 +108,11 @@ pub fn load_environment() -> Environment {
     let _ = create_dir_all(&environment.save_directory);
     let _ = create_dir_all(&environment.snapshot_directory);
 
-    for directory in &environment.rom_store_directories {
+    for directory in environment
+        .rom_stores
+        .values()
+        .filter_map(RomStoreSpecification::filesystem_root)
+    {
         let _ = create_dir_all(directory);
     }
 

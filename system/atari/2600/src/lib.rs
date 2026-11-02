@@ -40,7 +40,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Atari2600 {
 
     const ID: SystemId = SystemId::Atari(AtariSystem::_2600);
 
-    fn build(
+    async fn build(
         &self,
         _quirks: Self::Quirks,
         machine_builder: MachineBuilder<P>,
@@ -65,7 +65,8 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Atari2600 {
             .unwrap();
 
         let rom = machine_builder
-            .open_rom(rom_id, RomRequirement::Required)?
+            .open_rom(rom_id, RomRequirement::Required)
+            .await?
             .unwrap();
 
         let cart_type = CartType::detect(&rom);

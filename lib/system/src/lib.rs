@@ -12,7 +12,7 @@ use fluxemu_runtime::{
 };
 use serde::{Serialize, de::DeserializeOwned};
 
-pub trait System<P: Platform> {
+pub trait System<P: Platform>: Send + Sync {
     type Quirks: Serialize + DeserializeOwned;
     const ID: SystemId;
 
@@ -20,5 +20,5 @@ pub trait System<P: Platform> {
         &self,
         quirks: Self::Quirks,
         machine_builder: MachineBuilder<P>,
-    ) -> Result<SealedMachineBuilder<P>, Box<dyn Error>>;
+    ) -> impl Future<Output = Result<SealedMachineBuilder<P>, Box<dyn Error>>> + Send;
 }

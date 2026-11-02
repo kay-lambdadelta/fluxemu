@@ -34,6 +34,7 @@ criterion = { workspace = true }
 fluxemu-database = { workspace = true }
 fluxemu-environment = { workspace = true }
 redb = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
 
 [features]
 webgpu = ["dep:wgpu", "fluxemu-graphics/webgpu"]
