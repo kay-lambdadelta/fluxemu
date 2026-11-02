@@ -15,12 +15,8 @@ use crossterm::{
     execute,
     terminal::supports_keyboard_enhancement,
 };
-use fluxemu_environment::Environment;
-use fluxemu_frontend::{
-    FrontendCore, Platform, machine::FactoryManager, notification::NotificationReceiver,
-};
+use fluxemu_frontend::{FrontendCore, Platform, notification::NotificationReceiver};
 use fluxemu_graphics::api::software::Software;
-use fluxemu_program::{ProgramManager, RomId};
 use ratatui::DefaultTerminal;
 use ratatui_image::picker::Picker;
 
@@ -32,22 +28,10 @@ use crate::{
 const TERMINAL_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 pub fn run<P: Platform<GraphicsApi = Software>>(
-    environment: Environment,
-    program_manager: Arc<ProgramManager>,
-    machine_factories: FactoryManager<P>,
-    audio_runtime: P::AudioRuntime,
-    initial_program: Option<Vec<RomId>>,
+    core: FrontendCore<P>,
     notifications: NotificationReceiver,
     external_input: ExternalInputReceiver,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let core = FrontendCore::new(
-        environment,
-        machine_factories,
-        program_manager,
-        audio_runtime,
-        initial_program,
-    );
-
     ratatui::run(|terminal| {
         let picker = Picker::from_query_stdio().unwrap_or_else(|err| {
             tracing::warn!(
@@ -76,7 +60,8 @@ pub fn run<P: Platform<GraphicsApi = Software>>(
             )?;
         } else {
             tracing::warn!(
-                "Terminal does not report key releases, they will be approximated, this will be deeply unpleasant"
+                "Terminal does not report key releases, they will be approximated, this will be \
+                 deeply unpleasant"
             );
         }
 

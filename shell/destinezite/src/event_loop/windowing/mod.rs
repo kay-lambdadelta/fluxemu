@@ -4,6 +4,7 @@ use std::{
 };
 
 use egui::{Context, ViewportId};
+use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::Environment;
 use fluxemu_frontend::{
     FrontendCore,
@@ -37,6 +38,7 @@ mod key;
 pub fn run<R: ProducableGraphicsRuntime<Window> + EguiCapableGraphicsRuntime>(
     environment: Environment,
     program_manager: Arc<ProgramManager>,
+    program_database: Arc<ProgramDatabase>,
     machine_factories: FactoryManager<DesktopPlatform<R, true>>,
     initial_program: Option<Vec<RomId>>,
     notifications: NotificationReceiver,
@@ -48,6 +50,7 @@ pub fn run<R: ProducableGraphicsRuntime<Window> + EguiCapableGraphicsRuntime>(
         environment,
         machine_factories,
         program_manager,
+        program_database,
         audio_runtime,
         initial_program,
     );

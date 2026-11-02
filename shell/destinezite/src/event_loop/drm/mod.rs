@@ -8,6 +8,7 @@ use std::{
 use ::input::Libinput;
 use drm::control::Device;
 use egui::{RawInput, Rect, ViewportId, ViewportInfo};
+use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::Environment;
 use fluxemu_frontend::{
     FrontendCore,
@@ -43,6 +44,7 @@ mod input;
 pub fn run<R: ProducableGraphicsRuntime<DrmContext> + EguiCapableGraphicsRuntime>(
     environment: Environment,
     program_manager: Arc<ProgramManager>,
+    program_database: Arc<ProgramDatabase>,
     machine_factories: FactoryManager<DesktopPlatform<R, false>>,
     initial_program: Option<Vec<RomId>>,
     notifications: NotificationReceiver,
@@ -81,6 +83,7 @@ pub fn run<R: ProducableGraphicsRuntime<DrmContext> + EguiCapableGraphicsRuntime
         environment,
         machine_factories,
         program_manager,
+        program_database,
         audio_runtime,
         initial_program,
     );

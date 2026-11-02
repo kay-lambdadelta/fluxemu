@@ -13,7 +13,6 @@ use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_input::{InputId, InputState};
 use fluxemu_program::{Manifest, ProgramManager};
 use num::FromPrimitive;
-use redb::{Database, backends::InMemoryBackend};
 use rustc_hash::FxBuildHasher;
 use tracing::Level;
 
@@ -77,11 +76,7 @@ impl Machine {
     /// This will probably be completely unsuccessful at running any real world program.
     /// It should only be used for runtime/component sanity unit tests
     pub fn build_test_minimal() -> MachineBuilder<TestPlatform> {
-        let database = Database::builder()
-            .create_with_backend(InMemoryBackend::default())
-            .unwrap();
-
-        Self::build(None, ProgramManager::new(database, []).unwrap())
+        Self::build(None, ProgramManager::new([]))
     }
 
     /// Enter the runtime for this machine on this thread

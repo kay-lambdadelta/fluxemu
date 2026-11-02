@@ -9,7 +9,6 @@ use std::{
 };
 
 use bytes::Bytes;
-use redb::{Database, MultimapTableDefinition, ReadableDatabase};
 use rustc_hash::FxBuildHasher;
 use sha1::{Digest, Sha1};
 use thiserror::Error;
@@ -19,29 +18,11 @@ use crate::{Manifest, ProgramId, ProgramInfo, RomId, SystemId};
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("{0}")]
-    RedbTransaction(#[from] redb::TransactionError),
-    #[error("{0}")]
-    RedbTable(#[from] redb::TableError),
-    #[error("{0}")]
-    RedbStorage(#[from] redb::StorageError),
-    #[error("{0}")]
-    RedbCommit(#[from] redb::CommitError),
-    #[error("{0}")]
-    Redb(#[from] redb::Error),
-    #[error("{0}")]
     Io(#[from] std::io::Error),
 }
 
-/// Program id -> Program info mapping
-pub const PROGRAM_INFORMATION_TABLE: MultimapTableDefinition<ProgramId, ProgramInfo> =
-    MultimapTableDefinition::new("program_information");
-/// Hash -> Program id reverse mapping
-pub const HASH_ALIAS_TABLE: MultimapTableDefinition<RomId, ProgramId> =
-    MultimapTableDefinition::new("hash_alias");
-
-/// The ROM manager which contains the database and information about the roms that were loaded
+/// The ROM manager which contains information about the roms that were loaded
 pub struct ProgramManager {
-    database: Database,
     external_roms: scc::HashMap<RomId, PathBuf, FxBuildHasher>,
     embedded_roms: scc::HashMap<RomId, &'static [u8], FxBuildHasher>,
     rom_cache: scc::HashCache<RomId, Bytes>,
@@ -49,25 +30,14 @@ pub struct ProgramManager {
 }
 
 impl ProgramManager {
-    /// Opens and loads the default database
     #[inline]
-    pub fn new(
-        database: Database,
-        rom_stores: impl IntoIterator<Item = PathBuf>,
-    ) -> Result<Arc<Self>, Error> {
-        let mut database_transaction = database.begin_write()?;
-        database_transaction.set_quick_repair(true);
-        database_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
-        database_transaction.open_multimap_table(HASH_ALIAS_TABLE)?;
-        database_transaction.commit()?;
-
-        Ok(Arc::new(Self {
-            database,
+    pub fn new(rom_stores: impl IntoIterator<Item = PathBuf>) -> Arc<Self> {
+        Arc::new(Self {
             external_roms: scc::HashMap::default(),
             embedded_roms: scc::HashMap::default(),
             rom_cache: scc::HashCache::with_capacity(0, 16),
             rom_stores: rom_stores.into_iter().collect(),
-        }))
+        })
     }
 
     pub fn register_external_rom(&self, path: impl AsRef<Path>) -> Result<RomId, Error> {
@@ -130,43 +100,6 @@ impl ProgramManager {
         }
     }
 
-    /// Attempts to identify a program from its program ids
-    pub fn identify_program(
-        &self,
-        roms: impl IntoIterator<Item = RomId> + Clone,
-    ) -> Result<Vec<Manifest>, Error> {
-        let read_transaction = self.database.begin_read()?;
-
-        let hash_alias_table = read_transaction.open_multimap_table(HASH_ALIAS_TABLE)?;
-        let program_info_table = read_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
-
-        let mut possible_programs = Vec::default();
-
-        for rom_id in roms.clone() {
-            for access_guard in hash_alias_table.get(rom_id)? {
-                let program_id = access_guard?.value();
-
-                for access_guard in program_info_table.get(&program_id)? {
-                    let program_info = access_guard?.value();
-
-                    let found_all = roms
-                        .clone()
-                        .into_iter()
-                        .all(|id| program_info.filesystem().contains_key(&id));
-
-                    if found_all {
-                        possible_programs.push(Manifest {
-                            id: program_id.clone(),
-                            info: program_info,
-                        });
-                    }
-                }
-            }
-        }
-
-        Ok(possible_programs)
-    }
-
     pub fn auto_generate_specification(&self, rom_id: RomId) -> Result<Option<Manifest>, Error> {
         let external_path = self.external_roms.get_sync(&rom_id);
         let rom = self.load(rom_id)?;
@@ -222,10 +155,6 @@ impl ProgramManager {
         self.external_roms.remove_sync(&rom_id);
 
         rom_id
-    }
-
-    pub fn database(&self) -> &Database {
-        &self.database
     }
 }
 

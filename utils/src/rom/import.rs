@@ -6,7 +6,8 @@ use std::{
     sync::LazyLock,
 };
 
-use fluxemu_program::{HASH_ALIAS_TABLE, ProgramId, ProgramManager, RomId};
+use fluxemu_database::{HASH_ALIAS_TABLE, ProgramDatabase};
+use fluxemu_program::{ProgramId, RomId};
 use rayon::{
     Scope,
     iter::{IntoParallelIterator, ParallelIterator},
@@ -22,12 +23,12 @@ static ALREADY_FOUND_ROMS: LazyLock<scc::HashSet<RomId, FxBuildHasher>> =
     LazyLock::new(scc::HashSet::default);
 
 pub fn import(
-    program_manager: &ProgramManager,
+    program_database: &ProgramDatabase,
     rom_store: &Path,
     symlink: bool,
     paths: impl IntoParallelIterator<Item = Result<walkdir::DirEntry, walkdir::Error>> + Send,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let read_transaction = program_manager.database().begin_read()?;
+    let read_transaction = program_database.database().begin_read()?;
     let hash_alias_table = read_transaction.open_multimap_table(HASH_ALIAS_TABLE)?;
 
     let _ = create_dir_all(rom_store);

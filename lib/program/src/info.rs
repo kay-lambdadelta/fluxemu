@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use fluxemu_locale::Iso639Alpha3;
-use redb::{Key, TypeName, Value};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
@@ -58,7 +57,8 @@ impl ProgramInfo {
     }
 }
 
-impl Value for ProgramInfo {
+#[cfg(feature = "redb")]
+impl redb::Value for ProgramInfo {
     type AsBytes<'a> = Vec<u8>;
     type SelfType<'a> = ProgramInfo;
 
@@ -81,14 +81,15 @@ impl Value for ProgramInfo {
     }
 
     fn type_name() -> redb::TypeName {
-        TypeName::new("program_info")
+        redb::TypeName::new("program_info")
     }
 }
 
-impl Key for ProgramInfo {
+#[cfg(feature = "redb")]
+impl redb::Key for ProgramInfo {
     fn compare(data1: &[u8], data2: &[u8]) -> std::cmp::Ordering {
-        let data1 = Self::from_bytes(data1);
-        let data2 = Self::from_bytes(data2);
+        let data1 = <Self as redb::Value>::from_bytes(data1);
+        let data2 = <Self as redb::Value>::from_bytes(data2);
 
         data1.cmp(&data2)
     }

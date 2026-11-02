@@ -30,6 +30,7 @@ egui = { workspace = true, optional = true }
 epaint = { workspace = true, features = ["color_fonts"], optional = true }
 fluxemu-audio = { workspace = true }
 fluxemu-egui-software-renderer = { workspace = true, optional = true }
+fluxemu-database = { workspace = true }
 fluxemu-environment = { workspace = true }
 fluxemu-frontend = { workspace = true }
 fluxemu-frontend-egui = { workspace = true, optional = true }

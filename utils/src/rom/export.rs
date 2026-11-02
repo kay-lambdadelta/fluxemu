@@ -1,14 +1,14 @@
 use std::{error::Error, fs::create_dir_all, path::PathBuf};
 
+use fluxemu_database::{PROGRAM_INFORMATION_TABLE, ProgramDatabase};
 use fluxemu_environment::Environment;
-use fluxemu_program::{PROGRAM_INFORMATION_TABLE, ProgramManager};
 use rayon::iter::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
 use redb::{ReadableDatabase, ReadableMultimapTable};
 
 use crate::cli::ExportStyle;
 
 pub fn export(
-    program_manager: &ProgramManager,
+    program_database: &ProgramDatabase,
     environment: &Environment,
     destination_path: PathBuf,
     symlink: bool,
@@ -16,7 +16,7 @@ pub fn export(
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let _ = create_dir_all(&destination_path);
 
-    let read_transaction = program_manager.database().begin_read()?;
+    let read_transaction = program_database.database().begin_read()?;
     let program_information_table =
         read_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
 

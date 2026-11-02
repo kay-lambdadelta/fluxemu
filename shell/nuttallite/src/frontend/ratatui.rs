@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
+use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::Environment;
-use fluxemu_frontend::notification::NotificationReceiver;
+use fluxemu_frontend::{FrontendCore, notification::NotificationReceiver};
 use fluxemu_frontend_ratatui::{TerminalGraphicsRuntime, external_input_channel};
 use fluxemu_program::ProgramManager;
 
@@ -10,17 +11,19 @@ use crate::{build_machine::get_software_factories, platform::Platform, runtime::
 pub fn run(
     environment: Environment,
     program_manager: Arc<ProgramManager>,
+    program_database: Arc<ProgramDatabase>,
     notifications: NotificationReceiver,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (_external_input_sender, external_input_receiver) = external_input_channel();
 
-    fluxemu_frontend_ratatui::run::<Platform<TerminalGraphicsRuntime>>(
+    let core = FrontendCore::<Platform<TerminalGraphicsRuntime>>::new(
         environment,
-        program_manager,
         get_software_factories(),
+        program_manager,
+        program_database,
         AudioRuntime,
         None,
-        notifications,
-        external_input_receiver,
-    )
+    );
+
+    fluxemu_frontend_ratatui::run(core, notifications, external_input_receiver)
 }

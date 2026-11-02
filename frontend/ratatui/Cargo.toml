@@ -8,11 +8,9 @@ license = { workspace = true }
 
 [dependencies]
 crossterm = { workspace = true }
-fluxemu-environment = { workspace = true }
 fluxemu-frontend = { workspace = true }
 fluxemu-graphics = { workspace = true }
 fluxemu-input = { workspace = true }
-fluxemu-program = { workspace = true }
 fluxemu-runtime = { workspace = true }
 image = { workspace = true }
 palette = { workspace = true }

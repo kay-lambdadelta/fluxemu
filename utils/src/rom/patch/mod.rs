@@ -6,10 +6,9 @@ use std::{
     path::Path,
 };
 
+use fluxemu_database::{HASH_ALIAS_TABLE, PROGRAM_INFORMATION_TABLE, ProgramDatabase};
 use fluxemu_environment::Environment;
-use fluxemu_program::{
-    HASH_ALIAS_TABLE, PROGRAM_INFORMATION_TABLE, ProgramInfo, ProgramManager, RomId,
-};
+use fluxemu_program::{ProgramInfo, ProgramManager, RomId};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use tempfile::tempfile;
 
@@ -30,6 +29,7 @@ pub trait PatchFormat {
 
 pub fn patch(
     program_manager: &ProgramManager,
+    program_database: &ProgramDatabase,
     environment: &Environment,
     source: RomId,
     patch: &Path,
@@ -72,7 +72,7 @@ pub fn patch(
         let patch_file_name = patch.file_stem().unwrap().to_string_lossy();
 
         if add_to_database {
-            let manifests = program_manager.identify_program([source])?;
+            let manifests = program_database.identify_program([source])?;
 
             if let Some(mut single_rom_manifest) = manifests
                 .into_par_iter()
@@ -105,7 +105,7 @@ pub fn patch(
                             *version = None;
 
                             // Add to database
-                            let database_transaction = program_manager.database().begin_write()?;
+                            let database_transaction = program_database.database().begin_write()?;
                             let mut hash_alias_table =
                                 database_transaction.open_multimap_table(HASH_ALIAS_TABLE)?;
                             let mut program_information_table = database_transaction

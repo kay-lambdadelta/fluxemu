@@ -1,8 +1,7 @@
-use std::{cmp::Ordering, fmt::Display, io::Read, str::FromStr};
+use std::{fmt::Display, io::Read, str::FromStr};
 
 use data_encoding::HEXLOWER_PERMISSIVE;
 use digest_io::IoWrapper;
-use redb::{Key, TypeName, Value};
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use thiserror::Error;
@@ -70,7 +69,8 @@ impl FromStr for RomId {
     }
 }
 
-impl Value for RomId {
+#[cfg(feature = "redb")]
+impl redb::Value for RomId {
     type AsBytes<'a> = Vec<u8>;
     type SelfType<'a> = Self;
 
@@ -93,12 +93,13 @@ impl Value for RomId {
     }
 
     fn type_name() -> redb::TypeName {
-        TypeName::new("rom_id")
+        redb::TypeName::new("rom_id")
     }
 }
 
-impl Key for RomId {
-    fn compare(data1: &[u8], data2: &[u8]) -> Ordering {
+#[cfg(feature = "redb")]
+impl redb::Key for RomId {
+    fn compare(data1: &[u8], data2: &[u8]) -> std::cmp::Ordering {
         data1.cmp(data2)
     }
 }

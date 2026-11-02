@@ -28,6 +28,7 @@ use std::{fs::File, sync::Arc};
 
 use clap::Parser;
 use cli::{Cli, CliAction};
+use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::load_environment;
 use fluxemu_frontend::notification::notification_channel;
 use fluxemu_program::ProgramManager;
@@ -101,8 +102,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!("FluxEMU v{}", env!("CARGO_PKG_VERSION"));
 
-    let database = Database::create(&environment.database_location)?;
-    let program_manager = ProgramManager::new(database, environment.rom_store_directories.clone())?;
+    let program_database = ProgramDatabase::new(Database::create(&environment.database_location)?)?;
+    let program_manager = ProgramManager::new(environment.rom_store_directories.clone());
 
     let mut initial_program = None;
 
@@ -122,6 +123,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(feature = "ratatui")]
     if cli.display_backend == DisplayBackend::Ratatui {
+        use fluxemu_frontend::FrontendCore;
         use fluxemu_frontend_ratatui::TerminalGraphicsRuntime;
 
         use crate::{audio::CpalAudioRuntime, gamepad::GamepadContext, platform::DesktopPlatform};
@@ -152,16 +154,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let audio_runtime =
             CpalAudioRuntime::new().map_err(|_| "Could not initialize audio runtime")?;
 
-        fluxemu_frontend_ratatui::run::<DesktopPlatform<TerminalGraphicsRuntime, false>>(
+        let core = FrontendCore::<DesktopPlatform<TerminalGraphicsRuntime, false>>::new(
             environment,
-            program_manager,
             // TODO: Support webgpu for the ratatui backend
             build_machine::get_software_factories(),
+            program_manager,
+            program_database,
             audio_runtime,
             initial_program,
-            notifications,
-            external_input_receiver,
-        )?;
+        );
+
+        fluxemu_frontend_ratatui::run(core, notifications, external_input_receiver)?;
 
         return Ok(());
     }
@@ -177,6 +180,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 >(
                     environment.clone(),
                     program_manager.clone(),
+                    program_database.clone(),
                     build_machine::get_software_factories(),
                     initial_program.clone(),
                     notifications,
@@ -187,6 +191,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 crate::event_loop::drm::run::<crate::display::software::SoftwareGraphicsRuntime<_>>(
                     environment.clone(),
                     program_manager.clone(),
+                    program_database.clone(),
                     build_machine::get_software_factories(),
                     initial_program.clone(),
                     notifications,
@@ -207,6 +212,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     crate::event_loop::windowing::run::<WebgpuGraphicsRuntime<_>>(
                         environment.clone(),
                         program_manager.clone(),
+                        program_database.clone(),
                         build_machine::get_webgpu_factories(),
                         initial_program.clone(),
                         notifications,
@@ -217,6 +223,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     crate::event_loop::drm::run::<WebgpuGraphicsRuntime<_>>(
                         environment.clone(),
                         program_manager.clone(),
+                        program_database.clone(),
                         build_machine::get_webgpu_factories(),
                         initial_program.clone(),
                         notifications,

@@ -6,11 +6,9 @@ use std::{
     sync::LazyLock,
 };
 
+use fluxemu_database::{HASH_ALIAS_TABLE, PROGRAM_INFORMATION_TABLE, ProgramDatabase};
 use fluxemu_locale::{Iso639Alpha2, Iso639Alpha3};
-use fluxemu_program::{
-    HASH_ALIAS_TABLE, PROGRAM_INFORMATION_TABLE, ProgramId, ProgramInfo, ProgramManager, RomId,
-    SystemId,
-};
+use fluxemu_program::{ProgramId, ProgramInfo, RomId, SystemId};
 use serde::{Deserialize, Deserializer};
 use serde_with::{DisplayFromStr, serde_as};
 
@@ -85,7 +83,7 @@ impl FromStr for NameMetadataExtractor {
 }
 
 pub fn add_to_database(
-    program_manager: &ProgramManager,
+    program_database: &ProgramDatabase,
     file: impl BufRead,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     // Parse XML based data file
@@ -103,7 +101,7 @@ pub fn add_to_database(
         data_file.header.machine_id
     );
 
-    let database_transaction = program_manager.database().begin_write()?;
+    let database_transaction = program_database.database().begin_write()?;
     let mut program_information =
         database_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
     let mut hash_alias = database_transaction.open_multimap_table(HASH_ALIAS_TABLE)?;

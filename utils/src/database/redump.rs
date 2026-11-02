@@ -3,7 +3,8 @@ use std::{
     io::{BufReader, Seek},
 };
 
-use fluxemu_program::{NintendoSystem, ProgramManager, SegaSystem, SonySystem, SystemId};
+use fluxemu_database::ProgramDatabase;
+use fluxemu_program::{NintendoSystem, SegaSystem, SonySystem, SystemId};
 use strum::{Display, EnumIter};
 use tempfile::tempfile;
 use zip::ZipArchive;
@@ -39,7 +40,7 @@ impl TryFrom<SystemId> for RedumpSystem {
 }
 
 pub fn download_and_import_redump_system(
-    program_manager: &ProgramManager,
+    program_database: &ProgramDatabase,
     system: RedumpSystem,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     tracing::info!("Downloading redump dat for system {}", system);
@@ -60,7 +61,7 @@ pub fn download_and_import_redump_system(
     for index in 0..archive.len() {
         let file = BufReader::new(archive.by_index(index)?);
 
-        crate::logiqx::add_to_database(program_manager, file)?;
+        crate::logiqx::add_to_database(program_database, file)?;
     }
 
     Ok(())

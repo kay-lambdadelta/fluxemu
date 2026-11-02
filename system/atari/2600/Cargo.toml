@@ -31,6 +31,7 @@ wgpu = { workspace = true, optional = true }
 
 [target.'cfg(any(target_family = "unix", target_os = "windows"))'.dev-dependencies]
 criterion = { workspace = true }
+fluxemu-database = { workspace = true }
 fluxemu-environment = { workspace = true }
 redb = { workspace = true }
 

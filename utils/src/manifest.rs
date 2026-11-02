@@ -4,19 +4,20 @@ use std::{
     path::Path,
 };
 
-use fluxemu_program::{Manifest, PROGRAM_INFORMATION_TABLE, ProgramManager};
+use fluxemu_database::{PROGRAM_INFORMATION_TABLE, ProgramDatabase};
+use fluxemu_program::Manifest;
 use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator};
 use redb::{ReadableDatabase, ReadableMultimapTable};
 use ron::ser::PrettyConfig;
 
 pub fn import(
-    program_manager: &ProgramManager,
+    program_database: &ProgramDatabase,
     paths: impl IntoParallelIterator<Item = Result<walkdir::DirEntry, walkdir::Error>>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     paths.into_par_iter().try_for_each(|entry| {
         match entry {
             Ok(entry) => {
-                let database_transaction = program_manager.database().begin_write()?;
+                let database_transaction = program_database.database().begin_write()?;
                 let mut database_table =
                     database_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
 
@@ -42,12 +43,12 @@ pub fn import(
 }
 
 pub fn export(
-    program_manager: &ProgramManager,
+    program_database: &ProgramDatabase,
     output_directory: &Path,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let _ = create_dir_all(output_directory);
 
-    let database_transaction = program_manager.database().begin_read()?;
+    let database_transaction = program_database.database().begin_read()?;
     let database_table = database_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
 
     database_table.iter()?.par_bridge().try_for_each(|item| {

@@ -1,6 +1,5 @@
 use std::fmt::Display;
 
-use redb::{Key, TypeName, Value};
 use serde::{Deserialize, Serialize};
 
 use crate::SystemId;
@@ -20,7 +19,8 @@ impl Display for ProgramId {
     }
 }
 
-impl Value for ProgramId {
+#[cfg(feature = "redb")]
+impl redb::Value for ProgramId {
     type AsBytes<'a> = Vec<u8>;
     type SelfType<'a> = Self;
 
@@ -43,11 +43,12 @@ impl Value for ProgramId {
     }
 
     fn type_name() -> redb::TypeName {
-        TypeName::new("program_id")
+        redb::TypeName::new("program_id")
     }
 }
 
-impl Key for ProgramId {
+#[cfg(feature = "redb")]
+impl redb::Key for ProgramId {
     fn compare(data1: &[u8], data2: &[u8]) -> std::cmp::Ordering {
         data1.cmp(data2)
     }

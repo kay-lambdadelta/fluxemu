@@ -1,0 +1,15 @@
+[package]
+name = "fluxemu-database"
+version = "0.0.1"
+edition = { workspace = true }
+rust-version = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+fluxemu-program = { workspace = true, features = ["redb"] }
+redb = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

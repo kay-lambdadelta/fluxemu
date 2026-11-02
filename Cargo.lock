@@ -1906,6 +1906,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fluxemu-database"
+version = "0.0.1"
+dependencies = [
+ "fluxemu-program",
+ "redb",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "fluxemu-definition-intel8080"
 version = "0.0.1"
 dependencies = [
@@ -1979,6 +1988,7 @@ name = "fluxemu-frontend"
 version = "0.0.1"
 dependencies = [
  "fluxemu-audio",
+ "fluxemu-database",
  "fluxemu-environment",
  "fluxemu-graphics",
  "fluxemu-input",
@@ -2035,11 +2045,9 @@ name = "fluxemu-frontend-ratatui"
 version = "0.0.1"
 dependencies = [
  "crossterm",
- "fluxemu-environment",
  "fluxemu-frontend",
  "fluxemu-graphics",
  "fluxemu-input",
- "fluxemu-program",
  "fluxemu-runtime",
  "image",
  "palette",
@@ -2164,6 +2172,7 @@ dependencies = [
  "epaint",
  "evdev",
  "fluxemu-audio",
+ "fluxemu-database",
  "fluxemu-egui-software-renderer",
  "fluxemu-environment",
  "fluxemu-frontend",
@@ -2208,6 +2217,7 @@ dependencies = [
  "bindgen",
  "egui",
  "fluxemu-audio",
+ "fluxemu-database",
  "fluxemu-egui-software-renderer",
  "fluxemu-environment",
  "fluxemu-frontend",
@@ -2247,6 +2257,7 @@ dependencies = [
  "bytemuck",
  "bytes",
  "criterion",
+ "fluxemu-database",
  "fluxemu-definition-mos6502",
  "fluxemu-definition-mos6532",
  "fluxemu-environment",
@@ -2306,6 +2317,7 @@ dependencies = [
  "bytes",
  "criterion",
  "fluxemu-audio",
+ "fluxemu-database",
  "fluxemu-definition-mos6502",
  "fluxemu-environment",
  "fluxemu-graphics",
@@ -2358,6 +2370,7 @@ version = "0.0.1"
 dependencies = [
  "clap",
  "crc32fast",
+ "fluxemu-database",
  "fluxemu-environment",
  "fluxemu-locale",
  "fluxemu-math",

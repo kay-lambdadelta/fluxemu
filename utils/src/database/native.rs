@@ -1,14 +1,14 @@
 use std::error::Error;
 
-use fluxemu_program::{PROGRAM_INFORMATION_TABLE, ProgramManager};
+use fluxemu_database::{PROGRAM_INFORMATION_TABLE, ProgramDatabase};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use redb::{ReadOnlyDatabase, ReadableDatabase, ReadableMultimapTable};
 
 pub fn import(
-    program_manager: &ProgramManager,
+    program_database: &ProgramDatabase,
     paths: impl IntoParallelIterator<Item = Result<walkdir::DirEntry, walkdir::Error>>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let internal_database = program_manager.database();
+    let internal_database = program_database.database();
 
     paths.into_par_iter().try_for_each(|entry| {
         match entry {

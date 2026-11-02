@@ -1,5 +1,6 @@
 use std::{collections::HashMap, ops::Deref, path::PathBuf, sync::Arc, thread::JoinHandle};
 
+use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::{ENVIRONMENT_LOCATION, Environment};
 use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_input::{InputState, physical::PhysicalInputDeviceId};
@@ -33,7 +34,7 @@ enum MachineInitializationStep<P: Platform> {
     /// Step 2: Search for programs that match the collection of given ROMs
     FindingMatchingSpecification {
         roms: Vec<RomId>,
-        job: JoinHandle<Result<Vec<Manifest>, fluxemu_program::Error>>,
+        job: JoinHandle<Result<Vec<Manifest>, fluxemu_database::Error>>,
     },
     /// Step 3: Create and seal a machine builder given the specification
     BuildingMachineBuilder {
@@ -52,6 +53,7 @@ pub struct FrontendCore<P: Platform> {
     machine_initialization_step: Option<MachineInitializationStep<P>>,
     machine_factory_manager: Arc<FactoryManager<P>>,
     program_manager: Arc<ProgramManager>,
+    program_database: Arc<ProgramDatabase>,
     physical_input_devices: HashMap<PhysicalInputDeviceId, PhysicalInputDeviceState>,
     #[allow(unused)]
     audio_runtime: P::AudioRuntime,
@@ -65,6 +67,7 @@ impl<P: Platform> FrontendCore<P> {
         environment: Environment,
         machine_factories: FactoryManager<P>,
         program_manager: Arc<ProgramManager>,
+        program_database: Arc<ProgramDatabase>,
         mut audio_runtime: P::AudioRuntime,
         initial_program: Option<Vec<RomId>>,
     ) -> Self {
@@ -78,6 +81,7 @@ impl<P: Platform> FrontendCore<P> {
             machine_initialization_step: None,
             machine_factory_manager: Arc::new(machine_factories),
             program_manager,
+            program_database,
             physical_input_devices: HashMap::default(),
             audio_runtime,
             audio_mixer,
@@ -102,6 +106,10 @@ impl<P: Platform> FrontendCore<P> {
 
     pub fn program_manager(&self) -> &Arc<ProgramManager> {
         &self.program_manager
+    }
+
+    pub fn program_database(&self) -> &Arc<ProgramDatabase> {
+        &self.program_database
     }
 
     pub fn machine(&self) -> Option<&Arc<Machine>> {
@@ -292,12 +300,12 @@ impl<P: Platform> FrontendCore<P> {
     }
 
     fn identify_program(&mut self, roms: Vec<RomId>) {
-        let program_manager = self.program_manager.clone();
+        let program_database = self.program_database.clone();
 
         self.machine_initialization_step =
             Some(MachineInitializationStep::FindingMatchingSpecification {
                 roms: roms.clone(),
-                job: std::thread::spawn(move || program_manager.identify_program(roms)),
+                job: std::thread::spawn(move || program_database.identify_program(roms)),
             });
     }
 

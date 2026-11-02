@@ -1,6 +1,7 @@
 use std::{error::Error, path::PathBuf, process::ExitCode, sync::Arc};
 
 use clap::Parser;
+use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::load_environment;
 use fluxemu_program::{ProgramManager, SystemId};
 use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator};
@@ -56,21 +57,19 @@ fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     let args = Cli::parse();
 
-    let program_manager = ProgramManager::new(
-        Database::create(&environment.database_location)?,
-        environment.rom_store_directories.clone(),
-    )?;
+    let program_database = ProgramDatabase::new(Database::create(&environment.database_location)?)?;
+    let program_manager = ProgramManager::new(environment.rom_store_directories.clone());
 
     match args {
         Cli::Database(command) => match command {
             DatabaseCommand::Import { paths } => {
-                database::native::import(&program_manager, walk_for_files(paths))?;
+                database::native::import(&program_database, walk_for_files(paths))?;
             }
         },
         Cli::Rom(command) => match command {
             RomCommand::Import { paths, symlink } => {
                 rom::import(
-                    &program_manager,
+                    &program_database,
                     &environment.rom_store_directories[0],
                     symlink,
                     walk_for_files(paths),
@@ -81,7 +80,7 @@ fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
                 style,
                 destination,
             } => {
-                rom::export(&program_manager, &environment, destination, symlink, style)?;
+                rom::export(&program_database, &environment, destination, symlink, style)?;
             }
             RomCommand::Patch {
                 source,
@@ -92,6 +91,7 @@ fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
 
                 rom::patch(
                     &program_manager,
+                    &program_database,
                     &environment,
                     source,
                     &patch,
@@ -102,15 +102,15 @@ fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
         },
         Cli::Manifest(command) => match command {
             ManifestCommand::Import { paths } => {
-                manifest::import(&program_manager, walk_for_files(paths))?;
+                manifest::import(&program_database, walk_for_files(paths))?;
             }
             ManifestCommand::Export { output_directory } => {
-                manifest::export(&program_manager, &output_directory)?;
+                manifest::export(&program_database, &output_directory)?;
             }
         },
         Cli::Logiqx(command) => match command {
             LogiqxCommand::Import { paths } => {
-                logiqx::import(&program_manager, walk_for_files(paths))?;
+                logiqx::import(&program_database, walk_for_files(paths))?;
             }
             LogiqxCommand::DownloadRedump { system_filter } => {
                 if system_filter.is_empty() {
@@ -118,13 +118,13 @@ fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
                         if !system_filter.contains(&machine_id)
                             && let Ok(redump_system) = RedumpSystem::try_from(machine_id)
                         {
-                            download_and_import_redump_system(&program_manager, redump_system)?;
+                            download_and_import_redump_system(&program_database, redump_system)?;
                         }
                     }
                 } else {
                     for machine_id in system_filter {
                         if let Ok(redump_system) = RedumpSystem::try_from(machine_id) {
-                            download_and_import_redump_system(&program_manager, redump_system)?;
+                            download_and_import_redump_system(&program_database, redump_system)?;
                         }
                     }
                 }

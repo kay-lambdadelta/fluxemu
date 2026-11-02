@@ -8,6 +8,7 @@ use std::{
     },
 };
 
+use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::load_environment;
 use fluxemu_frontend::notification::notification_channel;
 use fluxemu_program::ProgramManager;
@@ -150,15 +151,23 @@ fn main(arguments: &[String]) -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!("FluxEMU v{}", env!("CARGO_PKG_VERSION"));
 
-    let database = Database::create(&environment.database_location)?;
-    let program_manager = ProgramManager::new(database, environment.rom_store_directories.clone())?;
+    let program_database = ProgramDatabase::new(Database::create(&environment.database_location)?)?;
+    let program_manager = ProgramManager::new(environment.rom_store_directories.clone());
 
     match frontend_selection {
         #[cfg(feature = "egui")]
-        FrontendSelection::Egui => frontend::egui::run(environment, program_manager, notifications),
+        FrontendSelection::Egui => frontend::egui::run(
+            environment,
+            program_manager,
+            program_database,
+            notifications,
+        ),
         #[cfg(feature = "ratatui")]
-        FrontendSelection::Ratatui => {
-            frontend::ratatui::run(environment, program_manager, notifications)
-        }
+        FrontendSelection::Ratatui => frontend::ratatui::run(
+            environment,
+            program_manager,
+            program_database,
+            notifications,
+        ),
     }
 }

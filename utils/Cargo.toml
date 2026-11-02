@@ -13,6 +13,7 @@ maintainer = "Kay <lambdadeltakay@proton.me>"
 [dependencies]
 clap = { workspace = true }
 crc32fast = { workspace = true }
+fluxemu-database = { workspace = true }
 fluxemu-environment = { workspace = true }
 fluxemu-locale = { workspace = true }
 fluxemu-math = { workspace = true }

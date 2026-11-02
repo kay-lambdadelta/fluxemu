@@ -114,6 +114,7 @@ ratatui-explorer = "0.3"
 ratatui-image = { version = "11.0", default-features = false, features = ["crossterm"] }
 
 fluxemu-audio = { path = "lib/audio" }
+fluxemu-database = { path = "lib/database" }
 fluxemu-egui-software-renderer = { path = "lib/egui-software-renderer" }
 fluxemu-environment = { path = "lib/environment" }
 fluxemu-frontend = { path = "lib/frontend" }

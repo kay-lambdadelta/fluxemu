@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
+use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::load_environment;
 use fluxemu_program::ProgramManager;
 use fluxemu_runtime::machine::Machine;
@@ -42,9 +43,9 @@ fn emulation_performance(c: &mut Criterion) {
 
     let environment = load_environment();
 
-    let database = Database::create(environment.database_location).unwrap();
-    let program_manager =
-        ProgramManager::new(database, environment.rom_store_directories.clone()).unwrap();
+    let program_database =
+        ProgramDatabase::new(Database::create(environment.database_location).unwrap()).unwrap();
+    let program_manager = ProgramManager::new(environment.rom_store_directories.clone());
 
     let mut group = c.benchmark_group(format!("{}/emulation_performance", env!("CARGO_PKG_NAME")));
     group.throughput(Throughput::Elements(1));
@@ -52,7 +53,7 @@ fn emulation_performance(c: &mut Criterion) {
     for (program_name, rom_id) in roms {
         let rom_id = rom_id.parse().unwrap();
 
-        if let Some(specification) = program_manager
+        if let Some(specification) = program_database
             .identify_program([rom_id])
             .map(|mut entries| {
                 if entries.is_empty() {

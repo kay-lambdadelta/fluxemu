@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use egui::{FontData, FontDefinitions, FontFamily, RawInput, Rect, ViewportId, ViewportInfo};
+use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::Environment;
 use fluxemu_frontend::{
     FrontendCore, graphics::GraphicsRuntime as _, notification::NotificationReceiver,
@@ -20,6 +21,7 @@ const UNSCII_FONT: &[u8] = include_bytes!("../../../../external/unscii/fontfiles
 pub fn run(
     environment: Environment,
     program_manager: Arc<ProgramManager>,
+    program_database: Arc<ProgramDatabase>,
     notifications: NotificationReceiver,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let font_definitions = FontDefinitions {
@@ -40,6 +42,7 @@ pub fn run(
         environment,
         get_software_factories(),
         program_manager,
+        program_database,
         AudioRuntime,
         None,
     );
