@@ -18,8 +18,17 @@ For example, to build for the Raspberry Pi Pico/Pico 2 you will need
 
 ## Building
 
-To build, consult the options given by
+Building uses the [cargo nuttx](https://github.com/kay-lambdadelta/cargo-nuttx) helper tool, install it with
 
-```bash
-cargo -p xtask build-nuttallite -- --help
+```sh
+cargo install --git https://github.com/kay-lambdadelta/cargo-nuttx --locked
 ```
+
+To build, switch the workspace to the nuttallite toolchain and run cargo nuttx
+
+```sh
+cargo run -p xtask -- switch nuttallite
+cargo nuttx build -b raspberrypi-pico-2 -r --no-default-features --features egui
+```
+
+The firmware ends up in `target/nuttx/<board>/<profile>/`, for example `target/nuttx/raspberrypi-pico-2/release/nuttx.uf2`.

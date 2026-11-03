@@ -1,0 +1,9 @@
+rustup
+curl
+build-essential
+libclang-dev
+rsync
+jq
+kconfig-frontends
+gcc-arm-none-eabi
+picotool

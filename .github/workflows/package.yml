@@ -32,6 +32,17 @@ jobs:
             artifact_name: fluxemu-shell-destinezite-(debian-trixie-aarch64)-deb
             artifact_path: target/debian/fluxemu-shell-destinezite_*_arm64.deb
 
+          - name: NuttX (raspberrypi-pico-2)
+            runner: ubuntu-26.04
+            container: debian:trixie
+            platform: debian
+            dependencies: debian-nuttx
+            shell: nuttallite
+            tools: cargo install --git https://github.com/kay-lambdadelta/cargo-nuttx --locked
+            build: cargo nuttx build -b raspberrypi-pico-2 -r --no-default-features --features egui
+            artifact_name: fluxemu-shell-nuttallite-(raspberrypi-pico-2)-uf2
+            artifact_path: target/nuttx/raspberrypi-pico-2/release/nuttx.uf2
+
           - name: Windows (x86_64-pc-windows-msvc)
             runner: windows-latest
             platform: windows
@@ -53,6 +64,8 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           platform: ${{ matrix.platform }}
+          dependencies: ${{ matrix.dependencies }}
+          shell: ${{ matrix.shell }}
 
       - name: Install tools
         if: matrix.tools

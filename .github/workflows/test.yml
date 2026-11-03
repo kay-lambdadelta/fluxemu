@@ -44,6 +44,15 @@ jobs:
               cargo clippy -p fluxemu-utils
             test: RUSTFLAGS="-C opt-level=0" cargo test
 
+          - name: NuttX (raspberrypi-pico-2)
+            runner: ubuntu-26.04
+            container: debian:trixie
+            platform: debian
+            dependencies: debian-nuttx
+            shell: nuttallite
+            tools: cargo install --git https://github.com/kay-lambdadelta/cargo-nuttx --locked
+            check: cargo nuttx clippy -b raspberrypi-pico-2 -r --no-default-features --features egui
+
     steps:
       - name: Install checkout dependencies
         if: matrix.platform == 'debian'
@@ -58,6 +67,12 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           platform: ${{ matrix.platform }}
+          dependencies: ${{ matrix.dependencies }}
+          shell: ${{ matrix.shell }}
+
+      - name: Install tools
+        if: matrix.tools
+        run: ${{ matrix.tools }}
 
       - name: Check
         run: ${{ matrix.check }}

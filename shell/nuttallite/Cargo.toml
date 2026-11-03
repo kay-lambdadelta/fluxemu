@@ -10,13 +10,14 @@ license = { workspace = true }
 [package.metadata.nuttx]
 priority = 100
 stack-size = 16384
-config = "shell/nuttallite/nuttx/config"
-board-config-directory = "shell/nuttallite/nuttx/board"
+config = "nuttx/config"
+board-config-directory = "nuttx/board"
+nuttx-version = "13.1.0"
 
 [package.metadata.nuttx.boards.raspberrypi-pico-2]
 target = "thumbv8m.main-nuttx-eabihf"
 target-cpu = "cortex-m33"
-opt-level = "s"
+opt-level = "z"
 firmware-file = "nuttx.uf2"
 
 [package.metadata.nuttx.boards.raspberrypi-pico]
@@ -31,8 +32,8 @@ crate-type = ["staticlib"]
 [dependencies]
 egui = { workspace = true, optional = true }
 fluxemu-audio = { workspace = true }
-fluxemu-egui-software-renderer = { workspace = true, optional = true }
 fluxemu-database = { workspace = true }
+fluxemu-egui-software-renderer = { workspace = true, optional = true }
 fluxemu-environment = { workspace = true }
 fluxemu-frontend = { workspace = true }
 fluxemu-frontend-egui = { workspace = true, optional = true }

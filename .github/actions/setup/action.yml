@@ -3,6 +3,8 @@ name: "Setup"
 inputs:
   platform:
     required: true
+  dependencies:
+    required: false
   shell:
     required: false
     default: "destinezite"
@@ -15,10 +17,10 @@ runs:
       shell: bash
       env:
         DEBIAN_FRONTEND: noninteractive
-      run: xargs apt-get install -y --no-install-recommends < .github/dependencies/debian
+      run: xargs apt-get install -y --no-install-recommends < .github/dependencies/${{ inputs.dependencies || inputs.platform }}
 
     - name: Switch shell
-      if: inputs.shell != 'destinezite'
+      if: inputs.shell && inputs.shell != 'destinezite'
       shell: bash
       run: cargo run -p xtask -- switch ${{ inputs.shell }}
 
