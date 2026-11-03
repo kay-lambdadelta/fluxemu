@@ -106,8 +106,8 @@ impl AddressSpace<'_> {
     where
         T::Bytes: Default,
     {
-        let mut buffer = T::Bytes::default();
-        self.read::<_, AVOID_SIDE_EFFECTS>(address, current_timestamp, &mut buffer)?;
+        let buffer =
+            self.read_value_bytes::<T::Bytes, AVOID_SIDE_EFFECTS>(address, current_timestamp)?;
         Ok(T::from_le_bytes(&buffer))
     }
 
@@ -123,9 +123,68 @@ impl AddressSpace<'_> {
     where
         T::Bytes: Default,
     {
-        let mut buffer = T::Bytes::default();
-        self.read::<_, AVOID_SIDE_EFFECTS>(address, current_timestamp, &mut buffer)?;
+        let buffer =
+            self.read_value_bytes::<T::Bytes, AVOID_SIDE_EFFECTS>(address, current_timestamp)?;
         Ok(T::from_be_bytes(&buffer))
+    }
+
+    #[inline]
+    fn read_value_bytes<BYTES: NumBytes + Default, const AVOID_SIDE_EFFECTS: bool>(
+        &mut self,
+        address: Address,
+        current_timestamp: Period,
+    ) -> Result<BYTES, MemoryError> {
+        let page_table = self.data.get_read_table(&self.guard);
+        let width_mask = self.data.width_mask;
+        let mut buffer = BYTES::default();
+
+        if let Some((target, offset)) = find_covering_entry(
+            address & width_mask,
+            buffer.as_ref().len(),
+            width_mask,
+            page_table,
+        ) {
+            match target {
+                PageTableTarget::ImmutableMemory(bytes) => {
+                    let memory_range =
+                        RangeInclusive::from_start_and_length(offset, buffer.as_ref().len());
+
+                    // SAFETY: `commit` ensures memory byte entries are the same size as the range they are assigned to
+                    buffer
+                        .as_mut()
+                        .copy_from_slice(unsafe { bytes.get_unchecked(memory_range) });
+
+                    return Ok(buffer);
+                }
+                PageTableTarget::Memory {
+                    offset: destination_start,
+                    id,
+                } => {
+                    self.runtime.memory_registry().read(
+                        *id,
+                        destination_start + offset,
+                        buffer.as_mut(),
+                    );
+
+                    return Ok(buffer);
+                }
+                PageTableTarget::Component { .. } => {}
+            }
+        }
+
+        self.read_value_bytes_slow::<BYTES, AVOID_SIDE_EFFECTS>(address, current_timestamp)
+    }
+
+    #[cold]
+    #[inline]
+    fn read_value_bytes_slow<BYTES: NumBytes + Default, const AVOID_SIDE_EFFECTS: bool>(
+        &mut self,
+        address: Address,
+        current_timestamp: Period,
+    ) -> Result<BYTES, MemoryError> {
+        let mut buffer = BYTES::default();
+        self.read::<_, AVOID_SIDE_EFFECTS>(address, current_timestamp, &mut buffer)?;
+        Ok(buffer)
     }
 
     /// Write a buffer to an address
@@ -317,6 +376,27 @@ impl<'a, BUFFER: SplitableBuffer> Iterator for ChunkIter<'a, BUFFER> {
 
         Some(chunk)
     }
+}
+
+#[inline]
+fn find_covering_entry(
+    address: Address,
+    length: usize,
+    width_mask: Address,
+    page_table: &PageTable,
+) -> Option<(&PageTableTarget, Address)> {
+    let last = address.checked_add(length.checked_sub(1)?)?;
+
+    if last > width_mask || address / CHUNK_SIZE != last / CHUNK_SIZE {
+        return None;
+    }
+
+    // SAFETY: The page is bounded by the width mask, it falls into the table constructed by `commit`
+    let page = unsafe { page_table.0.get_unchecked(address / CHUNK_SIZE) };
+    let entry = page.iter().find(|entry| entry.range.last >= address)?;
+
+    (entry.range.start <= address && entry.range.last >= last)
+        .then(|| (&entry.target, address - entry.range.start))
 }
 
 #[inline]

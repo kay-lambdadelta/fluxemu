@@ -164,16 +164,17 @@ impl<'a> MemoryRegistry<'a> {
 
         let local_data = unsafe { &mut *self.local_data().get() };
         let region_data = &local_data.region_data_cache[id.0 as usize];
+        let base_ptr = region_data.base_ptr;
 
         // This check is sufficient because we assert earlier that the range is a valid range in which "last" is larger or equal to "start"
-        assert!(range.last < region_data.base_ptr.len());
+        assert!(range.last < base_ptr.len());
 
         let chunk_range = RangeInclusive {
             start: range.start / CHUNK_SIZE,
             last: range.last / CHUNK_SIZE,
         };
 
-        let needs_acquisition = !chunk_range.into_iter().all(|index| {
+        let needs_acquisition = !(chunk_range.start..chunk_range.last + 1).all(|index| {
             // SAFETY: The chunk range is valid for the region due to the previous checks
             unsafe { region_data.owned_chunks.get_unchecked(index) }
         });
@@ -182,10 +183,8 @@ impl<'a> MemoryRegistry<'a> {
             self.acquire_unowned_chunks(id, chunk_range, local_data);
         }
 
-        let region_data = &local_data.region_data_cache[id.0 as usize];
-
         // SAFETY: The start offset is within a chunk that we own, and within the allocation we made
-        let slice_base_ptr = unsafe { region_data.base_ptr.cast::<u8>().as_ptr().add(range.start) };
+        let slice_base_ptr = unsafe { base_ptr.cast::<u8>().as_ptr().add(range.start) };
 
         // SAFETY: The slice is valid for the region and we own the chunks in the range
         //
