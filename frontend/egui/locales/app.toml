@@ -75,6 +75,9 @@ en = "Graphics"
 [settings.graphics_api]
 en = "Graphics API"
 
+[settings.shader]
+en = "Shader"
+
 [settings.requires_restart]
 en = "Takes effect after restarting"
 

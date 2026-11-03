@@ -1,6 +1,7 @@
 use egui::{Align, ComboBox, Grid, Layout, ScrollArea, Slider, Ui, WidgetText};
 use fluxemu_environment::graphics::GraphicsApi;
 use fluxemu_frontend::Platform;
+use fluxemu_graphics::shader::ShaderType;
 use rust_i18n::t;
 use strum::IntoEnumIterator;
 
@@ -41,6 +42,20 @@ impl<P: Platform> Frontend<P> {
                                         &mut environment.graphics.api,
                                         api,
                                         api.to_string(),
+                                    );
+                                }
+                            });
+                        ui.end_row();
+
+                        ui.label(t!("settings.shader"));
+                        ComboBox::from_id_salt("shader")
+                            .selected_text(environment.graphics.shader.to_string())
+                            .show_ui(ui, |ui| {
+                                for shader in ShaderType::iter() {
+                                    ui.selectable_value(
+                                        &mut environment.graphics.shader,
+                                        shader,
+                                        shader.to_string(),
                                     );
                                 }
                             });

@@ -7,5 +7,3 @@ pub struct ShaderUniform {
     pub viewport_size: Vector2<f32>,
     pub framebuffer_size: Vector2<f32>,
 }
-
-pub const NORMAL_SHADER: &str = include_str!("normal.wgsl");

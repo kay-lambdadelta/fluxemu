@@ -2,6 +2,7 @@ use fluxemu_egui_software_renderer::{Renderer, callback::Callback};
 use fluxemu_frontend_egui::rendering::{EguiCapableGraphicsRuntime, software::FramebufferCallback};
 use fluxemu_graphics::{
     api::{GraphicsApi, software::Software},
+    shader::ShaderType,
     texture::{AsViewTexture, CopyMode, CowTexture, OwnedTexture},
 };
 use fluxemu_runtime::graphics::GraphicsRequirements;
@@ -59,6 +60,7 @@ impl EguiCapableGraphicsRuntime for GraphicsRuntime {
         &mut self,
         rect: egui::Rect,
         framebuffer: &<Self::GraphicsApi as GraphicsApi>::Framebuffer,
+        _shader: ShaderType,
     ) -> egui::PaintCallback {
         let mut converted_framebuffer =
             OwnedTexture::from_value(framebuffer.width(), framebuffer.height(), BLACK.into());

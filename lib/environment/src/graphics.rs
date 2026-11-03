@@ -1,3 +1,4 @@
+use fluxemu_graphics::shader::ShaderType;
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumIter};
 
@@ -31,6 +32,8 @@ pub struct GraphicsSettings {
     pub integer_scaling: bool,
     /// Api to use
     pub api: GraphicsApi,
+    #[serde(default)]
+    pub shader: ShaderType,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]

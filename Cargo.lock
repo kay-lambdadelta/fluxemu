@@ -1990,6 +1990,7 @@ version = "0.0.1"
 dependencies = [
  "confique",
  "dirs",
+ "fluxemu-graphics",
  "fluxemu-input",
  "fluxemu-program",
  "fluxemu-runtime",
@@ -2088,6 +2089,7 @@ dependencies = [
  "palette",
  "rayon",
  "serde",
+ "strum",
  "wgpu",
 ]
 

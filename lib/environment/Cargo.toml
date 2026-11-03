@@ -8,6 +8,7 @@ license = { workspace = true }
 
 [dependencies]
 confique = { workspace = true }
+fluxemu-graphics = { workspace = true }
 fluxemu-input = { workspace = true }
 fluxemu-program = { workspace = true }
 fluxemu-runtime = { workspace = true }

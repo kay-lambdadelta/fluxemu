@@ -8,6 +8,7 @@ use fluxemu_graphics::{
         GraphicsApi,
         webgpu::{InitializationData, Webgpu},
     },
+    shader::ShaderType,
     texture::CowTexture,
 };
 use fluxemu_runtime::graphics::GraphicsRequirements;
@@ -147,8 +148,12 @@ impl ConfigurationDependentData {
 
         surface.configure(&device, &surface_config);
 
-        let framebuffer_callback_resources =
-            Resources::new(device.clone(), queue.clone(), surface_config.format);
+        let framebuffer_callback_resources = Resources::new(
+            device.clone(),
+            queue.clone(),
+            surface_config.format,
+            ShaderType::default(),
+        );
 
         let renderer = Renderer::new(
             &device,

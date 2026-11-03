@@ -2,7 +2,7 @@ use egui::{Context, FullOutput, PaintCallback};
 use egui_wgpu::{Callback, ScreenDescriptor};
 use fluxemu_frontend::graphics::GraphicsRuntime;
 use fluxemu_frontend_egui::rendering::{EguiCapableGraphicsRuntime, webgpu::FramebufferCallback};
-use fluxemu_graphics::api::GraphicsApi;
+use fluxemu_graphics::{api::GraphicsApi, shader::ShaderType};
 use palette::Srgb;
 use wgpu::{
     CommandEncoderDescriptor, CurrentSurfaceTexture, LoadOp, Operations, RenderPassColorAttachment,
@@ -118,11 +118,16 @@ impl<D: WebgpuCompatibleDisplayContext> EguiCapableGraphicsRuntime for WebgpuGra
         &mut self,
         rect: egui::Rect,
         framebuffer: &<Self::GraphicsApi as GraphicsApi>::Framebuffer,
+        shader: ShaderType,
     ) -> PaintCallback {
         let ConfigurationDependentData {
             framebuffer_callback_resources,
             ..
         } = self.configuration_dependent_data.as_mut().unwrap();
+
+        if framebuffer_callback_resources.shader() != shader {
+            *framebuffer_callback_resources = framebuffer_callback_resources.with_shader(shader);
+        }
 
         let framebuffer = framebuffer.clone();
 

@@ -218,6 +218,7 @@ impl<P: Platform> Frontend<P> {
         {
             let runtime = machine.enter_runtime();
             let framebuffer = runtime.list_framebuffers().next().unwrap();
+            let shader = self.core.environment().graphics.shader;
 
             let callback = runtime
                 .read_framebuffer::<P::GraphicsApi, _>(
@@ -235,7 +236,7 @@ impl<P: Platform> Frontend<P> {
                             controller.set_paused(false);
                         }
 
-                        graphics_runtime.produce_callback_for_framebuffer(rect, framebuffer)
+                        graphics_runtime.produce_callback_for_framebuffer(rect, framebuffer, shader)
                     },
                 )
                 .unwrap();

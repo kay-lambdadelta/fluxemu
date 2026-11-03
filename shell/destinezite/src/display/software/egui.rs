@@ -3,6 +3,7 @@ use fluxemu_egui_software_renderer::callback::Callback;
 use fluxemu_frontend_egui::rendering::{EguiCapableGraphicsRuntime, software::FramebufferCallback};
 use fluxemu_graphics::{
     api::GraphicsApi,
+    shader::ShaderType,
     texture::{AsViewTextureMut, CopyMode, OwnedTexture},
 };
 use palette::{Srgb, cast::Packed, named::BLACK, rgb::channels::Bgra};
@@ -45,6 +46,7 @@ impl<D: SoftwareCompatibleDisplayContext> EguiCapableGraphicsRuntime
         &mut self,
         rect: egui::Rect,
         framebuffer: &<Self::GraphicsApi as GraphicsApi>::Framebuffer,
+        _shader: ShaderType,
     ) -> PaintCallback {
         let mut converted_framebuffer = OwnedTexture::<Packed<Bgra, [u8; 4]>>::from_value(
             framebuffer.width(),

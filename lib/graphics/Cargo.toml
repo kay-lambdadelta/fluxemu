@@ -13,6 +13,7 @@ nalgebra = { workspace = true }
 palette = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true }
+strum = { workspace = true }
 wgpu = { workspace = true, optional = true }
 
 [features]

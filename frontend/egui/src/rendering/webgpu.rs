@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use egui::PaintCallbackInfo;
 use egui_wgpu::{CallbackResources, CallbackTrait};
-use fluxemu_graphics::api::webgpu::shader::{NORMAL_SHADER, ShaderUniform};
+use fluxemu_graphics::{
+    api::webgpu::shader::ShaderUniform,
+    shader::{BUILTIN_SHADERS, ShaderLanguage, ShaderType},
+};
 use nalgebra::Vector2;
 use wgpu::{
     BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
@@ -23,13 +26,20 @@ pub struct Resources {
     sampler: Sampler,
     device: Device,
     queue: Queue,
+    view_format: TextureFormat,
+    shader: ShaderType,
 }
 
 impl Resources {
-    pub fn new(device: Device, queue: Queue, view_format: TextureFormat) -> Arc<Self> {
-        let shader = device.create_shader_module(ShaderModuleDescriptor {
+    pub fn new(
+        device: Device,
+        queue: Queue,
+        view_format: TextureFormat,
+        shader: ShaderType,
+    ) -> Arc<Self> {
+        let shader_module = device.create_shader_module(ShaderModuleDescriptor {
             label: None,
-            source: ShaderSource::Wgsl(NORMAL_SHADER.into()),
+            source: ShaderSource::Wgsl(BUILTIN_SHADERS[&shader][&ShaderLanguage::Wgsl].into()),
         });
 
         let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
@@ -74,13 +84,13 @@ impl Resources {
             label: None,
             layout: Some(&pipeline_layout),
             vertex: VertexState {
-                module: &shader,
+                module: &shader_module,
                 entry_point: Some("vs_main"),
                 buffers: &[],
                 compilation_options: PipelineCompilationOptions::default(),
             },
             fragment: Some(FragmentState {
-                module: &shader,
+                module: &shader_module,
                 entry_point: Some("fs_main"),
                 targets: &[Some(ColorTargetState {
                     format: view_format,
@@ -116,7 +126,22 @@ impl Resources {
             sampler,
             device,
             queue,
+            view_format,
+            shader,
         })
+    }
+
+    pub fn shader(&self) -> ShaderType {
+        self.shader
+    }
+
+    pub fn with_shader(&self, shader: ShaderType) -> Arc<Self> {
+        Self::new(
+            self.device.clone(),
+            self.queue.clone(),
+            self.view_format,
+            shader,
+        )
     }
 }
 

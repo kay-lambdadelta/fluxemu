@@ -1,6 +1,6 @@
 use egui::{Context, FullOutput, PaintCallback};
 use fluxemu_frontend::graphics::GraphicsRuntime;
-use fluxemu_graphics::api::GraphicsApi;
+use fluxemu_graphics::{api::GraphicsApi, shader::ShaderType};
 use palette::Srgb;
 
 pub mod software;
@@ -14,5 +14,6 @@ pub trait EguiCapableGraphicsRuntime: GraphicsRuntime {
         &mut self,
         rect: egui::Rect,
         framebuffer: &<Self::GraphicsApi as GraphicsApi>::Framebuffer,
+        shader: ShaderType,
     ) -> PaintCallback;
 }
