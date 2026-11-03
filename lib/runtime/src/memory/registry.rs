@@ -152,8 +152,11 @@ impl<'a> MemoryRegistry<'a> {
         &self.runtime.local_data().memory_registry_data
     }
 
+    /// # Safety
+    ///
+    /// `id` must come from this registry and `range` must lie within that region
     #[inline(always)]
-    fn get_memory_of_region(
+    unsafe fn get_memory_of_region(
         &self,
         id: MemoryId,
         range: RangeInclusive<usize>,
@@ -163,11 +166,11 @@ impl<'a> MemoryRegistry<'a> {
         assert!(!range.is_empty());
 
         let local_data = unsafe { &mut *self.local_data().get() };
-        let region_data = &local_data.region_data_cache[id.0 as usize];
+        // SAFETY: The caller guarantees `id` came from this registry, which has one cache entry per region
+        let region_data = unsafe { local_data.region_data_cache.get_unchecked(id.0 as usize) };
         let base_ptr = region_data.base_ptr;
 
-        // This check is sufficient because we assert earlier that the range is a valid range in which "last" is larger or equal to "start"
-        assert!(range.last < base_ptr.len());
+        debug_assert!(range.last < base_ptr.len());
 
         let chunk_range = RangeInclusive {
             start: range.start / CHUNK_SIZE,
@@ -175,7 +178,7 @@ impl<'a> MemoryRegistry<'a> {
         };
 
         let needs_acquisition = !(chunk_range.start..chunk_range.last + 1).all(|index| {
-            // SAFETY: The chunk range is valid for the region due to the previous checks
+            // SAFETY: The caller guarantees the range is within the region, so the chunk range is too
             unsafe { region_data.owned_chunks.get_unchecked(index) }
         });
 
@@ -273,32 +276,44 @@ impl<'a> MemoryRegistry<'a> {
         }
     }
 
+    /// # Safety
+    ///
+    /// `id` must come from this registry and `offset..offset + buffer.len()` must lie within that region
     #[inline]
-    pub fn read(&self, id: MemoryId, offset: usize, buffer: &mut [u8]) {
+    pub unsafe fn read(&self, id: MemoryId, offset: usize, buffer: &mut [u8]) {
         let range = RangeInclusive::from_start_and_length(offset, buffer.len());
 
-        self.get_memory_of_region(
-            id,
-            range,
-            #[inline]
-            |relevant_region_memory| {
-                buffer.copy_from_slice(relevant_region_memory);
-            },
-        );
+        // SAFETY: Forwarded from the caller
+        unsafe {
+            self.get_memory_of_region(
+                id,
+                range,
+                #[inline]
+                |relevant_region_memory| {
+                    buffer.copy_from_slice(relevant_region_memory);
+                },
+            );
+        }
     }
 
+    /// # Safety
+    ///
+    /// `id` must come from this registry and `offset..offset + buffer.len()` must lie within that region
     #[inline]
-    pub fn write(&self, id: MemoryId, offset: usize, buffer: &[u8]) {
+    pub unsafe fn write(&self, id: MemoryId, offset: usize, buffer: &[u8]) {
         let range = RangeInclusive::from_start_and_length(offset, buffer.len());
 
-        self.get_memory_of_region(
-            id,
-            range,
-            #[inline]
-            |relevant_region_memory| {
-                relevant_region_memory.copy_from_slice(buffer);
-            },
-        );
+        // SAFETY: Forwarded from the caller
+        unsafe {
+            self.get_memory_of_region(
+                id,
+                range,
+                #[inline]
+                |relevant_region_memory| {
+                    relevant_region_memory.copy_from_slice(buffer);
+                },
+            );
+        }
     }
 
     #[inline]

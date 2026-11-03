@@ -93,6 +93,10 @@ impl AddressSpaceData {
                                 RangeInclusive::from_start_and_length(0, region_size)
                             });
 
+                            assert!(
+                                *subrange.end() < region_size,
+                                "Subrange {subrange:#x?} does not fit within memory region {path}"
+                            );
                             assert!(range.len() <= subrange.len());
 
                             MasterTableEntry::Memory {

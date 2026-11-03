@@ -59,9 +59,12 @@ impl AddressSpace<'_> {
                         } => {
                             let destination = destination_start + offset;
 
-                            self.runtime
-                                .memory_registry()
-                                .read(*id, destination, adjusted);
+                            // SAFETY: `commit` only creates memory entries for registered regions that fit within them, and the access lies within this entry
+                            unsafe {
+                                self.runtime
+                                    .memory_registry()
+                                    .read(*id, destination, adjusted);
+                            }
 
                             // HACK:
                             //
@@ -160,11 +163,14 @@ impl AddressSpace<'_> {
                     offset: destination_start,
                     id,
                 } => {
-                    self.runtime.memory_registry().read(
-                        *id,
-                        destination_start + offset,
-                        buffer.as_mut(),
-                    );
+                    // SAFETY: `commit` only creates memory entries for registered regions that fit within them, and the access lies within this entry
+                    unsafe {
+                        self.runtime.memory_registry().read(
+                            *id,
+                            destination_start + offset,
+                            buffer.as_mut(),
+                        );
+                    }
 
                     return Ok(buffer);
                 }
@@ -220,9 +226,12 @@ impl AddressSpace<'_> {
                         } => {
                             let destination = destination_start + offset;
 
-                            self.runtime
-                                .memory_registry()
-                                .write(*id, destination, adjusted);
+                            // SAFETY: `commit` only creates memory entries for registered regions that fit within them, and the access lies within this entry
+                            unsafe {
+                                self.runtime
+                                    .memory_registry()
+                                    .write(*id, destination, adjusted);
+                            }
                         }
                         PageTableTarget::Component {
                             offset: destination_start,
