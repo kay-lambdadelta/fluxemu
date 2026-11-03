@@ -38,7 +38,7 @@ jobs:
             platform: debian
             dependencies: debian-nuttx
             shell: nuttallite
-            tools: cargo install --git https://github.com/kay-lambdadelta/cargo-nuttx --locked
+            tools: cargo install cargo-nuttx --locked
             build: cargo nuttx build -b raspberrypi-pico-2 -r --no-default-features --features egui
             artifact_name: fluxemu-shell-nuttallite-(raspberrypi-pico-2)-uf2
             artifact_path: target/nuttx/raspberrypi-pico-2/release/nuttx.uf2

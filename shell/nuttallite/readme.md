@@ -18,10 +18,10 @@ For example, to build for the Raspberry Pi Pico/Pico 2 you will need
 
 ## Building
 
-Building uses the [cargo nuttx](https://github.com/kay-lambdadelta/cargo-nuttx) helper tool, install it with
+Building uses the [cargo nuttx](https://crates.io/crates/cargo-nuttx) helper tool, install it with
 
 ```sh
-cargo install --git https://github.com/kay-lambdadelta/cargo-nuttx --locked
+cargo install cargo-nuttx --locked
 ```
 
 To build, switch the workspace to the nuttallite toolchain and run cargo nuttx
