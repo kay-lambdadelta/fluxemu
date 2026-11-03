@@ -1,4 +1,4 @@
-use std::{hint::black_box, range::RangeInclusive, sync::Arc};
+use std::{range::RangeInclusive, sync::Arc};
 
 use fluxemu_math::range::{ContiguousRange, RangeIntersection};
 use num::traits::{FromBytes, ToBytes, ops::bytes::NumBytes};
@@ -65,13 +65,6 @@ impl AddressSpace<'_> {
                                     .memory_registry()
                                     .read(*id, destination, adjusted);
                             }
-
-                            // HACK:
-                            //
-                            // Do not allow the copy at the end of both of these blocks to be merged
-                            //
-                            // LLVM often gets confused and generates an actual memcpy, causing a severe perf regression
-                            black_box(());
                         }
                         PageTableTarget::Component {
                             offset: destination_start,
