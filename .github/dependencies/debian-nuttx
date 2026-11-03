@@ -7,3 +7,4 @@ jq
 kconfig-frontends
 gcc-arm-none-eabi
 picotool
+unzip
