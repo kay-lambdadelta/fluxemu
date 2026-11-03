@@ -50,13 +50,13 @@ pub struct Mmc1 {
     chr_rom_bank_indexes: [u8; 2],
     prg_rom_bank_mode: PrgRomBankMode,
     prg_rom_bank_index: u8,
-    mirroring: Mirroring,
+    mirroring: Option<Mirroring>,
     config: Mmc1Config,
 }
 
 impl Mmc1 {
-    fn update_banking(&mut self, runtime: &RuntimeHandle) {
-        // Note that this is temporally sound to do both as seperate operations because
+    fn update_prg_banking(&mut self, runtime: &RuntimeHandle) {
+        // Note that this is temporally sound to do these as seperate operations because
         //
         // 1: Remappings can only be triggered by the cpu
         // 2: The ppu cannot overrun the cpu's timestamp
@@ -101,6 +101,10 @@ impl Mmc1 {
             .address_space(self.config.params.cpu_address_space)
             .unwrap()
             .remap(timestamp, cpu_commands);
+    }
+
+    fn update_chr_banking(&mut self, runtime: &RuntimeHandle) {
+        let timestamp = runtime.current_timestamp();
 
         if let Some(chr_rom) = self.config.params.chr_rom.as_ref() {
             let mut ppu_commands = Vec::new();
@@ -155,11 +159,15 @@ impl Mmc1 {
     }
 
     fn update_nametables(&mut self, runtime: &RuntimeHandle) {
+        let Some(mirroring) = &self.mirroring else {
+            return;
+        };
+
         let timestamp = runtime.current_timestamp();
 
         let [nametable_0, nametable_1] = &self.config.params.nametables;
 
-        let commands = match self.mirroring {
+        let commands = match mirroring {
             Mirroring::OneScreenLower => vec![
                 MemoryMapCommand::Map {
                     range: NAMETABLE_ADDRESSES[0].clone(),
@@ -314,14 +322,19 @@ impl Component for Mmc1 {
 
                     if reset {
                         self.shift_register = ShiftRegister::default();
-                        self.prg_rom_bank_mode = PrgRomBankMode::LockLastBank;
 
-                        self.update_banking(runtime);
+                        if self.prg_rom_bank_mode != PrgRomBankMode::LockLastBank {
+                            self.prg_rom_bank_mode = PrgRomBankMode::LockLastBank;
+                            self.update_prg_banking(runtime);
+                        }
+
                         continue;
                     }
 
                     if let Some(value) = self.shift_register.shift(shift_in_bit) {
-                        let remap;
+                        let mut remap_prg = false;
+                        let mut remap_chr = false;
+                        let mut remap_nametables = false;
 
                         match address {
                             0x8000..=0x9fff => {
@@ -346,40 +359,48 @@ impl Component for Mmc1 {
                                     _ => unreachable!(),
                                 };
 
-                                remap = chr_rom_bank_mode != self.chr_rom_bank_mode
-                                    || prg_rom_bank_mode != self.prg_rom_bank_mode
-                                    || mirroring != self.mirroring;
+                                remap_chr = chr_rom_bank_mode != self.chr_rom_bank_mode;
+                                remap_prg = prg_rom_bank_mode != self.prg_rom_bank_mode;
+                                remap_nametables = self.mirroring.as_ref() != Some(&mirroring);
 
                                 self.chr_rom_bank_mode = chr_rom_bank_mode;
                                 self.prg_rom_bank_mode = prg_rom_bank_mode;
-                                self.mirroring = mirroring;
+                                self.mirroring = Some(mirroring);
                             }
                             0xa000..=0xbfff => {
                                 let index = value & 0b0001_1111;
 
-                                remap = index != self.chr_rom_bank_indexes[0];
+                                remap_chr = index != self.chr_rom_bank_indexes[0];
 
                                 self.chr_rom_bank_indexes[0] = index;
                             }
                             0xc000..=0xdfff => {
                                 let index = value & 0b0001_1111;
 
-                                remap = index != self.chr_rom_bank_indexes[1];
+                                remap_chr = index != self.chr_rom_bank_indexes[1]
+                                    && self.chr_rom_bank_mode == ChrRomBankMode::Split4k;
 
                                 self.chr_rom_bank_indexes[1] = index;
                             }
                             0xe000..=0xffff => {
                                 let index = value & 0b0000_1111;
 
-                                remap = index != self.prg_rom_bank_index;
+                                remap_prg = index != self.prg_rom_bank_index;
 
                                 self.prg_rom_bank_index = index;
                             }
                             _ => unreachable!(),
                         }
 
-                        if remap {
-                            self.update_banking(runtime);
+                        if remap_prg {
+                            self.update_prg_banking(runtime);
+                        }
+
+                        if remap_chr {
+                            self.update_chr_banking(runtime);
+                        }
+
+                        if remap_nametables {
                             self.update_nametables(runtime);
                         }
                     }
@@ -402,7 +423,8 @@ impl<P: Platform> ComponentConfig<P> for Mmc1Config {
     fn late_initialize(component: &mut Self::Component, _data: &LateContext<P>) {
         // Force the system to adopt an initial mapping
         RuntimeHandle::with_current(|runtime| {
-            component.update_banking(runtime);
+            component.update_prg_banking(runtime);
+            component.update_chr_banking(runtime);
         });
     }
 
@@ -494,7 +516,7 @@ impl<P: Platform> ComponentConfig<P> for Mmc1Config {
             chr_rom_bank_indexes: [0, 0],
             prg_rom_bank_mode: PrgRomBankMode::LockLastBank,
             prg_rom_bank_index: 0,
-            mirroring: Mirroring::Horizontal,
+            mirroring: None,
         })
     }
 }
