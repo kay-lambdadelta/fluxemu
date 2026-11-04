@@ -29,6 +29,8 @@ firmware-file = "nuttx.uf2"
 runner = ["picotool", "load", "-x"]
 
 # NOTE: Rust's support for nuttx has no x86 stuff wired up, so we hardcode to aarch64 here
+#
+# If you are on a x86 machine, install qemu-user and enable multilib on your distro, then install `libx11-dev:arm64 libxext-dev:arm64`
 [package.metadata.nuttx.boards.sim]
 target = "aarch64-unknown-nuttx"
 firmware-file = "nuttx"
