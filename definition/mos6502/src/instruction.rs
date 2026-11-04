@@ -927,9 +927,10 @@ impl<V: Variant> Mos6502<V> {
         self.state.cycle_queue.clear();
 
         self.state.cycle_queue.extend([
+            Cycle::dummy(),
             Cycle::new(
                 BusMode::Read,
-                None,
+                Some(Phi1Source::Stack),
                 [Phi2::IncrementStack { subtract: false }],
             ),
             Cycle::new(
@@ -946,17 +947,19 @@ impl<V: Variant> Mos6502<V> {
             Cycle::new(
                 BusMode::Read,
                 Some(Phi1Source::Stack),
-                [Phi2::Move {
-                    source: MoveSource::Data,
-                    destination: MoveDestination::EffectiveAddress,
-                }],
+                [
+                    Phi2::Move {
+                        source: MoveSource::Data,
+                        destination: MoveDestination::EffectiveAddress,
+                    },
+                    Phi2::LoadInstructionPointerFromEffectiveAddress,
+                ],
             ),
             Cycle::new(
                 BusMode::Read,
-                None,
-                [Phi2::LoadInstructionPointerFromEffectiveAddress],
+                Some(Phi1Source::InstructionPointer),
+                [Phi2::IncrementInstructionPointer],
             ),
-            Cycle::new(BusMode::Read, None, [Phi2::IncrementInstructionPointer]),
         ]);
     }
 
@@ -965,9 +968,10 @@ impl<V: Variant> Mos6502<V> {
         self.state.cycle_queue.clear();
 
         self.state.cycle_queue.extend([
+            Cycle::dummy(),
             Cycle::new(
                 BusMode::Read,
-                None,
+                Some(Phi1Source::Stack),
                 [Phi2::IncrementStack { subtract: false }],
             ),
             Cycle::new(
@@ -995,15 +999,13 @@ impl<V: Variant> Mos6502<V> {
             Cycle::new(
                 BusMode::Read,
                 Some(Phi1Source::Stack),
-                [Phi2::Move {
-                    source: MoveSource::Data,
-                    destination: MoveDestination::EffectiveAddress,
-                }],
-            ),
-            Cycle::new(
-                BusMode::Read,
-                None,
-                [Phi2::LoadInstructionPointerFromEffectiveAddress],
+                [
+                    Phi2::Move {
+                        source: MoveSource::Data,
+                        destination: MoveDestination::EffectiveAddress,
+                    },
+                    Phi2::LoadInstructionPointerFromEffectiveAddress,
+                ],
             ),
         ]);
     }
@@ -1094,6 +1096,7 @@ impl<V: Variant> Mos6502<V> {
                     },
                 ],
             ),
+            Cycle::new(BusMode::Read, Some(Phi1Source::Stack), []),
             Cycle::new(
                 BusMode::Write,
                 Some(Phi1Source::Stack),
@@ -1120,17 +1123,12 @@ impl<V: Variant> Mos6502<V> {
                 BusMode::Read,
                 Some(Phi1Source::InstructionPointer),
                 [
-                    Phi2::IncrementInstructionPointer,
                     Phi2::Move {
                         source: MoveSource::Data,
                         destination: MoveDestination::EffectiveAddress,
                     },
+                    Phi2::LoadInstructionPointerFromEffectiveAddress,
                 ],
-            ),
-            Cycle::new(
-                BusMode::Read,
-                None,
-                [Phi2::LoadInstructionPointerFromEffectiveAddress],
             ),
         ]);
     }
@@ -1161,7 +1159,7 @@ impl<V: Variant> Mos6502<V> {
 
             self.state.cycle_queue.extend([Cycle::new(
                 BusMode::Read,
-                None,
+                Some(Phi1Source::InstructionPointer),
                 [Phi2::AddToPointerLikeRegister {
                     adjustment: IndexAdjustment::OnCarry,
                     source: AddToPointerLikeRegisterSource::Operand,
@@ -1535,10 +1533,10 @@ impl<V: Variant> Mos6502<V> {
         self.state.cycle_queue.clear();
 
         self.state.cycle_queue.extend([
-            Cycle::new(BusMode::Read, None, []),
+            Cycle::dummy(),
             Cycle::new(
                 BusMode::Read,
-                None,
+                Some(Phi1Source::Stack),
                 [Phi2::IncrementStack { subtract: false }],
             ),
             Cycle::new(

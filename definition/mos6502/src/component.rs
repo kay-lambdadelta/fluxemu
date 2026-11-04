@@ -336,6 +336,12 @@ impl<V: Variant> Mos6502<V> {
 
                     self.state.consume_effective_address = true;
                 }
+                Some(Phi1Source::UnfixedEffectiveAddress) => {
+                    self.state.bus.address = u16::from_le_bytes([
+                        self.state.effective_address[0],
+                        self.state.effective_address[1],
+                    ]);
+                }
                 Some(Phi1Source::Constant(value)) => {
                     self.state.bus.address = value;
                 }

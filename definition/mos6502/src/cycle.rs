@@ -67,6 +67,7 @@ pub enum Flag {
 pub enum Phi1Source {
     InstructionPointer,
     EffectiveAddress,
+    UnfixedEffectiveAddress,
     Constant(u16),
     Stack,
 }
@@ -209,6 +210,6 @@ impl Cycle {
 
     #[inline]
     pub fn dummy() -> Self {
-        Self::new(BusMode::Read, None, [])
+        Self::new(BusMode::Read, Some(Phi1Source::InstructionPointer), [])
     }
 }

@@ -476,7 +476,19 @@ impl<V: Variant> Mos6502<V> {
         if !adjustment_steps.is_empty() {
             self.state
                 .cycle_queue
-                .push_front(Cycle::new(BusMode::Read, None, adjustment_steps))
+                .push_front(Cycle::new(
+                    BusMode::Read,
+                    match destination {
+                        PointerLikeRegister::AddressBus => None,
+                        PointerLikeRegister::EffectiveAddress => {
+                            Some(Phi1Source::UnfixedEffectiveAddress)
+                        }
+                        PointerLikeRegister::InstructionPointer => {
+                            Some(Phi1Source::InstructionPointer)
+                        }
+                    },
+                    adjustment_steps,
+                ))
                 .unwrap();
         }
     }
