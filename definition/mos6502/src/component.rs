@@ -347,9 +347,11 @@ impl<V: Variant> Mos6502<V> {
 
             let is_read_cycle = match current_cycle.bus_mode {
                 BusMode::Read => {
-                    self.state.bus.data = address_space
+                    if let Ok(data) = address_space
                         .read_le_value::<_, false>(self.state.bus.address as Address, timestamp)
-                        .unwrap_or_default();
+                    {
+                        self.state.bus.data = data;
+                    }
 
                     true
                 }

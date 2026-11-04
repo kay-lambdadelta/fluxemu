@@ -56,7 +56,7 @@ impl Component for StandardNesControllers {
         } else {
             true
         };
-        buffer[0] = (buffer[0] & 0b1111_1110) | key_value as u8;
+        buffer[0] = ((address >> 8) as u8 & 0b1110_0000) | key_value as u8;
 
         if !avoid_side_effects && !self.state.strobe && current_read < READ_ORDER.len() as u8 {
             self.state.current_reads[controller_index] += 1;
