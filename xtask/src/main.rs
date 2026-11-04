@@ -8,6 +8,7 @@ use clap::Parser;
 
 const TOOLCHAIN_FILE: &str = "rust-toolchain.toml";
 const CARGO_CONFIG_FILE: &str = ".cargo/config.toml";
+const ZED_SETTINGS_FILE: &str = ".zed/settings.json";
 const SYMLINK_HINT: &str = cfg_select! {
     windows => " (creating symlinks on Windows requires Developer Mode)",
     _ => "",
@@ -67,25 +68,27 @@ fn switch(workspace_root: &Path, shell: &str) -> Result<(), Error> {
     remove_symlink(&toolchain_link)?;
     create_symlink(&shell_directory.join(TOOLCHAIN_FILE), &toolchain_link)?;
 
-    let cargo_config_link = workspace_root.join(CARGO_CONFIG_FILE);
-    remove_symlink(&cargo_config_link)?;
-
-    if workspace_root
-        .join(&shell_directory)
-        .join(CARGO_CONFIG_FILE)
-        .exists()
-    {
-        std::fs::create_dir_all(cargo_config_link.parent().unwrap())?;
-
-        create_symlink(
-            &Path::new("..")
-                .join(&shell_directory)
-                .join(CARGO_CONFIG_FILE),
-            &cargo_config_link,
-        )?;
-    }
+    switch_optional_link(workspace_root, &shell_directory, CARGO_CONFIG_FILE)?;
+    switch_optional_link(workspace_root, &shell_directory, ZED_SETTINGS_FILE)?;
 
     println!("Switched to {}", shell);
+
+    Ok(())
+}
+
+fn switch_optional_link(
+    workspace_root: &Path,
+    shell_directory: &Path,
+    file: &str,
+) -> Result<(), Error> {
+    let link = workspace_root.join(file);
+    remove_symlink(&link)?;
+
+    if workspace_root.join(shell_directory).join(file).exists() {
+        std::fs::create_dir_all(link.parent().unwrap())?;
+
+        create_symlink(&Path::new("..").join(shell_directory).join(file), &link)?;
+    }
 
     Ok(())
 }

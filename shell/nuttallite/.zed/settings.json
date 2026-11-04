@@ -1,0 +1,37 @@
+{
+  "lsp": {
+    "rust-analyzer": {
+      "initialization_options": {
+        "cargo": {
+          "target": "thumbv8m.main-nuttx-eabihf",
+          "buildScripts": {
+            "overrideCommand": [
+              "cargo",
+              "nuttx",
+              "check",
+              "-b",
+              "raspberrypi-pico-2",
+              "--no-default-features",
+              "--features",
+              "egui",
+              "--message-format=json",
+            ],
+          },
+        },
+        "check": {
+          "overrideCommand": [
+            "cargo",
+            "nuttx",
+            "clippy",
+            "-b",
+            "raspberrypi-pico-2",
+            "--no-default-features",
+            "--features",
+            "egui",
+            "--message-format=json",
+          ],
+        },
+      },
+    },
+  },
+}

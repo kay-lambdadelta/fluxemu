@@ -32,9 +32,7 @@ compile_error!(
     "No frontend enabled, please enable one of the supported frontends (egui and/or ratatui)"
 );
 
-#[cfg(target_os = "nuttx")]
 mod storage;
-#[cfg(target_os = "nuttx")]
 mod sys;
 
 static ALREADY_RAN: AtomicBool = AtomicBool::new(false);
@@ -69,7 +67,7 @@ unsafe extern "C" fn fluxemu_shell_nuttallite_main(argc: i32, argv: *const *cons
     match main(&arguments) {
         Ok(_) => 0,
         Err(err) => {
-            println!("{}", err);
+            eprintln!("{:?}", err);
 
             1
         }
@@ -102,10 +100,7 @@ impl FrontendSelection {
 }
 
 fn main(arguments: &[String]) -> Result<(), Box<dyn std::error::Error>> {
-    #[cfg(target_os = "nuttx")]
-    {
-        storage::mount_storage_partition()?;
-    }
+    storage::mount_storage_partition()?;
 
     let environment = load_environment();
     let frontend_selection = FrontendSelection::from_arguments(arguments);

@@ -19,12 +19,14 @@ target = "thumbv8m.main-nuttx-eabihf"
 target-cpu = "cortex-m33"
 opt-level = "z"
 firmware-file = "nuttx.uf2"
+runner = ["picotool", "load", "-x"]
 
 [package.metadata.nuttx.boards.raspberrypi-pico]
 target = "thumbv6m-nuttx-eabi"
 target-cpu = "cortex-m0plus"
 opt-level = "z"
 firmware-file = "nuttx.uf2"
+runner = ["picotool", "load", "-x"]
 
 [lib]
 crate-type = ["staticlib"]
