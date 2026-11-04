@@ -4,7 +4,7 @@ _version = 2
 en = "Execution timeslice"
 
 [simulation_controller.target_timeslice]
-en = "Execution timeslice"
+en = "Target timeslice"
 
 [simulation_controller.hardware_speed]
 en = "Realtime throughput factor"
@@ -13,7 +13,7 @@ en = "Realtime throughput factor"
 en = "Jitter Ratio"
 
 [browser.cannot_navigate_to_directory]
-en = "Not a directory that can accessed, check permissions"
+en = "Not a directory that can be accessed, check permissions"
 
 [browser.open_native_file_dialog]
 en = "Open your operating systems native file dialog"
