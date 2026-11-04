@@ -1,16 +1,19 @@
 use std::{
     borrow::Cow,
     sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel},
-    time::Duration,
+    time::Instant,
 };
 
 use crossterm::event::Event;
 use fluxemu_input::{InputId, InputState, physical::PhysicalInputDeviceInstanceId};
+use fluxemu_runtime::machine::FramebufferListener;
 
 #[derive(Debug)]
 pub(crate) enum Message {
     Terminal(Event),
     TerminalError(std::io::Error),
+    MachineFrame,
+    OutputIdle,
     GamepadConnected {
         id: PhysicalInputDeviceInstanceId,
         name: Cow<'static, str>,
@@ -62,6 +65,12 @@ impl ExternalInputSender {
     }
 }
 
+impl FramebufferListener for ExternalInputSender {
+    fn framebuffer_written(&self) {
+        self.send(Message::MachineFrame);
+    }
+}
+
 #[derive(Debug)]
 pub struct ExternalInputReceiver {
     sender: ExternalInputSender,
@@ -73,8 +82,15 @@ impl ExternalInputReceiver {
         self.sender.clone()
     }
 
-    pub(crate) fn recv_timeout(&self, timeout: Duration) -> Option<Message> {
-        match self.receiver.recv_timeout(timeout) {
+    pub(crate) fn recv_until(&self, deadline: Option<Instant>) -> Option<Message> {
+        let Some(deadline) = deadline else {
+            return self.receiver.recv().ok();
+        };
+
+        match self
+            .receiver
+            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+        {
             Ok(message) => Some(message),
             Err(RecvTimeoutError::Timeout) => None,
             Err(RecvTimeoutError::Disconnected) => unreachable!(),

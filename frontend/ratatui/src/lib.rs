@@ -4,6 +4,7 @@ mod frontend;
 mod graphics;
 mod input;
 mod machine_view;
+mod output;
 
 pub use event_loop::run;
 pub use external_input::{ExternalInputReceiver, ExternalInputSender, external_input_channel};

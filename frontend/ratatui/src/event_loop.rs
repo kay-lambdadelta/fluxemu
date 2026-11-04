@@ -17,22 +17,24 @@ use crossterm::{
 };
 use fluxemu_frontend::{FrontendCore, Platform, notification::NotificationReceiver};
 use fluxemu_graphics::api::software::Software;
-use ratatui::DefaultTerminal;
+use ratatui::{Terminal, backend::CrosstermBackend};
 use ratatui_image::picker::Picker;
 
 use crate::{
     external_input::{ExternalInputReceiver, ExternalInputSender, Message},
     frontend::Frontend,
+    output::{OutputMonitor, TerminalOutput},
 };
 
 const TERMINAL_POLL_INTERVAL: Duration = Duration::from_millis(100);
+const IDLE_FRAME_INTERVAL: Duration = Duration::from_millis(250);
 
 pub fn run<P: Platform<GraphicsApi = Software>>(
     core: FrontendCore<P>,
     notifications: NotificationReceiver,
     external_input: ExternalInputReceiver,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    ratatui::run(|terminal| {
+    ratatui::run(|_| {
         let picker = Picker::from_query_stdio().unwrap_or_else(|err| {
             tracing::warn!(
                 "Could not query terminal graphics support, falling back to halfblocks: {}",
@@ -67,7 +69,17 @@ pub fn run<P: Platform<GraphicsApi = Software>>(
 
         execute!(stdout(), EnableFocusChange)?;
 
-        let mut frontend = Frontend::new(core, notifications, picker, reports_key_releases)?;
+        let mut frontend = Frontend::new(
+            core,
+            notifications,
+            picker,
+            reports_key_releases,
+            external_input.sender(),
+        )?;
+
+        let output = TerminalOutput::new(external_input.sender())?;
+        let monitor = output.monitor();
+        let mut terminal = Terminal::new(CrosstermBackend::new(output))?;
 
         let should_stop_reading = Arc::new(AtomicBool::new(false));
         let terminal_reader = std::thread::Builder::new()
@@ -79,7 +91,9 @@ pub fn run<P: Platform<GraphicsApi = Software>>(
                 move || read_terminal_events(sender, &should_stop_reading)
             })?;
 
-        let result = event_loop(terminal, &mut frontend, &external_input);
+        let result = event_loop(&mut terminal, &monitor, &mut frontend, &external_input);
+
+        drop(terminal);
 
         should_stop_reading.store(true, Ordering::Relaxed);
         let _ = terminal_reader.join();
@@ -95,7 +109,8 @@ pub fn run<P: Platform<GraphicsApi = Software>>(
 }
 
 fn event_loop<P: Platform<GraphicsApi = Software>>(
-    terminal: &mut DefaultTerminal,
+    terminal: &mut Terminal<CrosstermBackend<TerminalOutput>>,
+    monitor: &OutputMonitor,
     frontend: &mut Frontend<P>,
     external_input: &ExternalInputReceiver,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -108,21 +123,28 @@ fn event_loop<P: Platform<GraphicsApi = Software>>(
             return Ok(());
         }
 
-        if frontend.take_redraw_request() || Instant::now() >= next_frame {
+        let output_is_idle = monitor.is_idle();
+
+        if output_is_idle && (frontend.take_redraw_request() || Instant::now() >= next_frame) {
             if frontend.take_clear_request() {
                 terminal.clear()?;
             }
 
             terminal.draw(|frame| frontend.draw(frame))?;
-            next_frame = Instant::now() + frontend.frame_interval();
+            next_frame = Instant::now() + IDLE_FRAME_INTERVAL;
         }
 
-        let deadline = frontend
-            .next_deadline()
-            .map_or(next_frame, |deadline| deadline.min(next_frame));
+        let deadline = if output_is_idle {
+            Some(
+                frontend
+                    .next_deadline()
+                    .map_or(next_frame, |deadline| deadline.min(next_frame)),
+            )
+        } else {
+            frontend.next_deadline()
+        };
 
-        let mut message =
-            external_input.recv_timeout(deadline.saturating_duration_since(Instant::now()));
+        let mut message = external_input.recv_until(deadline);
 
         while let Some(current_message) = message {
             match current_message {

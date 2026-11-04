@@ -27,13 +27,11 @@ use strum::{AsRefStr, EnumCount, EnumIter, IntoEnumIterator, VariantArray};
 use tracing::Level;
 
 use crate::{
-    external_input::Message,
+    external_input::{ExternalInputSender, Message},
     input::{SyntheticReleaseTracker, crossterm2key, gamepad2key},
     machine_view::MachineView,
 };
 
-const RUNNING_FRAME_INTERVAL: Duration = Duration::from_millis(33);
-const IDLE_FRAME_INTERVAL: Duration = Duration::from_millis(250);
 const MAX_LOG_ENTRIES: usize = 1000;
 const STATUS_NOTIFICATION_DURATION: Duration = Duration::from_secs(5);
 const KEYBOARD: PhysicalInputDeviceInstanceId = PhysicalInputDeviceInstanceId::PLATFORM_RESERVED;
@@ -74,6 +72,8 @@ pub struct Frontend<P: Platform<GraphicsApi = Software>> {
     picker: Picker,
     file_explorer: FileExplorer,
     machine_view: MachineView,
+    external_input: ExternalInputSender,
+    machine_frame_pending: bool,
     current_tab: Tab,
     machine_has_focus: bool,
     log: VecDeque<LogEntry>,
@@ -93,6 +93,7 @@ impl<P: Platform<GraphicsApi = Software>> Frontend<P> {
         notifications: NotificationReceiver,
         picker: Picker,
         reports_key_releases: bool,
+        external_input: ExternalInputSender,
     ) -> std::io::Result<Self> {
         let theme = Theme::default()
             .with_block(Block::bordered())
@@ -119,6 +120,8 @@ impl<P: Platform<GraphicsApi = Software>> Frontend<P> {
             picker,
             file_explorer,
             machine_view: MachineView::default(),
+            external_input,
+            machine_frame_pending: false,
             current_tab: Tab::Files,
             machine_has_focus: false,
             log: VecDeque::default(),
@@ -138,19 +141,13 @@ impl<P: Platform<GraphicsApi = Software>> Frontend<P> {
     }
 
     pub fn take_redraw_request(&mut self) -> bool {
-        std::mem::take(&mut self.redraw_requested)
+        let machine_frame_due = self.current_tab == Tab::Machine && self.machine_frame_pending;
+
+        std::mem::take(&mut self.redraw_requested) || machine_frame_due
     }
 
     pub fn take_clear_request(&mut self) -> bool {
         std::mem::take(&mut self.clear_requested)
-    }
-
-    pub fn frame_interval(&self) -> Duration {
-        if self.current_tab == Tab::Machine && self.machine_is_running() {
-            RUNNING_FRAME_INTERVAL
-        } else {
-            IDLE_FRAME_INTERVAL
-        }
     }
 
     pub fn next_deadline(&self) -> Option<Instant> {
@@ -161,6 +158,10 @@ impl<P: Platform<GraphicsApi = Software>> Frontend<P> {
         self.core.poll();
 
         if self.core.has_pending_machine() && self.core.start_pending_machine(|_| ()) {
+            if let Some(machine) = self.core.machine() {
+                machine.set_framebuffer_listener(self.external_input.clone());
+            }
+
             self.machine_view.clear();
             self.switch_tab(Tab::Machine);
             self.machine_has_focus = true;
@@ -195,7 +196,10 @@ impl<P: Platform<GraphicsApi = Software>> Frontend<P> {
                 input_id,
                 state,
             } => self.handle_external_input(id, input_id, state),
-            Message::TerminalError(_) => {}
+            Message::MachineFrame => {
+                self.machine_frame_pending = true;
+            }
+            Message::OutputIdle | Message::TerminalError(_) => {}
         }
     }
 
@@ -375,12 +379,6 @@ impl<P: Platform<GraphicsApi = Software>> Frontend<P> {
         self.redraw_requested = true;
     }
 
-    fn machine_is_running(&self) -> bool {
-        self.core
-            .controller()
-            .is_some_and(|controller| !controller.get_paused())
-    }
-
     fn handle_core_events(&mut self) {
         for notification in self.notifications.drain() {
             if self.log.len() == MAX_LOG_ENTRIES {
@@ -432,12 +430,12 @@ impl<P: Platform<GraphicsApi = Software>> Frontend<P> {
     }
 
     fn draw_machine(&mut self, frame: &mut Frame, area: Rect) {
-        let is_running = self.machine_is_running();
+        let refresh = std::mem::take(&mut self.machine_frame_pending);
 
         match self.core.machine() {
             Some(machine) => {
                 self.machine_view
-                    .draw(frame, area, &self.picker, machine, is_running);
+                    .draw(frame, area, &self.picker, machine, refresh);
             }
             None => {
                 let message = Paragraph::new(t!("machine.none").to_string())

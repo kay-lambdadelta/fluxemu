@@ -121,8 +121,15 @@ impl RuntimeHandle {
         let mut framebuffer_guard = framebuffer.lock().unwrap();
 
         let framebuffer = (*framebuffer_guard).downcast_mut()?;
+        let result = callback(framebuffer);
 
-        Some(callback(framebuffer))
+        drop(framebuffer_guard);
+
+        if let Some(listener) = self.machine.framebuffer_listener.get() {
+            listener.framebuffer_written();
+        }
+
+        Some(result)
     }
 
     /// Get the current timestamp of your component

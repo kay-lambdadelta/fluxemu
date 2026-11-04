@@ -3,7 +3,7 @@ use std::{
     collections::{HashMap, HashSet},
     marker::PhantomData,
     ops::RangeInclusive,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use bytes::Bytes;
@@ -315,6 +315,7 @@ impl<P: Platform> MachineBuilder<P> {
             address_spaces,
             input_devices: self.input_devices,
             framebuffers,
+            framebuffer_listener: OnceLock::new(),
             program_specification: self.program_specification,
             audio_channels: self.audio_channels,
             component_registry_data: self.component_registry_data,

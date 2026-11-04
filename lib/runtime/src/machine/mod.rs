@@ -5,7 +5,7 @@ use std::{
     hash::BuildHasher,
     marker::PhantomData,
     rc::{Rc, Weak},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
     time::Duration,
 };
 
@@ -30,6 +30,10 @@ use crate::{
 /// Builder pattern constructor for a [`Machine`]
 pub mod builder;
 
+pub trait FramebufferListener: Debug + Send + Sync {
+    fn framebuffer_written(&self);
+}
+
 /// The main context of the runtime, encapsulating all state and resources for a running machine.
 #[derive(Debug)]
 pub struct Machine
@@ -48,6 +52,7 @@ where
     /// All framebuffers this machine has
     pub(crate) framebuffers:
         HashMap<ResourcePath, Mutex<Box<dyn Any + Send + Sync>>, FxBuildHasher>,
+    pub(crate) framebuffer_listener: OnceLock<Box<dyn FramebufferListener>>,
     /// All audio outputs this machine has
     pub(crate) audio_channels: HashSet<ResourcePath, FxBuildHasher>,
     /// The program that this machine was set up with, if any
@@ -106,6 +111,10 @@ impl Machine {
 
     pub fn program_specification(&self) -> Option<&Manifest> {
         self.program_specification.as_ref()
+    }
+
+    pub fn set_framebuffer_listener(&self, listener: impl FramebufferListener + 'static) {
+        self.framebuffer_listener.set(Box::new(listener)).unwrap();
     }
 }
 
