@@ -6,7 +6,7 @@ use rangemap::{RangeInclusiveMap, RangeInclusiveSet};
 use crate::{
     RuntimeHandle,
     memory::{
-        Address, CHUNK_SIZE, MAX_MIRROR_DEPTH, MasterTableEntry, PageTable, PageTableEntry,
+        Address, MAX_MIRROR_DEPTH, MasterTableEntry, PAGE_SIZE, PageTable, PageTableEntry,
         PageTableTarget,
     },
 };
@@ -29,7 +29,7 @@ impl PageTable {
 
         for (page_index, previous_page) in self.0.iter().enumerate() {
             let page_address_range =
-                RangeInclusive::from_start_and_length(page_index * CHUNK_SIZE, CHUNK_SIZE);
+                RangeInclusive::from_start_and_length(page_index * PAGE_SIZE, PAGE_SIZE);
 
             let page = if dirty.overlaps(&page_address_range) {
                 let mut page_contents = Vec::default();

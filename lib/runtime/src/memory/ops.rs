@@ -8,7 +8,7 @@ use crate::{
     RuntimeHandle,
     component::ComponentId,
     memory::{
-        Address, AddressSpaceId, CHUNK_SIZE, MemoryError, MemoryErrorType, PageTable,
+        Address, AddressSpaceId, MemoryError, MemoryErrorType, PAGE_SIZE, PageTable,
         PageTableEntry, PageTableTarget,
     },
     scheduler::Period,
@@ -365,7 +365,7 @@ impl<'a, BUFFER: SplitableBuffer> Iterator for ChunkIter<'a, BUFFER> {
         self.buffer = next_buffer;
 
         let access_range = RangeInclusive::from_start_and_length(self.address, chunk_len);
-        let page_range = (access_range.start / CHUNK_SIZE)..=(access_range.last / CHUNK_SIZE);
+        let page_range = (access_range.start / PAGE_SIZE)..=(access_range.last / PAGE_SIZE);
 
         let chunk = Chunk {
             address: self.address,
@@ -389,12 +389,12 @@ fn find_covering_entry(
 ) -> Option<(&PageTableTarget, Address)> {
     let last = address.checked_add(length.checked_sub(1)?)?;
 
-    if last > width_mask || address / CHUNK_SIZE != last / CHUNK_SIZE {
+    if last > width_mask || address / PAGE_SIZE != last / PAGE_SIZE {
         return None;
     }
 
     // SAFETY: The page is bounded by the width mask, it falls into the table constructed by `commit`
-    let page = unsafe { page_table.0.get_unchecked(address / CHUNK_SIZE) };
+    let page = unsafe { page_table.0.get_unchecked(address / PAGE_SIZE) };
     let entry = page.iter().find(|entry| entry.range.last >= address)?;
 
     (entry.range.start <= address && entry.range.last >= last)

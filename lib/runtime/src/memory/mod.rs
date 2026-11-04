@@ -28,6 +28,7 @@ mod tests;
 
 pub type Address = usize;
 const CHUNK_SIZE: Address = 0x1000;
+const PAGE_SIZE: Address = 0x80;
 const MAX_MIRROR_DEPTH: usize = 4;
 
 /// Handle to a address space specificed at machine registration time
@@ -106,7 +107,7 @@ struct PageTable(Box<[Arc<[PageTableEntry]>]>);
 impl PageTable {
     pub fn new(address_space_width: u8) -> Self {
         let addr_space_size = 2usize.pow(u32::from(address_space_width));
-        let total_pages = addr_space_size.div_ceil(CHUNK_SIZE);
+        let total_pages = addr_space_size.div_ceil(PAGE_SIZE);
 
         Self(vec![Default::default(); total_pages].into_boxed_slice())
     }
