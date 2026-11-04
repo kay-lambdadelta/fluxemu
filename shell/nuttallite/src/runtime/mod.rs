@@ -1,5 +1,7 @@
 mod audio;
 #[cfg(feature = "egui")]
+mod framebuffer;
+#[cfg(feature = "egui")]
 mod graphics;
 
 pub use audio::AudioRuntime;

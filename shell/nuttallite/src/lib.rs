@@ -100,6 +100,8 @@ impl FrontendSelection {
 }
 
 fn main(arguments: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    // HACK: Ctors are not run here
+    opendal::init_default_registry();
     storage::mount_storage_partition()?;
 
     let environment = load_environment();

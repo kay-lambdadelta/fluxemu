@@ -51,7 +51,7 @@ jobs:
             dependencies: debian-nuttx
             shell: nuttallite
             tools: cargo install cargo-nuttx --locked
-            check: cargo nuttx clippy -b raspberrypi-pico-2 -r --no-default-features --features egui
+            check: cargo nuttx clippy -b raspberrypi-pico-2 --release
 
     steps:
       - name: Install checkout dependencies

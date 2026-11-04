@@ -28,7 +28,7 @@ To build, switch the workspace to the nuttallite toolchain and run cargo nuttx
 
 ```sh
 cargo run -p xtask -- switch nuttallite
-cargo nuttx build -b raspberrypi-pico-2 -r --no-default-features --features egui
+cargo nuttx build -b raspberrypi-pico-2 --release
 ```
 
 The firmware ends up in `target/nuttx/<board>/<profile>/`, for example `target/nuttx/raspberrypi-pico-2/release/nuttx.uf2`.

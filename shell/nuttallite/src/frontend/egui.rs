@@ -50,8 +50,7 @@ pub fn run(
         None,
     );
     let mut frontend = Frontend::new(core, notifications, font_definitions);
-
-    let mut graphics_runtime = GraphicsRuntime::default();
+    let mut graphics_runtime = GraphicsRuntime::new()?;
 
     let start_time = Instant::now();
 
@@ -75,8 +74,8 @@ pub fn run(
             screen_rect: Some(Rect {
                 min: [0.0, 0.0].into(),
                 max: [
-                    graphics_runtime.texture.width() as f32,
-                    graphics_runtime.texture.height() as f32,
+                    graphics_runtime.framebuffer.front_page().width() as f32,
+                    graphics_runtime.framebuffer.front_page().height() as f32,
                 ]
                 .into(),
             }),

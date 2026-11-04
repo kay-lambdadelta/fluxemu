@@ -28,6 +28,12 @@ opt-level = "z"
 firmware-file = "nuttx.uf2"
 runner = ["picotool", "load", "-x"]
 
+# NOTE: Rust's support for nuttx has no x86 stuff wired up, so we hardcode to aarch64 here
+[package.metadata.nuttx.boards.sim]
+target = "aarch64-unknown-nuttx"
+firmware-file = "nuttx"
+runner = ["env"]
+
 [lib]
 crate-type = ["staticlib"]
 
@@ -71,7 +77,7 @@ fluxemu-system-other-chip8 = {
 bindgen = { workspace = true }
 
 [features]
-default = ["ratatui"]
+default = ["egui"]
 egui = ["dep:egui", "dep:fluxemu-egui-software-renderer", "dep:fluxemu-frontend-egui"]
 ratatui = ["dep:fluxemu-frontend-ratatui"]
 

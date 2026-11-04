@@ -3,22 +3,24 @@ use fluxemu_frontend_egui::rendering::{EguiCapableGraphicsRuntime, software::Fra
 use fluxemu_graphics::{
     api::{GraphicsApi, software::Software},
     shader::ShaderType,
-    texture::{AsViewTexture, CopyMode, CowTexture, OwnedTexture},
+    texture::{CopyMode, CowTexture, OwnedTexture},
 };
 use fluxemu_runtime::graphics::GraphicsRequirements;
-use palette::{Srgb, Srgba, cast::Packed, named::BLACK, rgb::channels::Bgra};
+use palette::{Srgb, Srgba, named::BLACK};
+
+use crate::runtime::framebuffer::{Framebuffer, FramebufferError, Pixel};
 
 pub struct GraphicsRuntime {
     egui_renderer: Renderer,
-    pub texture: OwnedTexture<Srgba<u8>>,
+    pub framebuffer: Framebuffer,
 }
 
-impl Default for GraphicsRuntime {
-    fn default() -> Self {
-        Self {
+impl GraphicsRuntime {
+    pub fn new() -> Result<Self, FramebufferError> {
+        Ok(Self {
             egui_renderer: Renderer::default(),
-            texture: OwnedTexture::new(256, 256),
-        }
+            framebuffer: Framebuffer::open()?,
+        })
     }
 }
 
@@ -39,7 +41,13 @@ impl fluxemu_frontend::graphics::GraphicsRuntime for GraphicsRuntime {
     }
 
     fn screenshot(&self) -> CowTexture<'_, Srgba<u8>> {
-        self.texture.as_view().into()
+        let texture = self.framebuffer.front_page();
+
+        let mut screenshot =
+            OwnedTexture::from_value(texture.width(), texture.height(), BLACK.into());
+        screenshot.map_from(texture, CopyMode::Nearest, From::from);
+
+        screenshot.into()
     }
 }
 
@@ -50,10 +58,16 @@ impl EguiCapableGraphicsRuntime for GraphicsRuntime {
         clear_color: Srgb<u8>,
         full_output: egui::FullOutput,
     ) {
-        self.texture.fill(clear_color.into());
+        self.framebuffer.wait_for_back_page().unwrap();
+
+        let page = self.framebuffer.back_page();
+
+        page.fill(clear_color.into());
 
         self.egui_renderer
-            .render::<_, 2>(context, full_output, &mut self.texture);
+            .render::<_, 2>(context, full_output, page);
+
+        self.framebuffer.present().unwrap();
     }
 
     fn produce_callback_for_framebuffer(
@@ -68,6 +82,6 @@ impl EguiCapableGraphicsRuntime for GraphicsRuntime {
 
         let callback = FramebufferCallback::new(converted_framebuffer);
 
-        Callback::<Packed<Bgra, [u8; 4]>>::new_paint_callback(rect, callback)
+        Callback::<Pixel>::new_paint_callback(rect, callback)
     }
 }

@@ -1,4 +1,4 @@
-use palette::{Srgb, cast::ComponentOrder};
+use palette::{Srgb, Srgba, cast::ComponentOrder};
 
 pub struct Rgb565Order;
 
@@ -25,6 +25,18 @@ impl ComponentOrder<Srgb<u8>, [u8; 2]> for Rgb565Order {
             (green << 2) | (green >> 4),
             (blue << 3) | (blue >> 2),
         )
+    }
+}
+
+impl ComponentOrder<Srgba<u8>, u16> for Rgb565Order {
+    fn pack(color: Srgba<u8>) -> u16 {
+        u16::from_be_bytes(<Self as ComponentOrder<Srgb<u8>, [u8; 2]>>::pack(
+            color.color,
+        ))
+    }
+
+    fn unpack(packed: u16) -> Srgba<u8> {
+        <Self as ComponentOrder<Srgb<u8>, [u8; 2]>>::unpack(packed.to_be_bytes()).into()
     }
 }
 
