@@ -18,7 +18,7 @@ use crate::{
     apu::ApuConfig,
     cartridge::{
         ines::{INesVersion, NametableMirroring, expansion_device::DefaultExpansionDevice},
-        mapper::{mmc1::Mmc1Config, nrom::NRomConfig},
+        mapper::{cnrom::CnRomConfig, mmc1::Mmc1Config, nrom::NRomConfig},
     },
     gamepad::standard_controllers::NesControllerConfig,
     ppu::{
@@ -218,6 +218,16 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Nes {
                         "mmc1_cartridge",
                         Mmc1Config {
                             params: cart_config,
+                        },
+                    )
+                    .0;
+            }
+            003 => {
+                machine_builder = machine_builder
+                    .component(
+                        "cnrom_cartridge",
+                        CnRomConfig {
+                            config: cart_config,
                         },
                     )
                     .0;
