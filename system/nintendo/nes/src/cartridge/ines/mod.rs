@@ -112,7 +112,7 @@ impl INes {
                 TimingMode::Ntsc,
                 if chr_bank_count == 0 { 8 * 1024 } else { 0 },
                 0,
-                if non_volatile_memory { 8 * 1024 } else { 0 },
+                8 * 1024,
             ),
 
             0b10 => {

@@ -1,7 +1,10 @@
+use std::ops::RangeInclusive;
+
+use fluxemu_math::range::ContiguousRange;
 use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
-    memory::{MemoryMapCommand, Permissions},
+    memory::{MapTarget, MemoryMapCommand, Permissions},
     platform::Platform,
 };
 
@@ -60,15 +63,31 @@ impl<P: Platform> ComponentConfig<P> for NRomConfig {
             _ => return Err("Unsupported PRG ROM size for NROM mapper".into()),
         };
 
-        let chr_rom = self.config.chr_rom.ok_or("NROM must have CHR-ROM")?;
-        if chr_rom.len() != 0x2000 {
-            return Err("CHR-ROM must have exactly 8KB of CHR-ROM".into());
-        }
+        if let Some(chr_rom) = self.config.chr_rom {
+            if chr_rom.len() != 0x2000 {
+                return Err("CHR-ROM must have exactly 8KB of CHR-ROM".into());
+            }
 
-        component_builder.map_memory(
-            self.config.ppu_address_space,
-            [MemoryMapCommand::immutable_memory(0x0000, chr_rom)],
-        );
+            component_builder.map_memory(
+                self.config.ppu_address_space,
+                [MemoryMapCommand::immutable_memory(0x0000, chr_rom)],
+            );
+        } else {
+            let (component_builder, chr_ram_path) =
+                component_builder.memory("chr-ram", self.config.chr_ram_size, []);
+
+            component_builder.map_memory(
+                self.config.ppu_address_space,
+                [MemoryMapCommand::Map {
+                    range: RangeInclusive::from_start_and_length(0x0000, self.config.chr_ram_size),
+                    permissions: Permissions::ALL,
+                    target: MapTarget::Memory {
+                        path: chr_ram_path,
+                        subrange: None,
+                    },
+                }],
+            );
+        }
 
         Ok(NRom)
     }

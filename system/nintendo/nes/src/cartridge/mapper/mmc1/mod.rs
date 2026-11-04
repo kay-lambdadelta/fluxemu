@@ -67,6 +67,8 @@ impl Mmc1 {
 
         let mut cpu_commands = Vec::new();
 
+        let prg_bank_count = self.config.params.prg_rom.len() / PRG_BANK_SIZE;
+
         let (prg_low_bank, prg_high_bank) = match self.prg_rom_bank_mode {
             PrgRomBankMode::Unified32k => {
                 let bank = (self.prg_rom_bank_index & 0b1111_1110) as usize;
@@ -74,12 +76,12 @@ impl Mmc1 {
                 (bank, bank + 1)
             }
             PrgRomBankMode::LockFirstBank => (0, self.prg_rom_bank_index as usize),
-            PrgRomBankMode::LockLastBank => {
-                let last = (self.config.params.prg_rom.len() / PRG_BANK_SIZE) - 1;
-
-                (self.prg_rom_bank_index as usize, last)
-            }
+            PrgRomBankMode::LockLastBank => (self.prg_rom_bank_index as usize, prg_bank_count - 1),
         };
+        let (prg_low_bank, prg_high_bank) = (
+            prg_low_bank % prg_bank_count,
+            prg_high_bank % prg_bank_count,
+        );
 
         cpu_commands.push(MemoryMapCommand::Map {
             range: 0x8000..=0xbfff,
@@ -107,6 +109,7 @@ impl Mmc1 {
         let timestamp = runtime.current_timestamp();
 
         if let Some(chr_rom) = self.config.params.chr_rom.as_ref() {
+            let chr_bank_count = chr_rom.len() / CHR_BANK_SIZE;
             let mut ppu_commands = Vec::new();
 
             match self.chr_rom_bank_mode {
@@ -117,7 +120,7 @@ impl Mmc1 {
                         range: 0x0000..=0x0fff,
                         target: MapTarget::ImmutableMemory(chr_rom.slice(
                             RangeInclusive::from_start_and_length(
-                                bank * CHR_BANK_SIZE,
+                                (bank % chr_bank_count) * CHR_BANK_SIZE,
                                 CHR_BANK_SIZE,
                             ),
                         )),
@@ -128,7 +131,7 @@ impl Mmc1 {
                         range: 0x1000..=0x1fff,
                         target: MapTarget::ImmutableMemory(chr_rom.slice(
                             RangeInclusive::from_start_and_length(
-                                (bank + 1) * CHR_BANK_SIZE,
+                                ((bank + 1) % chr_bank_count) * CHR_BANK_SIZE,
                                 CHR_BANK_SIZE,
                             ),
                         )),
@@ -138,7 +141,7 @@ impl Mmc1 {
                 ChrRomBankMode::Split4k => {
                     for (i, &bank_index) in self.chr_rom_bank_indexes.iter().enumerate() {
                         let ppu_base = i * 0x1000;
-                        let rom_offset = bank_index as usize * CHR_BANK_SIZE;
+                        let rom_offset = (bank_index as usize % chr_bank_count) * CHR_BANK_SIZE;
 
                         ppu_commands.push(MemoryMapCommand::Map {
                             range: RangeInclusive::from_start_and_length(ppu_base, 0x1000),
