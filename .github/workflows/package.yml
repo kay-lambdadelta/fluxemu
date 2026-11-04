@@ -39,7 +39,7 @@ jobs:
             dependencies: debian-nuttx
             shell: nuttallite
             tools: cargo install cargo-nuttx --locked
-            build: cargo nuttx build -b raspberrypi-pico-2 -r --no-default-features --features egui
+            build: cargo nuttx build -b raspberrypi-pico-2 --release --no-default-features --features egui
             artifact_name: fluxemu-shell-nuttallite-(raspberrypi-pico-2)-uf2
             artifact_path: target/nuttx/raspberrypi-pico-2/release/nuttx.uf2
 
@@ -80,31 +80,3 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.artifact_path }}
           if-no-files-found: error
-
-  nightly-release:
-    name: Publish nightly release
-    runs-on: ubuntu-26.04
-    permissions:
-      contents: write
-    needs:
-      - package
-    steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v8
-        with:
-          path: artifacts
-          skip-decompress: true
-
-      - name: Upload nightly release
-        uses: ncipollo/release-action@v1
-        with:
-          tag: nightly
-          name: "Nightly"
-          prerelease: true
-          allowUpdates: true
-          removeArtifacts: true
-          replacesArtifacts: true
-          artifacts: "artifacts/*/*.zip"
-          body: |
-            Automated nightly build from ${{ github.sha }}.
-            This contains the latest build, updated every night.
