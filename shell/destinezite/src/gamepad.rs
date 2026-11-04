@@ -1,7 +1,10 @@
 use std::{collections::HashMap, io::Write, time::Duration};
 
 use digest_io::IoWrapper;
-use fluxemu_input::{GamepadInputId, InputId, InputState, physical::PhysicalInputDeviceId};
+use fluxemu_input::{
+    GamepadInputId, InputId, InputState,
+    physical::{PhysicalInputDeviceId, PhysicalInputDeviceInstanceId, PhysicalInputDeviceKind},
+};
 use gilrs::{Axis, Button, Event, GamepadId, Gilrs, GilrsBuilder};
 use sha2::{Digest, Sha256};
 use uuid::{NonNilUuid, Uuid};
@@ -33,58 +36,51 @@ fn convert_gilrs2input(button: Button) -> Option<InputId> {
 }
 
 #[inline]
-fn convert_gilrs2axis(axis: Axis, value: f32) -> Option<(InputId, InputState)> {
+fn split_axis(
+    negative: GamepadInputId,
+    positive: GamepadInputId,
+    value: f32,
+) -> [(InputId, InputState); 2] {
+    [
+        (InputId::Gamepad(negative), InputState::new(-value)),
+        (InputId::Gamepad(positive), InputState::new(value)),
+    ]
+}
+
+#[inline]
+fn convert_gilrs2axis(axis: Axis, value: f32) -> Option<[(InputId, InputState); 2]> {
     match axis {
-        Axis::LeftStickX => Some((
-            InputId::Gamepad(if value < 0.0 {
-                GamepadInputId::LeftStickLeft
-            } else {
-                GamepadInputId::LeftStickRight
-            }),
-            InputState::new(value.abs()),
+        Axis::LeftStickX => Some(split_axis(
+            GamepadInputId::LeftStickLeft,
+            GamepadInputId::LeftStickRight,
+            value,
         )),
-        Axis::LeftStickY => Some((
-            InputId::Gamepad(if value < 0.0 {
-                GamepadInputId::LeftStickDown
-            } else {
-                GamepadInputId::LeftStickUp
-            }),
-            InputState::new(value.abs()),
+        Axis::LeftStickY => Some(split_axis(
+            GamepadInputId::LeftStickDown,
+            GamepadInputId::LeftStickUp,
+            value,
         )),
-        Axis::RightStickX => Some((
-            InputId::Gamepad(if value < 0.0 {
-                GamepadInputId::RightStickLeft
-            } else {
-                GamepadInputId::RightStickRight
-            }),
-            InputState::new(value.abs()),
+        Axis::RightStickX => Some(split_axis(
+            GamepadInputId::RightStickLeft,
+            GamepadInputId::RightStickRight,
+            value,
         )),
-        Axis::RightStickY => Some((
-            InputId::Gamepad(if value < 0.0 {
-                GamepadInputId::RightStickDown
-            } else {
-                GamepadInputId::RightStickUp
-            }),
-            InputState::new(value.abs()),
+        Axis::RightStickY => Some(split_axis(
+            GamepadInputId::RightStickDown,
+            GamepadInputId::RightStickUp,
+            value,
         )),
         // Needs investigation what this actually means
-        Axis::LeftZ => todo!(),
-        Axis::RightZ => todo!(),
-        Axis::DPadX => Some((
-            InputId::Gamepad(if value < 0.0 {
-                GamepadInputId::DPadLeft
-            } else {
-                GamepadInputId::DPadRight
-            }),
-            InputState::new(value.abs()),
+        Axis::LeftZ | Axis::RightZ => None,
+        Axis::DPadX => Some(split_axis(
+            GamepadInputId::DPadLeft,
+            GamepadInputId::DPadRight,
+            value,
         )),
-        Axis::DPadY => Some((
-            InputId::Gamepad(if value < 0.0 {
-                GamepadInputId::DPadUp
-            } else {
-                GamepadInputId::DPadDown
-            }),
-            InputState::new(value.abs()),
+        Axis::DPadY => Some(split_axis(
+            GamepadInputId::DPadDown,
+            GamepadInputId::DPadUp,
+            value,
         )),
         Axis::Unknown => None,
     }
@@ -111,43 +107,79 @@ fn calculate_gamepad_id(gamepad: gilrs::Gamepad<'_>) -> PhysicalInputDeviceId {
 }
 
 pub trait GamepadSink {
-    fn register_gamepad(&mut self, id: PhysicalInputDeviceId, name: String);
-    fn unregister_gamepad(&mut self, id: PhysicalInputDeviceId);
-    fn insert_input(&mut self, id: PhysicalInputDeviceId, input_id: InputId, state: InputState);
+    fn register_gamepad(&mut self, id: PhysicalInputDeviceInstanceId, name: String);
+    fn unregister_gamepad(&mut self, id: PhysicalInputDeviceInstanceId);
+    fn insert_input(
+        &mut self,
+        id: PhysicalInputDeviceInstanceId,
+        input_id: InputId,
+        state: InputState,
+    );
 }
 
 #[cfg(feature = "egui")]
 impl<P: fluxemu_frontend::Platform> GamepadSink for fluxemu_frontend_egui::Frontend<P> {
-    fn register_gamepad(&mut self, id: PhysicalInputDeviceId, name: String) {
-        self.register_gamepad(id, name, true);
+    fn register_gamepad(&mut self, id: PhysicalInputDeviceInstanceId, name: String) {
+        self.register_gamepad(id, name, PhysicalInputDeviceKind::Gamepad, true);
     }
 
-    fn unregister_gamepad(&mut self, id: PhysicalInputDeviceId) {
+    fn unregister_gamepad(&mut self, id: PhysicalInputDeviceInstanceId) {
         self.unregister_gamepad(id);
     }
 
-    fn insert_input(&mut self, id: PhysicalInputDeviceId, input_id: InputId, state: InputState) {
+    fn insert_input(
+        &mut self,
+        id: PhysicalInputDeviceInstanceId,
+        input_id: InputId,
+        state: InputState,
+    ) {
         self.insert_input(id, input_id, state);
     }
 }
 
 #[cfg(feature = "ratatui")]
 impl GamepadSink for fluxemu_frontend_ratatui::ExternalInputSender {
-    fn register_gamepad(&mut self, id: PhysicalInputDeviceId, name: String) {
+    fn register_gamepad(&mut self, id: PhysicalInputDeviceInstanceId, name: String) {
         fluxemu_frontend_ratatui::ExternalInputSender::register_gamepad(self, id, name);
     }
 
-    fn unregister_gamepad(&mut self, id: PhysicalInputDeviceId) {
+    fn unregister_gamepad(&mut self, id: PhysicalInputDeviceInstanceId) {
         fluxemu_frontend_ratatui::ExternalInputSender::unregister_gamepad(self, id);
     }
 
-    fn insert_input(&mut self, id: PhysicalInputDeviceId, input_id: InputId, state: InputState) {
+    fn insert_input(
+        &mut self,
+        id: PhysicalInputDeviceInstanceId,
+        input_id: InputId,
+        state: InputState,
+    ) {
         fluxemu_frontend_ratatui::ExternalInputSender::insert_input(self, id, input_id, state);
     }
 }
 
 #[derive(Debug)]
-struct IdMappings(HashMap<GamepadId, PhysicalInputDeviceId>);
+struct IdMappings(HashMap<GamepadId, PhysicalInputDeviceInstanceId>);
+
+impl IdMappings {
+    fn allocate(
+        &mut self,
+        gamepad_id: GamepadId,
+        device: PhysicalInputDeviceId,
+    ) -> Option<PhysicalInputDeviceInstanceId> {
+        if self.0.contains_key(&gamepad_id) {
+            return None;
+        }
+
+        let instance = (0..=u8::MAX)
+            .map(|slot| PhysicalInputDeviceInstanceId::new(device, slot))
+            .find(|instance| !self.0.values().any(|used| used == instance))
+            .expect("Ran out of slots for identical gamepads");
+
+        self.0.insert(gamepad_id, instance);
+
+        Some(instance)
+    }
+}
 
 #[derive(Debug)]
 pub struct GamepadContext {
@@ -168,10 +200,11 @@ impl GamepadContext {
 
         // Register existing gamepads
         for (gamepad_id, gamepad) in gilrs.gamepads() {
-            let physical_id = calculate_gamepad_id(gamepad);
-            id_mappings.0.insert(gamepad_id, physical_id);
+            let device = calculate_gamepad_id(gamepad);
 
-            frontend.register_gamepad(physical_id, gamepad.name().to_string());
+            if let Some(instance) = id_mappings.allocate(gamepad_id, device) {
+                frontend.register_gamepad(instance, gamepad.name().to_string());
+            }
         }
 
         Ok(Self { id_mappings, gilrs })
@@ -189,30 +222,37 @@ impl GamepadContext {
 
             match event {
                 gilrs::EventType::Connected => {
-                    let physical_id = calculate_gamepad_id(gamepad);
-                    self.id_mappings.0.insert(id, physical_id);
+                    let device = calculate_gamepad_id(gamepad);
 
-                    frontend.register_gamepad(physical_id, gamepad.name().to_string());
+                    if let Some(instance) = self.id_mappings.allocate(id, device) {
+                        frontend.register_gamepad(instance, gamepad.name().to_string());
+                    }
                 }
                 gilrs::EventType::Disconnected => {
-                    let physical_id = self.id_mappings.0[&id];
-
-                    frontend.unregister_gamepad(physical_id);
+                    if let Some(instance) = self.id_mappings.0.remove(&id) {
+                        frontend.unregister_gamepad(instance);
+                    }
                 }
                 gilrs::EventType::ButtonChanged(button, value, _) => {
-                    if let Some(button) = convert_gilrs2input(button) {
-                        let physical_id = self.id_mappings.0[&id];
+                    let Some(&instance) = self.id_mappings.0.get(&id) else {
+                        return;
+                    };
 
-                        frontend.insert_input(physical_id, button, InputState::new(value));
+                    if let Some(button) = convert_gilrs2input(button) {
+                        frontend.insert_input(instance, button, InputState::new(value));
                     } else {
                         tracing::debug!("Did not recognize button: {:?}", button);
                     }
                 }
                 gilrs::EventType::AxisChanged(axis, value, _) => {
-                    if let Some((input_id, state)) = convert_gilrs2axis(axis, value) {
-                        let physical_id = self.id_mappings.0[&id];
+                    let Some(&instance) = self.id_mappings.0.get(&id) else {
+                        return;
+                    };
 
-                        frontend.insert_input(physical_id, input_id, state);
+                    if let Some(inputs) = convert_gilrs2axis(axis, value) {
+                        for (input_id, state) in inputs {
+                            frontend.insert_input(instance, input_id, state);
+                        }
                     } else {
                         tracing::debug!("Did not recognize axis: {:?}", axis);
                     }

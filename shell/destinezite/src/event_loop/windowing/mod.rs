@@ -13,7 +13,10 @@ use fluxemu_frontend::{
     notification::NotificationReceiver,
 };
 use fluxemu_frontend_egui::{Frontend, rendering::EguiCapableGraphicsRuntime};
-use fluxemu_input::{InputId, InputState, physical::PhysicalInputDeviceId};
+use fluxemu_input::{
+    InputId, InputState,
+    physical::{PhysicalInputDeviceInstanceId, PhysicalInputDeviceKind},
+};
 use fluxemu_program::{ProgramManager, RomId};
 use fluxemu_runtime::graphics::GraphicsRequirements;
 use nalgebra::Vector2;
@@ -59,6 +62,13 @@ pub fn run<R: ProducableGraphicsRuntime<Window> + EguiCapableGraphicsRuntime>(
     );
     let mut frontend = Frontend::new(core, notifications, load_fonts());
 
+    frontend.register_gamepad(
+        PhysicalInputDeviceInstanceId::PLATFORM_RESERVED,
+        "Keyboard",
+        PhysicalInputDeviceKind::Keyboard,
+        false,
+    );
+
     let gamepad_context = GamepadContext::new(&mut frontend);
     let frontend = Arc::new(Mutex::new(frontend));
 
@@ -93,7 +103,6 @@ pub fn run<R: ProducableGraphicsRuntime<Window> + EguiCapableGraphicsRuntime>(
         windowing_context: None,
         event_loop_proxy,
         refresh_surface: false,
-        added_keyboard: false,
     };
 
     event_loop.run_app(&mut me)?;
@@ -117,7 +126,6 @@ struct WindowingEventLoop<R: GraphicsRuntime> {
     frontend: Arc<Mutex<Frontend<DesktopPlatform<R, true>>>>,
     event_loop_proxy: EventLoopProxy<Message>,
     refresh_surface: bool,
-    added_keyboard: bool,
 }
 
 impl<R: ProducableGraphicsRuntime<Window> + EguiCapableGraphicsRuntime> ApplicationHandler<Message>
@@ -191,22 +199,12 @@ impl<R: ProducableGraphicsRuntime<Window> + EguiCapableGraphicsRuntime> Applicat
                 is_synthetic,
                 ..
             } => {
-                if !self.added_keyboard {
-                    frontend.register_gamepad(
-                        PhysicalInputDeviceId::PLATFORM_RESERVED,
-                        "Keyboard",
-                        false,
-                    );
-
-                    self.added_keyboard = true;
-                }
-
                 if !is_synthetic
                     && !event.repeat
                     && let Some(key) = winit2key(event.physical_key)
                 {
                     frontend.insert_input(
-                        PhysicalInputDeviceId::PLATFORM_RESERVED,
+                        PhysicalInputDeviceInstanceId::PLATFORM_RESERVED,
                         InputId::Keyboard(key),
                         if event.state == ElementState::Pressed {
                             InputState::PRESSED

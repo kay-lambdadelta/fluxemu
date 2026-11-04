@@ -54,6 +54,7 @@ pub fn crossterm2key(code: KeyCode) -> Option<KeyboardInputId> {
             ModifierKeyCode::LeftSuper => KeyboardInputId::SuperLeft,
             ModifierKeyCode::RightSuper => KeyboardInputId::SuperRight,
             ModifierKeyCode::LeftMeta => KeyboardInputId::MetaLeft,
+            ModifierKeyCode::RightMeta => KeyboardInputId::MetaRight,
             ModifierKeyCode::LeftHyper | ModifierKeyCode::RightHyper => KeyboardInputId::Hyper,
             _ => return None,
         },

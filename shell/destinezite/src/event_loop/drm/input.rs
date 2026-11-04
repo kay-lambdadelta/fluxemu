@@ -12,11 +12,14 @@ use egui::{
 use evdev::KeyCode;
 use fluxemu_frontend::graphics::GraphicsRuntime;
 use fluxemu_frontend_egui::Frontend;
-use fluxemu_input::{InputId, InputState, KeyboardInputId, physical::PhysicalInputDeviceId};
+use fluxemu_input::{
+    InputId, InputState, KeyboardInputId,
+    physical::{PhysicalInputDeviceInstanceId, PhysicalInputDeviceKind},
+};
 use input::{
-    Libinput, LibinputInterface,
+    DeviceCapability, Libinput, LibinputInterface,
     event::{
-        PointerEvent, TouchEvent,
+        DeviceEvent, EventTrait, PointerEvent, TouchEvent,
         keyboard::{KeyState, KeyboardEventTrait},
         pointer::{Axis, ButtonState, PointerScrollEvent},
         touch::{TouchEventPosition, TouchEventSlot},
@@ -385,21 +388,27 @@ pub fn handle_libinput_events<R: GraphicsRuntime>(
 
     for event in libinput {
         match event {
-            input::Event::Device(_device_event) => {}
-            input::Event::Keyboard(keyboard_event) => {
-                if !*added_keyboard {
+            input::Event::Device(device_event) => {
+                if let DeviceEvent::Added(added_event) = device_event
+                    && added_event
+                        .device()
+                        .has_capability(DeviceCapability::Keyboard)
+                    && !*added_keyboard
+                {
                     *added_keyboard = true;
 
                     frontend.register_gamepad(
-                        PhysicalInputDeviceId::PLATFORM_RESERVED,
+                        PhysicalInputDeviceInstanceId::PLATFORM_RESERVED,
                         "Keyboard",
+                        PhysicalInputDeviceKind::Keyboard,
                         false,
                     );
                 }
-
+            }
+            input::Event::Keyboard(keyboard_event) => {
                 if let Some(key) = libinput2key(evdev::KeyCode(keyboard_event.key() as u16)) {
                     frontend.insert_input(
-                        PhysicalInputDeviceId::PLATFORM_RESERVED,
+                        PhysicalInputDeviceInstanceId::PLATFORM_RESERVED,
                         InputId::Keyboard(key),
                         match keyboard_event.key_state() {
                             KeyState::Pressed => InputState::PRESSED,

@@ -9,7 +9,10 @@ use fluxemu_frontend::{
     notification::{Notification, NotificationReceiver},
 };
 use fluxemu_graphics::api::software::Software;
-use fluxemu_input::{GamepadInputId, InputId, InputState, physical::PhysicalInputDeviceId};
+use fluxemu_input::{
+    GamepadInputId, InputId, InputState,
+    physical::{PhysicalInputDeviceInstanceId, PhysicalInputDeviceKind},
+};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -33,7 +36,7 @@ const RUNNING_FRAME_INTERVAL: Duration = Duration::from_millis(33);
 const IDLE_FRAME_INTERVAL: Duration = Duration::from_millis(250);
 const MAX_LOG_ENTRIES: usize = 1000;
 const STATUS_NOTIFICATION_DURATION: Duration = Duration::from_secs(5);
-const KEYBOARD: PhysicalInputDeviceId = PhysicalInputDeviceId::PLATFORM_RESERVED;
+const KEYBOARD: PhysicalInputDeviceInstanceId = PhysicalInputDeviceInstanceId::PLATFORM_RESERVED;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, AsRefStr, EnumCount, EnumIter, VariantArray)]
 #[strum(serialize_all = "snake_case", prefix = "tab.")]
@@ -78,7 +81,7 @@ pub struct Frontend<P: Platform<GraphicsApi = Software>> {
     follow_log: bool,
     reports_key_releases: bool,
     synthetic_releases: SyntheticReleaseTracker,
-    gamepad_ui_inputs_held: HashMap<(PhysicalInputDeviceId, GamepadInputId), bool>,
+    gamepad_ui_inputs_held: HashMap<(PhysicalInputDeviceInstanceId, GamepadInputId), bool>,
     redraw_requested: bool,
     clear_requested: bool,
     exit_requested: bool,
@@ -103,7 +106,12 @@ impl<P: Platform<GraphicsApi = Software>> Frontend<P> {
             .theme(theme)
             .build()?;
 
-        core.register_gamepad(KEYBOARD, "Keyboard", false);
+        core.register_gamepad(
+            KEYBOARD,
+            "Keyboard",
+            PhysicalInputDeviceKind::Keyboard,
+            false,
+        );
 
         Ok(Self {
             core,
@@ -174,7 +182,8 @@ impl<P: Platform<GraphicsApi = Software>> Frontend<P> {
         match message {
             Message::Terminal(event) => self.handle_event(event),
             Message::GamepadConnected { id, name } => {
-                self.core.register_gamepad(id, name, true);
+                self.core
+                    .register_gamepad(id, name, PhysicalInputDeviceKind::Gamepad, true);
             }
             Message::GamepadDisconnected { id } => {
                 self.core.unregister_gamepad(id);
@@ -192,7 +201,7 @@ impl<P: Platform<GraphicsApi = Software>> Frontend<P> {
 
     fn handle_external_input(
         &mut self,
-        id: PhysicalInputDeviceId,
+        id: PhysicalInputDeviceInstanceId,
         input_id: InputId,
         state: InputState,
     ) {

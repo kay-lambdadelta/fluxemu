@@ -5,21 +5,21 @@ use std::{
 };
 
 use crossterm::event::Event;
-use fluxemu_input::{InputId, InputState, physical::PhysicalInputDeviceId};
+use fluxemu_input::{InputId, InputState, physical::PhysicalInputDeviceInstanceId};
 
 #[derive(Debug)]
 pub(crate) enum Message {
     Terminal(Event),
     TerminalError(std::io::Error),
     GamepadConnected {
-        id: PhysicalInputDeviceId,
+        id: PhysicalInputDeviceInstanceId,
         name: Cow<'static, str>,
     },
     GamepadDisconnected {
-        id: PhysicalInputDeviceId,
+        id: PhysicalInputDeviceInstanceId,
     },
     Input {
-        id: PhysicalInputDeviceId,
+        id: PhysicalInputDeviceInstanceId,
         input_id: InputId,
         state: InputState,
     },
@@ -29,18 +29,27 @@ pub(crate) enum Message {
 pub struct ExternalInputSender(Sender<Message>);
 
 impl ExternalInputSender {
-    pub fn register_gamepad(&self, id: PhysicalInputDeviceId, name: impl Into<Cow<'static, str>>) {
+    pub fn register_gamepad(
+        &self,
+        id: PhysicalInputDeviceInstanceId,
+        name: impl Into<Cow<'static, str>>,
+    ) {
         self.send(Message::GamepadConnected {
             id,
             name: name.into(),
         });
     }
 
-    pub fn unregister_gamepad(&self, id: PhysicalInputDeviceId) {
+    pub fn unregister_gamepad(&self, id: PhysicalInputDeviceInstanceId) {
         self.send(Message::GamepadDisconnected { id });
     }
 
-    pub fn insert_input(&self, id: PhysicalInputDeviceId, input_id: InputId, state: InputState) {
+    pub fn insert_input(
+        &self,
+        id: PhysicalInputDeviceInstanceId,
+        input_id: InputId,
+        state: InputState,
+    ) {
         self.send(Message::Input {
             id,
             input_id,

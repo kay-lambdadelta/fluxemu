@@ -28,3 +28,30 @@ impl Display for PhysicalInputDeviceId {
         self.0.fmt(f)
     }
 }
+
+#[derive(Serialize, Deserialize, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+pub enum PhysicalInputDeviceKind {
+    Keyboard,
+    Gamepad,
+}
+
+#[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+pub struct PhysicalInputDeviceInstanceId {
+    pub device: PhysicalInputDeviceId,
+    pub slot: u8,
+}
+
+impl PhysicalInputDeviceInstanceId {
+    pub const PLATFORM_RESERVED: PhysicalInputDeviceInstanceId =
+        PhysicalInputDeviceInstanceId::new(PhysicalInputDeviceId::PLATFORM_RESERVED, 0);
+
+    pub const fn new(device: PhysicalInputDeviceId, slot: u8) -> Self {
+        Self { device, slot }
+    }
+}
+
+impl Display for PhysicalInputDeviceInstanceId {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}#{}", self.device, self.slot)
+    }
+}

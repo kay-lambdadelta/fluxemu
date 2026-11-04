@@ -1,4 +1,4 @@
-use std::sync::Once;
+use std::{collections::HashSet, sync::Once};
 
 use egui::{Context, Event, Key, Modifiers, PointerButton, ViewportId};
 use fluxemu_input::{GamepadInputId, InputId, InputState, KeyboardInputId};
@@ -9,6 +9,8 @@ const POINTER_SENSITIVITY: f32 = 2.0;
 
 pub struct EguiInputTranslator {
     events: Vec<Event>,
+    held_keys: HashSet<Key>,
+    held_pointer_buttons: Vec<PointerButton>,
     pointer_position: Point2<f32>,
     screen_rectangle: Option<Rectangle<f32>>,
 }
@@ -17,6 +19,8 @@ impl Default for EguiInputTranslator {
     fn default() -> Self {
         Self {
             events: Vec::new(),
+            held_keys: HashSet::new(),
+            held_pointer_buttons: Vec::new(),
             pointer_position: Point2::origin(),
             screen_rectangle: None,
         }
@@ -47,6 +51,16 @@ impl EguiInputTranslator {
 
     pub fn drain_events(&mut self) -> impl Iterator<Item = Event> {
         self.events.drain(..)
+    }
+
+    pub fn release_all(&mut self) {
+        for key in std::mem::take(&mut self.held_keys) {
+            self.key_event(key, false);
+        }
+
+        for button in std::mem::take(&mut self.held_pointer_buttons) {
+            self.pointer_button_event(button, false);
+        }
     }
 
     fn gamepadinput2egui(&mut self, input_id: GamepadInputId, state: InputState) {
@@ -130,7 +144,7 @@ impl EguiInputTranslator {
         });
 
         let key = match input {
-            KeyboardInputId::Backquote => Some(Key::Backspace),
+            KeyboardInputId::Backquote => Some(Key::Backtick),
             KeyboardInputId::Backslash => Some(Key::Backslash),
             KeyboardInputId::BracketLeft => Some(Key::OpenBracket),
             KeyboardInputId::BracketRight => Some(Key::CloseBracket),
@@ -335,6 +349,16 @@ impl EguiInputTranslator {
     }
 
     fn key_event(&mut self, key: Key, pressed: bool) {
+        let changed = if pressed {
+            self.held_keys.insert(key)
+        } else {
+            self.held_keys.remove(&key)
+        };
+
+        if !changed {
+            return;
+        }
+
         self.events.push(Event::Key {
             key,
             physical_key: None,
@@ -361,6 +385,18 @@ impl EguiInputTranslator {
     }
 
     fn pointer_button_event(&mut self, button: PointerButton, pressed: bool) {
+        let was_pressed = self.held_pointer_buttons.contains(&button);
+
+        if was_pressed == pressed {
+            return;
+        }
+
+        if pressed {
+            self.held_pointer_buttons.push(button);
+        } else {
+            self.held_pointer_buttons.retain(|held| *held != button);
+        }
+
         self.events.push(Event::PointerButton {
             pos: [self.pointer_position.x, self.pointer_position.y].into(),
             button,

@@ -213,6 +213,8 @@ impl<P: Platform> Frontend<P> {
     ) where
         P::GraphicsRuntime: EguiCapableGraphicsRuntime,
     {
+        let mut resume_requested = false;
+
         if let Some(machine) = self.core.machine()
             && let Some(controller) = self.core.controller()
         {
@@ -231,10 +233,7 @@ impl<P: Platform> Frontend<P> {
                         let (rect, response) =
                             allocate_fill_aspect(ui, size, self.machine_view_area, Sense::click());
 
-                        if response.clicked() {
-                            self.menu_panel.is_expanded = false;
-                            controller.set_paused(false);
-                        }
+                        resume_requested = response.clicked() && controller.get_paused();
 
                         graphics_runtime.produce_callback_for_framebuffer(rect, framebuffer, shader)
                     },
@@ -267,6 +266,12 @@ impl<P: Platform> Frontend<P> {
                 // Repaint as soon as possible, in reality limited to vsync
                 self.egui_context.request_repaint();
             }
+        }
+
+        if resume_requested {
+            self.menu_panel.is_expanded = false;
+            self.core.resume_machine();
+            self.set_machine_focus(true);
         }
     }
 

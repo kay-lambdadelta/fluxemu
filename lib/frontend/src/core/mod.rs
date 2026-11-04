@@ -3,7 +3,7 @@ use std::{collections::HashMap, ops::Deref, path::PathBuf, sync::Arc};
 use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::{ENVIRONMENT_LOCATION, Environment};
 use fluxemu_graphics::api::GraphicsApi;
-use fluxemu_input::{InputState, physical::PhysicalInputDeviceId};
+use fluxemu_input::{InputState, physical::PhysicalInputDeviceInstanceId};
 use fluxemu_program::{ProgramManager, RomId, RomStoreSpecification};
 use fluxemu_runtime::machine::{Machine, builder::SealedMachineBuilder};
 use indexmap::IndexMap;
@@ -39,7 +39,7 @@ pub struct FrontendCore<P: Platform> {
     machine_factory_manager: Arc<FactoryManager<P>>,
     program_manager: Arc<ProgramManager>,
     program_database: Arc<ProgramDatabase>,
-    physical_input_devices: HashMap<PhysicalInputDeviceId, PhysicalInputDeviceState>,
+    physical_input_devices: HashMap<PhysicalInputDeviceInstanceId, PhysicalInputDeviceState>,
     #[allow(unused)]
     audio_runtime: P::AudioRuntime,
     audio_mixer: Arc<AudioMixer>,
@@ -187,7 +187,7 @@ impl<P: Platform> FrontendCore<P> {
         let runtime_guard = machine.enter_runtime();
 
         // HACK: Assign the first input device to all gamepads
-        if let Some(logical_input_device_path) = runtime_guard.input_devices().keys().next() {
+        if let Some(logical_input_device_path) = runtime_guard.input_devices().keys().min() {
             for physical_input_device_state in self.physical_input_devices.values_mut() {
                 physical_input_device_state
                     .controlling_input_devices
