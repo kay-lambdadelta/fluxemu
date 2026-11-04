@@ -188,11 +188,17 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
                 };
 
             if render {
-                let clamped_index = (color_index as usize).min(self.palette.len() - 1);
+                let color_index = if self.state.greyscale {
+                    color_index & 0b0011_0000
+                } else {
+                    color_index
+                };
+                let palette = &self.palette[usize::from(self.state.emphasis_index & 0b111)];
+                let clamped_index = (color_index as usize).min(palette.len() - 1);
 
                 self.staging_buffer
                     [Point2::new(scanline_position_x, self.state.cycle_counter.y).cast()] =
-                    self.palette[clamped_index].into();
+                    palette[clamped_index].into();
             }
 
             self.sprite_zero_check(scanline_position_x, is_background_opaque);

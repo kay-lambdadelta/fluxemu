@@ -5,6 +5,7 @@ use palette::Srgb;
 
 const SAMPLES_PER_PIXEL: usize = 8;
 const WHITE_VOLTAGE: f32 = 1.1;
+const EMPHASIS_ATTENUATION: f32 = 0.746;
 
 #[derive(Debug, Clone, Copy)]
 pub struct CompositeParams {
@@ -16,11 +17,37 @@ pub struct CompositeParams {
     pub hue_step: Rotation<f32, 2>,
     pub burst_phase: Rotation<f32, 2>,
     pub chroma_to_rgb: SMatrix<f32, 3, 2>,
+    pub emphasis_hues: [u8; 3],
 }
 
 impl CompositeParams {
     #[inline]
-    fn sample_voltage(&self, hue: u8, level: u8, sample_index: usize) -> f32 {
+    fn in_hue_phase(&self, hue: u8, sample_index: usize) -> bool {
+        let sample_phase =
+            Rotation::<_, 2>::new(TAU * sample_index as f32 / SAMPLES_PER_PIXEL as f32);
+        let hue_phase = self.hue0_phase * self.hue_step.powf(f32::from(hue) - 1.0);
+
+        (sample_phase * hue_phase).angle().cos() > 0.0
+    }
+
+    #[inline]
+    fn sample_voltage(&self, hue: u8, level: u8, emphasis: u8, sample_index: usize) -> f32 {
+        let voltage = self.unattenuated_sample_voltage(hue, level, sample_index);
+
+        let attenuated = hue < 0xe
+            && self.emphasis_hues.iter().enumerate().any(|(bit, hue)| {
+                emphasis & (1 << bit) != 0 && self.in_hue_phase(*hue, sample_index)
+            });
+
+        if attenuated {
+            voltage * EMPHASIS_ATTENUATION
+        } else {
+            voltage
+        }
+    }
+
+    #[inline]
+    fn unattenuated_sample_voltage(&self, hue: u8, level: u8, sample_index: usize) -> f32 {
         let level = level as usize;
 
         match hue {
@@ -72,8 +99,9 @@ impl CompositeParams {
     }
 
     #[inline]
-    fn decode_color<O: From<Srgb<f32>>>(&self, hue: u8, level: u8) -> O {
-        let waveform = SMatrix::from_fn(|sample, _| self.sample_voltage(hue, level, sample));
+    fn decode_color<O: From<Srgb<f32>>>(&self, hue: u8, level: u8, emphasis: u8) -> O {
+        let waveform =
+            SMatrix::from_fn(|sample, _| self.sample_voltage(hue, level, emphasis, sample));
 
         let color = self.decode(&waveform);
         let color = Srgb::new(color.x, color.y, color.z);
@@ -82,11 +110,13 @@ impl CompositeParams {
     }
 }
 
-pub fn build_palette(parameters: CompositeParams) -> [Srgb<u8>; 64] {
-    std::array::from_fn(|index| {
-        let hue = (index % 16) as u8;
-        let level = ((index >> 4) % 4) as u8;
+pub fn build_palette(parameters: CompositeParams) -> [[Srgb<u8>; 64]; 8] {
+    std::array::from_fn(|emphasis| {
+        std::array::from_fn(|index| {
+            let hue = (index % 16) as u8;
+            let level = ((index >> 4) % 4) as u8;
 
-        parameters.decode_color(hue, level)
+            parameters.decode_color(hue, level, emphasis as u8)
+        })
     })
 }

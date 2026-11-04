@@ -26,7 +26,7 @@ impl Region for Ntsc {
     }
 
     #[inline]
-    fn generate_palette() -> [Srgb<u8>; 64] {
+    fn generate_palette() -> [[Srgb<u8>; 64]; 8] {
         // If something looks wrong, please consult and check against https://www.nesdev.org/wiki/NTSC_video
         //
         // Especially if you have a better understanding of math or televisions than I do.
@@ -41,6 +41,7 @@ impl Region for Ntsc {
             burst_phase: Rotation::<_, 2>::new((180.0f32).to_radians()),
             // Flip it so it works with the same math that works with pal
             chroma_to_rgb: SMatrix::from_fn(|row, col| YIQ_TO_RGB_NTSC_1953[(row, 1 - col)]),
+            emphasis_hues: [0xc, 0x4, 0x8],
         })
     }
 }

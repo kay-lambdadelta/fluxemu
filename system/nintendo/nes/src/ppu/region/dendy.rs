@@ -18,7 +18,7 @@ impl Region for Dendy {
         todo!()
     }
 
-    fn generate_palette() -> [Srgb<u8>; 64] {
+    fn generate_palette() -> [[Srgb<u8>; 64]; 8] {
         todo!()
     }
 }

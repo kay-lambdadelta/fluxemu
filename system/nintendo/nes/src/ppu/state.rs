@@ -28,6 +28,7 @@ pub struct State {
     /// Actually 15 bits, usually called t
     pub shadow_vram_address_pointer: u16,
     pub odd_frame: bool,
+    pub emphasis_index: u8,
 }
 
 #[derive(Debug, Clone, Copy)]

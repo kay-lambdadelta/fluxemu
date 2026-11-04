@@ -24,7 +24,7 @@ impl Region for Pal {
         Frequency::from_num(53203425) / 2
     }
 
-    fn generate_palette() -> [Srgb<u8>; 64] {
+    fn generate_palette() -> [[Srgb<u8>; 64]; 8] {
         build_palette(CompositeParams {
             black_voltage: 0.220,
             luma_voltage_grey: [0.160, 0.220, 0.480, 0.870],
@@ -34,6 +34,7 @@ impl Region for Pal {
             hue_step: Rotation::<_, 2>::new(TAU / 12.0),
             burst_phase: Rotation::<_, 2>::new((135.0f32).to_radians()),
             chroma_to_rgb: YUV_TO_RGB_SDTV_WITH_BT470,
+            emphasis_hues: [0x4, 0xc, 0x8],
         })
     }
 }

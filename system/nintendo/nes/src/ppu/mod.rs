@@ -96,7 +96,7 @@ pub struct Ppu<R: Region, G: SupportedGraphicsApi> {
     ppu_address_space: AddressSpaceId,
     processor_path: ComponentPath,
     staging_buffer: OwnedTexture<Srgba<u8>>,
-    palette: [Srgb<u8>; 64],
+    palette: [[Srgb<u8>; 64]; 8],
     path: ComponentPath,
     framebuffer_path: ResourcePath,
     period: Period,
@@ -242,6 +242,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<
                 vram_address_pointer: 0,
                 shadow_vram_address_pointer: 0,
                 odd_frame: false,
+                emphasis_index: 0,
             },
             backend: None,
             staging_buffer,
@@ -397,6 +398,7 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
                     self.state.color_emphasis.red = *buffer & 0b0010_0000 != 0;
                     self.state.color_emphasis.green = *buffer & 0b0100_0000 != 0;
                     self.state.color_emphasis.blue = *buffer & 0b1000_0000 != 0;
+                    self.state.emphasis_index = *buffer >> 5;
                 }
                 CpuAccessibleRegister::OamAddr => {
                     self.state.oam.oam_addr = *buffer;
