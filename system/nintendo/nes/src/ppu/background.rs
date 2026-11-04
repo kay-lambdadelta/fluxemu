@@ -10,26 +10,10 @@ pub struct BackgroundState {
     pub attribute_shift: u32,
     /// Usually called x, 3 bits
     pub fine_x_scroll: u8,
-    pub awaiting_memory_access: bool,
     pub show_leftmost_pixels: bool,
-}
-
-#[allow(clippy::enum_variant_names)]
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-pub enum BackgroundPipelineState {
-    FetchingNametable,
-    FetchingAttribute {
-        nametable: u8,
-    },
-    FetchingPatternTableLow {
-        nametable: u8,
-        attribute: u8,
-    },
-    FetchingPatternTableHigh {
-        nametable: u8,
-        attribute: u8,
-        pattern_table_low: u8,
-    },
+    pub fetched_nametable: u8,
+    pub fetched_attribute: u8,
+    pub fetched_pattern_table_low: u8,
 }
 
 #[allow(clippy::enum_variant_names)]

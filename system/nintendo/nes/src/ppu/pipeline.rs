@@ -12,7 +12,7 @@ use crate::ppu::{
     ATTRIBUTE_BASE_ADDRESS, BACKGROUND_PALETTE_BASE_ADDRESS, NAMETABLE_BASE_ADDRESS, Ppu,
     SPRITE_PALETTE_BASE_ADDRESS, TOTAL_SCANLINE_LENGTH,
     backend::SupportedGraphicsApi,
-    background::{BackgroundPipelineState, SpritePipelineState},
+    background::SpritePipelineState,
     color::PpuColorIndex,
     oam::{CurrentlyRenderingSprite, OamSprite, SpriteEvaluationState},
     region::Region,
@@ -430,128 +430,120 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
         ppu_address_space: &mut AddressSpace<'_>,
         timestamp: Period,
     ) {
-        if !self.state.background.awaiting_memory_access {
-            self.drive_background_pipeline_inner(ppu_address_space, timestamp);
+        match self.state.cycle_counter.x % 8 {
+            2 => self.fetch_nametable(ppu_address_space, timestamp),
+            4 => self.fetch_attribute(ppu_address_space, timestamp),
+            6 => self.fetch_pattern_table_low(ppu_address_space, timestamp),
+            0 => self.fetch_pattern_table_high(ppu_address_space, timestamp),
+            _ => {}
         }
-
-        self.state.background.awaiting_memory_access =
-            !self.state.background.awaiting_memory_access;
     }
 
-    #[inline]
-    fn drive_background_pipeline_inner(
+    #[inline(never)]
+    fn fetch_nametable(&mut self, ppu_address_space: &mut AddressSpace<'_>, timestamp: Period) {
+        let vram_address_pointer_contents =
+            VramAddressPointerContents::from(self.state.vram_address_pointer);
+
+        let nametable_index = (vram_address_pointer_contents.nametable.y as usize) * 2
+            + (vram_address_pointer_contents.nametable.x as usize);
+
+        let nametable_base = NAMETABLE_BASE_ADDRESS + (nametable_index * 0x400);
+
+        let address = nametable_base
+            + (usize::from(vram_address_pointer_contents.coarse.y) * 32)
+            + usize::from(vram_address_pointer_contents.coarse.x);
+
+        self.state.background.fetched_nametable = ppu_address_space
+            .read_le_value::<_, false>(address, timestamp)
+            .unwrap();
+    }
+
+    #[inline(never)]
+    fn fetch_attribute(&mut self, ppu_address_space: &mut AddressSpace<'_>, timestamp: Period) {
+        let vram_address_pointer_contents =
+            VramAddressPointerContents::from(self.state.vram_address_pointer);
+
+        let coarse = vram_address_pointer_contents.coarse.cast::<usize>();
+        let nametable_index = (vram_address_pointer_contents.nametable.y as usize) * 2
+            + (vram_address_pointer_contents.nametable.x as usize);
+
+        // Attribute table is every 4x4 tiles
+        let address = ATTRIBUTE_BASE_ADDRESS
+            + (nametable_index * 0x400)
+            + (coarse.y / 4) * 8
+            + (coarse.x / 4);
+
+        let attribute: u8 = ppu_address_space
+            .read_le_value::<_, false>(address, timestamp)
+            .unwrap();
+
+        let attribute_quadrant = Point2::new(coarse.x % 4, coarse.y % 4) / 2;
+        let shift = (attribute_quadrant.y * 2 + attribute_quadrant.x) * 2;
+
+        self.state.background.fetched_attribute = (attribute >> shift) & 0b11;
+    }
+
+    #[inline(never)]
+    fn fetch_pattern_table_low(
         &mut self,
         ppu_address_space: &mut AddressSpace<'_>,
         timestamp: Period,
     ) {
-        let mut vram_address_pointer_contents =
+        let address = self.background_pattern_address();
+
+        self.state.background.fetched_pattern_table_low = ppu_address_space
+            .read_le_value::<_, false>(address as usize, timestamp)
+            .unwrap();
+    }
+
+    #[inline(never)]
+    fn fetch_pattern_table_high(
+        &mut self,
+        ppu_address_space: &mut AddressSpace<'_>,
+        timestamp: Period,
+    ) {
+        let address = self.background_pattern_address() + 8;
+
+        let pattern_table_high: u8 = ppu_address_space
+            .read_le_value::<_, false>(address as usize, timestamp)
+            .unwrap();
+
+        self.state.background.pattern_low_shift <<= 8;
+        self.state.background.pattern_high_shift <<= 8;
+        self.state.background.attribute_shift <<= 16;
+
+        self.state.background.pattern_low_shift |=
+            u16::from(self.state.background.fetched_pattern_table_low);
+        self.state.background.pattern_high_shift |= u16::from(pattern_table_high);
+        self.state.background.attribute_shift |=
+            u32::from(self.state.background.fetched_attribute) * 0x5555;
+
+        if self.state.background.rendering_enabled || self.state.oam.rendering_enabled {
+            let mut vram_address_pointer_contents =
+                VramAddressPointerContents::from(self.state.vram_address_pointer);
+
+            if vram_address_pointer_contents.coarse.x == 31 {
+                vram_address_pointer_contents.coarse.x = 0;
+                vram_address_pointer_contents.nametable.x =
+                    !vram_address_pointer_contents.nametable.x;
+            } else {
+                vram_address_pointer_contents.coarse.x += 1;
+            }
+
+            self.state.vram_address_pointer = vram_address_pointer_contents.into();
+        }
+    }
+
+    #[inline]
+    fn background_pattern_address(&self) -> u16 {
+        let vram_address_pointer_contents =
             VramAddressPointerContents::from(self.state.vram_address_pointer);
 
-        match self.state.background_pipeline_state {
-            BackgroundPipelineState::FetchingNametable => {
-                let nametable_index = (vram_address_pointer_contents.nametable.y as usize) * 2
-                    + (vram_address_pointer_contents.nametable.x as usize);
+        let pattern_table_base = u16::from(self.state.background.pattern_table_index) * 0x1000;
 
-                let nametable_base = NAMETABLE_BASE_ADDRESS + (nametable_index * 0x400);
-
-                let address = nametable_base
-                    + (usize::from(vram_address_pointer_contents.coarse.y) * 32)
-                    + usize::from(vram_address_pointer_contents.coarse.x);
-
-                let nametable = ppu_address_space
-                    .read_le_value::<_, false>(address, timestamp)
-                    .unwrap();
-
-                self.state.background_pipeline_state =
-                    BackgroundPipelineState::FetchingAttribute { nametable };
-            }
-            BackgroundPipelineState::FetchingAttribute { nametable } => {
-                let coarse = vram_address_pointer_contents.coarse.cast::<usize>();
-                let nametable_index = (vram_address_pointer_contents.nametable.y as usize) * 2
-                    + (vram_address_pointer_contents.nametable.x as usize);
-
-                // Attribute table is every 4x4 tiles
-                let address = ATTRIBUTE_BASE_ADDRESS
-                    + (nametable_index * 0x400)
-                    + (coarse.y / 4) * 8
-                    + (coarse.x / 4);
-
-                let attribute: u8 = ppu_address_space
-                    .read_le_value::<_, false>(address, timestamp)
-                    .unwrap();
-
-                let attribute_quadrant = Point2::new(coarse.x % 4, coarse.y % 4) / 2;
-                let shift = (attribute_quadrant.y * 2 + attribute_quadrant.x) * 2;
-                let attribute = (attribute >> shift) & 0b11;
-
-                self.state.background_pipeline_state =
-                    BackgroundPipelineState::FetchingPatternTableLow {
-                        nametable,
-                        attribute,
-                    };
-            }
-            BackgroundPipelineState::FetchingPatternTableLow {
-                nametable,
-                attribute,
-            } => {
-                let pattern_table_base =
-                    u16::from(self.state.background.pattern_table_index) * 0x1000;
-
-                let address = pattern_table_base
-                    + (u16::from(nametable) * 16)
-                    + u16::from(vram_address_pointer_contents.fine_y);
-
-                let pattern_table_low = ppu_address_space
-                    .read_le_value::<_, false>(address as usize, timestamp)
-                    .unwrap();
-
-                self.state.background_pipeline_state =
-                    BackgroundPipelineState::FetchingPatternTableHigh {
-                        nametable,
-                        attribute,
-                        pattern_table_low,
-                    };
-            }
-            BackgroundPipelineState::FetchingPatternTableHigh {
-                nametable,
-                attribute,
-                pattern_table_low,
-            } => {
-                let pattern_table_base =
-                    u16::from(self.state.background.pattern_table_index) * 0x1000;
-
-                let address = pattern_table_base
-                    + (u16::from(nametable) * 16)
-                    + u16::from(vram_address_pointer_contents.fine_y)
-                    + 8;
-
-                let pattern_table_high: u8 = ppu_address_space
-                    .read_le_value::<_, false>(address as usize, timestamp)
-                    .unwrap();
-
-                self.state.background.pattern_low_shift <<= 8;
-                self.state.background.pattern_high_shift <<= 8;
-                self.state.background.attribute_shift <<= 16;
-
-                self.state.background.pattern_low_shift |= u16::from(pattern_table_low);
-                self.state.background.pattern_high_shift |= u16::from(pattern_table_high);
-                self.state.background.attribute_shift |= u32::from(attribute) * 0x5555;
-
-                if self.state.background.rendering_enabled {
-                    if vram_address_pointer_contents.coarse.x == 31 {
-                        vram_address_pointer_contents.coarse.x = 0;
-                        vram_address_pointer_contents.nametable.x =
-                            !vram_address_pointer_contents.nametable.x;
-                    } else {
-                        vram_address_pointer_contents.coarse.x += 1;
-                    }
-
-                    self.state.vram_address_pointer = vram_address_pointer_contents.into();
-                }
-
-                self.state.background_pipeline_state = BackgroundPipelineState::FetchingNametable;
-            }
-        }
+        pattern_table_base
+            + (u16::from(self.state.background.fetched_nametable) * 16)
+            + u16::from(vram_address_pointer_contents.fine_y)
     }
 
     #[inline]

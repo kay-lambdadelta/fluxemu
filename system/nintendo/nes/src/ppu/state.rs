@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 use crate::ppu::{
-    BackgroundPipelineState, ColorEmphasis,
+    ColorEmphasis,
     background::{BackgroundState, SpritePipelineState},
     oam::OamState,
 };
@@ -20,7 +20,6 @@ pub struct State {
     pub vram_read_buffer: u8,
     pub color_emphasis: ColorEmphasis,
     pub cycle_counter: Point2<u16>,
-    pub background_pipeline_state: BackgroundPipelineState,
     pub sprite_pipeline_state: SpritePipelineState,
     pub oam: OamState,
     pub background: BackgroundState,

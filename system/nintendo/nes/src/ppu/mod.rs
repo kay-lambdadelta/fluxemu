@@ -27,7 +27,7 @@ use strum::FromRepr;
 
 use crate::ppu::{
     backend::SupportedGraphicsApi,
-    background::{BackgroundPipelineState, BackgroundState, SpritePipelineState},
+    background::{BackgroundState, SpritePipelineState},
     oam::{OamState, SpriteEvaluationState},
     region::Region,
     state::{State, VramAddressPointerContents},
@@ -211,7 +211,6 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<
                     blue: false,
                 },
                 cycle_counter: Point2::new(1, R::PRERENDER_SCANLINE),
-                background_pipeline_state: BackgroundPipelineState::FetchingNametable,
                 sprite_pipeline_state: SpritePipelineState::FetchingNametableGarbage0,
                 oam: OamState {
                     data: rand::random(),
@@ -235,8 +234,10 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<
                     attribute_shift: 0,
                     fine_x_scroll: 0,
                     rendering_enabled: false,
-                    awaiting_memory_access: true,
                     show_leftmost_pixels: true,
+                    fetched_nametable: 0,
+                    fetched_attribute: 0,
+                    fetched_pattern_table_low: 0,
                 },
                 vram_address_pointer: 0,
                 shadow_vram_address_pointer: 0,
