@@ -3,7 +3,6 @@ use core::fmt::Display;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    IRQ_VECTOR,
     component::Mos6502,
     cycle::{
         AddToPointerLikeRegisterSource, ArithmeticOperandInterpretation, BusMode, Cycle, Flag,
@@ -1014,6 +1013,7 @@ impl<V: Variant> Mos6502<V> {
         tracing::debug!("BRK occurred");
 
         self.state.cycle_queue.clear();
+        self.state.in_interrupt_sequence = true;
 
         self.state.cycle_queue.extend([
             Cycle::new(
@@ -1052,11 +1052,12 @@ impl<V: Variant> Mos6502<V> {
                         destination: MoveDestination::Data,
                     },
                     Phi2::IncrementStack { subtract: true },
+                    Phi2::SelectInterruptVector,
                 ],
             ),
             Cycle::new(
                 BusMode::Read,
-                Some(Phi1Source::Constant(IRQ_VECTOR)),
+                Some(Phi1Source::InterruptVectorLow),
                 [Phi2::Move {
                     source: MoveSource::Data,
                     destination: MoveDestination::EffectiveAddress,
@@ -1064,7 +1065,7 @@ impl<V: Variant> Mos6502<V> {
             ),
             Cycle::new(
                 BusMode::Read,
-                Some(Phi1Source::Constant(IRQ_VECTOR + 1)),
+                Some(Phi1Source::InterruptVectorHigh),
                 [
                     Phi2::Move {
                         source: MoveSource::Data,

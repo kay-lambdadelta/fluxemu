@@ -70,6 +70,8 @@ pub enum Phi1Source {
     UnfixedEffectiveAddress,
     Constant(u16),
     Stack,
+    InterruptVectorLow,
+    InterruptVectorHigh,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -184,6 +186,7 @@ pub enum Phi2 {
     ReplacePointerLikeRegisterHighByteWithOperand {
         register: PointerLikeRegister,
     },
+    SelectInterruptVector,
     Jam,
 }
 

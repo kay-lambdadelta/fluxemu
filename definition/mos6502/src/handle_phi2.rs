@@ -1,5 +1,5 @@
 use crate::{
-    FlagRegister,
+    FlagRegister, IRQ_VECTOR, NMI_VECTOR,
     component::Mos6502,
     cycle::{
         AddToPointerLikeRegisterSource, ArithmeticOperandInterpretation, BusMode, Cycle, Flag,
@@ -306,6 +306,13 @@ impl<V: Variant> Mos6502<V> {
                         register,
                         u16::from_le_bytes([address_low, self.state.operand]),
                     );
+                }
+                Phi2::SelectInterruptVector => {
+                    self.state.interrupt_vector = if self.state.nmi.interrupt_required() {
+                        NMI_VECTOR
+                    } else {
+                        IRQ_VECTOR
+                    };
                 }
                 Phi2::Jam => {
                     self.state

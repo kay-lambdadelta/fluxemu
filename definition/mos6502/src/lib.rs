@@ -80,6 +80,9 @@ struct State {
     pub rdy: bool,
     pub nmi: NmiFlag,
     pub irq: bool,
+    pub pending_irq: bool,
+    pub in_interrupt_sequence: bool,
+    pub interrupt_vector: u16,
 }
 
 /// NMI is falling edge

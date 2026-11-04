@@ -95,6 +95,9 @@ impl<P: Platform, V: Variant> ComponentConfig<P> for Config<V> {
                 nmi: NmiFlag::default(),
                 effective_address: heapless::Vec::default(),
                 consume_effective_address: false,
+                pending_irq: false,
+                in_interrupt_sequence: false,
+                interrupt_vector: IRQ_VECTOR,
             },
             config: self,
             _variant: PhantomData::<V>,
@@ -169,8 +172,13 @@ impl<V: Variant> Mos6502<V> {
         ]);
     }
 
+    fn poll_interrupts(&mut self) {
+        self.state.pending_irq = self.state.irq && !self.state.flags.interrupt_disable;
+    }
+
     fn handle_nmi(&mut self) {
         self.state.cycle_queue.extend([
+            Cycle::new(BusMode::Read, Some(Phi1Source::InstructionPointer), []),
             Cycle::new(BusMode::Read, Some(Phi1Source::InstructionPointer), []),
             Cycle::new(
                 BusMode::Write,
@@ -222,9 +230,14 @@ impl<V: Variant> Mos6502<V> {
                         destination: MoveDestination::EffectiveAddress,
                     },
                     Phi2::LoadInstructionPointerFromEffectiveAddress,
+                    Phi2::SetFlag {
+                        flag: Flag::InterruptDisable,
+                        value: true,
+                    },
                 ],
             ),
         ]);
+        self.state.in_interrupt_sequence = true;
     }
 
     fn handle_irq(&mut self) {
@@ -262,11 +275,12 @@ impl<V: Variant> Mos6502<V> {
                         destination: MoveDestination::Data,
                     },
                     Phi2::IncrementStack { subtract: true },
+                    Phi2::SelectInterruptVector,
                 ],
             ),
             Cycle::new(
                 BusMode::Read,
-                Some(Phi1Source::Constant(IRQ_VECTOR)),
+                Some(Phi1Source::InterruptVectorLow),
                 [Phi2::Move {
                     source: MoveSource::Data,
                     destination: MoveDestination::EffectiveAddress,
@@ -274,7 +288,7 @@ impl<V: Variant> Mos6502<V> {
             ),
             Cycle::new(
                 BusMode::Read,
-                Some(Phi1Source::Constant(IRQ_VECTOR + 1)),
+                Some(Phi1Source::InterruptVectorHigh),
                 [
                     Phi2::Move {
                         source: MoveSource::Data,
@@ -288,6 +302,7 @@ impl<V: Variant> Mos6502<V> {
                 ],
             ),
         ]);
+        self.state.in_interrupt_sequence = true;
     }
 
     #[inline]
@@ -345,6 +360,12 @@ impl<V: Variant> Mos6502<V> {
                 Some(Phi1Source::Constant(value)) => {
                     self.state.bus.address = value;
                 }
+                Some(Phi1Source::InterruptVectorLow) => {
+                    self.state.bus.address = self.state.interrupt_vector;
+                }
+                Some(Phi1Source::InterruptVectorHigh) => {
+                    self.state.bus.address = self.state.interrupt_vector + 1;
+                }
                 Some(Phi1Source::Stack) => {
                     self.state.bus.address = u16::from(self.state.stack) | STACK_BASE_ADDRESS;
                 }
@@ -386,13 +407,22 @@ impl<V: Variant> Mos6502<V> {
                     }
                 }
 
-                // Check for interrupts
+                if V::SUPPORTS_INTERRUPTS {
+                    match self.state.cycle_queue.len() {
+                        0 => {
+                            let in_interrupt_sequence =
+                                core::mem::take(&mut self.state.in_interrupt_sequence);
 
-                if V::SUPPORTS_INTERRUPTS && self.state.cycle_queue.is_empty() {
-                    if self.state.nmi.interrupt_required() {
-                        self.handle_nmi();
-                    } else if core::mem::take(&mut self.state.irq) {
-                        self.handle_irq();
+                            if !in_interrupt_sequence && self.state.nmi.interrupt_required() {
+                                self.state.pending_irq = false;
+                                self.handle_nmi();
+                            } else if self.state.pending_irq {
+                                self.state.pending_irq = false;
+                                self.handle_irq();
+                            }
+                        }
+                        1 if !self.state.in_interrupt_sequence => self.poll_interrupts(),
+                        _ => {}
                     }
                 }
             }
