@@ -190,7 +190,7 @@ pub enum Phi2 {
 pub struct Cycle {
     pub bus_mode: BusMode,
     pub phi1: Option<Phi1Source>,
-    pub phi2: heapless::Vec<Phi2, 4>,
+    pub phi2: heapless::Vec<Phi2, 4, u8>,
 }
 
 impl Cycle {

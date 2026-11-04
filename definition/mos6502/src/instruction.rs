@@ -455,8 +455,7 @@ impl<V: Variant> Mos6502<V> {
                 // Note that this is correct for all actual existing addressing modes for JMP
                 self.state
                     .cycle_queue
-                    .iter_mut()
-                    .last()
+                    .back_mut()
                     .unwrap()
                     .phi2
                     .push(Phi2::LoadInstructionPointerFromEffectiveAddress)
@@ -1590,8 +1589,7 @@ impl<V: Variant> Mos6502<V> {
                 // These instructions have a final semi-dummy cycle that can be leeched off
                 self.state
                     .cycle_queue
-                    .iter_mut()
-                    .last()
+                    .back_mut()
                     .unwrap()
                     .phi2
                     .extend(steps);
