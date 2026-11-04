@@ -33,7 +33,7 @@ jobs:
             check: |
               cargo clippy -p fluxemu-shell-destinezite --all-features
               cargo clippy -p fluxemu-utils
-            test: RUSTFLAGS="-C opt-level=0" cargo test
+            test: RUSTFLAGS="-C opt-level=0" cargo test --workspace --exclude 'fluxemu-shell-*'
 
           - name: Debian Trixie (aarch64-unknown-linux-gnu)
             runner: ubuntu-26.04-arm
@@ -42,7 +42,7 @@ jobs:
             check: |
               cargo clippy -p fluxemu-shell-destinezite --all-features
               cargo clippy -p fluxemu-utils
-            test: RUSTFLAGS="-C opt-level=0" cargo test
+            test: RUSTFLAGS="-C opt-level=0" cargo test --workspace --exclude 'fluxemu-shell-*'
 
           - name: NuttX (raspberrypi-pico-2)
             runner: ubuntu-26.04
