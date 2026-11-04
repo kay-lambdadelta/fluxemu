@@ -2,8 +2,29 @@
   "lsp": {
     "rust-analyzer": {
       "initialization_options": {
+        "cargo": {
+          "buildScripts": {
+            "overrideCommand": [
+              "cargo",
+              "check",
+              "--package",
+              "fluxemu-shell-destinezite",
+              "--all-targets",
+              "--keep-going",
+              "--message-format=json",
+            ],
+          },
+        },
         "check": {
-          "command": "clippy",
+          "overrideCommand": [
+            "cargo",
+            "clippy",
+            "--package",
+            "fluxemu-shell-destinezite",
+            "--all-targets",
+            "--keep-going",
+            "--message-format=json",
+          ],
         },
       },
     },
