@@ -39,23 +39,23 @@ pub struct SurfaceBufferGuard<'a> {
 
 impl AsViewTexture<Packed<Bgra, [u8; 4]>> for SurfaceBufferGuard<'_> {
     fn as_view(&self) -> RefTexture<'_, Packed<Bgra, [u8; 4]>> {
-        RefTexture::from_storage(
-            self.dimensions.x as usize,
-            self.dimensions.y as usize,
-            bytemuck::cast_slice(self.buffer.as_ref()),
-        )
-        .view_owned(..self.stride as usize, ..)
+        let stride = self.stride as usize;
+        let height = self.dimensions.y as usize;
+        let pixels: &[Packed<Bgra, [u8; 4]>] = bytemuck::cast_slice(self.buffer.as_ref());
+
+        RefTexture::from_storage(stride, height, &pixels[..stride * height])
+            .view_owned(..self.dimensions.x as usize, ..)
     }
 }
 
 impl AsViewTextureMut<Packed<Bgra, [u8; 4]>> for SurfaceBufferGuard<'_> {
     fn as_view_mut(&mut self) -> RefMutTexture<'_, Packed<Bgra, [u8; 4]>> {
-        RefMutTexture::from_storage(
-            self.dimensions.x as usize,
-            self.dimensions.y as usize,
-            bytemuck::cast_slice_mut(self.buffer.as_mut()),
-        )
-        .view_owned(..self.stride as usize, ..)
+        let stride = self.stride as usize;
+        let height = self.dimensions.y as usize;
+        let pixels: &mut [Packed<Bgra, [u8; 4]>] = bytemuck::cast_slice_mut(self.buffer.as_mut());
+
+        RefMutTexture::from_storage(stride, height, &mut pixels[..stride * height])
+            .view_owned(..self.dimensions.x as usize, ..)
     }
 }
 
