@@ -110,7 +110,7 @@ walkdir = "2.5"
 wgpu = "30.0"
 winit = "0.30"
 xkbcommon = "0.9"
-zip = "9.1"
+zip = "9.3"
 
 ratatui = "0.30"
 ratatui-explorer = "0.3"
