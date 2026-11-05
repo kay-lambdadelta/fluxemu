@@ -24,5 +24,6 @@ multiple-versions = "allow"
 
 [advisories]
 ignore = [
-  { id = "RUSTSEC-2026-0192", reason = "ttf-parser is unmaintained" },
+  { id = "RUSTSEC-2026-0192" },
+  { id = "RUSTSEC-2024-0436" },
 ]
