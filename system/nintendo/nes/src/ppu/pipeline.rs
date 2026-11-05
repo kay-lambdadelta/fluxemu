@@ -1,6 +1,3 @@
-use std::ops::RangeInclusive;
-
-use fluxemu_math::range::ContiguousRange;
 use fluxemu_runtime::{
     RuntimeHandle,
     memory::AddressSpace,
@@ -12,7 +9,6 @@ use crate::ppu::{
     ATTRIBUTE_BASE_ADDRESS, BACKGROUND_PALETTE_BASE_ADDRESS, NAMETABLE_BASE_ADDRESS, Ppu,
     SPRITE_PALETTE_BASE_ADDRESS, TOTAL_SCANLINE_LENGTH,
     backend::SupportedGraphicsApi,
-    background::SpritePipelineState,
     color::PpuColorIndex,
     oam::{CurrentlyRenderingSprite, OamSprite, SpriteEvaluationState},
     region::Region,
@@ -40,7 +36,7 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
             if self.state.cycle_counter.y == R::PRERENDER_SCANLINE
                 && self.state.cycle_counter.x == 339
                 && self.state.odd_frame
-                && (self.state.background.rendering_enabled || self.state.oam.rendering_enabled)
+                && self.rendering_enabled()
             {
                 self.state.cycle_counter = Point2::default();
             } else {
@@ -101,6 +97,12 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
             }
         }
 
+        if let 257..=320 = self.state.cycle_counter.x
+            && self.rendering_enabled()
+        {
+            self.state.oam.oam_addr = 0;
+        }
+
         if let 321..=336 = self.state.cycle_counter.x {
             self.drive_background_pipeline(ppu_address_space, timestamp);
         }
@@ -122,8 +124,9 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
         render: bool,
     ) {
         if self.state.cycle_counter.x == 1 {
-            self.state.oam.secondary_data.clear();
+            self.state.oam.secondary_address = 0;
             self.state.oam.sprite_zero_in_secondary = false;
+            self.state.oam.sprite_evaluation_state = SpriteEvaluationState::Searching;
         }
 
         if let 1..=256 = self.state.cycle_counter.x {
@@ -206,51 +209,11 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
             self.drive_background_pipeline(ppu_address_space, timestamp);
         }
 
-        if let 65..=256 = self.state.cycle_counter.x {
-            let sprite_index = (self.state.cycle_counter.x - 65) / 2;
-            let oam_data_index = sprite_index * 4;
-
-            if sprite_index < 64 {
-                match self.state.oam.sprite_evaluation_state {
-                    SpriteEvaluationState::InspectingY => {
-                        let sprite_y = self.state.oam.data[oam_data_index as usize];
-
-                        self.state.oam.sprite_evaluation_state =
-                            SpriteEvaluationState::Evaluating { sprite_y };
-                    }
-                    SpriteEvaluationState::Evaluating { sprite_y } => {
-                        let sprite_height: u16 = if self.state.oam.sprite_8x16_mode {
-                            16
-                        } else {
-                            8
-                        };
-
-                        if (u16::from(sprite_y)..u16::from(sprite_y) + sprite_height)
-                            .contains(&self.state.cycle_counter.y)
-                        {
-                            let mut bytes = [0; 4];
-                            bytes.copy_from_slice(
-                                &self.state.oam.data[RangeInclusive::from_start_and_length(
-                                    oam_data_index as usize,
-                                    4,
-                                )],
-                            );
-
-                            let sprite = OamSprite::from_bytes(bytes);
-                            let index = (oam_data_index / 4) as u8;
-
-                            if index == 0 {
-                                self.state.oam.sprite_zero_in_secondary = true;
-                            }
-
-                            if self.state.oam.secondary_data.push(sprite).is_err() {
-                                self.state.oam.overflow = true;
-                            }
-                        }
-
-                        self.state.oam.sprite_evaluation_state = SpriteEvaluationState::InspectingY;
-                    }
-                }
+        if self.rendering_enabled() {
+            match self.state.cycle_counter.x {
+                1..=64 => self.clear_secondary_oam(),
+                65..=256 => self.evaluate_sprites(),
+                _ => {}
             }
         }
 
@@ -280,31 +243,189 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
     }
 
     #[inline]
+    pub(super) fn rendering_enabled(&self) -> bool {
+        self.state.background.rendering_enabled || self.state.oam.rendering_enabled
+    }
+
+    #[inline]
+    pub(super) fn is_evaluating_sprites(&self) -> bool {
+        self.rendering_enabled() && self.state.cycle_counter.y < R::VISIBLE_SCANLINES
+    }
+
+    #[inline]
+    pub(super) fn is_on_rendering_scanline(&self) -> bool {
+        self.state.cycle_counter.y < R::VISIBLE_SCANLINES
+            || self.state.cycle_counter.y == R::PRERENDER_SCANLINE
+    }
+
+    #[inline]
+    pub(super) fn oam_bus_value(&self) -> u8 {
+        if self.state.cycle_counter.x > 320 || self.state.cycle_counter.x == 0 {
+            self.state.oam.secondary_data[0]
+        } else {
+            self.state.oam.bus_latch
+        }
+    }
+
+    #[inline]
     fn increment_vy(&mut self) {
-        if self.state.cycle_counter.x == 256
-            && (self.state.background.rendering_enabled || self.state.oam.rendering_enabled)
-        {
-            let mut vram_address_pointer_contents =
-                VramAddressPointerContents::from(self.state.vram_address_pointer);
+        if self.state.cycle_counter.x == 256 && self.rendering_enabled() {
+            self.increment_fine_y();
+        }
+    }
 
-            if vram_address_pointer_contents.fine_y == 7 {
-                vram_address_pointer_contents.fine_y = 0;
+    #[inline]
+    fn increment_fine_y(&mut self) {
+        let mut vram_address_pointer_contents =
+            VramAddressPointerContents::from(self.state.vram_address_pointer);
 
-                if vram_address_pointer_contents.coarse.y == 29 {
-                    vram_address_pointer_contents.coarse.y = 0;
+        if vram_address_pointer_contents.fine_y == 7 {
+            vram_address_pointer_contents.fine_y = 0;
 
-                    vram_address_pointer_contents.nametable.y =
-                        !vram_address_pointer_contents.nametable.y;
-                } else if vram_address_pointer_contents.coarse.y == 31 {
-                    vram_address_pointer_contents.coarse.y = 0;
-                } else {
-                    vram_address_pointer_contents.coarse.y += 1;
-                }
+            if vram_address_pointer_contents.coarse.y == 29 {
+                vram_address_pointer_contents.coarse.y = 0;
+
+                vram_address_pointer_contents.nametable.y =
+                    !vram_address_pointer_contents.nametable.y;
+            } else if vram_address_pointer_contents.coarse.y == 31 {
+                vram_address_pointer_contents.coarse.y = 0;
             } else {
-                vram_address_pointer_contents.fine_y += 1;
+                vram_address_pointer_contents.coarse.y += 1;
             }
+        } else {
+            vram_address_pointer_contents.fine_y += 1;
+        }
 
-            self.state.vram_address_pointer = u16::from(vram_address_pointer_contents);
+        self.state.vram_address_pointer = u16::from(vram_address_pointer_contents);
+    }
+
+    #[inline]
+    fn increment_coarse_x(&mut self) {
+        let mut vram_address_pointer_contents =
+            VramAddressPointerContents::from(self.state.vram_address_pointer);
+
+        if vram_address_pointer_contents.coarse.x == 31 {
+            vram_address_pointer_contents.coarse.x = 0;
+            vram_address_pointer_contents.nametable.x = !vram_address_pointer_contents.nametable.x;
+        } else {
+            vram_address_pointer_contents.coarse.x += 1;
+        }
+
+        self.state.vram_address_pointer = vram_address_pointer_contents.into();
+    }
+
+    #[inline]
+    fn clear_secondary_oam(&mut self) {
+        self.state.oam.bus_latch = 0xff;
+
+        if self.state.cycle_counter.x.is_multiple_of(2) {
+            self.state.oam.secondary_data[usize::from(self.state.cycle_counter.x / 2 - 1)] = 0xff;
+        }
+    }
+
+    #[inline]
+    fn sprite_in_range(&self, sprite_y: u8) -> bool {
+        let sprite_height = if self.state.oam.sprite_8x16_mode {
+            16
+        } else {
+            8
+        };
+
+        self.state.cycle_counter.y.wrapping_sub(u16::from(sprite_y)) < sprite_height
+    }
+
+    #[inline]
+    fn advance_oam_address(&mut self, amount: u8) -> bool {
+        let (oam_addr, wrapped) = self.state.oam.oam_addr.overflowing_add(amount);
+        self.state.oam.oam_addr = oam_addr;
+
+        wrapped
+    }
+
+    #[inline]
+    fn store_secondary_oam(&mut self, value: u8) {
+        if let Some(slot) = self
+            .state
+            .oam
+            .secondary_data
+            .get_mut(usize::from(self.state.oam.secondary_address))
+        {
+            *slot = value;
+        }
+    }
+
+    fn evaluate_sprites(&mut self) {
+        if !self.state.cycle_counter.x.is_multiple_of(2) {
+            self.state.oam.bus_latch = self.state.oam.data[usize::from(self.state.oam.oam_addr)];
+            return;
+        }
+
+        let value = self.state.oam.bus_latch;
+
+        match self.state.oam.sprite_evaluation_state {
+            SpriteEvaluationState::Searching => {
+                self.store_secondary_oam(value);
+
+                if self.sprite_in_range(value) {
+                    if self.state.cycle_counter.x == 66 {
+                        self.state.oam.sprite_zero_in_secondary = true;
+                    }
+
+                    self.state.oam.secondary_address += 1;
+                    self.advance_oam_address(1);
+                    self.state.oam.sprite_evaluation_state =
+                        SpriteEvaluationState::Copying { remaining: 3 };
+                } else if self.advance_oam_address(4) {
+                    self.state.oam.sprite_evaluation_state = SpriteEvaluationState::Finished;
+                }
+            }
+            SpriteEvaluationState::Copying { remaining } => {
+                self.store_secondary_oam(value);
+                self.state.oam.secondary_address += 1;
+                let wrapped = self.advance_oam_address(1);
+
+                self.state.oam.sprite_evaluation_state = if remaining > 1 {
+                    SpriteEvaluationState::Copying {
+                        remaining: remaining - 1,
+                    }
+                } else if wrapped {
+                    SpriteEvaluationState::Finished
+                } else if self.state.oam.secondary_address >= 32 {
+                    SpriteEvaluationState::CheckingOverflow
+                } else {
+                    SpriteEvaluationState::Searching
+                };
+            }
+            SpriteEvaluationState::CheckingOverflow => {
+                if self.sprite_in_range(value) {
+                    self.state.oam.overflow = true;
+                    self.advance_oam_address(1);
+                    self.state.oam.sprite_evaluation_state =
+                        SpriteEvaluationState::CopyingOverflowed { remaining: 3 };
+                } else {
+                    let byte_index = self.state.oam.oam_addr.wrapping_add(1) & 0b11;
+                    let wrapped = self.advance_oam_address(4);
+                    self.state.oam.oam_addr = (self.state.oam.oam_addr & !0b11) | byte_index;
+
+                    if wrapped {
+                        self.state.oam.sprite_evaluation_state = SpriteEvaluationState::Finished;
+                    }
+                }
+            }
+            SpriteEvaluationState::CopyingOverflowed { remaining } => {
+                self.advance_oam_address(1);
+
+                self.state.oam.sprite_evaluation_state = if remaining > 1 {
+                    SpriteEvaluationState::CopyingOverflowed {
+                        remaining: remaining - 1,
+                    }
+                } else {
+                    SpriteEvaluationState::Finished
+                };
+            }
+            SpriteEvaluationState::Finished => {
+                self.advance_oam_address(4);
+            }
         }
     }
 
@@ -327,6 +448,7 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
             && sprite_zero_hit
             && scanline_position_x != 255
             && self.state.oam.rendering_enabled
+            && (self.state.oam.show_leftmost_pixels || scanline_position_x >= 8)
         {
             self.state.oam.sprite_zero_hit = true;
         }
@@ -358,76 +480,66 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
         ppu_address_space: &mut AddressSpace<'_>,
         timestamp: Period,
     ) {
-        if !self.state.oam.awaiting_memory_access {
-            let currently_relevant_sprite_index = (self.state.cycle_counter.x - 257) / 8;
-            let currently_relevant_sprite = self
-                .state
-                .oam
-                .secondary_data
-                .get(usize::from(currently_relevant_sprite_index));
-
-            match self.state.sprite_pipeline_state {
-                SpritePipelineState::FetchingNametableGarbage0 => {
-                    self.state.sprite_pipeline_state =
-                        SpritePipelineState::FetchingNametableGarbage1;
-                }
-                SpritePipelineState::FetchingNametableGarbage1 => {
-                    self.state.sprite_pipeline_state = SpritePipelineState::FetchingPatternTableLow;
-                }
-                SpritePipelineState::FetchingPatternTableLow => {
-                    if let Some(currently_relevant_sprite) = currently_relevant_sprite {
-                        let address = self.state.oam.calculate_sprite_pattern_address(
-                            currently_relevant_sprite,
-                            self.state.cycle_counter.y,
-                            false,
-                        );
-
-                        let pattern_table_low = ppu_address_space
-                            .read_le_value::<_, false>(address as usize, timestamp)
-                            .unwrap();
-
-                        self.state.sprite_pipeline_state =
-                            SpritePipelineState::FetchingPatternTableHigh { pattern_table_low };
-                    } else {
-                        self.state.sprite_pipeline_state =
-                            SpritePipelineState::FetchingPatternTableHigh {
-                                // This is a garbage value, it isn't used
-                                pattern_table_low: 0x00,
-                            };
-                    }
-                }
-                SpritePipelineState::FetchingPatternTableHigh { pattern_table_low } => {
-                    if let Some(currently_relevant_sprite) = currently_relevant_sprite {
-                        let address = self.state.oam.calculate_sprite_pattern_address(
-                            currently_relevant_sprite,
-                            self.state.cycle_counter.y,
-                            true,
-                        );
-
-                        let pattern_table_high = ppu_address_space
-                            .read_le_value::<_, false>(address as usize, timestamp)
-                            .unwrap();
-
-                        self.state
-                            .oam
-                            .currently_rendering_sprites
-                            .push(CurrentlyRenderingSprite {
-                                oam: *currently_relevant_sprite,
-                                pattern_table_high,
-                                pattern_table_low,
-                                is_sprite_zero: currently_relevant_sprite_index == 0
-                                    && self.state.oam.sprite_zero_in_secondary,
-                            })
-                            .unwrap();
-                    }
-
-                    self.state.sprite_pipeline_state =
-                        SpritePipelineState::FetchingNametableGarbage0;
-                }
-            }
+        if !self.rendering_enabled() {
+            return;
         }
 
-        self.state.oam.awaiting_memory_access = !self.state.oam.awaiting_memory_access;
+        self.state.oam.oam_addr = 0;
+
+        let position = self.state.cycle_counter.x - 257;
+        let sprite_index = usize::from(position / 8);
+        let phase = usize::from(position % 8);
+        let secondary_offset = sprite_index * 4;
+
+        self.state.oam.bus_latch = self.state.oam.secondary_data[secondary_offset + phase.min(3)];
+
+        if secondary_offset >= usize::from(self.state.oam.secondary_address) {
+            return;
+        }
+
+        let mut bytes = [0; 4];
+        bytes.copy_from_slice(
+            &self.state.oam.secondary_data[secondary_offset..secondary_offset + 4],
+        );
+        let sprite = OamSprite::from_bytes(bytes);
+
+        match phase {
+            5 => {
+                let address = self.state.oam.calculate_sprite_pattern_address(
+                    &sprite,
+                    self.state.cycle_counter.y,
+                    false,
+                );
+
+                self.state.oam.fetched_pattern_table_low = ppu_address_space
+                    .read_le_value::<_, false>(address as usize, timestamp)
+                    .unwrap();
+            }
+            7 => {
+                let address = self.state.oam.calculate_sprite_pattern_address(
+                    &sprite,
+                    self.state.cycle_counter.y,
+                    true,
+                );
+
+                let pattern_table_high = ppu_address_space
+                    .read_le_value::<_, false>(address as usize, timestamp)
+                    .unwrap();
+
+                self.state
+                    .oam
+                    .currently_rendering_sprites
+                    .push(CurrentlyRenderingSprite {
+                        oam: sprite,
+                        pattern_table_high,
+                        pattern_table_low: self.state.oam.fetched_pattern_table_low,
+                        is_sprite_zero: sprite_index == 0
+                            && self.state.oam.sprite_zero_in_secondary,
+                    })
+                    .unwrap();
+            }
+            _ => {}
+        }
     }
 
     #[inline]
@@ -436,6 +548,10 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
         ppu_address_space: &mut AddressSpace<'_>,
         timestamp: Period,
     ) {
+        if !self.rendering_enabled() {
+            return;
+        }
+
         match self.state.cycle_counter.x % 8 {
             2 => self.fetch_nametable(ppu_address_space, timestamp),
             4 => self.fetch_attribute(ppu_address_space, timestamp),
@@ -524,20 +640,7 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
         self.state.background.attribute_shift |=
             u32::from(self.state.background.fetched_attribute) * 0x5555;
 
-        if self.state.background.rendering_enabled || self.state.oam.rendering_enabled {
-            let mut vram_address_pointer_contents =
-                VramAddressPointerContents::from(self.state.vram_address_pointer);
-
-            if vram_address_pointer_contents.coarse.x == 31 {
-                vram_address_pointer_contents.coarse.x = 0;
-                vram_address_pointer_contents.nametable.x =
-                    !vram_address_pointer_contents.nametable.x;
-            } else {
-                vram_address_pointer_contents.coarse.x += 1;
-            }
-
-            self.state.vram_address_pointer = vram_address_pointer_contents.into();
-        }
+        self.increment_coarse_x();
     }
 
     #[inline]

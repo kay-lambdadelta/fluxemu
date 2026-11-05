@@ -54,11 +54,13 @@ pub struct CurrentlyRenderingSprite {
     pub is_sprite_zero: bool,
 }
 
-#[serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum SpriteEvaluationState {
-    InspectingY,
-    Evaluating { sprite_y: u8 },
+    Searching,
+    Copying { remaining: u8 },
+    CheckingOverflow,
+    CopyingOverflowed { remaining: u8 },
+    Finished,
 }
 
 #[serde_as]
@@ -68,7 +70,10 @@ pub struct OamState {
     #[serde_as(as = "Bytes")]
     pub data: [u8; 256],
     /// Secondary data buffer that is filled with sprite evaluation
-    pub secondary_data: heapless::Vec<OamSprite, 8>,
+    #[serde_as(as = "Bytes")]
+    pub secondary_data: [u8; 32],
+    pub secondary_address: u8,
+    pub bus_latch: u8,
     pub sprite_zero_in_secondary: bool,
     /// Internal feature of this emulator filled with sprites post fetching
     pub currently_rendering_sprites: heapless::Vec<CurrentlyRenderingSprite, 8>,
@@ -77,13 +82,22 @@ pub struct OamState {
     pub show_leftmost_pixels: bool,
     pub sprite_8x8_pattern_table_index: u8,
     pub rendering_enabled: bool,
-    pub awaiting_memory_access: bool,
+    pub fetched_pattern_table_low: u8,
     pub sprite_zero_hit: bool,
     pub sprite_8x16_mode: bool,
     pub overflow: bool,
 }
 
 impl OamState {
+    #[inline]
+    pub fn write(&mut self, address: u8, value: u8) {
+        self.data[usize::from(address)] = if address & 0b11 == 2 {
+            value & 0b1110_0011
+        } else {
+            value
+        };
+    }
+
     #[inline]
     pub fn calculate_sprite_pattern_address(
         &self,

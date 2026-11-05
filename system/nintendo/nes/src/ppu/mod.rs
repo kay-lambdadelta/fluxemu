@@ -27,7 +27,7 @@ use strum::FromRepr;
 
 use crate::ppu::{
     backend::SupportedGraphicsApi,
-    background::{BackgroundState, SpritePipelineState},
+    background::BackgroundState,
     oam::{OamState, SpriteEvaluationState},
     region::Region,
     state::{State, VramAddressPointerContents},
@@ -211,18 +211,27 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<
                     blue: false,
                 },
                 cycle_counter: Point2::new(1, R::PRERENDER_SCANLINE),
-                sprite_pipeline_state: SpritePipelineState::FetchingNametableGarbage0,
                 oam: OamState {
-                    data: rand::random(),
+                    data: std::array::from_fn(|index| {
+                        let value: u8 = rand::random();
+
+                        if index % 4 == 2 {
+                            value & 0b1110_0011
+                        } else {
+                            value
+                        }
+                    }),
                     oam_addr: 0x00,
-                    sprite_evaluation_state: SpriteEvaluationState::InspectingY,
-                    secondary_data: heapless::Vec::new(),
+                    sprite_evaluation_state: SpriteEvaluationState::Searching,
+                    secondary_data: [0xff; 32],
+                    secondary_address: 0,
+                    bus_latch: 0xff,
                     sprite_zero_in_secondary: false,
                     currently_rendering_sprites: heapless::Vec::new(),
                     show_leftmost_pixels: true,
                     sprite_8x8_pattern_table_index: 0x0000,
                     rendering_enabled: false,
-                    awaiting_memory_access: true,
+                    fetched_pattern_table_low: 0,
                     sprite_zero_hit: false,
                     sprite_8x16_mode: false,
                     overflow: false,
@@ -295,7 +304,11 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
                     *buffer = self.state.oam.oam_addr;
                 }
                 CpuAccessibleRegister::OamData => {
-                    *buffer = self.state.oam.data[self.state.oam.oam_addr as usize];
+                    *buffer = if self.is_evaluating_sprites() {
+                        self.oam_bus_value()
+                    } else {
+                        self.state.oam.data[self.state.oam.oam_addr as usize]
+                    };
                 }
                 CpuAccessibleRegister::PpuScroll => todo!(),
                 CpuAccessibleRegister::PpuAddr => todo!(),
@@ -404,8 +417,13 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
                     self.state.oam.oam_addr = *buffer;
                 }
                 CpuAccessibleRegister::OamData => {
-                    self.state.oam.data[self.state.oam.oam_addr as usize] = *buffer;
-                    self.state.oam.oam_addr = self.state.oam.oam_addr.wrapping_add(1);
+                    if self.rendering_enabled() && self.is_on_rendering_scanline() {
+                        self.state.oam.oam_addr =
+                            self.state.oam.oam_addr.wrapping_add(4) & 0b1111_1100;
+                    } else {
+                        self.state.oam.write(self.state.oam.oam_addr, *buffer);
+                        self.state.oam.oam_addr = self.state.oam.oam_addr.wrapping_add(1);
+                    }
                 }
                 CpuAccessibleRegister::PpuScroll => {
                     let mut shadow_vram_address_pointer =
@@ -498,11 +516,15 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
 
                         // Read off OAM data immediately, this is done for performance and should not
                         // have any side effects
-                        let _ = cpu_address_space.read::<_, false>(
-                            page as usize,
-                            timestamp,
-                            &mut self.state.oam.data,
-                        );
+                        let mut data = [0; 256];
+                        let _ =
+                            cpu_address_space.read::<_, false>(page as usize, timestamp, &mut data);
+
+                        for (offset, value) in data.into_iter().enumerate() {
+                            let address = self.state.oam.oam_addr.wrapping_add(offset as u8);
+
+                            self.state.oam.write(address, value);
+                        }
 
                         Ok(())
                     })?;

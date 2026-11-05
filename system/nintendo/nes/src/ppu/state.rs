@@ -2,11 +2,7 @@ use nalgebra::{Point2, Vector2};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::ppu::{
-    ColorEmphasis,
-    background::{BackgroundState, SpritePipelineState},
-    oam::OamState,
-};
+use crate::ppu::{ColorEmphasis, background::BackgroundState, oam::OamState};
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
@@ -20,7 +16,6 @@ pub struct State {
     pub vram_read_buffer: u8,
     pub color_emphasis: ColorEmphasis,
     pub cycle_counter: Point2<u16>,
-    pub sprite_pipeline_state: SpritePipelineState,
     pub oam: OamState,
     pub background: BackgroundState,
     /// Actually 15 bits, usually called v
