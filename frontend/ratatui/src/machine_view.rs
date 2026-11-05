@@ -1,11 +1,18 @@
 use std::sync::Arc;
 
-use fluxemu_graphics::{api::software::Software, texture::OwnedTexture};
+use fluxemu_graphics::{
+    api::software::Software,
+    texture::{CopyMode, OwnedTexture, RefMutTexture},
+};
 use fluxemu_runtime::machine::Machine;
-use image::{DynamicImage, RgbImage};
+use image::{DynamicImage, RgbaImage};
+use nalgebra::Vector2;
 use palette::Srgba;
-use ratatui::{Frame, layout::Rect};
-use ratatui_image::{FilterType, Image, Resize, picker::Picker, protocol::Protocol};
+use ratatui::{
+    Frame,
+    layout::{Rect, Size},
+};
+use ratatui_image::{FontSize, Image, Resize, picker::Picker, protocol::Protocol};
 
 #[derive(Default)]
 pub struct MachineView {
@@ -36,13 +43,11 @@ impl MachineView {
             .is_none_or(|encoded_frame| encoded_frame.area != area);
 
         if (refresh || is_stale)
-            && let Some(image) = capture_framebuffer(machine)
+            && let Some(framebuffer) = capture_framebuffer(machine)
         {
-            match picker.new_protocol(
-                image,
-                area.as_size(),
-                Resize::Scale(Some(FilterType::Nearest)),
-            ) {
+            let image = scale_to_cells(&framebuffer, area.as_size(), picker.font_size());
+
+            match picker.new_protocol(image, area.as_size(), Resize::Fit(None)) {
                 Ok(protocol) => {
                     self.encoded_frame = Some(EncodedFrame { area, protocol });
                 }
@@ -66,23 +71,42 @@ impl MachineView {
     }
 }
 
-fn capture_framebuffer(machine: &Arc<Machine>) -> Option<DynamicImage> {
+fn capture_framebuffer(machine: &Arc<Machine>) -> Option<OwnedTexture<Srgba<u8>>> {
     let runtime = machine.enter_runtime();
     let framebuffer_path = runtime.list_framebuffers().next()?;
 
     runtime.read_framebuffer::<Software, _>(
         framebuffer_path,
         runtime.safe_advance_timestamp(),
-        framebuffer2image,
+        Clone::clone,
     )
 }
 
-fn framebuffer2image(framebuffer: &OwnedTexture<Srgba<u8>>) -> DynamicImage {
-    let mut image = RgbImage::new(framebuffer.width() as u32, framebuffer.height() as u32);
+fn scale_to_cells(
+    framebuffer: &OwnedTexture<Srgba<u8>>,
+    area: Size,
+    font_size: FontSize,
+) -> DynamicImage {
+    let font_size = Vector2::new(f64::from(font_size.width), f64::from(font_size.height));
+    let source_size = framebuffer.size().cast::<f64>();
+    let available_size =
+        Vector2::new(f64::from(area.width), f64::from(area.height)).component_mul(&font_size);
 
-    for (destination, source) in image.pixels_mut().zip(framebuffer.iter_pixels()) {
-        destination.0 = [source.red, source.green, source.blue];
-    }
+    let scale = available_size.component_div(&source_size).min();
+    let cells = (source_size * scale)
+        .map(f64::round)
+        .component_div(&font_size)
+        .map(|cells| cells.ceil().max(1.0));
+    let size = cells.component_mul(&font_size).map(|side| side as usize);
 
-    DynamicImage::ImageRgb8(image)
+    let mut image = RgbaImage::new(size.x as u32, size.y as u32);
+    let (pixels, _) = image.as_chunks_mut::<4>();
+
+    RefMutTexture::from_storage(size.x, size.y, pixels).map_from(
+        framebuffer,
+        CopyMode::Nearest,
+        |pixel: Srgba<u8>| [pixel.red, pixel.green, pixel.blue, u8::MAX],
+    );
+
+    DynamicImage::ImageRgba8(image)
 }

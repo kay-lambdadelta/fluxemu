@@ -254,8 +254,8 @@ impl<STORAGE: Storage> Texture<STORAGE> {
                 for y in 0..self.height() {
                     for x in 0..self.width() {
                         let source_position = Point2::new(
-                            (x as f32 * ratio.x) as usize,
-                            (y as f32 * ratio.y) as usize,
+                            ((x as f32 + 0.5) * ratio.x) as usize,
+                            ((y as f32 + 0.5) * ratio.y) as usize,
                         );
 
                         self[Point2::new(x, y)] = map(other[source_position].clone());

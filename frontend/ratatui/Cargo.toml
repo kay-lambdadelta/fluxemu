@@ -13,6 +13,7 @@ fluxemu-graphics = { workspace = true }
 fluxemu-input = { workspace = true }
 fluxemu-runtime = { workspace = true }
 image = { workspace = true }
+nalgebra = { workspace = true }
 palette = { workspace = true }
 ratatui = { workspace = true }
 ratatui-explorer = { workspace = true }
