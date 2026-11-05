@@ -1,29 +1,29 @@
-use std::{
-    error::Error,
-    fs::{File, create_dir_all},
-    path::Path,
-};
+use std::{error::Error, path::PathBuf, sync::Arc};
 
 use fluxemu_database::{PROGRAM_INFORMATION_TABLE, ProgramDatabase};
 use fluxemu_program::Manifest;
-use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator};
 use redb::{ReadableDatabase, ReadableMultimapTable};
 use ron::ser::PrettyConfig;
+use tokio::{fs, sync::mpsc, task::spawn_blocking};
 
-pub fn import(
-    program_database: &ProgramDatabase,
-    paths: impl IntoParallelIterator<Item = Result<walkdir::DirEntry, walkdir::Error>>,
+use crate::for_each_concurrent;
+
+pub async fn import(
+    program_database: Arc<ProgramDatabase>,
+    paths: mpsc::UnboundedReceiver<walkdir::DirEntry>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    paths.into_par_iter().try_for_each(|entry| {
-        match entry {
-            Ok(entry) => {
+    for_each_concurrent(paths, move |entry| {
+        let program_database = program_database.clone();
+
+        async move {
+            let bytes = fs::read(entry.path()).await?;
+
+            spawn_blocking(move || -> Result<(), Box<dyn Error + Send + Sync>> {
                 let database_transaction = program_database.database().begin_write()?;
                 let mut database_table =
                     database_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
 
-                let file = File::open(entry.path())?;
-
-                match ron::Options::default().from_reader::<_, Manifest>(file) {
+                match ron::Options::default().from_bytes::<Manifest>(&bytes) {
                     Ok(program_specification) => {
                         database_table
                             .insert(program_specification.id, program_specification.info)?;
@@ -32,49 +32,59 @@ pub fn import(
                         tracing::warn!("Failed to open file {:?}: {}", entry.path(), err);
                     }
                 }
-            }
-            Err(err) => {
-                tracing::error!("Failed to open file: {}", err);
-            }
-        }
 
-        Ok(())
+                Ok(())
+            })
+            .await?
+        }
     })
+    .await
 }
 
-pub fn export(
-    program_database: &ProgramDatabase,
-    output_directory: &Path,
+pub async fn export(
+    program_database: Arc<ProgramDatabase>,
+    output_directory: PathBuf,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let _ = create_dir_all(output_directory);
+    let _ = fs::create_dir_all(&output_directory).await;
 
-    let database_transaction = program_database.database().begin_read()?;
-    let database_table = database_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
+    let (sender, receiver) = mpsc::unbounded_channel();
 
-    database_table.iter()?.par_bridge().try_for_each(|item| {
-        let (program_id, program_infos) = item?;
+    let table_reader = spawn_blocking(move || -> Result<(), Box<dyn Error + Send + Sync>> {
+        let database_transaction = program_database.database().begin_read()?;
+        let database_table = database_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
 
-        for program_info in program_infos {
-            let program_info = program_info?;
-            let program_id = program_id.value();
+        for item in database_table.iter()? {
+            let (program_id, program_infos) = item?;
 
-            let specification = Manifest {
-                id: program_id.clone(),
-                info: program_info.value(),
-            };
+            for program_info in program_infos {
+                let specification = Manifest {
+                    id: program_id.value(),
+                    info: program_info?.value(),
+                };
 
-            let mut output_path = output_directory.join(program_id.to_string());
-            output_path.set_extension("ron");
-
-            let output_file = File::create(output_path)?;
-
-            ron::Options::default().to_io_writer_pretty(
-                output_file,
-                &specification,
-                PrettyConfig::default(),
-            )?;
+                if sender.send(specification).is_err() {
+                    return Ok(());
+                }
+            }
         }
 
         Ok(())
+    });
+
+    for_each_concurrent(receiver, move |specification| {
+        let mut output_path = output_directory.join(specification.id.to_string());
+        output_path.set_extension("ron");
+
+        async move {
+            let output = ron::Options::default()
+                .to_string_pretty(&specification, PrettyConfig::default())?;
+
+            fs::write(output_path, output).await?;
+
+            Ok(())
+        }
     })
+    .await?;
+
+    table_reader.await?
 }

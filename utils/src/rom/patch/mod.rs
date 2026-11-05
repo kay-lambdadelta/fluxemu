@@ -4,13 +4,14 @@ use std::{
     fs::File,
     io::{BufReader, Cursor, Read, Seek, Write},
     path::Path,
+    sync::Arc,
 };
 
 use fluxemu_database::{HASH_ALIAS_TABLE, PROGRAM_INFORMATION_TABLE, ProgramDatabase};
 use fluxemu_environment::Environment;
 use fluxemu_program::{ProgramInfo, ProgramManager, RomId, RomStoreSpecification};
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use tempfile::tempfile;
+use tokio::task::spawn_blocking;
 
 use crate::rom::patch::ups::Ups;
 
@@ -29,7 +30,7 @@ pub trait PatchFormat {
 
 pub async fn patch(
     program_manager: &ProgramManager,
-    program_database: &ProgramDatabase,
+    program_database: Arc<ProgramDatabase>,
     environment: &Environment,
     source: RomId,
     patch: &Path,
@@ -44,21 +45,27 @@ pub async fn patch(
         .extension()
         .map(|extension| extension.to_string_lossy())
     {
-        let mut destination_file = tempfile()?;
-
-        {
-            let patch = BufReader::new(File::open(patch)?);
-
-            if extension == Ups::EXTENSION {
-                Ups::apply(&mut Cursor::new(&rom), &mut destination_file, patch)?;
-            } else {
-                return Err("Not a patch".into());
-            }
+        if extension != Ups::EXTENSION {
+            return Err("Not a patch".into());
         }
 
-        destination_file.rewind()?;
-        let patched_rom_id = RomId::new_sha1(&destination_file)?;
-        destination_file.rewind()?;
+        let patch_path = patch.to_path_buf();
+
+        let (destination_file, patched_rom_id) = spawn_blocking(
+            move || -> Result<(File, RomId), Box<dyn Error + Send + Sync>> {
+                let mut destination_file = tempfile()?;
+                let patch = BufReader::new(File::open(patch_path)?);
+
+                Ups::apply(&mut Cursor::new(&rom), &mut destination_file, patch)?;
+
+                destination_file.rewind()?;
+                let patched_rom_id = RomId::new_sha1(&destination_file)?;
+                destination_file.rewind()?;
+
+                Ok((destination_file, patched_rom_id))
+            },
+        )
+        .await??;
 
         let rom_store_path = environment
             .rom_stores
@@ -73,74 +80,92 @@ pub async fn patch(
             rom_store_path
         );
 
-        let mut rom_store_file = File::create(&rom_store_path)?;
+        let mut destination_file = tokio::fs::File::from_std(destination_file);
+        let mut rom_store_file = tokio::fs::File::create(&rom_store_path).await?;
 
-        std::io::copy(&mut destination_file, &mut rom_store_file)?;
+        tokio::io::copy(&mut destination_file, &mut rom_store_file).await?;
 
-        let patch_file_name = patch.file_stem().unwrap().to_string_lossy();
+        let patch_file_name = patch.file_stem().unwrap().to_string_lossy().into_owned();
 
         if add_to_database {
-            let manifests = program_database.identify_program([source])?;
+            spawn_blocking(move || {
+                add_patched_rom_to_database(
+                    &program_database,
+                    source,
+                    patched_rom_id,
+                    &patch_file_name,
+                )
+            })
+            .await??;
+        }
+    }
 
-            if let Some(mut single_rom_manifest) = manifests
-                .into_par_iter()
-                .find_first(|manifest| manifest.info.filesystem().len() == 1)
-            {
-                single_rom_manifest.id.main_name = patch_file_name.clone().into();
-                let mut info = single_rom_manifest.info.mitigate();
+    Ok(())
+}
 
-                match &mut info {
-                    ProgramInfo::V0 {
-                        names,
-                        filesystem,
-                        languages,
-                        version,
-                    } => {
-                        // Extract the name and replace it with the patch file name
-                        if let Some(name) = names.first().cloned()
-                            && let Some((_, extension)) = name.rsplit_once('.')
-                        {
-                            let filename = format!("{}.{}", patch_file_name, extension);
+fn add_patched_rom_to_database(
+    program_database: &ProgramDatabase,
+    source: RomId,
+    patched_rom_id: RomId,
+    patch_file_name: &str,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let manifests = program_database.identify_program([source])?;
 
-                            names.clear();
-                            names.insert(filename.clone());
+    if let Some(mut single_rom_manifest) = manifests
+        .into_iter()
+        .find(|manifest| manifest.info.filesystem().len() == 1)
+    {
+        single_rom_manifest.id.main_name = patch_file_name.into();
+        let mut info = single_rom_manifest.info.mitigate();
 
-                            filesystem.clear();
-                            filesystem.insert(patched_rom_id, BTreeSet::from_iter([filename]));
+        match &mut info {
+            ProgramInfo::V0 {
+                names,
+                filesystem,
+                languages,
+                version,
+            } => {
+                // Extract the name and replace it with the patch file name
+                if let Some(name) = names.first().cloned()
+                    && let Some((_, extension)) = name.rsplit_once('.')
+                {
+                    let filename = format!("{}.{}", patch_file_name, extension);
 
-                            languages.clear();
+                    names.clear();
+                    names.insert(filename.clone());
 
-                            *version = None;
+                    filesystem.clear();
+                    filesystem.insert(patched_rom_id, BTreeSet::from_iter([filename]));
 
-                            // Add to database
-                            let database_transaction = program_database.database().begin_write()?;
-                            let mut hash_alias_table =
-                                database_transaction.open_multimap_table(HASH_ALIAS_TABLE)?;
-                            let mut program_information_table = database_transaction
-                                .open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
+                    languages.clear();
 
-                            hash_alias_table
-                                .insert(patched_rom_id, single_rom_manifest.id.clone())?;
-                            program_information_table
-                                .insert(single_rom_manifest.id.clone(), info)?;
+                    *version = None;
 
-                            drop(hash_alias_table);
-                            drop(program_information_table);
+                    // Add to database
+                    let database_transaction = program_database.database().begin_write()?;
+                    let mut hash_alias_table =
+                        database_transaction.open_multimap_table(HASH_ALIAS_TABLE)?;
+                    let mut program_information_table =
+                        database_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
 
-                            database_transaction.commit()?;
+                    hash_alias_table.insert(patched_rom_id, single_rom_manifest.id.clone())?;
+                    program_information_table.insert(single_rom_manifest.id.clone(), info)?;
 
-                            tracing::info!(
-                                "Added database entry for patched ROM with ID {}",
-                                single_rom_manifest.id
-                            );
-                        } else {
-                            tracing::warn!(
-                                "Failed to add database entry for patched ROM with ID {}, add \
-                                 manually if you need this",
-                                single_rom_manifest.id
-                            );
-                        }
-                    }
+                    drop(hash_alias_table);
+                    drop(program_information_table);
+
+                    database_transaction.commit()?;
+
+                    tracing::info!(
+                        "Added database entry for patched ROM with ID {}",
+                        single_rom_manifest.id
+                    );
+                } else {
+                    tracing::warn!(
+                        "Failed to add database entry for patched ROM with ID {}, add manually if \
+                         you need this",
+                        single_rom_manifest.id
+                    );
                 }
             }
         }

@@ -1,26 +1,22 @@
-use std::{error::Error, fs::File, io::BufReader};
+use std::{error::Error, sync::Arc};
 
 use fluxemu_database::ProgramDatabase;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use tokio::{fs, sync::mpsc, task::spawn_blocking};
 
-use crate::logiqx::add_to_database;
+use crate::{for_each_concurrent, logiqx::add_to_database};
 
-pub fn import(
-    program_database: &ProgramDatabase,
-    paths: impl IntoParallelIterator<Item = Result<walkdir::DirEntry, walkdir::Error>>,
+pub async fn import(
+    program_database: Arc<ProgramDatabase>,
+    paths: mpsc::UnboundedReceiver<walkdir::DirEntry>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    paths.into_par_iter().try_for_each(|entry| {
-        match entry {
-            Ok(entry) => {
-                let file = File::open(entry.into_path())?;
+    for_each_concurrent(paths, move |entry| {
+        let program_database = program_database.clone();
 
-                add_to_database(program_database, BufReader::new(file))?;
-            }
-            Err(err) => {
-                tracing::error!("Failed to open file: {}", err);
-            }
+        async move {
+            let bytes = fs::read(entry.into_path()).await?;
+
+            spawn_blocking(move || add_to_database(&program_database, bytes.as_slice())).await?
         }
-
-        Ok(())
     })
+    .await
 }

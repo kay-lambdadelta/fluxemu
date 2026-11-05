@@ -1,133 +1,155 @@
 use std::{
     error::Error,
-    fs::{File, create_dir_all},
-    io::{BufReader, Cursor, Read, Seek},
-    path::Path,
-    sync::LazyLock,
+    fs::File,
+    io::{self, BufReader, Cursor, Read, Seek},
+    path::{Path, PathBuf},
+    pin::Pin,
+    sync::{Arc, LazyLock},
 };
 
+use bytes::Bytes;
 use fluxemu_database::{HASH_ALIAS_TABLE, ProgramDatabase};
 use fluxemu_program::{ProgramId, RomId};
-use rayon::{
-    Scope,
-    iter::{IntoParallelIterator, ParallelIterator},
+use nod::{
+    common::Format,
+    read::{DiscOptions, DiscReader},
 };
 use redb::{ReadOnlyMultimapTable, ReadableDatabase};
 use rustc_hash::FxBuildHasher;
 use sevenz_rust2::Password;
+use tokio::{fs, sync::mpsc, task::spawn_blocking};
 use zip::ZipArchive;
 
-use crate::walk_for_files;
+use crate::{for_each_concurrent, rom::symlink_file};
 
 static ALREADY_FOUND_ROMS: LazyLock<scc::HashSet<RomId, FxBuildHasher>> =
     LazyLock::new(scc::HashSet::default);
 
-pub fn import(
-    program_database: &ProgramDatabase,
-    rom_store: &Path,
+type EntryFuture = Pin<Box<dyn Future<Output = Result<(), Box<dyn Error + Send + Sync>>> + Send>>;
+
+trait ReadSeek: Read + Seek {}
+
+impl<T: Read + Seek> ReadSeek for T {}
+
+#[derive(Clone)]
+enum ImportSource {
+    File(PathBuf),
+    Memory(Bytes),
+    DecodedDisc(Box<ImportSource>),
+}
+
+impl ImportSource {
+    fn open(&self) -> Result<Box<dyn ReadSeek>, Box<dyn Error + Send + Sync>> {
+        Ok(match self {
+            ImportSource::File(path) => Box::new(BufReader::new(File::open(path)?)),
+            ImportSource::Memory(bytes) => Box::new(Cursor::new(bytes.clone())),
+            ImportSource::DecodedDisc(container) => Box::new(container.open_disc()?),
+        })
+    }
+
+    fn open_disc(&self) -> nod::Result<DiscReader> {
+        let options = DiscOptions::default();
+
+        match self {
+            ImportSource::File(path) => DiscReader::new(path, &options),
+            ImportSource::Memory(bytes) => {
+                DiscReader::new_stream(Box::new(bytes.clone()), &options)
+            }
+            ImportSource::DecodedDisc(container) => container.open_disc(),
+        }
+    }
+}
+
+struct ImportContext {
+    rom_store: PathBuf,
     symlink: bool,
-    paths: impl IntoParallelIterator<Item = Result<walkdir::DirEntry, walkdir::Error>> + Send,
+    hash_alias_table: ReadOnlyMultimapTable<RomId, ProgramId>,
+}
+
+pub async fn import(
+    program_database: &ProgramDatabase,
+    rom_store: PathBuf,
+    symlink: bool,
+    paths: mpsc::UnboundedReceiver<walkdir::DirEntry>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let read_transaction = program_database.database().begin_read()?;
     let hash_alias_table = read_transaction.open_multimap_table(HASH_ALIAS_TABLE)?;
 
-    let _ = create_dir_all(rom_store);
+    let _ = fs::create_dir_all(&rom_store).await;
 
-    rayon::scope(|scope| {
-        paths
-            .into_par_iter()
-            .flatten()
-            .for_each(|entry| match entry.metadata() {
-                Err(err) => {
-                    tracing::warn!("Cannot stat {:?}: {}", entry.path(), err);
-                }
-                Ok(metadata) if metadata.is_file() => match File::open(entry.path()) {
-                    Ok(file) => {
-                        tracing::debug!("Processing file {:?}", entry.path());
-
-                        process_entry(
-                            scope,
-                            BufReader::new(file),
-                            Some(entry.path()),
-                            rom_store,
-                            symlink,
-                            &hash_alias_table,
-                        );
-                    }
-                    Err(err) => tracing::warn!("Cannot open {:?}: {}", entry.path(), err),
-                },
-                Ok(metadata) if metadata.is_dir() => {
-                    walk_for_files([entry.into_path()]).flatten().for_each(
-                        |entry| match File::open(entry.path()) {
-                            Ok(file) => {
-                                tracing::debug!("Processing file {}", entry.path().display());
-
-                                process_entry(
-                                    scope,
-                                    BufReader::new(file),
-                                    Some(entry.path()),
-                                    rom_store,
-                                    symlink,
-                                    &hash_alias_table,
-                                );
-                            }
-                            Err(err) => {
-                                tracing::warn!("Cannot open {:?}: {}", entry.path(), err)
-                            }
-                        },
-                    );
-                }
-                Ok(_) => {
-                    tracing::warn!("Skipping {:?}: not a file or directory", entry.path());
-                }
-            });
+    let context = Arc::new(ImportContext {
+        rom_store,
+        symlink,
+        hash_alias_table,
     });
 
-    Ok(())
+    for_each_concurrent(paths, move |entry| {
+        tracing::debug!("Processing file {:?}", entry.path());
+
+        process_entry(context.clone(), ImportSource::File(entry.into_path()))
+    })
+    .await
 }
 
-fn process_entry<'a>(
-    scope: &Scope<'a>,
-    mut reader: impl Read + Seek,
-    path: Option<&Path>,
-    rom_store: impl AsRef<Path>,
-    symlink: bool,
-    hash_alias_table: &'a ReadOnlyMultimapTable<RomId, ProgramId>,
-) {
-    if let Some(path) = path
-        && let Some(extension) = path.extension()
-        && let Some(extension) = extension.to_str()
-        && ["gcz", "wia", "rvz"].contains(&extension)
-    {
-        // FIXME: Actually do this conversion for the user
+fn process_entry(context: Arc<ImportContext>, source: ImportSource) -> EntryFuture {
+    Box::pin(async move {
+        let (sender, receiver) = mpsc::unbounded_channel();
 
-        tracing::warn!("This ROM probably needs to be converted to be recognized");
-    }
+        let scanner = spawn_blocking({
+            let context = context.clone();
+            let source = source.clone();
 
-    let rom_store = rom_store.as_ref();
+            move || scan_entry(&source, &sender, &context.hash_alias_table)
+        });
+
+        for_each_concurrent(receiver, |source| process_entry(context.clone(), source)).await?;
+
+        if let Some(rom_id) = scanner.await? {
+            store_rom(&context, rom_id, &source).await?;
+        }
+
+        Ok(())
+    })
+}
+
+fn scan_entry(
+    source: &ImportSource,
+    sender: &mpsc::UnboundedSender<ImportSource>,
+    hash_alias_table: &ReadOnlyMultimapTable<RomId, ProgramId>,
+) -> Option<RomId> {
+    let mut reader = match source.open() {
+        Ok(reader) => reader,
+        Err(err) => {
+            tracing::warn!("Cannot open ROM source: {}", err);
+            return None;
+        }
+    };
 
     match reader.rewind() {
-        Ok(_) => try_as_zip(scope, &mut reader, rom_store, hash_alias_table),
+        Ok(_) => try_as_zip(&mut reader, sender),
         Err(err) => tracing::warn!("Seek failed {}", err),
     }
 
     match reader.rewind() {
-        Ok(_) => try_as_7zip(scope, &mut reader, rom_store, hash_alias_table),
+        Ok(_) => try_as_7zip(&mut reader, sender),
         Err(err) => tracing::warn!("Seek failed {}", err),
     }
 
     match reader.rewind() {
-        Ok(_) => process_rom(reader, path, rom_store, symlink, hash_alias_table),
+        Ok(_) => try_as_disc(&mut reader, source, sender),
         Err(err) => tracing::warn!("Seek failed {}", err),
+    }
+
+    match reader.rewind() {
+        Ok(_) => identify_rom(reader, hash_alias_table),
+        Err(err) => {
+            tracing::warn!("Seek failed {}", err);
+            None
+        }
     }
 }
 
-fn try_as_zip<'a>(
-    scope: &Scope<'a>,
-    reader: impl Read + Seek,
-    rom_store: &Path,
-    hash_alias_table: &'a ReadOnlyMultimapTable<RomId, ProgramId>,
-) {
+fn try_as_zip(reader: impl Read + Seek, sender: &mpsc::UnboundedSender<ImportSource>) {
     let mut archive = match ZipArchive::new(reader) {
         Ok(archive) => archive,
         Err(_) => return,
@@ -159,27 +181,16 @@ fn try_as_zip<'a>(
             continue;
         }
 
-        let rom_store = rom_store.to_path_buf();
-
-        scope.spawn(|scope| {
-            process_entry(
-                scope,
-                Cursor::new(buffer),
-                None,
-                rom_store,
-                false,
-                hash_alias_table,
-            );
-        });
+        if sender
+            .send(ImportSource::Memory(Bytes::from(buffer)))
+            .is_err()
+        {
+            return;
+        }
     }
 }
 
-fn try_as_7zip<'a>(
-    scope: &Scope<'a>,
-    reader: impl Read + Seek,
-    rom_store: &Path,
-    hash_alias_table: &'a ReadOnlyMultimapTable<RomId, ProgramId>,
-) {
+fn try_as_7zip(reader: impl Read + Seek, sender: &mpsc::UnboundedSender<ImportSource>) {
     let mut archive = match sevenz_rust2::ArchiveReader::new(reader, Password::empty()) {
         Ok(archive) => archive,
         Err(_) => return,
@@ -198,42 +209,64 @@ fn try_as_7zip<'a>(
             return Ok(true);
         }
 
-        let rom_store = rom_store.to_path_buf();
-
-        scope.spawn(|scope| {
-            process_entry(
-                scope,
-                Cursor::new(buffer),
-                None,
-                rom_store,
-                false,
-                hash_alias_table,
-            );
-        });
-
-        Ok(true)
+        Ok(sender
+            .send(ImportSource::Memory(Bytes::from(buffer)))
+            .is_ok())
     }) {
         tracing::warn!("7z scanning error: {}", err);
     }
 }
 
-fn process_rom(
-    mut reader: impl Read + Seek,
-    path: Option<&Path>,
-    rom_store: &Path,
-    symlink: bool,
-    hash_alias_table: &ReadOnlyMultimapTable<RomId, ProgramId>,
+fn try_as_disc(
+    mut reader: impl Read,
+    source: &ImportSource,
+    sender: &mpsc::UnboundedSender<ImportSource>,
 ) {
-    let rom_id = RomId::new_sha1(&mut reader).unwrap();
+    match DiscReader::detect(&mut reader) {
+        Ok(Some(Format::Iso) | None) => return,
+        Ok(Some(_)) => {}
+        Err(err) => {
+            tracing::warn!("Cannot detect disc format: {}", err);
+            return;
+        }
+    }
+
+    match source.open_disc() {
+        Ok(disc) if disc.meta().lossless => {
+            tracing::debug!("Processing {} disc image", disc.meta().format);
+
+            let _ = sender.send(ImportSource::DecodedDisc(Box::new(source.clone())));
+        }
+        Ok(disc) => {
+            tracing::warn!(
+                "Cannot losslessly convert {} disc image, only the file itself will be identified",
+                disc.meta().format
+            );
+        }
+        Err(err) => tracing::warn!("Cannot open disc image: {}", err),
+    }
+}
+
+fn identify_rom(
+    mut reader: impl Read,
+    hash_alias_table: &ReadOnlyMultimapTable<RomId, ProgramId>,
+) -> Option<RomId> {
+    let rom_id = match RomId::new_sha1(&mut reader) {
+        Ok(rom_id) => rom_id,
+        Err(err) => {
+            tracing::warn!("Failed to hash ROM: {}", err);
+            return None;
+        }
+    };
 
     if ALREADY_FOUND_ROMS.contains_sync(&rom_id) {
-        return;
+        return None;
     }
     let _ = ALREADY_FOUND_ROMS.insert_sync(rom_id);
 
     if let Ok(values) = hash_alias_table.get(rom_id) {
         if values.is_empty() {
-            return;
+            return None;
         } else {
             for access_guard in values.into_iter().flatten() {
                 let program_id = access_guard.value();
@@ -246,37 +279,44 @@ fn process_rom(
             }
         }
     }
-    reader.rewind().unwrap();
 
-    let rom_store_path = rom_store.join(rom_id.to_string());
+    Some(rom_id)
+}
 
-    if !rom_store_path.exists() {
-        let _ = std::fs::remove_file(&rom_store_path);
+async fn store_rom(
+    context: &ImportContext,
+    rom_id: RomId,
+    source: &ImportSource,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let rom_store_path = context.rom_store.join(rom_id.to_string());
 
-        if let Some(path) = path
-            && let Ok(path) = path.canonicalize()
-        {
-            if symlink {
-                if let Err(err) = (|| {
-                    #[cfg(target_family = "unix")]
-                    return std::os::unix::fs::symlink(path, &rom_store_path);
+    if fs::try_exists(&rom_store_path).await.unwrap_or(false) {
+        return Ok(());
+    }
 
-                    #[cfg(target_os = "windows")]
-                    return std::os::windows::fs::symlink_file(path, &rom_store_path);
+    let _ = fs::remove_file(&rom_store_path).await;
 
-                    #[cfg(not(any(target_family = "unix", target_os = "windows")))]
-                    panic!("Unsupported operating system for symlinking");
-                })() {
-                    tracing::error!("Could not import ROM {}: {}", rom_id, err);
-                }
-            } else {
-                if let Err(err) = std::fs::copy(path, &rom_store_path) {
-                    tracing::error!("Could not import ROM {}: {}", rom_id, err);
-                }
+    match source {
+        ImportSource::File(path) => {
+            if let Err(err) = store_file(path, &rom_store_path, context.symlink).await {
+                tracing::error!("Could not import ROM {}: {}", rom_id, err);
             }
-        } else {
-            if let Err(err) = File::create(&rom_store_path)
-                .and_then(|mut file| std::io::copy(&mut reader, &mut file))
+        }
+        ImportSource::Memory(bytes) => {
+            if let Err(err) = fs::write(&rom_store_path, bytes).await {
+                tracing::error!(
+                    "Could not output ROM to path {}: {}",
+                    rom_store_path.display(),
+                    err
+                );
+            }
+        }
+        ImportSource::DecodedDisc(_) => {
+            let source = source.clone();
+            let output_path = rom_store_path.clone();
+
+            if let Err(err) =
+                spawn_blocking(move || store_decoded_disc(&source, &output_path)).await?
             {
                 tracing::error!(
                     "Could not output ROM to path {}: {}",
@@ -285,5 +325,37 @@ fn process_rom(
                 );
             }
         }
+    }
+
+    Ok(())
+}
+
+fn store_decoded_disc(
+    source: &ImportSource,
+    rom_store_path: &Path,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let partial_path = rom_store_path.with_extension("partial");
+
+    let result = source.open().and_then(|mut reader| {
+        io::copy(&mut reader, &mut File::create(&partial_path)?)?;
+        std::fs::rename(&partial_path, rom_store_path)?;
+
+        Ok(())
+    });
+
+    if result.is_err() {
+        let _ = std::fs::remove_file(&partial_path);
+    }
+
+    result
+}
+
+async fn store_file(path: &Path, rom_store_path: &Path, symlink: bool) -> io::Result<()> {
+    let path = fs::canonicalize(path).await?;
+
+    if symlink {
+        symlink_file(&path, rom_store_path).await
+    } else {
+        fs::copy(path, rom_store_path).await.map(|_| ())
     }
 }
