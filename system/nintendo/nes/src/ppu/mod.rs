@@ -70,6 +70,11 @@ const DUMMY_SCANLINE_COUNT: u16 = 2;
 const VISIBLE_SCANLINE_LENGTH: u16 = 256;
 const HBLANK_LENGTH: u16 = 85;
 const TOTAL_SCANLINE_LENGTH: u16 = VISIBLE_SCANLINE_LENGTH + HBLANK_LENGTH;
+const NMI_ARM_DELAY: u128 = 2;
+const VRAM_ADDRESS_WRITE_DELAY: u128 = 3;
+const SPRITE_FLAG_READ_LATENCY: u16 = 1;
+const NMI_ENABLE_CUTOFF: u128 = 1;
+const IO_LATCH_DECAY_FRAMES: u32 = 36;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct ColorEmphasis {
@@ -142,35 +147,8 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<
             my_path.clone(),
             [
                 (
-                    RangeInclusive::from_single(CpuAccessibleRegister::PpuCtrl as usize),
-                    Permissions::WRITE,
-                ),
-                (
-                    RangeInclusive::from_single(CpuAccessibleRegister::PpuScroll as usize),
-                    Permissions::WRITE,
-                ),
-                (
-                    RangeInclusive::from_single(CpuAccessibleRegister::PpuMask as usize),
-                    Permissions::WRITE,
-                ),
-                (
-                    RangeInclusive::from_single(CpuAccessibleRegister::PpuStatus as usize),
-                    Permissions::READ,
-                ),
-                (
-                    RangeInclusive::from_single(CpuAccessibleRegister::PpuAddr as usize),
-                    Permissions::ALL,
-                ),
-                (
-                    RangeInclusive::from_single(CpuAccessibleRegister::PpuData as usize),
-                    Permissions::ALL,
-                ),
-                (
-                    RangeInclusive::from_single(CpuAccessibleRegister::OamAddr as usize),
-                    Permissions::ALL,
-                ),
-                (
-                    RangeInclusive::from_single(CpuAccessibleRegister::OamData as usize),
+                    CpuAccessibleRegister::PpuCtrl as usize
+                        ..=CpuAccessibleRegister::PpuData as usize,
                     Permissions::ALL,
                 ),
                 (
@@ -244,6 +222,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<
                     fine_x_scroll: 0,
                     rendering_enabled: false,
                     show_leftmost_pixels: true,
+                    nametable_address_low: 0,
                     fetched_nametable: 0,
                     fetched_attribute: 0,
                     fetched_pattern_table_low: 0,
@@ -251,7 +230,17 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<
                 vram_address_pointer: 0,
                 shadow_vram_address_pointer: 0,
                 odd_frame: false,
+                skipped_dot_this_frame: false,
+                rendering_enabled_for_skip: false,
                 emphasis_index: 0,
+                frame_count: 0,
+                io_latch: 0,
+                io_latch_refresh_frames: [0; 8],
+                nmi_armed: false,
+                nmi_line_low: false,
+                suppress_vblank: false,
+                next_vblank_timestamp: Period::from_num(time) / frequency,
+                vblank_end_timestamp: Period::ZERO,
             },
             backend: None,
             staging_buffer,
@@ -283,35 +272,49 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
             tracing::trace!("Reading from PPU register: {:?}", register);
 
             match register {
-                CpuAccessibleRegister::PpuMask => todo!(),
                 CpuAccessibleRegister::PpuStatus => {
+                    let sprite_flags_clearing = self.state.cycle_counter.y == R::PRERENDER_SCANLINE
+                        && self.state.cycle_counter.x <= SPRITE_FLAG_READ_LATENCY;
+
+                    let value = (self.state.io_latch & 0b0001_1111)
+                        | ((self.state.entered_vblank as u8) << 7)
+                        | (((self.state.oam.sprite_zero_hit && !sprite_flags_clearing) as u8) << 6)
+                        | (((self.state.oam.overflow && !sprite_flags_clearing) as u8) << 5);
+
+                    *buffer = value;
+
                     if !avoid_side_effects {
                         self.state.vram_address_pointer_write_phase = false;
+                        self.state.entered_vblank = false;
+                        self.refresh_io_latch(value, 0b1110_0000);
+
+                        RuntimeHandle::with_current(|runtime| {
+                            let timestamp = runtime.current_timestamp();
+                            let vblank_timestamp = self.state.next_vblank_timestamp;
+
+                            if timestamp < vblank_timestamp
+                                && vblank_timestamp - timestamp <= self.period
+                            {
+                                self.state.suppress_vblank = true;
+                            }
+
+                            self.update_nmi_line(runtime);
+                        });
                     }
-
-                    let vblank = if avoid_side_effects {
-                        self.state.entered_vblank
-                    } else {
-                        std::mem::take(&mut self.state.entered_vblank)
-                    };
-
-                    *buffer = (*buffer & 0b0001_1111)
-                        | ((vblank as u8) << 7)
-                        | ((self.state.oam.sprite_zero_hit as u8) << 6)
-                        | ((self.state.oam.overflow as u8) << 5);
-                }
-                CpuAccessibleRegister::OamAddr => {
-                    *buffer = self.state.oam.oam_addr;
                 }
                 CpuAccessibleRegister::OamData => {
-                    *buffer = if self.is_evaluating_sprites() {
+                    let value = if self.is_evaluating_sprites() {
                         self.oam_bus_value()
                     } else {
                         self.state.oam.data[self.state.oam.oam_addr as usize]
                     };
+
+                    *buffer = value;
+
+                    if !avoid_side_effects {
+                        self.refresh_io_latch(value, 0b1111_1111);
+                    }
                 }
-                CpuAccessibleRegister::PpuScroll => todo!(),
-                CpuAccessibleRegister::PpuAddr => todo!(),
                 CpuAccessibleRegister::PpuData => {
                     RuntimeHandle::with_current(|runtime| {
                         let timestamp = runtime.current_timestamp();
@@ -323,47 +326,57 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
 
                         if avoid_side_effects {
                             *buffer = ppu_address_space
-                                .read_le_value::<_, true>(vram_address_pointer, timestamp)?;
+                                .read_le_value::<_, true>(vram_address_pointer, timestamp)
+                                .unwrap_or_default();
                         } else {
                             // RGB models do not have this quirk
                             let bypass_read_buffer = R::BYPASS_READ_BUFFER_FOR_PPUDATA_PALETTE_READS
                                 // Cover the ENTIRE range, including the mirrors
-                                && RangeInclusive::from_start_and_length(
-                                    *PALETTE_RAM_ADDRESSES.start(),
-                                    0x1000,
-                                )
-                                .contains(&vram_address_pointer);
+                                && vram_address_pointer & 0x3fff
+                                    >= *PALETTE_RAM_ADDRESSES.start();
 
                             if bypass_read_buffer {
                                 let data: u8 = ppu_address_space
-                                    .read_le_value::<_, false>(vram_address_pointer, timestamp)?;
+                                    .read_le_value::<_, false>(vram_address_pointer, timestamp)
+                                    .unwrap_or_default();
+                                let color_mask = if self.state.greyscale {
+                                    0b0011_0000
+                                } else {
+                                    0b0011_1111
+                                };
 
-                                *buffer = (*buffer & 0b1100_0000) | (data & 0b0011_1111);
+                                *buffer = (self.state.io_latch & 0b1100_0000) | (data & color_mask);
+                                self.refresh_io_latch(*buffer, 0b0011_1111);
 
                                 // HACK: The memory subsystem does not (yet) support dealing with memory shadowing
                                 //
                                 // This should work, but it is a hack
                                 let underlying_address = (vram_address_pointer & 0x0fff) | 0x2000;
                                 self.state.vram_read_buffer = ppu_address_space
-                                    .read_le_value::<_, false>(underlying_address, timestamp)?;
+                                    .read_le_value::<_, false>(underlying_address, timestamp)
+                                    .unwrap_or_default();
                             } else {
                                 let data = ppu_address_space
-                                    .read_le_value::<_, false>(vram_address_pointer, timestamp)?;
+                                    .read_le_value::<_, false>(vram_address_pointer, timestamp)
+                                    .unwrap_or_default();
 
                                 // Delay the read through the buffer
                                 *buffer = std::mem::replace(&mut self.state.vram_read_buffer, data);
+                                self.refresh_io_latch(*buffer, 0b1111_1111);
                             }
 
-                            self.state.vram_address_pointer =
-                                self.state.vram_address_pointer.wrapping_add(u16::from(
-                                    self.state.vram_address_pointer_increment_amount,
-                                )) & 0b0111_1111_1111_1111;
+                            self.increment_vram_address_pointer();
                         }
-
-                        Ok(())
-                    })?;
+                    });
                 }
-                _ => {
+                CpuAccessibleRegister::PpuCtrl
+                | CpuAccessibleRegister::PpuMask
+                | CpuAccessibleRegister::OamAddr
+                | CpuAccessibleRegister::PpuScroll
+                | CpuAccessibleRegister::PpuAddr => {
+                    *buffer = self.state.io_latch;
+                }
+                CpuAccessibleRegister::OamDma => {
                     unreachable!("{:?}", register);
                 }
             }
@@ -384,7 +397,12 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
             let register = CpuAccessibleRegister::from_repr(address as u16).unwrap();
             tracing::trace!("Writing to PPU register: {:?}", register);
 
+            if !matches!(register, CpuAccessibleRegister::OamDma) {
+                self.refresh_io_latch(*buffer, 0b1111_1111);
+            }
+
             match register {
+                CpuAccessibleRegister::PpuStatus => {}
                 CpuAccessibleRegister::PpuCtrl => {
                     let mut shadow_vram_address_pointer =
                         VramAddressPointerContents::from(self.state.shadow_vram_address_pointer);
@@ -401,6 +419,20 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
 
                     self.state.vblank_nmi_enabled = *buffer & 0b1000_0000 != 0;
                     self.state.shadow_vram_address_pointer = shadow_vram_address_pointer.into();
+
+                    RuntimeHandle::with_current(|runtime| {
+                        let timestamp = runtime.current_timestamp();
+                        let vblank_end_timestamp = self.state.vblank_end_timestamp;
+
+                        if !self.state.nmi_line_low
+                            && timestamp < vblank_end_timestamp
+                            && vblank_end_timestamp - timestamp <= self.period * NMI_ENABLE_CUTOFF
+                        {
+                            self.state.nmi_armed = false;
+                        }
+
+                        self.update_nmi_line(runtime);
+                    });
                 }
                 CpuAccessibleRegister::PpuMask => {
                     self.state.greyscale = *buffer & 0b0000_0001 != 0;
@@ -448,14 +480,25 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
                 CpuAccessibleRegister::PpuAddr => {
                     let mut unpacked_address = self.state.shadow_vram_address_pointer.to_be_bytes();
 
-                    unpacked_address[usize::from(self.state.vram_address_pointer_write_phase)] =
-                        *buffer;
+                    if self.state.vram_address_pointer_write_phase {
+                        unpacked_address[1] = *buffer;
+                    } else {
+                        unpacked_address[0] = *buffer & 0b0011_1111;
+                    }
+
                     self.state.shadow_vram_address_pointer =
                         u16::from_be_bytes(unpacked_address) & 0b0111_1111_1111_1111;
 
                     // Write the completed address
                     if self.state.vram_address_pointer_write_phase {
-                        self.state.vram_address_pointer = self.state.shadow_vram_address_pointer;
+                        RuntimeHandle::with_current(|runtime| {
+                            runtime.schedule_event_relative::<Self>(
+                                &self.path,
+                                EventMode::Once,
+                                self.period * VRAM_ADDRESS_WRITE_DELAY,
+                                PpuEvent::ApplyVramAddress,
+                            );
+                        });
                     }
 
                     self.state.vram_address_pointer_write_phase =
@@ -469,19 +512,14 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
                             runtime.address_space(self.ppu_address_space).unwrap();
 
                         // Redirect into the ppu address space
-                        ppu_address_space.write_le_value(
+                        let _ = ppu_address_space.write_le_value(
                             self.state.vram_address_pointer as usize,
                             timestamp,
                             *buffer,
-                        )?;
+                        );
 
-                        self.state.vram_address_pointer =
-                            self.state.vram_address_pointer.wrapping_add(u16::from(
-                                self.state.vram_address_pointer_increment_amount,
-                            )) & 0b0111_1111_1111_1111;
-
-                        Ok(())
-                    })?;
+                        self.increment_vram_address_pointer();
+                    });
                 }
                 CpuAccessibleRegister::OamDma => {
                     RuntimeHandle::with_current(|runtime| {
@@ -517,20 +555,34 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
                         // Read off OAM data immediately, this is done for performance and should not
                         // have any side effects
                         let mut data = [0; 256];
-                        let _ =
-                            cpu_address_space.read::<_, false>(page as usize, timestamp, &mut data);
+
+                        if (0x2000..0x4000).contains(&page) {
+                            drop(cpu_address_space);
+
+                            for (offset, value) in data.iter_mut().enumerate() {
+                                let register = 0x2000 | (offset & 0b111);
+
+                                let _ = self.memory_read(
+                                    register,
+                                    self.cpu_address_space,
+                                    false,
+                                    std::slice::from_mut(value),
+                                );
+                            }
+                        } else {
+                            let _ = cpu_address_space.read::<_, false>(
+                                page as usize,
+                                timestamp,
+                                &mut data,
+                            );
+                        }
 
                         for (offset, value) in data.into_iter().enumerate() {
                             let address = self.state.oam.oam_addr.wrapping_add(offset as u8);
 
                             self.state.oam.write(address, value);
                         }
-
-                        Ok(())
-                    })?;
-                }
-                _ => {
-                    unreachable!("{:?}", register);
+                    });
                 }
             }
         }
@@ -541,79 +593,128 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
     fn handle_event(&mut self, event: Box<dyn Event>) {
         let event = downcast_event::<Self>(event);
 
-        RuntimeHandle::with_current(|runtime| {
-            match event {
-                PpuEvent::VblankStart => {
+        RuntimeHandle::with_current(|runtime| match event {
+            PpuEvent::VblankStart => {
+                if !std::mem::take(&mut self.state.suppress_vblank) {
                     self.state.entered_vblank = true;
 
-                    if self.state.vblank_nmi_enabled {
-                        runtime.schedule_event_now::<Mos6502<Ricoh2A0x>>(
-                            &self.processor_path,
-                            EventMode::Once,
-                            Mos6502Event::FlagChange {
-                                pin: Pin::Nmi,
-                                value: false,
-                            },
-                        );
-                    }
-
-                    let vblank_len =
-                        Period::from_num(TOTAL_SCANLINE_LENGTH as u128 * R::VBLANK_LENGTH as u128);
-
                     runtime.schedule_event_relative::<Self>(
                         &self.path,
                         EventMode::Once,
-                        self.period * vblank_len,
-                        PpuEvent::VblankEnd,
+                        self.period * NMI_ARM_DELAY,
+                        PpuEvent::ArmNmi,
                     );
                 }
-                PpuEvent::VblankEnd => {
-                    self.state.entered_vblank = false;
-                    self.state.odd_frame = !self.state.odd_frame;
 
-                    runtime.schedule_event_now::<Mos6502<Ricoh2A0x>>(
-                        &self.processor_path,
-                        EventMode::Once,
-                        Mos6502Event::FlagChange {
-                            pin: Pin::Nmi,
-                            value: true,
-                        },
-                    );
+                let vblank_len =
+                    Period::from_num(TOTAL_SCANLINE_LENGTH as u128 * R::VBLANK_LENGTH as u128);
 
-                    runtime.write_framebuffer::<G, _>(&self.framebuffer_path, |framebuffer| {
-                        self.backend
-                            .as_mut()
-                            .unwrap()
-                            .commit_staging_buffer(self.staging_buffer.as_view(), framebuffer);
-                    });
+                let delay = self.period * vblank_len;
+                self.state.vblank_end_timestamp = runtime.current_timestamp() + delay;
 
-                    let lines_until_next_vblank = R::TOTAL_SCANLINES - R::VBLANK_LENGTH;
-                    let mut cycles_until_next_vblank =
-                        TOTAL_SCANLINE_LENGTH as u128 * lines_until_next_vblank as u128;
+                runtime.schedule_event_relative::<Self>(
+                    &self.path,
+                    EventMode::Once,
+                    delay,
+                    PpuEvent::VblankEnd,
+                );
+            }
+            PpuEvent::ApplyVramAddress => {
+                self.state.vram_address_pointer = self.state.shadow_vram_address_pointer;
+            }
+            PpuEvent::ArmNmi => {
+                self.state.nmi_armed = true;
+                self.update_nmi_line(runtime);
+            }
+            PpuEvent::VblankEnd => {
+                self.state.entered_vblank = false;
+                self.state.nmi_armed = false;
+                self.state.odd_frame = !self.state.odd_frame;
+                self.update_nmi_line(runtime);
+                self.decay_io_latch();
 
-                    // This only occurs on NTSC and Dendy
-                    if R::SKIPS_DOT_ON_ODD_FRAME
-                        && self.state.odd_frame
-                        && (self.state.background.rendering_enabled
-                            || self.state.oam.rendering_enabled)
-                    {
-                        cycles_until_next_vblank -= 1;
-                    }
+                runtime.write_framebuffer::<G, _>(&self.framebuffer_path, |framebuffer| {
+                    self.backend
+                        .as_mut()
+                        .unwrap()
+                        .commit_staging_buffer(self.staging_buffer.as_view(), framebuffer);
+                });
 
-                    runtime.schedule_event_relative::<Self>(
-                        &self.path,
-                        EventMode::Once,
-                        self.period * cycles_until_next_vblank,
-                        PpuEvent::VblankStart,
-                    );
+                runtime.schedule_event_relative::<Self>(
+                    &self.path,
+                    EventMode::Once,
+                    self.period * TOTAL_SCANLINE_LENGTH as u128,
+                    PpuEvent::FrameLengthDecided,
+                );
+            }
+            PpuEvent::FrameLengthDecided => {
+                let lines_until_next_vblank = R::TOTAL_SCANLINES - R::VBLANK_LENGTH - 1;
+                let mut cycles_until_next_vblank =
+                    TOTAL_SCANLINE_LENGTH as u128 * lines_until_next_vblank as u128;
+
+                if std::mem::take(&mut self.state.skipped_dot_this_frame) {
+                    cycles_until_next_vblank -= 1;
                 }
+
+                let delay = self.period * cycles_until_next_vblank;
+                self.state.next_vblank_timestamp = runtime.current_timestamp() + delay;
+
+                runtime.schedule_event_relative::<Self>(
+                    &self.path,
+                    EventMode::Once,
+                    delay,
+                    PpuEvent::VblankStart,
+                );
             }
         });
+    }
+}
+
+impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
+    fn update_nmi_line(&mut self, runtime: &RuntimeHandle) {
+        let line_low =
+            self.state.nmi_armed && self.state.entered_vblank && self.state.vblank_nmi_enabled;
+
+        if line_low != self.state.nmi_line_low {
+            self.state.nmi_line_low = line_low;
+
+            runtime.schedule_event_now::<Mos6502<Ricoh2A0x>>(
+                &self.processor_path,
+                EventMode::Once,
+                Mos6502Event::FlagChange {
+                    pin: Pin::Nmi,
+                    value: !line_low,
+                },
+            );
+        }
+    }
+
+    fn refresh_io_latch(&mut self, value: u8, mask: u8) {
+        self.state.io_latch = (self.state.io_latch & !mask) | (value & mask);
+
+        for (bit, refresh_frame) in self.state.io_latch_refresh_frames.iter_mut().enumerate() {
+            if mask & (1 << bit) != 0 {
+                *refresh_frame = self.state.frame_count;
+            }
+        }
+    }
+
+    fn decay_io_latch(&mut self) {
+        self.state.frame_count = self.state.frame_count.wrapping_add(1);
+
+        for (bit, refresh_frame) in self.state.io_latch_refresh_frames.iter().enumerate() {
+            if self.state.frame_count.wrapping_sub(*refresh_frame) > IO_LATCH_DECAY_FRAMES {
+                self.state.io_latch &= !(1 << bit);
+            }
+        }
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum PpuEvent {
     VblankStart,
+    ArmNmi,
     VblankEnd,
+    FrameLengthDecided,
+    ApplyVramAddress,
 }

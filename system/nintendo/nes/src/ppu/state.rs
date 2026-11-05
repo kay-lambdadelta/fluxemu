@@ -1,3 +1,4 @@
+use fluxemu_runtime::scheduler::Period;
 use nalgebra::{Point2, Vector2};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -23,7 +24,17 @@ pub struct State {
     /// Actually 15 bits, usually called t
     pub shadow_vram_address_pointer: u16,
     pub odd_frame: bool,
+    pub skipped_dot_this_frame: bool,
+    pub rendering_enabled_for_skip: bool,
     pub emphasis_index: u8,
+    pub frame_count: u32,
+    pub io_latch: u8,
+    pub io_latch_refresh_frames: [u32; 8],
+    pub nmi_armed: bool,
+    pub nmi_line_low: bool,
+    pub suppress_vblank: bool,
+    pub next_vblank_timestamp: Period,
+    pub vblank_end_timestamp: Period,
 }
 
 #[derive(Debug, Clone, Copy)]

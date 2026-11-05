@@ -15,6 +15,8 @@ use crate::ppu::{
     state::VramAddressPointerContents,
 };
 
+const ODD_FRAME_SKIP_SAMPLE_DOT: u16 = 337;
+
 impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
     #[inline]
     pub(super) fn task(
@@ -33,12 +35,18 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
                 self.handle_prerender(&mut ppu_address_space, timestamp);
             }
 
-            if self.state.cycle_counter.y == R::PRERENDER_SCANLINE
+            if self.state.cycle_counter.x == ODD_FRAME_SKIP_SAMPLE_DOT {
+                self.state.rendering_enabled_for_skip = self.rendering_enabled();
+            }
+
+            if R::SKIPS_DOT_ON_ODD_FRAME
+                && self.state.cycle_counter.y == R::PRERENDER_SCANLINE
                 && self.state.cycle_counter.x == 339
                 && self.state.odd_frame
-                && self.rendering_enabled()
+                && self.state.rendering_enabled_for_skip
             {
                 self.state.cycle_counter = Point2::default();
+                self.state.skipped_dot_this_frame = true;
             } else {
                 self.state.cycle_counter.x += 1;
 
@@ -264,6 +272,19 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
             self.state.oam.secondary_data[0]
         } else {
             self.state.oam.bus_latch
+        }
+    }
+
+    pub(super) fn increment_vram_address_pointer(&mut self) {
+        if self.rendering_enabled() && self.is_on_rendering_scanline() {
+            self.increment_coarse_x();
+            self.increment_fine_y();
+        } else {
+            self.state.vram_address_pointer = self
+                .state
+                .vram_address_pointer
+                .wrapping_add(u16::from(self.state.vram_address_pointer_increment_amount))
+                & 0b0111_1111_1111_1111;
         }
     }
 
@@ -553,6 +574,9 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
         }
 
         match self.state.cycle_counter.x % 8 {
+            1 => {
+                self.state.background.nametable_address_low = self.state.vram_address_pointer as u8;
+            }
             2 => self.fetch_nametable(ppu_address_space, timestamp),
             4 => self.fetch_attribute(ppu_address_space, timestamp),
             6 => self.fetch_pattern_table_low(ppu_address_space, timestamp),
@@ -574,6 +598,7 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
         let address = nametable_base
             + (usize::from(vram_address_pointer_contents.coarse.y) * 32)
             + usize::from(vram_address_pointer_contents.coarse.x);
+        let address = (address & !0xff) | usize::from(self.state.background.nametable_address_low);
 
         self.state.background.fetched_nametable = ppu_address_space
             .read_le_value::<_, false>(address, timestamp)

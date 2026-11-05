@@ -11,6 +11,7 @@ pub struct BackgroundState {
     /// Usually called x, 3 bits
     pub fine_x_scroll: u8,
     pub show_leftmost_pixels: bool,
+    pub nametable_address_low: u8,
     pub fetched_nametable: u8,
     pub fetched_attribute: u8,
     pub fetched_pattern_table_low: u8,
