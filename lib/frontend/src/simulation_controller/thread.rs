@@ -10,11 +10,42 @@ use ringbuffer::{ConstGenericRingBuffer, RingBuffer};
 use rust_i18n::t;
 
 pub use super::{
-    COMFORTABLE_HEADROOM, DIMINISHING_RETURNS_ELASTICITY, EXPLORATION_CHANGE, HARDWARE_SPEED_EMA,
+    DIMINISHING_RETURNS_ELASTICITY, EXPLORATION_CHANGE, HARDWARE_SPEED_TIME_CONSTANT,
     HISTORICAL_SAMPLE_WINDOW, JITTER_CEILING, MAX_SCHEDULE_DRIFT, MIN_PROBE_DELTA,
-    OVERSHOOT_EMA_ALPHA, PROBE_WINDOW,
+    OVERSHOOT_EMA_ALPHA, PROBE_INTERVAL, PROBE_WINDOW,
 };
 use crate::{audio::mixer::AudioMixer, simulation_controller::SharedState};
+
+#[derive(Clone, Copy, Debug, Default)]
+pub enum WalkBias {
+    #[default]
+    Neutral,
+    Grow,
+    Shrink,
+}
+
+impl WalkBias {
+    fn sample(self, step: f32) -> f32 {
+        match self {
+            // Move randomly until we have more coherent data
+            Self::Neutral => rand::rng().random_range(-step..=(step * 0.99)),
+            Self::Grow => rand::rng().random_range(-(step * 0.2)..=step),
+            Self::Shrink => rand::rng().random_range(-step..=(step * 0.2)),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Probe {
+    pub timeslice: f32,
+    pub hardware_speed: f32,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ExecutionAverages {
+    pub guest_time: f32,
+    pub host_time: f32,
+}
 
 #[derive(Clone, Debug)]
 pub struct SimulationControllerState {
@@ -25,8 +56,10 @@ pub struct SimulationControllerState {
     pub jitter_ratio: f32,
     /// How fast we are running on the host hardware
     pub hardware_speed_ema: f32,
-    pub last_probe_timeslice: f32,
-    pub last_probe_hardware_speed: f32,
+    pub execution_averages: Option<ExecutionAverages>,
+    pub last_probe: Option<Probe>,
+    pub time_since_probe: f32,
+    pub walk_bias: WalkBias,
     pub probe_speed_ring: ConstGenericRingBuffer<f32, PROBE_WINDOW>,
     pub execution_time_ring: ConstGenericRingBuffer<f32, HISTORICAL_SAMPLE_WINDOW>,
     pub execution_jitter_ring: ConstGenericRingBuffer<f32, HISTORICAL_SAMPLE_WINDOW>,
@@ -39,8 +72,10 @@ impl Default for SimulationControllerState {
         Self {
             execution_timeslice: initial,
             target_timeslice: initial,
-            last_probe_hardware_speed: 1.0,
-            last_probe_timeslice: 1.0,
+            execution_averages: None,
+            last_probe: None,
+            time_since_probe: 0.0,
+            walk_bias: WalkBias::default(),
             hardware_speed_ema: 1.0,
             jitter_ratio: 0.0,
             execution_time_ring: ConstGenericRingBuffer::default(),
@@ -91,9 +126,6 @@ pub fn simulation_controller_loop(
 
         let mut state = shared.state.lock().unwrap();
 
-        // We want to try to execute slightly faster than realtime, to compensate for overhead/jitter we don't measure
-        let target_iteration_time = state.target_timeslice / COMFORTABLE_HEADROOM;
-
         let now = Instant::now();
         let deadline = next_deadline.unwrap_or(now);
         let deadline = if now.saturating_duration_since(deadline) > MAX_SCHEDULE_DRIFT {
@@ -101,7 +133,7 @@ pub fn simulation_controller_loop(
         } else {
             deadline
         };
-        let deadline = deadline + Duration::from_secs_f32(target_iteration_time);
+        let deadline = deadline + Duration::from_secs_f32(execution_timeslice);
         next_deadline = Some(deadline);
 
         let raw_sleep_time = deadline.saturating_duration_since(now).as_secs_f32();
@@ -131,14 +163,22 @@ pub fn simulation_controller_loop(
         state.execution_jitter_ring.enqueue(iteration_jitter);
         state.execution_time_ring.enqueue(total_iteration_time);
 
-        let hardware_speed = if measured_execution_time > 0.0 {
-            execution_timeslice / measured_execution_time
-        } else {
-            1.0
-        };
+        let retained = (-total_iteration_time / HARDWARE_SPEED_TIME_CONSTANT.as_secs_f32()).exp();
+        let averages = state.execution_averages.map_or(
+            ExecutionAverages {
+                guest_time: execution_timeslice,
+                host_time: measured_execution_time,
+            },
+            |averages| ExecutionAverages {
+                guest_time: retained * averages.guest_time + (1.0 - retained) * execution_timeslice,
+                host_time: retained * averages.host_time
+                    + (1.0 - retained) * measured_execution_time,
+            },
+        );
 
-        state.hardware_speed_ema = HARDWARE_SPEED_EMA * state.hardware_speed_ema
-            + (1.0 - HARDWARE_SPEED_EMA) * hardware_speed;
+        state.execution_averages = Some(averages);
+        state.hardware_speed_ema = averages.guest_time / averages.host_time;
+        state.time_since_probe += total_iteration_time;
 
         state.jitter_ratio = if state.target_timeslice > 0.0 {
             (median_jitter / state.target_timeslice).clamp(0.0, 1.0)
@@ -160,30 +200,39 @@ pub fn simulation_controller_loop(
             let hardware_speed_ema = state.hardware_speed_ema;
             state.probe_speed_ring.enqueue(hardware_speed_ema);
 
-            let relative_move = (state.execution_timeslice - state.last_probe_timeslice).abs()
-                / state.last_probe_timeslice;
+            if state.time_since_probe >= PROBE_INTERVAL.as_secs_f32() {
+                let current = Probe {
+                    timeslice: averages.guest_time,
+                    hardware_speed: ring_median(&state.probe_speed_ring),
+                };
 
-            let step = EXPLORATION_CHANGE.as_secs_f32();
+                match state.last_probe {
+                    Some(last_probe) => {
+                        let relative_move =
+                            (current.timeslice - last_probe.timeslice) / last_probe.timeslice;
 
-            let walk = if relative_move >= MIN_PROBE_DELTA {
-                let current_speed = ring_median(&state.probe_speed_ring);
-                let delta_speed = current_speed - state.last_probe_hardware_speed;
-                let elasticity = (delta_speed / state.last_probe_hardware_speed) / relative_move;
+                        if relative_move.abs() >= MIN_PROBE_DELTA {
+                            let delta_speed = current.hardware_speed - last_probe.hardware_speed;
+                            let elasticity =
+                                (delta_speed / last_probe.hardware_speed) / relative_move;
 
-                state.last_probe_timeslice = state.execution_timeslice;
-                state.last_probe_hardware_speed = current_speed;
-
-                if elasticity > DIMINISHING_RETURNS_ELASTICITY {
-                    rand::rng().random_range(-(step * 0.2)..=step)
-                } else {
-                    rand::rng().random_range(-step..=(step * 0.2))
+                            state.walk_bias = if elasticity > DIMINISHING_RETURNS_ELASTICITY {
+                                WalkBias::Grow
+                            } else {
+                                WalkBias::Shrink
+                            };
+                            state.last_probe = Some(current);
+                            state.time_since_probe = 0.0;
+                        }
+                    }
+                    None => {
+                        state.last_probe = Some(current);
+                        state.time_since_probe = 0.0;
+                    }
                 }
-            } else {
-                // Move randomly until we have more coherent data
-                rand::rng().random_range(-step..=(step * 0.99))
-            };
+            }
 
-            target += walk;
+            target += state.walk_bias.sample(EXPLORATION_CHANGE.as_secs_f32());
         }
 
         if target.is_finite() && target > f32::EPSILON {

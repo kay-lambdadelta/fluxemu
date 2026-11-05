@@ -87,15 +87,15 @@ impl AudioMixer {
         let mut state_guard = self.state.lock().unwrap();
         let volume = state_guard.volume;
 
-        for (src, dst) in state_guard
-            .audio_ring
-            .drain()
-            .amplify(volume.max(0.0))
-            .pad()
-            .rescale::<S>()
-            .remix()
-            .zip(buffer.iter_mut())
-        {
+        for (dst, src) in buffer.iter_mut().zip(
+            state_guard
+                .audio_ring
+                .drain()
+                .amplify(volume.max(0.0))
+                .pad()
+                .rescale::<S>()
+                .remix(),
+        ) {
             *dst = src;
         }
     }

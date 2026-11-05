@@ -18,14 +18,14 @@ mod thread;
 
 pub const HISTORICAL_SAMPLE_WINDOW: usize = 32;
 pub const JITTER_CEILING: f32 = 0.4;
-pub const HARDWARE_SPEED_EMA: f32 = 0.9995;
-pub const COMFORTABLE_HEADROOM: f32 = 1.0 + Duration::from_millis(1).as_secs_f32();
+pub const HARDWARE_SPEED_TIME_CONSTANT: Duration = Duration::from_millis(250);
 pub const EXPLORATION_CHANGE: Duration = Duration::from_micros(1);
 pub const MAX_SCHEDULE_DRIFT: Duration = Duration::from_millis(20);
 pub const OVERSHOOT_EMA_ALPHA: f32 = 0.9;
 pub const DIMINISHING_RETURNS_ELASTICITY: f32 = 0.4;
 pub const MIN_PROBE_DELTA: f32 = 0.05;
 pub const PROBE_WINDOW: usize = 64;
+pub const PROBE_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Debug)]
 pub struct Controller {
