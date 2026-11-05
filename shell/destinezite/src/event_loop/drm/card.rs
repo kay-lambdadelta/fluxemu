@@ -1,5 +1,4 @@
 use std::{
-    fs::{File, OpenOptions},
     os::fd::{AsFd, AsRawFd, BorrowedFd},
     path::{Path, PathBuf},
 };
@@ -8,11 +7,11 @@ use drm::{
     ClientCapability, Device as _,
     control::{Device, Mode, ModeTypeFlags, PlaneType},
 };
-use libseat::Seat;
+use libseat::{Device as SeatDevice, Seat};
 use udev::Enumerator;
 
 #[derive(Debug)]
-pub struct Card(File);
+pub struct Card(SeatDevice);
 
 impl Card {
     pub fn find_suitable_card(seat: &mut Seat) -> Option<PathBuf> {
@@ -47,10 +46,14 @@ impl Card {
             .and_then(|device| device.devnode().map(PathBuf::from))
     }
 
-    pub fn open(card_path: impl AsRef<Path>) -> Result<Self, std::io::Error> {
+    pub fn open(seat: &mut Seat, card_path: impl AsRef<Path>) -> Result<Self, std::io::Error> {
         tracing::info!("Opening DRM card at {:?}", card_path.as_ref());
 
-        let me = Self(OpenOptions::new().read(true).write(true).open(card_path)?);
+        let device = seat
+            .open_device(&card_path)
+            .map_err(|err| std::io::Error::from_raw_os_error(err.0))?;
+
+        let me = Self(device);
         me.set_client_capability(ClientCapability::UniversalPlanes, true)?;
 
         Ok(me)
@@ -155,7 +158,7 @@ impl AsFd for Card {
 
 impl AsRawFd for Card {
     fn as_raw_fd(&self) -> i32 {
-        self.0.as_raw_fd()
+        self.0.as_fd().as_raw_fd()
     }
 }
 

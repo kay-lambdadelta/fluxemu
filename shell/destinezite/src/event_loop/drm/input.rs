@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
-    fs::{File, OpenOptions},
-    os::{fd::OwnedFd, unix::fs::OpenOptionsExt},
+    os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd, RawFd},
     path::Path,
 };
 
@@ -25,28 +24,51 @@ use input::{
         touch::{TouchEventPosition, TouchEventSlot},
     },
 };
+use libseat::Device as SeatDevice;
 use nalgebra::Point2;
 use xkbcommon::xkb::Keysym;
 
-use crate::platform::DesktopPlatform;
+use crate::{event_loop::drm::seat::SharedSeat, platform::DesktopPlatform};
 
 const TOUCH_DEVICE: TouchDeviceId = TouchDeviceId(0);
 
-pub struct Interface;
+pub struct Interface {
+    seat: SharedSeat,
+    devices: HashMap<RawFd, SeatDevice>,
+}
+
+impl Interface {
+    pub fn new(seat: SharedSeat) -> Self {
+        Self {
+            seat,
+            devices: HashMap::new(),
+        }
+    }
+}
 
 impl LibinputInterface for Interface {
-    fn open_restricted(&mut self, path: &Path, flags: i32) -> Result<OwnedFd, i32> {
-        OpenOptions::new()
-            .custom_flags(flags)
-            .read(true)
-            .write(true)
-            .open(path)
-            .map(|file| file.into())
-            .map_err(|err| err.raw_os_error().unwrap())
+    fn open_restricted(&mut self, path: &Path, _flags: i32) -> Result<OwnedFd, i32> {
+        let device = self
+            .seat
+            .lock()
+            .unwrap()
+            .open_device(&path)
+            .map_err(|err| err.0)?;
+
+        let raw_fd = device.as_fd().as_raw_fd();
+        self.devices.insert(raw_fd, device);
+
+        Ok(unsafe { OwnedFd::from_raw_fd(raw_fd) })
     }
 
     fn close_restricted(&mut self, fd: OwnedFd) {
-        drop(File::from(fd));
+        if let Some(device) = self.devices.remove(&fd.as_raw_fd())
+            && let Err(err) = self.seat.lock().unwrap().close_device(device)
+        {
+            tracing::error!("Could not close seat device: {}", err);
+        }
+
+        drop(fd);
     }
 }
 

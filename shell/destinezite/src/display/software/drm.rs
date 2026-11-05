@@ -117,8 +117,16 @@ impl SoftwareCompatibleDisplayContext for DrmContext {
     type ResizeError = std::io::Error;
     type Surface = Surface;
 
-    fn resize_surface(&self, _surface: &mut Self::Surface) -> Result<(), Self::ResizeError> {
-        unimplemented!()
+    fn resize_surface(&self, surface: &mut Self::Surface) -> Result<(), Self::ResizeError> {
+        let front_framebuffer_handle = surface.framebuffers[!surface.on_back_buffer as usize];
+
+        self.card.set_crtc(
+            self.params.crtc_handle,
+            Some(front_framebuffer_handle),
+            (0, 0),
+            &[self.params.connector_handle],
+            Some(self.params.mode),
+        )
     }
 
     #[inline]

@@ -19,7 +19,6 @@ use fluxemu_frontend::{
 use fluxemu_frontend_egui::{Frontend, rendering::EguiCapableGraphicsRuntime};
 use fluxemu_program::{ProgramManager, RomId};
 use fluxemu_runtime::graphics::GraphicsRequirements;
-use libseat::{Seat, SeatEvent};
 use nalgebra::Vector2;
 use nix::{
     poll::PollTimeout,
@@ -33,6 +32,7 @@ use crate::{
     event_loop::drm::{
         card::{Card, DrmParams},
         input::{EguiInputCollector, Interface, build_xkb_state, handle_libinput_events},
+        seat::{PresentationGate, handle_seat_events, open_seat},
     },
     font::load_fonts,
     gamepad::GamepadContext,
@@ -41,6 +41,10 @@ use crate::{
 
 pub mod card;
 mod input;
+mod seat;
+
+const LIBINPUT_EVENT_SOURCE: u64 = 0;
+const SEAT_EVENT_SOURCE: u64 = 1;
 
 pub fn run<R: ProducableGraphicsRuntime<DrmContext> + EguiCapableGraphicsRuntime>(
     runtime: Handle,
@@ -52,15 +56,14 @@ pub fn run<R: ProducableGraphicsRuntime<DrmContext> + EguiCapableGraphicsRuntime
     notifications: NotificationReceiver,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Open the seat we need
-    let mut seat = Seat::open(|seat, event| match event {
-        SeatEvent::Enable => {}
-        SeatEvent::Disable => {
-            seat.disable().unwrap();
-        }
-    })?;
+    let (seat, seat_events) = open_seat()?;
 
-    let card_path = Card::find_suitable_card(&mut seat).expect("Could not find suitable card");
-    let card = Card::open(card_path).expect("Could not open card");
+    let card = {
+        let mut seat = seat.lock().unwrap();
+        let card_path = Card::find_suitable_card(&mut seat).expect("Could not find suitable card");
+
+        Card::open(&mut seat, card_path).expect("Could not open card")
+    };
 
     let context = Arc::new(DrmContext {
         params: card.select_suitable_params(),
@@ -102,56 +105,78 @@ pub fn run<R: ProducableGraphicsRuntime<DrmContext> + EguiCapableGraphicsRuntime
     // TODO: This "add keyboard conglomerate upon first key input" behavior is possibly not appropriate considering we can just use libinput
     // to figure out the keyboard story more directly
     let mut added_keyboard = false;
+    let presentation_gate = PresentationGate::default();
 
     // Enter the scope so we can share state with the gilrs thread without refcounting
     std::thread::scope(|scope| {
-        let seat_name = seat.name();
-
         std::thread::Builder::new()
             .name("Input Poll Thread".to_string())
             .spawn_scoped(scope, || {
+                let seat_events = seat_events;
+
                 // Set up libinput for input reading and xkb for keyboard input interpretation
-                let mut libinput = Libinput::new_with_udev(Interface);
+                let mut libinput = Libinput::new_with_udev(Interface::new(seat.clone()));
                 let mut xkb_state = build_xkb_state();
 
                 // Assign the seat
-                libinput.udev_assign_seat(seat_name).unwrap();
+                let seat_name = seat.lock().unwrap().name().to_owned();
+                libinput.udev_assign_seat(&seat_name).unwrap();
 
                 let epoll = Epoll::new(EpollCreateFlags::EPOLL_CLOEXEC).unwrap();
 
                 epoll
-                    .add(libinput.as_fd(), EpollEvent::new(EpollFlags::EPOLLIN, 0))
+                    .add(
+                        libinput.as_fd(),
+                        EpollEvent::new(EpollFlags::EPOLLIN, LIBINPUT_EVENT_SOURCE),
+                    )
+                    .unwrap();
+
+                epoll
+                    .add(
+                        seat.lock().unwrap().get_fd().unwrap(),
+                        EpollEvent::new(EpollFlags::EPOLLIN, SEAT_EVENT_SOURCE),
+                    )
                     .unwrap();
 
                 loop {
-                    let mut ready_events = [EpollEvent::empty(); 1];
+                    let mut ready_events = [EpollEvent::empty(); 2];
 
                     match epoll.wait(&mut ready_events, PollTimeout::NONE) {
-                        Ok(num_events) if num_events > 0 => {
-                            let mut frontend_state = frontend_state.lock().unwrap();
-                            let FrontendState {
-                                frontend,
-                                egui_input_collector,
-                            } = &mut *frontend_state;
-
+                        Ok(num_events) => {
                             for event in &ready_events[..num_events] {
-                                if event.data() == 0 {
-                                    handle_libinput_events(
-                                        frontend,
-                                        egui_input_collector,
-                                        &mut libinput,
-                                        &mut xkb_state,
-                                        &mut added_keyboard,
-                                        width,
-                                        height,
-                                    );
+                                match event.data() {
+                                    LIBINPUT_EVENT_SOURCE => {
+                                        let mut frontend_state = frontend_state.lock().unwrap();
+                                        let FrontendState {
+                                            frontend,
+                                            egui_input_collector,
+                                        } = &mut *frontend_state;
+
+                                        handle_libinput_events(
+                                            frontend,
+                                            egui_input_collector,
+                                            &mut libinput,
+                                            &mut xkb_state,
+                                            &mut added_keyboard,
+                                            width,
+                                            height,
+                                        );
+                                    }
+                                    SEAT_EVENT_SOURCE => {
+                                        handle_seat_events(
+                                            &seat,
+                                            &seat_events,
+                                            &mut libinput,
+                                            &presentation_gate,
+                                        );
+                                    }
+                                    _ => {}
                                 }
                             }
                         }
                         Err(err) => {
                             tracing::error!("Poll error: {}", err);
                         }
-                        _ => {}
                     }
                 }
             })
@@ -178,6 +203,10 @@ pub fn run<R: ProducableGraphicsRuntime<DrmContext> + EguiCapableGraphicsRuntime
 
         let start_time = Instant::now();
         loop {
+            if presentation_gate.begin_frame() {
+                graphics_runtime.refresh_surface();
+            }
+
             let mut frontend_state_guard = frontend_state.lock().unwrap();
             let FrontendState {
                 frontend,
@@ -222,6 +251,7 @@ pub fn run<R: ProducableGraphicsRuntime<DrmContext> + EguiCapableGraphicsRuntime
             drop(frontend_state_guard);
 
             graphics_runtime.present(&context, BLACK, full_output);
+            presentation_gate.end_frame();
         }
     })
 }
