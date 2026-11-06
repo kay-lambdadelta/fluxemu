@@ -12,6 +12,7 @@ pub struct CartParams {
     pub chr_rom: Option<Bytes>,
     pub prg_rom: Bytes,
     pub prg_ram_size: usize,
+    pub prg_nvram_size: usize,
     pub chr_ram_size: usize,
     pub chr_nvram_size: usize,
 }

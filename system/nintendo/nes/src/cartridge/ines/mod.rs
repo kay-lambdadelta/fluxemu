@@ -77,6 +77,7 @@ pub struct INes {
     pub chr_nvram_size: usize,
     pub chr_rom_size: Option<usize>,
     pub prg_ram_size: usize,
+    pub prg_nvram_size: usize,
     pub prg_rom_size: usize,
 }
 
@@ -108,115 +109,121 @@ impl INes {
         mapper |= reader.read::<u16>(4)? << 4;
 
         let version_bits: u8 = reader.read(2)?;
-        let (version, timing_mode, chr_ram_size, chr_nvram_size, prg_ram_size) = match version_bits
-        {
-            0b00 => (
-                INesVersion::V1,
-                TimingMode::Ntsc,
-                if chr_bank_count == 0 { 8 * 1024 } else { 0 },
-                0,
-                8 * 1024,
-            ),
+        let (version, timing_mode, chr_ram_size, chr_nvram_size, prg_ram_size, prg_nvram_size) =
+            match version_bits {
+                0b00 => {
+                    let (prg_ram_size, prg_nvram_size) = if non_volatile_memory {
+                        (0, 8 * 1024)
+                    } else {
+                        (8 * 1024, 0)
+                    };
 
-            0b10 => {
-                // iNES 2.0
-                let console_type = match reader.read::<u8>(2)? {
-                    0b00 => Some(ConsoleType::NintendoEntertainmentSystem),
-                    0b01 => Some(ConsoleType::NintendoVsSystem),
-                    0b10 => Some(ConsoleType::NintendoPlaychoice10),
-                    0b11 => None,
-                    _ => unreachable!(),
-                };
-
-                let submapper: u8 = reader.read(4)?;
-
-                mapper |= reader.read::<u16>(4)? << 8;
-                prg_bank_count |= reader.read::<u16>(4)? << 8;
-                chr_bank_count |= reader.read::<u16>(4)? << 8;
-
-                let prg_nvram_shift_count: u8 = reader.read(4)?;
-                let prg_ram_shift_count: u8 = reader.read(4)?;
-
-                if !non_volatile_memory && prg_nvram_shift_count != 0 {
-                    return Err(ParsingError::DisagreeingNonVolatileMemory);
+                    (
+                        INesVersion::V1,
+                        TimingMode::Ntsc,
+                        if chr_bank_count == 0 { 8 * 1024 } else { 0 },
+                        0,
+                        prg_ram_size,
+                        prg_nvram_size,
+                    )
                 }
 
-                let chr_nvram_shift_count: u8 = reader.read(4)?;
-                let chr_ram_shift_count: u8 = reader.read(4)?;
+                0b10 => {
+                    // iNES 2.0
+                    let console_type = match reader.read::<u8>(2)? {
+                        0b00 => Some(ConsoleType::NintendoEntertainmentSystem),
+                        0b01 => Some(ConsoleType::NintendoVsSystem),
+                        0b10 => Some(ConsoleType::NintendoPlaychoice10),
+                        0b11 => None,
+                        _ => unreachable!(),
+                    };
 
-                let chr_ram_size = if chr_ram_shift_count > 0 {
-                    64 << chr_ram_shift_count
-                } else {
-                    0
-                };
-                let chr_nvram_size = if chr_nvram_shift_count > 0 {
-                    64 << chr_nvram_shift_count
-                } else {
-                    0
-                };
+                    let submapper: u8 = reader.read(4)?;
 
-                let prg_ram_size = {
-                    let nvram = if prg_nvram_shift_count > 0 {
+                    mapper |= reader.read::<u16>(4)? << 8;
+                    prg_bank_count |= reader.read::<u16>(4)? << 8;
+                    chr_bank_count |= reader.read::<u16>(4)? << 8;
+
+                    let prg_nvram_shift_count: u8 = reader.read(4)?;
+                    let prg_ram_shift_count: u8 = reader.read(4)?;
+
+                    if !non_volatile_memory && prg_nvram_shift_count != 0 {
+                        return Err(ParsingError::DisagreeingNonVolatileMemory);
+                    }
+
+                    let chr_nvram_shift_count: u8 = reader.read(4)?;
+                    let chr_ram_shift_count: u8 = reader.read(4)?;
+
+                    let chr_ram_size = if chr_ram_shift_count > 0 {
+                        64 << chr_ram_shift_count
+                    } else {
+                        0
+                    };
+                    let chr_nvram_size = if chr_nvram_shift_count > 0 {
+                        64 << chr_nvram_shift_count
+                    } else {
+                        0
+                    };
+
+                    let prg_nvram_size = if prg_nvram_shift_count > 0 {
                         64 << prg_nvram_shift_count
                     } else {
                         0
                     };
-                    let ram = if prg_ram_shift_count > 0 {
+                    let prg_ram_size = if prg_ram_shift_count > 0 {
                         64 << prg_ram_shift_count
                     } else {
                         0
                     };
 
-                    nvram + ram
-                };
+                    reader.skip(6)?;
 
-                reader.skip(6)?;
+                    let timing_mode = match reader.read::<u8>(2)? {
+                        0b00 => TimingMode::Ntsc,
+                        0b01 => TimingMode::Pal,
+                        0b10 => TimingMode::Multi,
+                        0b11 => TimingMode::Dendy,
+                        _ => unreachable!(),
+                    };
 
-                let timing_mode = match reader.read::<u8>(2)? {
-                    0b00 => TimingMode::Ntsc,
-                    0b01 => TimingMode::Pal,
-                    0b10 => TimingMode::Multi,
-                    0b11 => TimingMode::Dendy,
-                    _ => unreachable!(),
-                };
+                    let _vs_system_type: u8 = reader.read(4)?;
+                    let _vs_ppu_type: u8 = reader.read(4)?;
 
-                let _vs_system_type: u8 = reader.read(4)?;
-                let _vs_ppu_type: u8 = reader.read(4)?;
+                    reader.skip(6)?;
 
-                reader.skip(6)?;
+                    let misc_rom_count: u8 = reader.read(2)?;
 
-                let misc_rom_count: u8 = reader.read(2)?;
+                    reader.skip(2)?;
 
-                reader.skip(2)?;
+                    let default_expansion_device = DefaultExpansionDevice::new(reader.read(6)?);
 
-                let default_expansion_device = DefaultExpansionDevice::new(reader.read(6)?);
+                    assert_eq!(
+                        reader.position_in_bits()?,
+                        total_bits as u64,
+                        "Parser misalignment"
+                    );
 
-                assert_eq!(
-                    reader.position_in_bits()?,
-                    total_bits as u64,
-                    "Parser misalignment"
-                );
+                    (
+                        INesVersion::V2 {
+                            console_type: console_type.ok_or(ParsingError::BadConsoleType)?,
+                            submapper,
+                            misc_rom_count,
+                            default_expansion_device,
+                        },
+                        timing_mode,
+                        chr_ram_size,
+                        chr_nvram_size,
+                        prg_ram_size,
+                        prg_nvram_size,
+                    )
+                }
 
-                (
-                    INesVersion::V2 {
-                        console_type: console_type.ok_or(ParsingError::BadConsoleType)?,
-                        submapper,
-                        misc_rom_count,
-                        default_expansion_device,
-                    },
-                    timing_mode,
-                    chr_ram_size,
-                    chr_nvram_size,
-                    prg_ram_size,
-                )
-            }
-
-            _ => {
-                return Err(ParsingError::BadVersion {
-                    version: version_bits,
-                });
-            }
-        };
+                _ => {
+                    return Err(ParsingError::BadVersion {
+                        version: version_bits,
+                    });
+                }
+            };
 
         let prg_rom_size = prg_bank_count as usize * PRG_BANK_SIZE;
         let chr_rom_size = if chr_bank_count != 0 {
@@ -238,6 +245,7 @@ impl INes {
             chr_ram_size,
             chr_nvram_size,
             prg_ram_size,
+            prg_nvram_size,
         })
     }
 

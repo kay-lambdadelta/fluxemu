@@ -202,6 +202,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Nes {
             chr_ram_size: header.chr_ram_size,
             chr_nvram_size: header.chr_nvram_size,
             prg_ram_size: header.prg_ram_size,
+            prg_nvram_size: header.prg_nvram_size,
             nametables,
         };
 

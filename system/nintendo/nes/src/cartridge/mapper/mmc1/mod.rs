@@ -480,12 +480,18 @@ impl<P: Platform> ComponentConfig<P> for Mmc1Config {
             component_builder = cb;
         }
 
-        if self.params.prg_ram_size != 0 {
-            if self.params.prg_ram_size != 0x2000 {
+        let prg_ram_size = self.params.prg_ram_size + self.params.prg_nvram_size;
+
+        if prg_ram_size != 0 {
+            if prg_ram_size != 0x2000 {
                 return Err("PRG-RAM size is invalid for MMC1".into());
             }
 
-            let (cb, prg_ram_path) = component_builder.memory("prg-ram", 0x2000, []);
+            let (cb, prg_ram_path) = if self.params.prg_nvram_size > 0 {
+                component_builder.save_memory("prg-ram", 0x2000, [])
+            } else {
+                component_builder.memory("prg-ram", 0x2000, [])
+            };
             let cb = cb.map_memory(
                 self.params.cpu_address_space,
                 [MemoryMapCommand::Map {
