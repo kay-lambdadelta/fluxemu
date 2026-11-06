@@ -21,7 +21,6 @@ pub(crate) struct MemoryId(u16);
 #[derive(Debug)]
 pub(crate) struct RegionInitializationData {
     pub size: usize,
-    #[allow(unused)]
     pub sram: bool,
     pub initial_contents: RangeInclusiveMap<usize, Bytes>,
 }
@@ -37,6 +36,7 @@ struct LocalMemoryRegionData {
 #[derive(Debug)]
 struct MemoryRegion {
     storage: Box<[UnsafeCell<u8>]>,
+    sram: bool,
     /// Chunk borrowed tracker
     ///
     /// Note that the last chunk can be smaller than [CHUNK_SIZE]
@@ -45,7 +45,7 @@ struct MemoryRegion {
 }
 
 impl MemoryRegion {
-    fn new(size: usize, initial_contents: RangeInclusiveMap<usize, Bytes>) -> Self {
+    fn new(size: usize, sram: bool, initial_contents: RangeInclusiveMap<usize, Bytes>) -> Self {
         let mut contents = vec![0u8; size].into_boxed_slice();
 
         for (addresses, bytes) in initial_contents {
@@ -61,6 +61,7 @@ impl MemoryRegion {
                 false,
             )),
             storage,
+            sram,
             condvar: Condvar::new(),
         }
     }
@@ -99,7 +100,7 @@ impl MemoryRegistryData {
             path,
             RegionInitializationData {
                 size,
-                sram: _,
+                sram,
                 initial_contents,
             },
         ) in required_regions
@@ -108,7 +109,7 @@ impl MemoryRegistryData {
         {
             let id = MemoryId(regions.len().try_into().expect("Too many regions"));
 
-            regions.push(MemoryRegion::new(size, initial_contents));
+            regions.push(MemoryRegion::new(size, sram, initial_contents));
 
             assert!(
                 id_for_path.insert(path.clone(), id).is_none(),
@@ -319,6 +320,54 @@ impl<'a> MemoryRegistry<'a> {
     #[inline]
     pub fn id_for_path(&self, path: &ResourcePath) -> Option<MemoryId> {
         self.data().id_for_path(path)
+    }
+
+    pub fn sorted_paths(&self) -> Vec<&'a ResourcePath> {
+        let mut paths: Vec<_> = self
+            .runtime
+            .machine()
+            .memory_registry_data
+            .id_for_path
+            .keys()
+            .collect();
+        paths.sort_unstable();
+
+        paths
+    }
+
+    pub fn sorted_save_paths(&self) -> Vec<&'a ResourcePath> {
+        let mut paths = self.sorted_paths();
+        paths.retain(|path| self.data().region(self.id_for_path(path).unwrap()).sram);
+
+        paths
+    }
+
+    pub fn read_region(&self, path: &ResourcePath, output: &mut Vec<u8>) {
+        let id = self.id_for_path(path).unwrap();
+        let size = self.data().region(id).storage.len();
+
+        if size == 0 {
+            return;
+        }
+
+        let start = output.len();
+        output.resize(start + size, 0);
+
+        // SAFETY: The id came from this registry and the range is exactly the region
+        unsafe { self.read(id, 0, &mut output[start..]) };
+    }
+
+    pub fn write_region(&self, path: &ResourcePath, contents: &[u8]) {
+        let id = self.id_for_path(path).unwrap();
+
+        assert_eq!(contents.len(), self.data().region(id).storage.len());
+
+        if contents.is_empty() {
+            return;
+        }
+
+        // SAFETY: The id came from this registry and the range is exactly the region
+        unsafe { self.write(id, 0, contents) };
     }
 
     #[inline]
