@@ -3,7 +3,7 @@ use fluxemu_frontend_egui::rendering::{EguiCapableGraphicsRuntime, software::Fra
 use fluxemu_graphics::{
     api::{GraphicsApi, software::Software},
     shader::ShaderType,
-    texture::{CopyMode, CowTexture, OwnedTexture},
+    texture::{AsViewTexture, CopyMode, CowTexture, OwnedTexture},
 };
 use fluxemu_runtime::graphics::GraphicsRequirements;
 use palette::{Srgb, Srgba, named::BLACK};
@@ -40,14 +40,11 @@ impl fluxemu_frontend::graphics::GraphicsRuntime for GraphicsRuntime {
         u32::MAX
     }
 
-    fn screenshot(&self) -> CowTexture<'_, Srgba<u8>> {
-        let texture = self.framebuffer.front_page();
-
-        let mut screenshot =
-            OwnedTexture::from_value(texture.width(), texture.height(), BLACK.into());
-        screenshot.map_from(texture, CopyMode::Nearest, From::from);
-
-        screenshot.into()
+    fn screenshot<'a>(
+        &self,
+        framebuffer: &'a <Self::GraphicsApi as GraphicsApi>::Framebuffer,
+    ) -> Option<CowTexture<'a, Srgba<u8>>> {
+        Some(framebuffer.as_view().into())
     }
 }
 

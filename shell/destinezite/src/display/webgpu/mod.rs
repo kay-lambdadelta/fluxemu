@@ -6,18 +6,20 @@ use fluxemu_frontend_egui::rendering::webgpu::Resources;
 use fluxemu_graphics::{
     api::{
         GraphicsApi,
-        webgpu::{InitializationData, Webgpu},
+        webgpu::{InitializationData, Webgpu, suggested_framebuffer_texture_format},
     },
     shader::ShaderType,
-    texture::CowTexture,
+    texture::{CowTexture, OwnedTexture},
 };
 use fluxemu_runtime::graphics::GraphicsRequirements;
 use nalgebra::Vector2;
 use palette::Srgba;
 use pollster::FutureExt;
 use wgpu::{
-    CreateSurfaceError, Device, DeviceDescriptor, ExperimentalFeatures, Instance, MemoryHints,
-    Queue, Surface, Trace, util::initialize_adapter_from_env_or_default,
+    BufferDescriptor, BufferUsages, COPY_BYTES_PER_ROW_ALIGNMENT, CommandEncoderDescriptor,
+    CreateSurfaceError, Device, DeviceDescriptor, ExperimentalFeatures, Instance, MapMode,
+    MemoryHints, PollType, Queue, Surface, TexelCopyBufferInfo, TexelCopyBufferLayout, Trace,
+    util::initialize_adapter_from_env_or_default,
 };
 
 #[cfg(feature = "windowing")]
@@ -84,8 +86,60 @@ impl<D: WebgpuCompatibleDisplayContext> GraphicsRuntime for WebgpuGraphicsRuntim
             .max_texture_dimension_2d
     }
 
-    fn screenshot(&self) -> CowTexture<'_, Srgba<u8>> {
-        todo!()
+    fn screenshot<'a>(
+        &self,
+        framebuffer: &'a <Self::GraphicsApi as GraphicsApi>::Framebuffer,
+    ) -> Option<CowTexture<'a, Srgba<u8>>> {
+        if framebuffer.format() != suggested_framebuffer_texture_format() {
+            return None;
+        }
+
+        let ConfigurationDependentData { device, queue, .. } =
+            self.configuration_dependent_data.as_ref().unwrap();
+
+        let width = framebuffer.width() as usize;
+        let height = framebuffer.height() as usize;
+        let row_length = width * size_of::<Srgba<u8>>();
+        let padded_row_length = row_length.next_multiple_of(COPY_BYTES_PER_ROW_ALIGNMENT as usize);
+
+        let buffer = device.create_buffer(&BufferDescriptor {
+            label: None,
+            size: (padded_row_length * height) as u64,
+            usage: BufferUsages::COPY_DST | BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+
+        let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor::default());
+        encoder.copy_texture_to_buffer(
+            framebuffer.as_image_copy(),
+            TexelCopyBufferInfo {
+                buffer: &buffer,
+                layout: TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded_row_length as u32),
+                    rows_per_image: None,
+                },
+            },
+            framebuffer.size(),
+        );
+
+        {
+            let _guard = self.gpu_submission_lock.lock().unwrap();
+            queue.submit([encoder.finish()]);
+        }
+
+        let slice = buffer.slice(..);
+        slice.map_async(MapMode::Read, |_| {});
+        device.poll(PollType::wait_indefinitely()).ok()?;
+
+        let mapped = slice.get_mapped_range().ok()?;
+
+        let pixels: Vec<_> = mapped
+            .chunks_exact(padded_row_length)
+            .flat_map(|row| bytemuck::pod_collect_to_vec::<u8, Srgba<u8>>(&row[..row_length]))
+            .collect();
+
+        Some(OwnedTexture::from_storage(width, height, pixels.into_boxed_slice()).into())
     }
 }
 

@@ -2,7 +2,7 @@ use fluxemu_egui_software_renderer::Renderer;
 use fluxemu_frontend::graphics::{DisplayContext, GraphicsRuntime};
 use fluxemu_graphics::{
     api::{GraphicsApi, software::Software},
-    texture::{AsViewTextureMut, CowTexture},
+    texture::{AsViewTexture, AsViewTextureMut, CowTexture},
 };
 use fluxemu_runtime::graphics::GraphicsRequirements;
 use palette::{Srgba, cast::Packed, rgb::channels::Bgra};
@@ -44,8 +44,11 @@ impl<D: SoftwareCompatibleDisplayContext> GraphicsRuntime for SoftwareGraphicsRu
         self.renderer.max_texture_size()
     }
 
-    fn screenshot(&self) -> CowTexture<'_, Srgba<u8>> {
-        todo!()
+    fn screenshot<'a>(
+        &self,
+        framebuffer: &'a <Self::GraphicsApi as GraphicsApi>::Framebuffer,
+    ) -> Option<CowTexture<'a, Srgba<u8>>> {
+        Some(framebuffer.as_view().into())
     }
 }
 

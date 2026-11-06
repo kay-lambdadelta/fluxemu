@@ -1,7 +1,7 @@
 use fluxemu_frontend::graphics::GraphicsRuntime;
 use fluxemu_graphics::{
     api::{GraphicsApi, software::Software},
-    texture::{CowTexture, OwnedTexture},
+    texture::{AsViewTexture, CowTexture},
 };
 use fluxemu_runtime::graphics::GraphicsRequirements;
 use palette::Srgba;
@@ -25,7 +25,10 @@ impl GraphicsRuntime for TerminalGraphicsRuntime {
         u32::MAX
     }
 
-    fn screenshot(&self) -> CowTexture<'_, Srgba<u8>> {
-        OwnedTexture::new(0, 0).into()
+    fn screenshot<'a>(
+        &self,
+        framebuffer: &'a <Self::GraphicsApi as GraphicsApi>::Framebuffer,
+    ) -> Option<CowTexture<'a, Srgba<u8>>> {
+        Some(framebuffer.as_view().into())
     }
 }

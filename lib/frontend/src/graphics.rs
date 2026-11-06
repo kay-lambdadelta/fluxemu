@@ -27,7 +27,10 @@ pub trait GraphicsRuntime: Sized + 'static {
         &self,
     ) -> <Self::GraphicsApi as GraphicsApi>::InitializationData;
     fn max_texture_side(&self) -> u32;
-    fn screenshot(&self) -> CowTexture<'_, Srgba<u8>>;
+    fn screenshot<'a>(
+        &self,
+        framebuffer: &'a <Self::GraphicsApi as GraphicsApi>::Framebuffer,
+    ) -> Option<CowTexture<'a, Srgba<u8>>>;
 }
 
 pub trait ProducableGraphicsRuntime<D: DisplayContext>: GraphicsRuntime {
