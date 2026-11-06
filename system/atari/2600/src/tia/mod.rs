@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     fmt::Debug,
 };
 
@@ -101,8 +101,8 @@ struct Player {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct State {
-    collision_matrix: HashMap<ObjectId, HashSet<ObjectId>>,
+pub(crate) struct State {
+    collision_matrix: BTreeMap<ObjectId, BTreeSet<ObjectId>>,
     vblank_active: bool,
     in_vsync: bool,
     input_control: [InputControl; 6],
@@ -113,13 +113,13 @@ struct State {
     playfield: Playfield,
     high_playfield_ball_priority: bool,
     background_color: TiaColor,
-    staging_buffer: OwnedTexture<Srgba<u8>>,
     hmove_pending: bool,
 }
 
 #[derive(Debug)]
 pub(crate) struct Tia<R: Region, G: SupportedGraphicsApi> {
     state: State,
+    staging_buffer: OwnedTexture<Srgba<u8>>,
     backend: Option<G::Backend<R>>,
     cpu_path: ComponentPath,
     framebuffer_path: ResourcePath,
@@ -183,7 +183,7 @@ impl<R: Region, G: SupportedGraphicsApi> Tia<R, G> {
                     self.state.electron_beam.y as usize,
                 );
 
-                self.state.staging_buffer[point] = color.into();
+                self.staging_buffer[point] = color.into();
                 self.update_collision();
             }
 

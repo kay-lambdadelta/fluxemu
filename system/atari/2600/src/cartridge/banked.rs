@@ -11,6 +11,7 @@ use fluxemu_runtime::{
     },
     platform::Platform,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::cartridge::{CartType, get_cart_range};
 
@@ -32,11 +33,16 @@ impl CartType {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct State {
+    current_bank: usize,
+}
+
 #[derive(Debug)]
 pub struct BankedCart {
     rom: Bytes,
     cart_type: CartType,
-    current_bank: usize,
+    state: State,
 }
 
 impl Component for BankedCart {
@@ -50,14 +56,14 @@ impl Component for BankedCart {
         buffer: &mut [u8],
     ) -> Result<(), MemoryError> {
         if !avoid_side_effects && let Some(bank) = self.cart_type.find_matching_hotspot(address) {
-            self.current_bank = bank;
+            self.state.current_bank = bank;
         }
 
         let cart_range = get_cart_range();
 
         let offset = address - cart_range.start();
         let source = self.rom.slice(RangeInclusive::from_start_and_length(
-            self.current_bank * cart_range.len() + offset,
+            self.state.current_bank * cart_range.len() + offset,
             buffer.len(),
         ));
         buffer.copy_from_slice(&source);
@@ -72,7 +78,7 @@ impl Component for BankedCart {
         _buffer: &[u8],
     ) -> Result<(), MemoryError> {
         if let Some(bank) = self.cart_type.find_matching_hotspot(address) {
-            self.current_bank = bank;
+            self.state.current_bank = bank;
         }
 
         // In reality there is nothing here
@@ -123,7 +129,7 @@ impl<P: Platform> ComponentConfig<P> for BankedCartConfig {
         Ok(BankedCart {
             rom: self.rom,
             cart_type: self.cart_type,
-            current_bank: 0,
+            state: State { current_bank: 0 },
         })
     }
 }

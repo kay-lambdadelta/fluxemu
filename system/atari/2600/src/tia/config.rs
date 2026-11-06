@@ -1,4 +1,4 @@
-use std::{collections::HashMap, marker::PhantomData, ops::RangeInclusive};
+use std::{collections::BTreeMap, marker::PhantomData, ops::RangeInclusive};
 
 use fluxemu_graphics::texture::Texture;
 use fluxemu_math::range::ContiguousRange;
@@ -98,7 +98,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<
             cpu_path: self.cpu,
             framebuffer_path,
             state: State {
-                collision_matrix: HashMap::default(),
+                collision_matrix: BTreeMap::default(),
                 vblank_active: false,
                 in_vsync: false,
                 input_control: [InputControl::default(); 6],
@@ -109,9 +109,9 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<
                 playfield: Default::default(),
                 high_playfield_ball_priority: false,
                 background_color: Default::default(),
-                staging_buffer,
                 hmove_pending: false,
             },
+            staging_buffer,
         })
     }
 }
