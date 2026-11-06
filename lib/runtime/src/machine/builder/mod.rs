@@ -92,6 +92,10 @@ impl<P: Platform> SealedMachineBuilder<P> {
 
         drop(runtime_guard);
 
+        for address_space in self.machine.address_spaces.values() {
+            address_space.capture_baseline();
+        }
+
         self.machine
     }
 }

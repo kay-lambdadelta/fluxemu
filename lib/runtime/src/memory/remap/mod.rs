@@ -15,6 +15,45 @@ use crate::{
 mod commit;
 
 impl AddressSpaceData {
+    pub(crate) fn capture_baseline(&self) {
+        let master = self.master.lock().unwrap().clone();
+
+        self.baseline
+            .set(master)
+            .expect("Baseline already captured");
+    }
+
+    pub(crate) fn restore_baseline(&self, guard: &Guard, runtime: &RuntimeHandle) {
+        let baseline = self.baseline.get().expect("Baseline not captured").clone();
+
+        let mut master_tables_guard = self.master.lock().unwrap();
+        *master_tables_guard = baseline;
+
+        let max = 2usize.pow(u32::from(self.address_space_width)) - 1;
+        let mut dirty = RangeInclusiveSet::new();
+        dirty.insert(0..=max);
+
+        let current_read = self.read_table.load(Ordering::Acquire, guard);
+        let read_table =
+            current_read
+                .as_ref()
+                .unwrap()
+                .commit(&master_tables_guard.read, &dirty, runtime);
+        let _ = self
+            .read_table
+            .swap((Some(Owned::new(read_table)), Tag::None), Ordering::AcqRel);
+
+        let current_write = self.write_table.load(Ordering::Acquire, guard);
+        let write_table =
+            current_write
+                .as_ref()
+                .unwrap()
+                .commit(&master_tables_guard.write, &dirty, runtime);
+        let _ = self
+            .write_table
+            .swap((Some(Owned::new(write_table)), Tag::None), Ordering::AcqRel);
+    }
+
     #[inline]
     pub fn remap(
         &self,

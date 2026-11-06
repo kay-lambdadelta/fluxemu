@@ -20,6 +20,7 @@ license = "GPL-3.0-or-later"
 bindgen = "0.73"
 bit-vec = "0.10"
 bitstream-io = "4.10"
+blake3 = { version = "1.8", features = ["pure"] }
 bytemuck = { version = "1.25", features = ["derive"] }
 bytes = "1.12"
 clap = { version = "4.6", features = ["derive"] }

@@ -12,6 +12,7 @@ name = "memory"
 
 [dependencies]
 bit-vec = { workspace = true }
+blake3 = { workspace = true }
 bytes = { workspace = true }
 dyn-clone = { workspace = true }
 fixed = { workspace = true }

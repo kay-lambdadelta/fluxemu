@@ -2,7 +2,7 @@ use std::{
     fmt::Debug,
     hash::Hash,
     ops::RangeInclusive,
-    sync::{Arc, Mutex, atomic::Ordering},
+    sync::{Arc, Mutex, OnceLock, atomic::Ordering},
 };
 
 use bytes::Bytes;
@@ -146,7 +146,7 @@ impl Debug for MemoryError {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct MasterTables {
     read: RangeInclusiveMap<Address, MasterTableEntry>,
     write: RangeInclusiveMap<Address, MasterTableEntry>,
@@ -216,6 +216,7 @@ pub(crate) struct AddressSpaceData {
     read_table: AtomicOwned<PageTable>,
     write_table: AtomicOwned<PageTable>,
     master: Mutex<MasterTables>,
+    baseline: OnceLock<MasterTables>,
     pub(crate) bus_masters: Vec<ComponentId>,
 }
 
@@ -235,7 +236,54 @@ impl AddressSpaceData {
             read_table: AtomicOwned::new(PageTable::new(width)),
             write_table: AtomicOwned::new(PageTable::new(width)),
             master: Mutex::default(),
+            baseline: OnceLock::new(),
             bus_masters: Vec::new(),
+        }
+    }
+
+    pub(crate) fn id(&self) -> AddressSpaceId {
+        self.id
+    }
+
+    pub(crate) fn hash_memory_map(&self, hasher: &mut blake3::Hasher) {
+        let master = self.master.lock().unwrap();
+
+        for table in [&master.read, &master.write] {
+            for (range, entry) in table.iter() {
+                hasher.update(&range.start().to_le_bytes());
+                hasher.update(&range.end().to_le_bytes());
+
+                match entry {
+                    MasterTableEntry::Memory {
+                        path,
+                        source_base,
+                        region_base,
+                        length,
+                    } => {
+                        hasher.update(b"memory");
+                        hasher.update(path.to_string().as_bytes());
+                        hasher.update(&source_base.to_le_bytes());
+                        hasher.update(&region_base.to_le_bytes());
+                        hasher.update(&length.to_le_bytes());
+                    }
+                    MasterTableEntry::ImmutableMemory(bytes) => {
+                        hasher.update(b"immutable");
+                        hasher.update(bytes);
+                    }
+                    MasterTableEntry::Component(path) => {
+                        hasher.update(b"component");
+                        hasher.update(path.to_string().as_bytes());
+                    }
+                    MasterTableEntry::Mirror {
+                        source_base,
+                        destination_base,
+                    } => {
+                        hasher.update(b"mirror");
+                        hasher.update(&source_base.to_le_bytes());
+                        hasher.update(&destination_base.to_le_bytes());
+                    }
+                }
+            }
         }
     }
 
