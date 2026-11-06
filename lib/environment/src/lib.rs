@@ -1,6 +1,6 @@
 use std::{
     collections::BTreeMap, fs::create_dir_all, num::Wrapping, ops::Deref, path::PathBuf,
-    sync::LazyLock,
+    sync::LazyLock, time::Duration,
 };
 
 use audio::AudioSettings;
@@ -36,6 +36,9 @@ pub struct Environment {
     pub snapshot_directory: PathBuf,
     pub rom_stores: IndexMap<String, RomStoreSpecification>,
     pub active_snapshot_slot: Wrapping<u8>,
+    pub check_archive_hashes: bool,
+    pub save_flush_interval: Duration,
+    pub snapshot_screenshots: bool,
 }
 
 pub static STORAGE_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| {
@@ -69,12 +72,15 @@ pub fn load_environment() -> Environment {
         log_location: STORAGE_DIRECTORY.join("log"),
         database_location: STORAGE_DIRECTORY.join("database.redb"),
         save_directory: STORAGE_DIRECTORY.join("saves"),
-        snapshot_directory: STORAGE_DIRECTORY.join("snapshot"),
+        snapshot_directory: STORAGE_DIRECTORY.join("snapshots"),
         rom_stores: IndexMap::from_iter([(
             "default".to_string(),
             RomStoreSpecification::filesystem(STORAGE_DIRECTORY.join("roms")),
         )]),
         active_snapshot_slot: Wrapping(0),
+        check_archive_hashes: true,
+        save_flush_interval: Duration::from_secs(30),
+        snapshot_screenshots: true,
     })
     .unwrap();
 
