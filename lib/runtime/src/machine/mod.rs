@@ -3,9 +3,8 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
     hash::BuildHasher,
-    marker::PhantomData,
     rc::{Rc, Weak},
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, Mutex, OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::Duration,
 };
 
@@ -41,6 +40,7 @@ where
     Self: Send + Sync,
 {
     pub(crate) scheduler: Scheduler,
+    pub(crate) runtime_gate: RwLock<()>,
     /// Memory translation table
     pub(crate) address_spaces: HashMap<AddressSpaceId, AddressSpaceData, FxBuildHasher>,
     /// All virtual gamepads inserted by components
@@ -91,12 +91,33 @@ impl Machine {
     /// Panics if the runtime is already entered on this thread
     #[must_use]
     pub fn enter_runtime(self: &Arc<Self>) -> RuntimeGuard<'_> {
-        let runtime = CURRENT_THREAD_RUNTIME_HANDLE.with_borrow_mut(|handle| {
+        Self::assert_not_entered();
+
+        let gate = RuntimeGate::Shared(self.runtime_gate.read().unwrap());
+
+        self.install_runtime(gate)
+    }
+
+    #[must_use]
+    pub fn enter_runtime_exclusive(self: &Arc<Self>) -> ExclusiveRuntimeGuard<'_> {
+        Self::assert_not_entered();
+
+        let gate = RuntimeGate::Exclusive(self.runtime_gate.write().unwrap());
+
+        ExclusiveRuntimeGuard(self.install_runtime(gate))
+    }
+
+    fn assert_not_entered() {
+        CURRENT_THREAD_RUNTIME_HANDLE.with_borrow(|handle| {
             // The weak handle should not be valid by this point
             if handle.upgrade().is_some() {
                 panic!("Runtime already entered");
             }
+        });
+    }
 
+    fn install_runtime<'a>(self: &'a Arc<Self>, gate: RuntimeGate<'a>) -> RuntimeGuard<'a> {
+        let runtime = CURRENT_THREAD_RUNTIME_HANDLE.with_borrow_mut(|handle| {
             let runtime = RuntimeHandle::new(self.clone());
             *handle = Rc::downgrade(&runtime);
 
@@ -105,7 +126,7 @@ impl Machine {
 
         RuntimeGuard {
             runtime,
-            _phantom: PhantomData,
+            _gate: gate,
         }
     }
 
@@ -123,7 +144,20 @@ impl Machine {
 /// When this is dropped, the runtime is exited
 pub struct RuntimeGuard<'a> {
     runtime: Rc<RuntimeHandle>,
-    _phantom: PhantomData<&'a Machine>,
+    _gate: RuntimeGate<'a>,
+}
+
+enum RuntimeGate<'a> {
+    Shared(#[allow(unused)] RwLockReadGuard<'a, ()>),
+    Exclusive(#[allow(unused)] RwLockWriteGuard<'a, ()>),
+}
+
+pub struct ExclusiveRuntimeGuard<'a>(RuntimeGuard<'a>);
+
+impl ExclusiveRuntimeGuard<'_> {
+    pub(crate) fn runtime(&self) -> &RuntimeHandle {
+        &self.0.runtime
+    }
 }
 
 impl RuntimeGuard<'_> {

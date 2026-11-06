@@ -109,13 +109,12 @@ pub fn simulation_controller_loop(
             guard.execution_timeslice
         };
 
+        let runtime_guard = machine.enter_runtime();
         let start = Instant::now();
-        let measured_execution_time = {
-            let runtime_guard = machine.enter_runtime();
-            runtime_guard.run_duration(Duration::from_secs_f32(execution_timeslice));
-            audio_mixer.extract_machine_samples(&runtime_guard);
-            start.elapsed().as_secs_f32()
-        };
+        runtime_guard.run_duration(Duration::from_secs_f32(execution_timeslice));
+        audio_mixer.extract_machine_samples(&runtime_guard);
+        let measured_execution_time = start.elapsed().as_secs_f32();
+        drop(runtime_guard);
 
         if !measured_execution_time.is_finite() || measured_execution_time <= 0.0 {
             tracing::warn!("{}", t!("simulation_controller.invalid_measurement"));

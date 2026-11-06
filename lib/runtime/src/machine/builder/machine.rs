@@ -3,7 +3,7 @@ use std::{
     collections::{HashMap, HashSet},
     marker::PhantomData,
     ops::RangeInclusive,
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, Mutex, OnceLock, RwLock},
 };
 
 use bytes::Bytes;
@@ -312,6 +312,7 @@ impl<P: Platform> MachineBuilder<P> {
 
         let machine = Arc::new(Machine {
             scheduler: self.scheduler,
+            runtime_gate: RwLock::new(()),
             address_spaces,
             input_devices: self.input_devices,
             framebuffers,
