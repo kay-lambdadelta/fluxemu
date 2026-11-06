@@ -2001,6 +2001,7 @@ dependencies = [
  "nalgebra",
  "num",
  "ringbuffer",
+ "serde",
 ]
 
 [[package]]

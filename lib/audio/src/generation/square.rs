@@ -1,9 +1,10 @@
 use nalgebra::SVector;
+use serde::{Deserialize, Serialize};
 
 use crate::SampleFormat;
 
-#[derive(Debug)]
 /// Square wave generator
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SquareWave<S: SampleFormat, const CHANNELS: usize> {
     step: f32,
     phase: f32,
