@@ -8,26 +8,32 @@ use fluxemu_runtime::{
         task::{FrequencyBased, Mode},
     },
 };
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug)]
-pub struct Chip8Timer {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct State {
     // The CPU will set this according to what the program wants
     timer: u8,
 }
 
+#[derive(Debug)]
+pub struct Chip8Timer {
+    state: State,
+}
+
 impl Chip8Timer {
     pub fn set(&mut self, value: u8) {
-        self.timer = value;
+        self.state.timer = value;
     }
 
     pub fn get(&self) -> u8 {
-        self.timer
+        self.state.timer
     }
 
     #[inline]
     fn task(&mut self, _runtime_handle: &RuntimeHandle, quanta_allocator: QuantaAllocator<'_, '_>) {
         for _ in quanta_allocator {
-            self.timer = self.timer.saturating_sub(1);
+            self.state.timer = self.state.timer.saturating_sub(1);
         }
     }
 }
@@ -52,6 +58,8 @@ impl<P: Platform> ComponentConfig<P> for Chip8TimerConfig {
             FrequencyBased::new(Frequency::from_num(60), Self::Component::task),
         );
 
-        Ok(Chip8Timer { timer: 0 })
+        Ok(Chip8Timer {
+            state: State { timer: 0 },
+        })
     }
 }

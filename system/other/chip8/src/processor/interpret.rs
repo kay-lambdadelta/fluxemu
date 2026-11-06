@@ -108,7 +108,7 @@ impl<G: SupportedGraphicsApi> Chip8Processor<G> {
                 self.state.registers.work_registers[destination as usize] |=
                     self.state.registers.work_registers[source as usize];
 
-                if *self.mode.lock().unwrap() == Chip8Mode::Chip8 {
+                if self.state.mode == Chip8Mode::Chip8 {
                     self.state.registers.work_registers[0xf] = 0;
                 }
             }
@@ -119,7 +119,7 @@ impl<G: SupportedGraphicsApi> Chip8Processor<G> {
                 self.state.registers.work_registers[destination as usize] &=
                     self.state.registers.work_registers[source as usize];
 
-                if *self.mode.lock().unwrap() == Chip8Mode::Chip8 {
+                if self.state.mode == Chip8Mode::Chip8 {
                     self.state.registers.work_registers[0xf] = 0;
                 }
             }
@@ -130,7 +130,7 @@ impl<G: SupportedGraphicsApi> Chip8Processor<G> {
                 self.state.registers.work_registers[destination as usize] ^=
                     self.state.registers.work_registers[source as usize];
 
-                if *self.mode.lock().unwrap() == Chip8Mode::Chip8 {
+                if self.state.mode == Chip8Mode::Chip8 {
                     self.state.registers.work_registers[0xf] = 0;
                 }
             }
@@ -161,8 +161,7 @@ impl<G: SupportedGraphicsApi> Chip8Processor<G> {
             Chip8InstructionSet::Chip8(InstructionSetChip8::Shr { register, value }) => {
                 let mut destination_value = self.state.registers.work_registers[register as usize];
 
-                if *self.mode.lock().unwrap() == Chip8Mode::Chip8 || self.config.always_shr_in_place
-                {
+                if self.state.mode == Chip8Mode::Chip8 || self.config.always_shr_in_place {
                     destination_value = self.state.registers.work_registers[value as usize];
                 }
                 let overflow = destination_value & 0b0000_0001;
@@ -184,7 +183,7 @@ impl<G: SupportedGraphicsApi> Chip8Processor<G> {
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Shl { register, value }) => {
                 let mut destination_value = self.state.registers.work_registers[register as usize];
-                let mode = *self.mode.lock().unwrap();
+                let mode = self.state.mode;
 
                 if mode == Chip8Mode::Chip8 {
                     destination_value = self.state.registers.work_registers[value as usize];
@@ -207,7 +206,7 @@ impl<G: SupportedGraphicsApi> Chip8Processor<G> {
                 self.state.registers.index = value;
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Jumpi { address }) => {
-                let address = if *self.mode.lock().unwrap() == Chip8Mode::Chip8 {
+                let address = if self.state.mode == Chip8Mode::Chip8 {
                     address.wrapping_add(u16::from(self.state.registers.work_registers[0x0]))
                 } else {
                     let register = ((address & 0x0f00) >> 8) as u8;
@@ -228,7 +227,7 @@ impl<G: SupportedGraphicsApi> Chip8Processor<G> {
                 coordinates,
                 height,
             }) => {
-                let mode = *self.mode.lock().unwrap();
+                let mode = self.state.mode;
 
                 self.draw_instruction(runtime, address_space, timestamp, mode, coordinates, height);
             }
@@ -321,7 +320,7 @@ impl<G: SupportedGraphicsApi> Chip8Processor<G> {
                 }
 
                 // Only the original chip8 modifies the index register for this operation
-                if *self.mode.lock().unwrap() == Chip8Mode::Chip8 {
+                if self.state.mode == Chip8Mode::Chip8 {
                     self.state.registers.index = self
                         .state
                         .registers
@@ -341,7 +340,7 @@ impl<G: SupportedGraphicsApi> Chip8Processor<G> {
                 }
 
                 // Only the original chip8 modifies the index register for this operation
-                if *self.mode.lock().unwrap() == Chip8Mode::Chip8 {
+                if self.state.mode == Chip8Mode::Chip8 {
                     self.state.registers.index = self
                         .state
                         .registers
@@ -353,7 +352,7 @@ impl<G: SupportedGraphicsApi> Chip8Processor<G> {
                 self.interpret_superchip8(runtime, timestamp, subinstruction);
             }
             Chip8InstructionSet::XoChip(_) => {
-                *self.mode.lock().unwrap() = Chip8Mode::XoChip;
+                self.state.mode = Chip8Mode::XoChip;
 
                 todo!()
             }
@@ -367,7 +366,7 @@ impl<G: SupportedGraphicsApi> Chip8Processor<G> {
         timestamp: Period,
         subinstruction: InstructionSetSuperChip8,
     ) {
-        *self.mode.lock().unwrap() = Chip8Mode::SuperChip8;
+        self.state.mode = Chip8Mode::SuperChip8;
 
         match subinstruction {
             InstructionSetSuperChip8::Lores => {

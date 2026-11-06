@@ -11,24 +11,30 @@ use fluxemu_runtime::{
 };
 use nalgebra::SVector;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
+use serde::{Deserialize, Serialize};
 
 /// Imaginary chip8 hardware sample rate
 const INTERNAL_SAMPLE_RATE: f32 = 1760.0;
 
-#[derive(Debug)]
-pub struct Chip8Audio {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct State {
     // The CPU will set this according to what the program wants
     timer: u8,
-    buffer: AllocRingBuffer<SVector<f32, 1>>,
     wave_generator: SquareWave<f32, 1>,
-    processor_frequency: Frequency,
     timer_accumulator: Period,
     audio_accumulator: f32,
 }
 
+#[derive(Debug)]
+pub struct Chip8Audio {
+    state: State,
+    buffer: AllocRingBuffer<SVector<f32, 1>>,
+    processor_frequency: Frequency,
+}
+
 impl Chip8Audio {
     pub fn set(&mut self, value: u8) {
-        self.timer = value;
+        self.state.timer = value;
     }
 
     #[inline]
@@ -37,11 +43,11 @@ impl Chip8Audio {
         let samples_per_tick = INTERNAL_SAMPLE_RATE / self.processor_frequency.to_num::<f32>();
 
         for _ in quanta_allocator {
-            self.audio_accumulator += samples_per_tick;
+            self.state.audio_accumulator += samples_per_tick;
 
-            while self.audio_accumulator >= 1.0 {
-                let generated_sample = self.wave_generator.next().unwrap();
-                let sample = if self.timer > 0 {
+            while self.state.audio_accumulator >= 1.0 {
+                let generated_sample = self.state.wave_generator.next().unwrap();
+                let sample = if self.state.timer > 0 {
                     generated_sample
                 } else {
                     SVector::from_element(f32::equilibrium())
@@ -49,14 +55,14 @@ impl Chip8Audio {
 
                 let _ = self.buffer.enqueue(sample);
 
-                self.audio_accumulator -= 1.0;
+                self.state.audio_accumulator -= 1.0;
             }
 
-            self.timer_accumulator += self.processor_frequency.recip();
+            self.state.timer_accumulator += self.processor_frequency.recip();
 
-            while self.timer_accumulator >= timer_period {
-                self.timer = self.timer.saturating_sub(1);
-                self.timer_accumulator -= timer_period;
+            while self.state.timer_accumulator >= timer_period {
+                self.state.timer = self.state.timer.saturating_sub(1);
+                self.state.timer_accumulator -= timer_period;
             }
         }
     }
@@ -94,12 +100,14 @@ impl<P: Platform> ComponentConfig<P> for Chip8AudioConfig {
             .audio_channel("mono");
 
         Ok(Chip8Audio {
-            timer: 0,
+            state: State {
+                timer: 0,
+                wave_generator: SquareWave::new(440.0, INTERNAL_SAMPLE_RATE, 0.5),
+                timer_accumulator: Period::ZERO,
+                audio_accumulator: 0.0,
+            },
             buffer: AllocRingBuffer::new(INTERNAL_SAMPLE_RATE as _),
-            wave_generator: SquareWave::new(440.0, INTERNAL_SAMPLE_RATE, 0.5),
             processor_frequency: self.processor_frequency,
-            timer_accumulator: Period::ZERO,
-            audio_accumulator: 0.0,
         })
     }
 }

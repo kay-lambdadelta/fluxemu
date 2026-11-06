@@ -23,6 +23,7 @@ use palette::{
     Srgba,
     named::{BLACK, WHITE},
 };
+use serde::{Deserialize, Serialize};
 
 mod software;
 #[cfg(feature = "webgpu")]
@@ -31,20 +32,25 @@ mod webgpu;
 const LORES: Vector2<u8> = Vector2::new(64, 32);
 const HIRES: Vector2<u8> = Vector2::new(128, 64);
 
-#[derive(Debug)]
-pub struct Chip8Display<G: SupportedGraphicsApi> {
-    backend: Option<G::Backend>,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct State {
     /// The cpu reads this to see if it can continue execution post draw call
     vsync_occurred: bool,
     staging_buffer: OwnedTexture<Srgba<u8>>,
     hires: bool,
+}
+
+#[derive(Debug)]
+pub struct Chip8Display<G: SupportedGraphicsApi> {
+    backend: Option<G::Backend>,
+    state: State,
     config: Chip8DisplayConfig,
     framebuffer_path: ResourcePath,
 }
 
 impl<G: SupportedGraphicsApi> Chip8Display<G> {
     pub fn vsync_occurred(&self) -> bool {
-        self.vsync_occurred
+        self.state.vsync_occurred
     }
 
     pub fn set_hires(&mut self, is_hires: bool) {
@@ -57,13 +63,13 @@ impl<G: SupportedGraphicsApi> Chip8Display<G> {
 
         new_staging_buffer
             .view_mut(
-                0..self.staging_buffer.width(),
-                0..self.staging_buffer.height(),
+                0..self.state.staging_buffer.width(),
+                0..self.state.staging_buffer.height(),
             )
-            .copy_from(&self.staging_buffer, CopyMode::Nearest);
+            .copy_from(&self.state.staging_buffer, CopyMode::Nearest);
 
-        self.staging_buffer = new_staging_buffer;
-        self.hires = is_hires;
+        self.state.staging_buffer = new_staging_buffer;
+        self.state.hires = is_hires;
     }
 
     pub fn draw_supersized_sprite(&mut self, position: Point2<u8>, sprite: [u8; 32]) -> bool {
@@ -72,9 +78,9 @@ impl<G: SupportedGraphicsApi> Chip8Display<G> {
             position,
         );
 
-        let screen_size = if self.hires { HIRES } else { LORES };
+        let screen_size = if self.state.hires { HIRES } else { LORES };
         let position = Point2::new(position.x % screen_size.x, position.y % screen_size.y).cast();
-        self.vsync_occurred = false;
+        self.state.vsync_occurred = false;
 
         let mut hit_detection = false;
 
@@ -90,12 +96,12 @@ impl<G: SupportedGraphicsApi> Chip8Display<G> {
                     continue;
                 }
 
-                let old_sprite_pixel = self.staging_buffer[position] != BLACK.into();
+                let old_sprite_pixel = self.state.staging_buffer[position] != BLACK.into();
                 if sprite_pixel && old_sprite_pixel {
                     hit_detection = true;
                 }
 
-                self.staging_buffer[position] = if sprite_pixel ^ old_sprite_pixel {
+                self.state.staging_buffer[position] = if sprite_pixel ^ old_sprite_pixel {
                     WHITE
                 } else {
                     BLACK
@@ -114,8 +120,8 @@ impl<G: SupportedGraphicsApi> Chip8Display<G> {
             sprite.len()
         );
 
-        let screen_size = if self.hires { HIRES } else { LORES };
-        self.vsync_occurred = false;
+        let screen_size = if self.state.hires { HIRES } else { LORES };
+        self.state.vsync_occurred = false;
 
         let position = Point2::new(position.x % screen_size.x, position.y % screen_size.y).cast();
         let dimensions = Vector2::new(8, sprite.len());
@@ -134,12 +140,12 @@ impl<G: SupportedGraphicsApi> Chip8Display<G> {
                     continue;
                 }
 
-                let old_sprite_pixel = self.staging_buffer[position] != BLACK.into();
+                let old_sprite_pixel = self.state.staging_buffer[position] != BLACK.into();
                 if sprite_pixel && old_sprite_pixel {
                     hit_detection = true;
                 }
 
-                self.staging_buffer[position] = if sprite_pixel ^ old_sprite_pixel {
+                self.state.staging_buffer[position] = if sprite_pixel ^ old_sprite_pixel {
                     WHITE
                 } else {
                     BLACK
@@ -154,7 +160,7 @@ impl<G: SupportedGraphicsApi> Chip8Display<G> {
     pub fn clear_display(&mut self) {
         tracing::trace!("Clearing display");
 
-        self.staging_buffer.fill(BLACK.into());
+        self.state.staging_buffer.fill(BLACK.into());
     }
 
     #[inline]
@@ -162,7 +168,7 @@ impl<G: SupportedGraphicsApi> Chip8Display<G> {
         let mut commit_staging_buffer = false;
 
         for _ in quanta_allocator {
-            self.vsync_occurred = true;
+            self.state.vsync_occurred = true;
 
             commit_staging_buffer = true;
         }
@@ -172,7 +178,7 @@ impl<G: SupportedGraphicsApi> Chip8Display<G> {
                 self.backend
                     .as_mut()
                     .unwrap()
-                    .commit_staging_buffer(self.staging_buffer.as_view(), framebuffer);
+                    .commit_staging_buffer(self.state.staging_buffer.as_view(), framebuffer);
             });
         }
     }
@@ -217,9 +223,15 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<P> for Chip
 
         Ok(Chip8Display {
             backend: None,
-            hires: false,
-            vsync_occurred: false,
-            staging_buffer: Texture::from_value(LORES.x as usize, LORES.y as usize, BLACK.into()),
+            state: State {
+                hires: false,
+                vsync_occurred: false,
+                staging_buffer: Texture::from_value(
+                    LORES.x as usize,
+                    LORES.y as usize,
+                    BLACK.into(),
+                ),
+            },
             framebuffer_path,
             config: self,
         })

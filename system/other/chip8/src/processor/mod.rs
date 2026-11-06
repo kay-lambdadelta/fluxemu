@@ -1,7 +1,4 @@
-use std::{
-    marker::PhantomData,
-    sync::{Arc, Mutex},
-};
+use std::{marker::PhantomData, sync::Arc};
 
 use fluxemu_runtime::{
     RuntimeHandle,
@@ -66,11 +63,13 @@ impl Default for Chip8ProcessorRegisters {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ProcessorState {
     registers: Chip8ProcessorRegisters,
     stack: heapless::Vec<u16, 16>,
     execution_state: ExecutionState,
+    // What chip8 mode we are currently in
+    mode: Chip8Mode,
 }
 
 impl Default for ProcessorState {
@@ -79,6 +78,7 @@ impl Default for ProcessorState {
             stack: heapless::Vec::default(),
             registers: Chip8ProcessorRegisters::default(),
             execution_state: ExecutionState::Normal,
+            mode: Chip8Mode::default(),
         }
     }
 }
@@ -88,8 +88,6 @@ pub struct Chip8Processor<G: SupportedGraphicsApi> {
     state: ProcessorState,
     /// Keypad virtual gamepad
     keypad: Arc<LogicalInputDevice>,
-    // What chip8 mode we are currently in
-    mode: Arc<Mutex<Chip8Mode>>,
     config: Chip8ProcessorConfig<G>,
 }
 
@@ -215,8 +213,10 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<P>
         self,
         component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
-        let mode = Arc::new(Mutex::new(self.force_mode.unwrap_or(Chip8Mode::Chip8)));
-        let state = ProcessorState::default();
+        let state = ProcessorState {
+            mode: self.force_mode.unwrap_or(Chip8Mode::Chip8),
+            ..ProcessorState::default()
+        };
 
         let (_component_builder, keypad) = component_builder
             .bus_master(self.cpu_address_space)
@@ -230,7 +230,6 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<P>
         Ok(Chip8Processor {
             state,
             keypad,
-            mode,
             config: self,
         })
     }
