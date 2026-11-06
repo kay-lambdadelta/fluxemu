@@ -10,7 +10,7 @@ pub mod webgpu;
 /// Trait for marker structs representing rendering backends
 pub trait GraphicsApi: Debug + Any + Sized + Send + Sync + 'static {
     /// Data components need to do their graphics operations
-    type InitializationData: Clone + Debug + 'static;
+    type InitializationData: Clone + Debug + Send + Sync + 'static;
     /// The component framebuffer type
     type Framebuffer: Framebuffer;
     /// How components describe what they require out of a graphics context
