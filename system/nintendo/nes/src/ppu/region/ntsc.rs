@@ -1,4 +1,4 @@
-use std::f32::consts::TAU;
+use core::f32::consts::TAU;
 
 use fluxemu_math::color::YIQ_TO_RGB_NTSC_1953;
 use fluxemu_runtime::scheduler::Frequency;

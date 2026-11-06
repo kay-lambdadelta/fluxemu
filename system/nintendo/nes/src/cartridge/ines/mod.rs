@@ -1,4 +1,7 @@
-use std::{fmt::Debug, io::Cursor, ops::RangeInclusive};
+extern crate std;
+
+use core::{fmt::Debug, ops::RangeInclusive};
+use std::io::Cursor;
 
 use bitstream_io::{BigEndian, BitRead2, BitReader};
 use bytes::Bytes;

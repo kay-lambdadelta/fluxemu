@@ -1,4 +1,4 @@
-use std::{fmt::Debug, marker::PhantomData};
+use core::{fmt::Debug, marker::PhantomData};
 
 use fluxemu_graphics::{
     api::{GraphicsApi, software::Software},

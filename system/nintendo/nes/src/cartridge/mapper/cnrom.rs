@@ -1,5 +1,6 @@
-use std::ops::RangeInclusive;
+use core::ops::RangeInclusive;
 
+use alloc::boxed::Box;
 use fluxemu_math::range::ContiguousRange;
 use fluxemu_runtime::{
     RuntimeHandle,
@@ -83,7 +84,7 @@ impl<P: Platform> ComponentConfig<P> for CnRomConfig {
     fn build_component(
         self,
         component_builder: ComponentBuilder<P, Self::Component>,
-    ) -> Result<Self::Component, Box<dyn std::error::Error>> {
+    ) -> Result<Self::Component, Box<dyn core::error::Error>> {
         if self.config.chr_rom.is_none() {
             return Err("CNROM must have CHR-ROM".into());
         }

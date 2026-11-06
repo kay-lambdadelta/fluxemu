@@ -1,4 +1,4 @@
-use std::f32::consts::TAU;
+use core::f32::consts::TAU;
 
 use fluxemu_math::color::YUV_TO_RGB_SDTV_WITH_BT470;
 use fluxemu_runtime::scheduler::Frequency;

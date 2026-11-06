@@ -1,5 +1,6 @@
-use std::ops::RangeInclusive;
+use core::ops::RangeInclusive;
 
+use alloc::boxed::Box;
 use fluxemu_math::range::ContiguousRange;
 use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
@@ -84,7 +85,7 @@ impl<P: Platform> ComponentConfig<P> for ApuConfig {
     fn build_component(
         self,
         component_builder: ComponentBuilder<P, Self::Component>,
-    ) -> Result<Self::Component, Box<dyn std::error::Error>> {
+    ) -> Result<Self::Component, Box<dyn core::error::Error>> {
         let my_path = component_builder.path().clone();
 
         component_builder.map_memory(

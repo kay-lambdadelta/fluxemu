@@ -1,4 +1,5 @@
-use std::{marker::PhantomData, ops::RangeInclusive};
+use alloc::boxed::Box;
+use core::{marker::PhantomData, ops::RangeInclusive};
 
 use fluxemu_definition_mos6502::{Mos6502, Mos6502Event, Pin, variant::Ricoh2A0x};
 use fluxemu_graphics::texture::{AsViewTexture, OwnedTexture, Texture};
@@ -122,7 +123,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<
     fn build_component(
         self,
         component_builder: ComponentBuilder<P, Self::Component>,
-    ) -> Result<Self::Component, Box<dyn std::error::Error>> {
+    ) -> Result<Self::Component, Box<dyn core::error::Error>> {
         let frequency = R::master_clock() / R::PPU_CLOCK_DIVISOR as u128;
 
         let (component_builder, framebuffer_path) = component_builder
@@ -190,7 +191,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<
                 },
                 cycle_counter: Point2::new(1, R::PRERENDER_SCANLINE),
                 oam: OamState {
-                    data: std::array::from_fn(|index| {
+                    data: core::array::from_fn(|index| {
                         let value: u8 = rand::random();
 
                         if index % 4 == 2 {
@@ -361,7 +362,8 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
                                     .unwrap_or_default();
 
                                 // Delay the read through the buffer
-                                *buffer = std::mem::replace(&mut self.state.vram_read_buffer, data);
+                                *buffer =
+                                    core::mem::replace(&mut self.state.vram_read_buffer, data);
                                 self.refresh_io_latch(*buffer, 0b1111_1111);
                             }
 
@@ -566,7 +568,7 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
                                     register,
                                     self.cpu_address_space,
                                     false,
-                                    std::slice::from_mut(value),
+                                    core::slice::from_mut(value),
                                 );
                             }
                         } else {
@@ -595,7 +597,7 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
 
         RuntimeHandle::with_current(|runtime| match event {
             PpuEvent::VblankStart => {
-                if !std::mem::take(&mut self.state.suppress_vblank) {
+                if !core::mem::take(&mut self.state.suppress_vblank) {
                     self.state.entered_vblank = true;
 
                     runtime.schedule_event_relative::<Self>(
@@ -652,7 +654,7 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
                 let mut cycles_until_next_vblank =
                     TOTAL_SCANLINE_LENGTH as u128 * lines_until_next_vblank as u128;
 
-                if std::mem::take(&mut self.state.skipped_dot_this_frame) {
+                if core::mem::take(&mut self.state.skipped_dot_this_frame) {
                     cycles_until_next_vblank -= 1;
                 }
 

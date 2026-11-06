@@ -1,4 +1,5 @@
-use std::{ops::RangeInclusive, sync::Arc};
+use alloc::{boxed::Box, format, string::String, sync::Arc};
+use core::ops::RangeInclusive;
 
 use fluxemu_input::{GamepadInputId, InputId, KeyboardInputId};
 use fluxemu_math::range::ContiguousRange;

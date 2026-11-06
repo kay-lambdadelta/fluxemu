@@ -1,4 +1,4 @@
-use std::f32::consts::TAU;
+use core::f32::consts::TAU;
 
 use nalgebra::{Rotation, SMatrix, SVector};
 use palette::Srgb;
@@ -111,8 +111,8 @@ impl CompositeParams {
 }
 
 pub fn build_palette(parameters: CompositeParams) -> [[Srgb<u8>; 64]; 8] {
-    std::array::from_fn(|emphasis| {
-        std::array::from_fn(|index| {
+    core::array::from_fn(|emphasis| {
+        core::array::from_fn(|index| {
             let hue = (index % 16) as u8;
             let level = ((index >> 4) % 4) as u8;
 

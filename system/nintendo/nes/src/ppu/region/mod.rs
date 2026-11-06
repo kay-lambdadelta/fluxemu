@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use core::fmt::Debug;
 
 use fluxemu_runtime::scheduler::Frequency;
 use palette::Srgb;

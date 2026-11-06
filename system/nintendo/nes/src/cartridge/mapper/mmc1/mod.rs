@@ -1,4 +1,5 @@
-use std::ops::RangeInclusive;
+use alloc::{boxed::Box, vec, vec::Vec};
+use core::ops::RangeInclusive;
 
 use fluxemu_math::range::ContiguousRange;
 use fluxemu_runtime::{
@@ -434,7 +435,7 @@ impl<P: Platform> ComponentConfig<P> for Mmc1Config {
     fn build_component(
         self,
         mut component_builder: ComponentBuilder<P, Self::Component>,
-    ) -> Result<Self::Component, Box<dyn std::error::Error>> {
+    ) -> Result<Self::Component, Box<dyn core::error::Error>> {
         if self.params.chr_rom.is_some()
             && (self.params.chr_ram_size != 0 || self.params.chr_nvram_size != 0)
         {

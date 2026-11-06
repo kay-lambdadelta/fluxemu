@@ -1,7 +1,8 @@
-use std::{
-    marker::PhantomData,
-    sync::{Arc, Mutex},
-};
+extern crate std;
+
+use alloc::sync::Arc;
+use core::marker::PhantomData;
+use std::sync::Mutex;
 
 use fluxemu_graphics::{
     api::{

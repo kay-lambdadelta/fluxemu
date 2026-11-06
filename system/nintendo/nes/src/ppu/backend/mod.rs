@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use core::fmt::Debug;
 
 use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_runtime::graphics::SimpleDisplayBackend;

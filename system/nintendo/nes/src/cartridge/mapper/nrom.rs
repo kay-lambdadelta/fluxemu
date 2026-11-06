@@ -1,5 +1,6 @@
-use std::ops::RangeInclusive;
+use core::ops::RangeInclusive;
 
+use alloc::boxed::Box;
 use fluxemu_math::range::ContiguousRange;
 use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
@@ -28,7 +29,7 @@ impl<P: Platform> ComponentConfig<P> for NRomConfig {
     fn build_component(
         self,
         component_builder: ComponentBuilder<P, Self::Component>,
-    ) -> Result<Self::Component, Box<dyn std::error::Error>> {
+    ) -> Result<Self::Component, Box<dyn core::error::Error>> {
         let prg_bank_count = self.config.prg_rom.len() / (16 * 1024);
 
         let component_builder = match prg_bank_count {

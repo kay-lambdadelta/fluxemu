@@ -1,4 +1,9 @@
-use std::{error::Error, marker::PhantomData, ops::RangeInclusive};
+#![no_std]
+
+extern crate alloc;
+
+use alloc::boxed::Box;
+use core::{error::Error, marker::PhantomData, ops::RangeInclusive};
 
 pub use cartridge::ines::INes;
 use cartridge::{CartParams, ines::TimingMode};
