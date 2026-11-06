@@ -12,6 +12,7 @@ use fluxemu_runtime::{
     memory::{Address, AddressSpaceId, MapTarget, MemoryError, MemoryMapCommand, Permissions},
     platform::Platform,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::{
     cartridge::{CartParams, mapper::mmc1::shift::ShiftRegister},
@@ -23,20 +24,20 @@ mod shift;
 const PRG_BANK_SIZE: usize = 16 * 1024;
 const CHR_BANK_SIZE: usize = 4 * 1024;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 enum PrgRomBankMode {
     Unified32k,
     LockFirstBank,
     LockLastBank,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 enum ChrRomBankMode {
     Unified8k,
     Split4k,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 enum Mirroring {
     OneScreenLower,
     OneScreenUpper,
@@ -44,14 +45,19 @@ enum Mirroring {
     Horizontal,
 }
 
-#[derive(Debug)]
-pub struct Mmc1 {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct State {
     shift_register: ShiftRegister,
     chr_rom_bank_mode: ChrRomBankMode,
     chr_rom_bank_indexes: [u8; 2],
     prg_rom_bank_mode: PrgRomBankMode,
     prg_rom_bank_index: u8,
     mirroring: Option<Mirroring>,
+}
+
+#[derive(Debug)]
+pub struct Mmc1 {
+    state: State,
     config: Mmc1Config,
 }
 
@@ -70,14 +76,16 @@ impl Mmc1 {
 
         let prg_bank_count = self.config.params.prg_rom.len() / PRG_BANK_SIZE;
 
-        let (prg_low_bank, prg_high_bank) = match self.prg_rom_bank_mode {
+        let (prg_low_bank, prg_high_bank) = match self.state.prg_rom_bank_mode {
             PrgRomBankMode::Unified32k => {
-                let bank = (self.prg_rom_bank_index & 0b1111_1110) as usize;
+                let bank = (self.state.prg_rom_bank_index & 0b1111_1110) as usize;
 
                 (bank, bank + 1)
             }
-            PrgRomBankMode::LockFirstBank => (0, self.prg_rom_bank_index as usize),
-            PrgRomBankMode::LockLastBank => (self.prg_rom_bank_index as usize, prg_bank_count - 1),
+            PrgRomBankMode::LockFirstBank => (0, self.state.prg_rom_bank_index as usize),
+            PrgRomBankMode::LockLastBank => {
+                (self.state.prg_rom_bank_index as usize, prg_bank_count - 1)
+            }
         };
         let (prg_low_bank, prg_high_bank) = (
             prg_low_bank % prg_bank_count,
@@ -113,9 +121,9 @@ impl Mmc1 {
             let chr_bank_count = chr_rom.len() / CHR_BANK_SIZE;
             let mut ppu_commands = Vec::new();
 
-            match self.chr_rom_bank_mode {
+            match self.state.chr_rom_bank_mode {
                 ChrRomBankMode::Unified8k => {
-                    let bank = (self.chr_rom_bank_indexes[0] & !1) as usize;
+                    let bank = (self.state.chr_rom_bank_indexes[0] & !1) as usize;
 
                     ppu_commands.push(MemoryMapCommand::Map {
                         range: 0x0000..=0x0fff,
@@ -140,7 +148,7 @@ impl Mmc1 {
                     });
                 }
                 ChrRomBankMode::Split4k => {
-                    for (i, &bank_index) in self.chr_rom_bank_indexes.iter().enumerate() {
+                    for (i, &bank_index) in self.state.chr_rom_bank_indexes.iter().enumerate() {
                         let ppu_base = i * 0x1000;
                         let rom_offset = (bank_index as usize % chr_bank_count) * CHR_BANK_SIZE;
 
@@ -163,7 +171,7 @@ impl Mmc1 {
     }
 
     fn update_nametables(&mut self, runtime: &RuntimeHandle) {
-        let Some(mirroring) = &self.mirroring else {
+        let Some(mirroring) = &self.state.mirroring else {
             return;
         };
 
@@ -325,17 +333,17 @@ impl Component for Mmc1 {
                     let reset = byte & 0b1000_0000 != 0;
 
                     if reset {
-                        self.shift_register = ShiftRegister::default();
+                        self.state.shift_register = ShiftRegister::default();
 
-                        if self.prg_rom_bank_mode != PrgRomBankMode::LockLastBank {
-                            self.prg_rom_bank_mode = PrgRomBankMode::LockLastBank;
+                        if self.state.prg_rom_bank_mode != PrgRomBankMode::LockLastBank {
+                            self.state.prg_rom_bank_mode = PrgRomBankMode::LockLastBank;
                             self.update_prg_banking(runtime);
                         }
 
                         continue;
                     }
 
-                    if let Some(value) = self.shift_register.shift(shift_in_bit) {
+                    if let Some(value) = self.state.shift_register.shift(shift_in_bit) {
                         let mut remap_prg = false;
                         let mut remap_chr = false;
                         let mut remap_nametables = false;
@@ -363,35 +371,36 @@ impl Component for Mmc1 {
                                     _ => unreachable!(),
                                 };
 
-                                remap_chr = chr_rom_bank_mode != self.chr_rom_bank_mode;
-                                remap_prg = prg_rom_bank_mode != self.prg_rom_bank_mode;
-                                remap_nametables = self.mirroring.as_ref() != Some(&mirroring);
+                                remap_chr = chr_rom_bank_mode != self.state.chr_rom_bank_mode;
+                                remap_prg = prg_rom_bank_mode != self.state.prg_rom_bank_mode;
+                                remap_nametables =
+                                    self.state.mirroring.as_ref() != Some(&mirroring);
 
-                                self.chr_rom_bank_mode = chr_rom_bank_mode;
-                                self.prg_rom_bank_mode = prg_rom_bank_mode;
-                                self.mirroring = Some(mirroring);
+                                self.state.chr_rom_bank_mode = chr_rom_bank_mode;
+                                self.state.prg_rom_bank_mode = prg_rom_bank_mode;
+                                self.state.mirroring = Some(mirroring);
                             }
                             0xa000..=0xbfff => {
                                 let index = value & 0b0001_1111;
 
-                                remap_chr = index != self.chr_rom_bank_indexes[0];
+                                remap_chr = index != self.state.chr_rom_bank_indexes[0];
 
-                                self.chr_rom_bank_indexes[0] = index;
+                                self.state.chr_rom_bank_indexes[0] = index;
                             }
                             0xc000..=0xdfff => {
                                 let index = value & 0b0001_1111;
 
-                                remap_chr = index != self.chr_rom_bank_indexes[1]
-                                    && self.chr_rom_bank_mode == ChrRomBankMode::Split4k;
+                                remap_chr = index != self.state.chr_rom_bank_indexes[1]
+                                    && self.state.chr_rom_bank_mode == ChrRomBankMode::Split4k;
 
-                                self.chr_rom_bank_indexes[1] = index;
+                                self.state.chr_rom_bank_indexes[1] = index;
                             }
                             0xe000..=0xffff => {
                                 let index = value & 0b0000_1111;
 
-                                remap_prg = index != self.prg_rom_bank_index;
+                                remap_prg = index != self.state.prg_rom_bank_index;
 
-                                self.prg_rom_bank_index = index;
+                                self.state.prg_rom_bank_index = index;
                             }
                             _ => unreachable!(),
                         }
@@ -520,13 +529,15 @@ impl<P: Platform> ComponentConfig<P> for Mmc1Config {
         );
 
         Ok(Mmc1 {
-            shift_register: ShiftRegister::default(),
+            state: State {
+                shift_register: ShiftRegister::default(),
+                chr_rom_bank_mode: ChrRomBankMode::Unified8k,
+                chr_rom_bank_indexes: [0, 0],
+                prg_rom_bank_mode: PrgRomBankMode::LockLastBank,
+                prg_rom_bank_index: 0,
+                mirroring: None,
+            },
             config: self,
-            chr_rom_bank_mode: ChrRomBankMode::Unified8k,
-            chr_rom_bank_indexes: [0, 0],
-            prg_rom_bank_mode: PrgRomBankMode::LockLastBank,
-            prg_rom_bank_index: 0,
-            mirroring: None,
         })
     }
 }

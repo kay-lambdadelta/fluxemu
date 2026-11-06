@@ -1,8 +1,9 @@
 use fluxemu_runtime::memory::Address;
+use serde::{Deserialize, Serialize};
 
 use crate::apu::Apu;
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
 pub struct Sweep {
     pub enabled: bool,
     pub period: u8,
@@ -10,7 +11,7 @@ pub struct Sweep {
     pub shift: u8,
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
 pub struct PulseChannel {
     pub duty: u8,
     pub length_counter_halt: bool,
@@ -24,7 +25,7 @@ pub struct PulseChannel {
 
 impl Apu {
     pub(super) fn pulse_write(&mut self, index: u8, position: Address, byte: u8) {
-        let pulse_channel = &mut self.pulse_channels[index as usize];
+        let pulse_channel = &mut self.state.pulse_channels[index as usize];
 
         match position {
             0 => {

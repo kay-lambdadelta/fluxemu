@@ -12,14 +12,20 @@ use fluxemu_runtime::{
     memory::{Address, AddressSpaceId, MapTarget, MemoryError, MemoryMapCommand, Permissions},
     platform::Platform,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::cartridge::CartParams;
 
 const CHR_BANK_SIZE: usize = 8 * 1024;
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct State {
+    chr_bank_index: usize,
+}
+
 #[derive(Debug)]
 pub struct CnRom {
-    chr_bank_index: usize,
+    state: State,
     config: CnRomConfig,
 }
 
@@ -37,7 +43,7 @@ impl CnRom {
                     range: 0x0000..=0x1fff,
                     target: MapTarget::ImmutableMemory(chr_rom.slice(
                         RangeInclusive::from_start_and_length(
-                            (self.chr_bank_index % chr_bank_count) * CHR_BANK_SIZE,
+                            (self.state.chr_bank_index % chr_bank_count) * CHR_BANK_SIZE,
                             CHR_BANK_SIZE,
                         ),
                     )),
@@ -59,8 +65,8 @@ impl Component for CnRom {
         RuntimeHandle::with_current(|runtime| {
             let chr_bank_index = usize::from(buffer[0]);
 
-            if chr_bank_index != self.chr_bank_index {
-                self.chr_bank_index = chr_bank_index;
+            if chr_bank_index != self.state.chr_bank_index {
+                self.state.chr_bank_index = chr_bank_index;
                 self.update_chr_banking(runtime);
             }
         });
@@ -119,7 +125,7 @@ impl<P: Platform> ComponentConfig<P> for CnRomConfig {
         );
 
         Ok(CnRom {
-            chr_bank_index: 0,
+            state: State { chr_bank_index: 0 },
             config: self,
         })
     }

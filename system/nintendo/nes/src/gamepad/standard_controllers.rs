@@ -10,6 +10,7 @@ use fluxemu_runtime::{
     memory::{Address, AddressSpaceId, MemoryError, MemoryMapCommand, Permissions},
     platform::Platform,
 };
+use serde::{Deserialize, Serialize};
 
 const CONTROLLER_0: Address = 0x4016;
 
@@ -24,8 +25,8 @@ const READ_ORDER: [InputId; 8] = [
     InputId::Gamepad(GamepadInputId::DPadRight),
 ];
 
-#[derive(Debug, Default)]
-struct ControllerState {
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct ControllerState {
     current_reads: [u8; 2],
     strobe: bool,
 }

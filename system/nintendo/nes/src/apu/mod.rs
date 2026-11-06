@@ -8,6 +8,7 @@ use fluxemu_runtime::{
     memory::{Address, AddressSpaceId, MemoryError, MemoryMapCommand, Permissions},
     platform::Platform,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::apu::pulse::PulseChannel;
 
@@ -22,9 +23,14 @@ const CONTROL: Address = 0x4015;
 const STATUS: Address = 0x4015;
 const FRAME_COUNTER: Address = 0x4017;
 
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct State {
+    pub pulse_channels: [PulseChannel; 2],
+}
+
 #[derive(Debug)]
 pub struct Apu {
-    pub pulse_channels: [PulseChannel; 2],
+    pub state: State,
 }
 
 impl Component for Apu {
@@ -65,8 +71,8 @@ impl Component for Apu {
             }
 
             if CONTROL == address {
-                self.pulse_channels[1].enabled = (byte & 0b0000_0010) != 0;
-                self.pulse_channels[0].enabled = (byte & 0b0000_0001) != 0;
+                self.state.pulse_channels[1].enabled = (byte & 0b0000_0010) != 0;
+                self.state.pulse_channels[0].enabled = (byte & 0b0000_0001) != 0;
             }
         }
 
@@ -106,7 +112,7 @@ impl<P: Platform> ComponentConfig<P> for ApuConfig {
         );
 
         Ok(Apu {
-            pulse_channels: Default::default(),
+            state: State::default(),
         })
     }
 }
