@@ -15,11 +15,74 @@ use crate::{
     MAPCTL_ADDRESS, MIKEY_ADDRESSES, RESERVED_MEMORY_ADDRESS, SUZY_ADDRESSES, VECTOR_ADDRESSES,
 };
 
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct State {
+    status: MapctlStatus,
+    written: bool,
+}
+
 #[derive(Debug)]
 pub struct Mapctl {
     config: MapctlConfig,
-    status: MapctlStatus,
+    state: State,
     path: ComponentPath,
+}
+
+impl Mapctl {
+    fn update_mapping(&self, runtime: &RuntimeHandle) {
+        let timestamp = runtime.current_timestamp();
+
+        let mut remapping_commands = Vec::default();
+
+        remapping_commands.push(MemoryMapCommand::Map {
+            range: 0x0000..=0xffff,
+            target: MapTarget::Memory {
+                path: self.config.ram.clone(),
+                subrange: None,
+            },
+            permissions: Permissions::ALL,
+        });
+
+        if self.state.status.suzy {
+            remapping_commands.push(MemoryMapCommand::Map {
+                range: SUZY_ADDRESSES,
+                target: MapTarget::Component(self.config.suzy.clone()),
+                permissions: Permissions::ALL,
+            });
+        }
+
+        if self.state.status.mikey {
+            remapping_commands.push(MemoryMapCommand::Map {
+                range: MIKEY_ADDRESSES,
+                target: MapTarget::Component(self.config.mikey.clone()),
+                permissions: Permissions::ALL,
+            });
+        }
+
+        remapping_commands.push(MemoryMapCommand::Unmap {
+            range: RESERVED_MEMORY_ADDRESS..=RESERVED_MEMORY_ADDRESS,
+            permissions: Permissions::ALL,
+        });
+
+        if self.state.status.vector {
+            remapping_commands.push(MemoryMapCommand::Map {
+                range: VECTOR_ADDRESSES,
+                target: MapTarget::Component(self.config.vector.clone()),
+                permissions: Permissions::ALL,
+            });
+        }
+
+        remapping_commands.push(MemoryMapCommand::Map {
+            range: MAPCTL_ADDRESS..=MAPCTL_ADDRESS,
+            target: MapTarget::Component(self.path.clone()),
+            permissions: Permissions::ALL,
+        });
+
+        runtime
+            .address_space(self.config.cpu_address_space)
+            .unwrap()
+            .remap(timestamp, remapping_commands);
+    }
 }
 
 impl Component for Mapctl {
@@ -32,7 +95,7 @@ impl Component for Mapctl {
         _avoid_side_effects: bool,
         buffer: &mut [u8],
     ) -> Result<(), MemoryError> {
-        buffer[0] = self.status.to_byte();
+        buffer[0] = self.state.status.to_byte();
 
         Ok(())
     }
@@ -43,62 +106,10 @@ impl Component for Mapctl {
         _address_space: AddressSpaceId,
         buffer: &[u8],
     ) -> Result<(), MemoryError> {
-        RuntimeHandle::with_current(|runtime| {
-            let timestamp = runtime.current_timestamp();
+        self.state.status = MapctlStatus::from_byte(buffer[0]);
+        self.state.written = true;
 
-            self.status = MapctlStatus::from_byte(buffer[0]);
-
-            let mut remapping_commands = Vec::default();
-
-            remapping_commands.push(MemoryMapCommand::Map {
-                range: 0x0000..=0xffff,
-                target: MapTarget::Memory {
-                    path: self.config.ram.clone(),
-                    subrange: None,
-                },
-                permissions: Permissions::ALL,
-            });
-
-            if self.status.suzy {
-                remapping_commands.push(MemoryMapCommand::Map {
-                    range: SUZY_ADDRESSES,
-                    target: MapTarget::Component(self.config.suzy.clone()),
-                    permissions: Permissions::ALL,
-                });
-            }
-
-            if self.status.mikey {
-                remapping_commands.push(MemoryMapCommand::Map {
-                    range: MIKEY_ADDRESSES,
-                    target: MapTarget::Component(self.config.mikey.clone()),
-                    permissions: Permissions::ALL,
-                });
-            }
-
-            remapping_commands.push(MemoryMapCommand::Unmap {
-                range: RESERVED_MEMORY_ADDRESS..=RESERVED_MEMORY_ADDRESS,
-                permissions: Permissions::ALL,
-            });
-
-            if self.status.vector {
-                remapping_commands.push(MemoryMapCommand::Map {
-                    range: VECTOR_ADDRESSES,
-                    target: MapTarget::Component(self.config.vector.clone()),
-                    permissions: Permissions::ALL,
-                });
-            }
-
-            remapping_commands.push(MemoryMapCommand::Map {
-                range: MAPCTL_ADDRESS..=MAPCTL_ADDRESS,
-                target: MapTarget::Component(self.path.clone()),
-                permissions: Permissions::ALL,
-            });
-
-            runtime
-                .address_space(self.config.cpu_address_space)
-                .unwrap()
-                .remap(timestamp, remapping_commands);
-        });
+        RuntimeHandle::with_current(|runtime| self.update_mapping(runtime));
 
         Ok(())
     }
@@ -133,7 +144,7 @@ impl<P: Platform> ComponentConfig<P> for MapctlConfig {
 
         Ok(Mapctl {
             config: self,
-            status: Default::default(),
+            state: State::default(),
             path: my_path,
         })
     }
