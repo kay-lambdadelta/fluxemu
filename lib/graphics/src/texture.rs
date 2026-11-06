@@ -688,6 +688,16 @@ impl<T: Clone> From<OwnedTexture<T>> for CowTexture<'_, T> {
     }
 }
 
+impl<T: Clone> CowTexture<'_, T> {
+    pub fn into_owned(self) -> OwnedTexture<T> {
+        Texture {
+            view: self.view,
+            storage_size: self.storage_size,
+            storage: self.storage.into_owned().into_boxed_slice(),
+        }
+    }
+}
+
 #[inline]
 fn resolve_range(range: impl RangeBounds<usize>, max: usize) -> (usize, usize) {
     let start = match range.start_bound() {
