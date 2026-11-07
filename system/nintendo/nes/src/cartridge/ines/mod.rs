@@ -249,20 +249,25 @@ impl INes {
         })
     }
 
-    pub fn extract_prg_rom(&self, rom: &Bytes) -> Bytes {
+    pub fn extract_prg_rom(&self, rom: &Bytes) -> Result<Bytes, ParsingError> {
         let cursor = HEADER_SIZE + if self.trainer { TRAINER_SIZE } else { 0 };
 
-        rom.slice(RangeInclusive::from_start_and_length(
-            cursor,
-            self.prg_rom_size,
-        ))
+        extract(rom, cursor, self.prg_rom_size)
     }
 
-    pub fn extract_chr_rom(&self, rom: &Bytes) -> Option<Bytes> {
+    pub fn extract_chr_rom(&self, rom: &Bytes) -> Result<Option<Bytes>, ParsingError> {
         let cursor = HEADER_SIZE + if self.trainer { TRAINER_SIZE } else { 0 } + self.prg_rom_size;
 
-        self.chr_rom_size.map(|chr_rom_size| {
-            rom.slice(RangeInclusive::from_start_and_length(cursor, chr_rom_size))
-        })
+        self.chr_rom_size
+            .map(|chr_rom_size| extract(rom, cursor, chr_rom_size))
+            .transpose()
     }
+}
+
+fn extract(rom: &Bytes, start: usize, length: usize) -> Result<Bytes, ParsingError> {
+    if start + length > rom.len() {
+        return Err(ParsingError::EarlyEOF);
+    }
+
+    Ok(rom.slice(RangeInclusive::from_start_and_length(start, length)))
 }

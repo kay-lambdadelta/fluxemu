@@ -56,6 +56,6 @@ impl<P: Platform> ComponentConfig<P> for Intel8080Config {
         self,
         _component_builder: ComponentBuilder<P, Self::Component>,
     ) -> Result<Self::Component, Box<dyn std::error::Error>> {
-        todo!()
+        Err("Intel 8080 is not implemented yet".into())
     }
 }

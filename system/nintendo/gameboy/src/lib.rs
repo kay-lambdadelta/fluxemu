@@ -20,6 +20,6 @@ impl<P: Platform> System<P> for Gameboy {
         _quirks: Self::Quirks,
         _machine_builder: MachineBuilder<P>,
     ) -> Result<SealedMachineBuilder<P>, Box<dyn Error>> {
-        todo!()
+        Err("Game Boy is not implemented yet".into())
     }
 }

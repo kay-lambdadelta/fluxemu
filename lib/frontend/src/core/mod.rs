@@ -564,14 +564,20 @@ async fn initialize_machine<P: Platform>(
 
     let machine_builder = Machine::build(Some(specification), program_manager);
 
-    let sealed = machine_factories
+    match machine_factories
         .construct_machine(ron::Value::from(()), machine_builder)
         .await
-        .map(|result| result.unwrap());
+    {
+        Some(Ok(sealed)) => Some(sealed),
+        Some(Err(err)) => {
+            tracing::error!("Could not construct machine for program: {}", err);
 
-    if sealed.is_none() {
-        tracing::error!("Could not construct machine for program");
+            None
+        }
+        None => {
+            tracing::error!("Could not construct machine for program");
+
+            None
+        }
     }
-
-    sealed
 }

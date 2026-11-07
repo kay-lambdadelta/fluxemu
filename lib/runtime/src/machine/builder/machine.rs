@@ -1,6 +1,7 @@
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
+    error::Error,
     marker::PhantomData,
     ops::RangeInclusive,
     sync::{Arc, Mutex, OnceLock, RwLock},
@@ -37,6 +38,13 @@ pub enum MachineError {
     CouldNotFindEssentialRom,
     #[error("{0}")]
     ProgramManager(#[from] fluxemu_program::Error),
+    #[error("Failed to build component {path}: {source}")]
+    ComponentBuild {
+        path: ComponentPath,
+        source: Box<dyn Error>,
+    },
+    #[error("Component {name} is not implemented yet")]
+    UnimplementedComponent { name: Cow<'static, str> },
 }
 
 pub(super) struct AddressSpaceSetupData {
@@ -140,7 +148,7 @@ impl<P: Platform> MachineBuilder<P> {
         &mut self,
         path: ComponentPath,
         config: B,
-    ) {
+    ) -> Result<(), MachineError> {
         let mut component_data = ComponentData::new::<B>();
 
         let component_builder = ComponentBuilder::<P, B::Component> {
@@ -152,7 +160,10 @@ impl<P: Platform> MachineBuilder<P> {
 
         let component = config
             .build_component(component_builder)
-            .expect("Failed to build component");
+            .map_err(|source| MachineError::ComponentBuild {
+                path: path.clone(),
+                source,
+            })?;
 
         let id = self.component_registry_data.insert_component(
             path.clone(),
@@ -170,6 +181,8 @@ impl<P: Platform> MachineBuilder<P> {
         }
 
         self.component_data.insert(path, component_data);
+
+        Ok(())
     }
 
     /// Insert a component into the machine
@@ -178,11 +191,11 @@ impl<P: Platform> MachineBuilder<P> {
         mut self,
         name: impl Into<Cow<'static, str>>,
         config: B,
-    ) -> (Self, ComponentPath) {
+    ) -> Result<(Self, ComponentPath), MachineError> {
         let path = ComponentPath::new(name).unwrap();
-        self.insert_component_with_path(path.clone(), config);
+        self.insert_component_with_path(path.clone(), config)?;
 
-        (self, path)
+        Ok((self, path))
     }
 
     /// Insert a component with a default config
@@ -190,7 +203,7 @@ impl<P: Platform> MachineBuilder<P> {
     pub fn default_component<B: ComponentConfig<P> + Default>(
         self,
         name: impl Into<Cow<'static, str>>,
-    ) -> (Self, ComponentPath) {
+    ) -> Result<(Self, ComponentPath), MachineError> {
         let config = B::default();
         self.component(name, config)
     }

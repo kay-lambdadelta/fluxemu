@@ -2,7 +2,7 @@
 
 extern crate alloc;
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, format};
 use core::{error::Error, marker::PhantomData, ops::RangeInclusive};
 
 pub use cartridge::ines::INes;
@@ -22,7 +22,9 @@ use ppu::PpuConfig;
 use crate::{
     apu::ApuConfig,
     cartridge::{
-        ines::{INesVersion, NametableMirroring, expansion_device::DefaultExpansionDevice},
+        ines::{
+            INesVersion, NametableMirroring, ParsingError, expansion_device::DefaultExpansionDevice,
+        },
         mapper::{cnrom::CnRomConfig, mmc1::Mmc1Config, nrom::NRomConfig},
     },
     gamepad::standard_controllers::NesControllerConfig,
@@ -54,14 +56,14 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Nes {
         let (machine_builder, cpu_address_space) = machine_builder.address_space(16);
         let (machine_builder, ppu_address_space) = machine_builder.address_space(14);
 
-        let program_specification = machine_builder.program_specification().unwrap();
+        let program_specification = machine_builder
+            .program_specification()
+            .ok_or("NES requires a program to boot")?;
         let filesystem = program_specification.info.filesystem();
 
-        assert_eq!(
-            filesystem.len(),
-            1,
-            "iNES format NES programs only contain a single ROM"
-        );
+        if filesystem.len() != 1 {
+            return Err("iNES format NES programs only contain a single ROM".into());
+        }
 
         let rom_id = filesystem
             .first_key_value()
@@ -166,7 +168,12 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Nes {
             .await?
             .unwrap();
 
-        let header = INes::parse(rom[0..16].try_into().unwrap()).unwrap();
+        let header_bytes = rom
+            .get(0..16)
+            .ok_or(ParsingError::EarlyEOF)?
+            .try_into()
+            .unwrap();
+        let header = INes::parse(header_bytes)?;
         if header.trainer {
             tracing::warn!("This ROM contains a trainer, which is not emulated at this time");
         }
@@ -191,8 +198,8 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Nes {
             )],
         );
 
-        let prg_rom = header.extract_prg_rom(&rom);
-        let chr_rom = header.extract_chr_rom(&rom);
+        let prg_rom = header.extract_prg_rom(&rom)?;
+        let chr_rom = header.extract_chr_rom(&rom)?;
 
         let cart_config = CartParams {
             cpu_address_space,
@@ -215,7 +222,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Nes {
                         NRomConfig {
                             config: cart_config,
                         },
-                    )
+                    )?
                     .0;
             }
             001 | 155 => {
@@ -225,7 +232,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Nes {
                         Mmc1Config {
                             params: cart_config,
                         },
-                    )
+                    )?
                     .0;
             }
             003 => {
@@ -235,11 +242,11 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Nes {
                         CnRomConfig {
                             config: cart_config,
                         },
-                    )
+                    )?
                     .0;
             }
             _ => {
-                unimplemented!("Mapper {}", header.mapper)
+                return Err(format!("Unsupported mapper {}", header.mapper).into());
             }
         };
 
@@ -252,68 +259,20 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Nes {
         }
         .unwrap_or(DefaultExpansionDevice::StandardControllers { swapped: false });
 
-        let machine_builder = match default_expansion_device {
-            DefaultExpansionDevice::StandardControllers { .. } => {
-                let (machine_builder, _) = machine_builder.component(
-                    "standard-nes-controllers",
-                    NesControllerConfig { cpu_address_space },
-                );
+        if !matches!(
+            default_expansion_device,
+            DefaultExpansionDevice::StandardControllers { .. }
+        ) {
+            tracing::warn!(
+                "Expansion device {:?} is not emulated, falling back to standard controllers",
+                default_expansion_device
+            );
+        }
 
-                machine_builder
-            }
-            DefaultExpansionDevice::FourScore => todo!(),
-            DefaultExpansionDevice::SimpleFamiconFourPlayerAdaptor => todo!(),
-            DefaultExpansionDevice::VsSystem { address: _ } => todo!(),
-            DefaultExpansionDevice::VsZapper => todo!(),
-            DefaultExpansionDevice::Zapper => todo!(),
-            DefaultExpansionDevice::DualZapper => todo!(),
-            DefaultExpansionDevice::BandaiHyperShotLightgun => todo!(),
-            DefaultExpansionDevice::PowerPad { upside: _ } => todo!(),
-            DefaultExpansionDevice::FamilyTrainer { upside: _ } => todo!(),
-            DefaultExpansionDevice::ArkanoidVaus { kind: _ } => todo!(),
-            DefaultExpansionDevice::DualArkanoidVausFamicomPlusDataRecorder => todo!(),
-            DefaultExpansionDevice::KonamiHyperShotController => todo!(),
-            DefaultExpansionDevice::CoconutsPachinkoController => todo!(),
-            DefaultExpansionDevice::ExcitingBoxingPunchingBag => todo!(),
-            DefaultExpansionDevice::JissenMahjongController => todo!(),
-            DefaultExpansionDevice::PartyTap => todo!(),
-            DefaultExpansionDevice::OekaKidsTablet => todo!(),
-            DefaultExpansionDevice::SunsoftBarcodeBattler => todo!(),
-            DefaultExpansionDevice::MiraclePianoKeyboard => todo!(),
-            DefaultExpansionDevice::PokkunMoguraa => todo!(),
-            DefaultExpansionDevice::TopRider => todo!(),
-            DefaultExpansionDevice::DoubleFisted => todo!(),
-            DefaultExpansionDevice::Famicom3dSystem => todo!(),
-            DefaultExpansionDevice::ドレミッコKeyboard => todo!(),
-            DefaultExpansionDevice::Rob { mode: _ } => todo!(),
-            DefaultExpansionDevice::FamiconDataRecorder => todo!(),
-            DefaultExpansionDevice::AsciiTurboFile => todo!(),
-            DefaultExpansionDevice::IgsStorageBattleBox => todo!(),
-            DefaultExpansionDevice::FamilyBasicKeyBoardPlusFamiconDataRecorder => todo!(),
-            DefaultExpansionDevice::东达PECKeyboard => todo!(),
-            DefaultExpansionDevice::普澤Bit79Keyboard => todo!(),
-            DefaultExpansionDevice::小霸王Keyboard { mouse: _ } => todo!(),
-            DefaultExpansionDevice::SnesMouse => todo!(),
-            DefaultExpansionDevice::Multicart => todo!(),
-            DefaultExpansionDevice::SnesControllers => todo!(),
-            DefaultExpansionDevice::RacerMateBicycle => todo!(),
-            DefaultExpansionDevice::UForce => todo!(),
-            DefaultExpansionDevice::CityPatrolmanLightgun => todo!(),
-            DefaultExpansionDevice::SharpC1CassetteInterface => todo!(),
-            DefaultExpansionDevice::ExcaliburSudokuPad => todo!(),
-            DefaultExpansionDevice::ABLPinball => todo!(),
-            DefaultExpansionDevice::GoldenNuggetCasino => todo!(),
-            DefaultExpansionDevice::科达Keyboard => todo!(),
-            DefaultExpansionDevice::PortTestController => todo!(),
-            DefaultExpansionDevice::BandaiMultiGamePlayerGamepad => todo!(),
-            DefaultExpansionDevice::VenomTvDanceMat => todo!(),
-            DefaultExpansionDevice::LgTvRemoteControl => todo!(),
-            DefaultExpansionDevice::FamicomNetworkController => todo!(),
-            DefaultExpansionDevice::KingFishingController => todo!(),
-            DefaultExpansionDevice::CroakyKaraokeController => todo!(),
-            DefaultExpansionDevice::科王Keyboard => todo!(),
-            DefaultExpansionDevice::泽诚Keyboard => todo!(),
-        };
+        let (machine_builder, _) = machine_builder.component(
+            "standard-nes-controllers",
+            NesControllerConfig { cpu_address_space },
+        )?;
 
         Ok(match header.timing_mode {
             // FIXME: Implementing Multi as NTSC for now
@@ -324,7 +283,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Nes {
                         Ntsc::master_clock() / Ntsc::CPU_CLOCK_DIVISOR as u128,
                         cpu_address_space,
                     ),
-                );
+                )?;
 
                 let (machine_builder, _) = machine_builder.component(
                     "ppu",
@@ -334,10 +293,10 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Nes {
                         processor,
                         _phantom: PhantomData,
                     },
-                );
+                )?;
 
                 let (machine_builder, _) =
-                    machine_builder.component("apu", ApuConfig { cpu_address_space });
+                    machine_builder.component("apu", ApuConfig { cpu_address_space })?;
 
                 machine_builder
             }
@@ -348,7 +307,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Nes {
                         Pal::master_clock() / Pal::CPU_CLOCK_DIVISOR as u128,
                         cpu_address_space,
                     ),
-                );
+                )?;
 
                 let (machine_builder, _) = machine_builder.component(
                     "ppu",
@@ -358,14 +317,14 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Nes {
                         processor,
                         _phantom: PhantomData,
                     },
-                );
+                )?;
 
                 let (machine_builder, _) =
-                    machine_builder.component("apu", ApuConfig { cpu_address_space });
+                    machine_builder.component("apu", ApuConfig { cpu_address_space })?;
 
                 machine_builder
             }
-            TimingMode::Dendy => todo!(),
+            TimingMode::Dendy => return Err("Dendy timing is not supported yet".into()),
         }
         .seal())
     }

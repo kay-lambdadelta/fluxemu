@@ -4,7 +4,7 @@ use fluxemu_definition_mos6502::variant::Mos6507;
 use fluxemu_definition_mos6532::Mos6532RiotConfig;
 use fluxemu_program::{AtariSystem, SystemId};
 use fluxemu_runtime::{
-    machine::builder::{MachineBuilder, RomRequirement, SealedMachineBuilder},
+    machine::builder::{MachineBuilder, MachineError, RomRequirement, SealedMachineBuilder},
     memory::{Address, AddressSpaceId, MemoryMapCommand, Permissions},
     platform::Platform,
 };
@@ -49,14 +49,14 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Atari2600 {
         // For now, assume all games are ntsc
         let region = RegionSelection::Ntsc;
 
-        let program_specification = machine_builder.program_specification().unwrap();
+        let program_specification = machine_builder
+            .program_specification()
+            .ok_or("Atari 2600 requires a program to boot")?;
         let filesystem = program_specification.info.filesystem();
 
-        assert_eq!(
-            filesystem.len(),
-            1,
-            "Atari 2600 programs only contain a single ROM"
-        );
+        if filesystem.len() != 1 {
+            return Err("Atari 2600 programs only contain a single ROM".into());
+        }
 
         let rom_id = filesystem
             .first_key_value()
@@ -81,7 +81,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Atari2600 {
                     cpu_address_space,
                     cart_type,
                 },
-            ),
+            )?,
             CartType::F6 | CartType::F8 => machine_builder.component(
                 "cartridge",
                 BankedCartConfig {
@@ -89,7 +89,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Atari2600 {
                     cpu_address_space,
                     cart_type,
                 },
-            ),
+            )?,
         };
 
         let machine_builder = machine_builder.map_memory(
@@ -115,9 +115,9 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Atari2600 {
         );
 
         Ok(match region {
-            RegionSelection::Ntsc => common::<Ntsc, _>(cpu_address_space, machine),
-            RegionSelection::Pal => common::<Pal, _>(cpu_address_space, machine),
-            RegionSelection::Secam => common::<Secam, _>(cpu_address_space, machine),
+            RegionSelection::Ntsc => common::<Ntsc, _>(cpu_address_space, machine)?,
+            RegionSelection::Pal => common::<Pal, _>(cpu_address_space, machine)?,
+            RegionSelection::Secam => common::<Secam, _>(cpu_address_space, machine)?,
         }
         .seal())
     }
@@ -126,13 +126,13 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Atari2600 {
 fn common<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>>(
     cpu_address_space: AddressSpaceId,
     machine_builder: MachineBuilder<P>,
-) -> MachineBuilder<P> {
-    let (machine_builder, joystick) = machine_builder.component("joystick", JoystickConfig);
+) -> Result<MachineBuilder<P>, MachineError> {
+    let (machine_builder, joystick) = machine_builder.component("joystick", JoystickConfig)?;
 
     let (machine_builder, cpu) = machine_builder.component(
         "mos6502",
         fluxemu_definition_mos6502::Config::<Mos6507>::new(R::frequency() / 3, cpu_address_space),
-    );
+    )?;
 
     let (machine_builder, _) = machine_builder.component(
         "mos6532_riot",
@@ -144,7 +144,7 @@ fn common<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>>(
             ram_assigned_address: 0x80,
             assigned_address_space: cpu_address_space,
         },
-    );
+    )?;
 
     let (machine, _) = machine_builder.component(
         "tia",
@@ -153,9 +153,9 @@ fn common<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>>(
             cpu_address_space,
             _phantom: PhantomData,
         },
-    );
+    )?;
 
-    machine
+    Ok(machine)
 }
 
 // These three functions hardcode mirror addresses instead of trying to mechanically replicate partial address decoding

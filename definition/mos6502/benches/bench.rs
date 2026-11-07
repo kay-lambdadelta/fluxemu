@@ -76,10 +76,12 @@ fn build_machine<V: Variant>() -> Arc<Machine> {
         }],
     );
 
-    let (machine, _) = machine.component(
-        "cpu",
-        Config::<V>::new(Frequency::from_num(1000000), address_space),
-    );
+    let (machine, _) = machine
+        .component(
+            "cpu",
+            Config::<V>::new(Frequency::from_num(1000000), address_space),
+        )
+        .unwrap();
 
     machine.seal().build(())
 }

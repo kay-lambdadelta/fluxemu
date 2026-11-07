@@ -80,20 +80,20 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
         self,
         name: impl Into<Cow<'static, str>>,
         config: B,
-    ) -> (Self, ComponentPath) {
+    ) -> Result<(Self, ComponentPath), MachineError> {
         let component_path = self.path.join(&name.into()).unwrap();
 
         self.machine_builder
-            .insert_component_with_path(component_path.clone(), config);
+            .insert_component_with_path(component_path.clone(), config)?;
 
-        (self, component_path)
+        Ok((self, component_path))
     }
 
     /// Insert a component with a default config
     pub fn default_component<B: ComponentConfig<P> + Default>(
         self,
         name: impl Into<Cow<'static, str>>,
-    ) -> (Self, ComponentPath) {
+    ) -> Result<(Self, ComponentPath), MachineError> {
         let config = B::default();
 
         self.component(name, config)

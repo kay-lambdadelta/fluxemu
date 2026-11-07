@@ -50,15 +50,15 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Chip8 {
     ) -> Result<SealedMachineBuilder<P>, Box<dyn Error>> {
         let (machine_builder, cpu_address_space) = machine_builder.address_space(12);
         let (machine_builder, timer) =
-            machine_builder.default_component::<Chip8TimerConfig>("timer");
+            machine_builder.default_component::<Chip8TimerConfig>("timer")?;
         let (machine_builder, audio) = machine_builder.component(
             "audio",
             Chip8AudioConfig {
                 processor_frequency: Frequency::from_num(600),
             },
-        );
+        )?;
         let (machine_builder, display) =
-            machine_builder.default_component::<Chip8DisplayConfig>("display");
+            machine_builder.default_component::<Chip8DisplayConfig>("display")?;
         let (machine_builder, _) = machine_builder.component(
             "cpu",
             Chip8ProcessorConfig {
@@ -72,16 +72,16 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Chip8 {
                 stall_on_draw_until_vsync: false,
                 _phantom: PhantomData,
             },
-        );
+        )?;
 
-        let program_specification = machine_builder.program_specification().unwrap();
+        let program_specification = machine_builder
+            .program_specification()
+            .ok_or("CHIP8 requires a program to boot")?;
         let filesystem = program_specification.info.filesystem();
 
-        assert_eq!(
-            filesystem.len(),
-            1,
-            "CHIP8 programs only contain a single ROM"
-        );
+        if filesystem.len() != 1 {
+            return Err("CHIP8 programs only contain a single ROM".into());
+        }
 
         let rom_id = filesystem
             .first_key_value()
@@ -93,6 +93,10 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Chip8 {
             .open_rom(rom_id, RomRequirement::Required)
             .await?
             .unwrap();
+
+        if rom.len() > 0x1000 - 0x200 {
+            return Err("CHIP8 program does not fit in memory".into());
+        }
 
         let chip8_font = bytemuck::cast_slice(&CHIP8_FONT);
 

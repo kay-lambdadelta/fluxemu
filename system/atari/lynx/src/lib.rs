@@ -3,7 +3,7 @@ use std::{error::Error, ops::RangeInclusive, str::FromStr};
 use fluxemu_math::range::ContiguousRange;
 use fluxemu_program::{AtariSystem, RomId, SystemId};
 use fluxemu_runtime::{
-    machine::builder::{MachineBuilder, SealedMachineBuilder},
+    machine::builder::{MachineBuilder, MachineError, SealedMachineBuilder},
     memory::{Address, MapTarget, MemoryMapCommand, Permissions},
     platform::Platform,
 };
@@ -68,9 +68,8 @@ impl<P: Platform> System<P> for AtariLynx {
                 // "[BIOS] Atari Lynx (World).lyx"
                 RomId::from_str("e4ed47fae31693e016b081c6bda48da5b70d7ccb").unwrap(),
             )
-            .await
-            .unwrap()
-            .unwrap();
+            .await?
+            .ok_or("Atari Lynx requires the BIOS ROM")?;
 
         let machine_builder = machine_builder.map_memory(
             cpu_address_space,
@@ -81,7 +80,7 @@ impl<P: Platform> System<P> for AtariLynx {
         );
 
         let (machine_builder, suzy) =
-            machine_builder.component("suzy", SuzyConfig { cpu_address_space });
+            machine_builder.component("suzy", SuzyConfig { cpu_address_space })?;
 
         let (machine_builder, _) = machine_builder.component(
             "mapctl",
@@ -89,10 +88,14 @@ impl<P: Platform> System<P> for AtariLynx {
                 cpu_address_space,
                 ram: ram_path,
                 suzy,
-                mikey: todo!(),
-                vector: todo!(),
+                mikey: Err(MachineError::UnimplementedComponent {
+                    name: "mikey".into(),
+                })?,
+                vector: Err(MachineError::UnimplementedComponent {
+                    name: "vector".into(),
+                })?,
             },
-        );
+        )?;
 
         Ok(machine_builder.seal())
     }
