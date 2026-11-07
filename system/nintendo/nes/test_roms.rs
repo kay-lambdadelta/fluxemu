@@ -65,4 +65,8 @@ pub const TEST_ROMS: &[TestRom] = &[
         file_name: "ny2011.nes",
         data: include_bytes!("../../../external/nes-test-roms/ny2011/ny2011.nes"),
     },
+    TestRom::Embedded {
+        file_name: "SPRITE.NES",
+        data: include_bytes!("../../../external/nes-test-roms/other/SPRITE.NES"),
+    },
 ];
