@@ -15,6 +15,8 @@ pub enum Error {
     #[error("{0}")]
     RedbCommit(#[from] redb::CommitError),
     #[error("{0}")]
+    RedbCompaction(#[from] redb::CompactionError),
+    #[error("{0}")]
     Redb(#[from] redb::Error),
 }
 
@@ -79,5 +81,9 @@ impl ProgramDatabase {
 
     pub fn database(&self) -> &Database {
         &self.database
+    }
+
+    pub fn compact(&mut self) -> Result<bool, Error> {
+        Ok(self.database.compact()?)
     }
 }

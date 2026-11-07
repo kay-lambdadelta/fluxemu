@@ -65,6 +65,7 @@ fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
             .init();
 
         let args = Cli::parse();
+        let writes_database = args.writes_database();
 
         let program_database =
             ProgramDatabase::new(Database::create(&environment.database_location)?)?;
@@ -73,7 +74,8 @@ fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
         match args {
             Cli::Database(command) => match command {
                 DatabaseCommand::Import { paths } => {
-                    database::native::import(program_database, walk_for_files(paths)).await?;
+                    database::native::import(program_database.clone(), walk_for_files(paths))
+                        .await?;
                 }
             },
             Cli::Rom(command) => match command {
@@ -92,8 +94,14 @@ fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
                     style,
                     destination,
                 } => {
-                    rom::export(program_database, &environment, destination, symlink, style)
-                        .await?;
+                    rom::export(
+                        program_database.clone(),
+                        &environment,
+                        destination,
+                        symlink,
+                        style,
+                    )
+                    .await?;
                 }
                 RomCommand::Patch {
                     source,
@@ -104,7 +112,7 @@ fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
 
                     rom::patch(
                         &program_manager,
-                        program_database,
+                        program_database.clone(),
                         &environment,
                         source,
                         &patch,
@@ -116,15 +124,15 @@ fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
             },
             Cli::Manifest(command) => match command {
                 ManifestCommand::Import { paths } => {
-                    manifest::import(program_database, walk_for_files(paths)).await?;
+                    manifest::import(program_database.clone(), walk_for_files(paths)).await?;
                 }
                 ManifestCommand::Export { output_directory } => {
-                    manifest::export(program_database, output_directory).await?;
+                    manifest::export(program_database.clone(), output_directory).await?;
                 }
             },
             Cli::Logiqx(command) => match command {
                 LogiqxCommand::Import { paths } => {
-                    logiqx::import(program_database, walk_for_files(paths)).await?;
+                    logiqx::import(program_database.clone(), walk_for_files(paths)).await?;
                 }
                 LogiqxCommand::DownloadRedump { system_filter } => {
                     let client = reqwest::Client::new();
@@ -158,8 +166,29 @@ fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
             },
         }
 
+        if writes_database {
+            compact_database(program_database).await?;
+        }
+
         Ok(())
     })
+}
+
+async fn compact_database(
+    program_database: Arc<ProgramDatabase>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let Some(mut program_database) = Arc::into_inner(program_database) else {
+        tracing::warn!("Program database is still in use, skipping compaction");
+        return Ok(());
+    };
+
+    tracing::info!("Compacting the program database");
+
+    if !spawn_blocking(move || program_database.compact()).await?? {
+        tracing::info!("Program database was already compact");
+    }
+
+    Ok(())
 }
 
 /// Turns the paths into a walkdir that automatically walks through links and filters to files

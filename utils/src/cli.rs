@@ -15,6 +15,21 @@ pub enum Cli {
     Logiqx(LogiqxCommand),
 }
 
+impl Cli {
+    pub fn writes_database(&self) -> bool {
+        matches!(
+            self,
+            Cli::Database(DatabaseCommand::Import { .. })
+                | Cli::Rom(RomCommand::Patch {
+                    add_to_database: true,
+                    ..
+                })
+                | Cli::Manifest(ManifestCommand::Import { .. })
+                | Cli::Logiqx(LogiqxCommand::Import { .. } | LogiqxCommand::DownloadRedump { .. })
+        )
+    }
+}
+
 #[derive(Clone, Subcommand)]
 pub enum DatabaseCommand {
     /// Copy the contents of external databases into the internal database
