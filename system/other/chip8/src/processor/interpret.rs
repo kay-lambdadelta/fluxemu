@@ -221,7 +221,7 @@ impl<G: SupportedGraphicsApi> Chip8Processor<G> {
                 immediate,
             }) => {
                 self.state.registers.work_registers[register as usize] =
-                    rand::rng().random::<u8>() & immediate;
+                    self.state.random_generator.random::<u8>() & immediate;
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Draw {
                 coordinates,

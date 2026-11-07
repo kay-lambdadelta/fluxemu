@@ -31,10 +31,7 @@ wgpu = { workspace = true, optional = true }
 
 [target.'cfg(any(target_family = "unix", target_os = "windows"))'.dev-dependencies]
 criterion = { workspace = true }
-fluxemu-database = { workspace = true }
-fluxemu-environment = { workspace = true }
-redb = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread"] }
+fluxemu-system = { workspace = true, features = ["testing"] }
 
 [features]
 webgpu = ["dep:wgpu", "fluxemu-graphics/webgpu"]

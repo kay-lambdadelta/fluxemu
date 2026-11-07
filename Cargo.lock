@@ -2269,6 +2269,7 @@ dependencies = [
  "nalgebra",
  "num",
  "palette",
+ "rand 0.10.3",
  "rangemap",
  "redb",
  "ringbuffer",
@@ -2377,9 +2378,15 @@ dependencies = [
 name = "fluxemu-system"
 version = "0.0.1"
 dependencies = [
+ "criterion",
+ "fluxemu-database",
+ "fluxemu-environment",
+ "fluxemu-input",
  "fluxemu-program",
  "fluxemu-runtime",
+ "redb",
  "serde",
+ "tokio",
 ]
 
 [[package]]
@@ -2389,10 +2396,8 @@ dependencies = [
  "bytemuck",
  "bytes",
  "criterion",
- "fluxemu-database",
  "fluxemu-definition-mos6502",
  "fluxemu-definition-mos6532",
- "fluxemu-environment",
  "fluxemu-graphics",
  "fluxemu-input",
  "fluxemu-math",
@@ -2402,10 +2407,8 @@ dependencies = [
  "itertools 0.15.0",
  "nalgebra",
  "palette",
- "redb",
  "serde",
  "strum",
- "tokio",
  "tracing",
  "wgpu",
 ]
@@ -2450,9 +2453,7 @@ dependencies = [
  "bytes",
  "criterion",
  "fluxemu-audio",
- "fluxemu-database",
  "fluxemu-definition-mos6502",
- "fluxemu-environment",
  "fluxemu-graphics",
  "fluxemu-input",
  "fluxemu-math",
@@ -2463,13 +2464,11 @@ dependencies = [
  "nalgebra",
  "palette",
  "rand 0.10.3",
- "redb",
  "ringbuffer",
  "serde",
  "serde_with",
  "strum",
  "thiserror 2.0.21",
- "tokio",
  "tracing",
  "wgpu",
 ]

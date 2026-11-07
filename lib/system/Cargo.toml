@@ -7,9 +7,25 @@ repository = { workspace = true }
 license = { workspace = true }
 
 [dependencies]
+criterion = { workspace = true, optional = true }
+fluxemu-database = { workspace = true, optional = true }
+fluxemu-environment = { workspace = true, optional = true }
+fluxemu-input = { workspace = true, optional = true }
 fluxemu-program = { workspace = true }
 fluxemu-runtime = { workspace = true }
+redb = { workspace = true, optional = true }
 serde = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread"], optional = true }
+
+[features]
+testing = [
+  "dep:criterion",
+  "dep:fluxemu-database",
+  "dep:fluxemu-environment",
+  "dep:fluxemu-input",
+  "dep:redb",
+  "dep:tokio",
+]
 
 [lints]
 workspace = true

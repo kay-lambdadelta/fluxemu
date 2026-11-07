@@ -24,6 +24,7 @@ itertools = { workspace = true }
 nalgebra = { workspace = true }
 num = { workspace = true }
 palette = { workspace = true }
+rand = { workspace = true, features = ["chacha"] }
 rangemap = { workspace = true }
 redb = { workspace = true }
 ringbuffer = { workspace = true }

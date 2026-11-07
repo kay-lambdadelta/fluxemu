@@ -7,7 +7,7 @@ use fluxemu_runtime::{
     machine::builder::ComponentBuilder,
     memory::AddressSpaceId,
     path::ComponentPath,
-    persistence::PersistentComponentState,
+    persistence::{PersistentComponentState, PersistentRandomGenerator},
     platform::Platform,
     scheduler::{
         Frequency, QuantaAllocator,
@@ -16,6 +16,7 @@ use fluxemu_runtime::{
 };
 use input::Chip8KeyCode;
 use instruction::Register;
+use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
 
 use super::Chip8Mode;
@@ -71,6 +72,7 @@ pub struct ProcessorState {
     execution_state: ExecutionState,
     // What chip8 mode we are currently in
     mode: Chip8Mode,
+    random_generator: PersistentRandomGenerator,
 }
 
 impl Default for ProcessorState {
@@ -80,6 +82,7 @@ impl Default for ProcessorState {
             registers: Chip8ProcessorRegisters::default(),
             execution_state: ExecutionState::Normal,
             mode: Chip8Mode::default(),
+            random_generator: PersistentRandomGenerator::from_rng(&mut rand::rng()),
         }
     }
 }

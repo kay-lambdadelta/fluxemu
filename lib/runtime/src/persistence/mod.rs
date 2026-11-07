@@ -3,11 +3,13 @@ use thiserror::Error;
 use crate::{ComponentPath, ResourcePath};
 
 mod archive;
+mod random;
 mod save;
 mod section;
 mod snapshot;
 
 pub(crate) use archive::ArchiveKind;
+pub use random::PersistentRandomGenerator;
 pub(crate) use section::ComponentCodec;
 pub use section::{PersistentComponentState, Section};
 pub(crate) use snapshot::{ComponentRecord, TaskTiming};

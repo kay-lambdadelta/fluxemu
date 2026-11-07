@@ -12,6 +12,9 @@ use fluxemu_runtime::{
 };
 use serde::{Serialize, de::DeserializeOwned};
 
+#[cfg(feature = "testing")]
+pub mod testing;
+
 pub trait System<P: Platform>: Send + Sync {
     type Quirks: Serialize + DeserializeOwned;
     const ID: SystemId;
