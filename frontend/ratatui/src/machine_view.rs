@@ -7,7 +7,7 @@ use fluxemu_graphics::{
 use fluxemu_runtime::machine::Machine;
 use image::{DynamicImage, RgbaImage};
 use nalgebra::Vector2;
-use palette::Srgba;
+use palette::{Srgba, named::BLACK};
 use ratatui::{
     Frame,
     layout::{Rect, Size},
@@ -43,9 +43,14 @@ impl MachineView {
             .is_none_or(|encoded_frame| encoded_frame.area != area);
 
         if (refresh || is_stale)
-            && let Some(framebuffer) = capture_framebuffer(machine)
+            && let Some((framebuffer, display_size)) = capture_framebuffer(machine)
         {
-            let image = scale_to_cells(&framebuffer, area.as_size(), picker.font_size());
+            let image = scale_to_cells(
+                &framebuffer,
+                display_size,
+                area.as_size(),
+                picker.font_size(),
+            );
 
             match picker.new_protocol(image, area.as_size(), Resize::Fit(None)) {
                 Ok(protocol) => {
@@ -71,24 +76,33 @@ impl MachineView {
     }
 }
 
-fn capture_framebuffer(machine: &Arc<Machine>) -> Option<OwnedTexture<Srgba<u8>>> {
+fn capture_framebuffer(machine: &Arc<Machine>) -> Option<(OwnedTexture<Srgba<u8>>, Vector2<f32>)> {
     let runtime = machine.enter_runtime();
     let framebuffer_path = runtime.list_framebuffers().next()?;
 
     runtime.read_framebuffer::<Software, _>(
         framebuffer_path,
         runtime.safe_advance_timestamp(),
-        Clone::clone,
+        |framebuffer, display_geometry| {
+            let display_rectangle = display_geometry.resolve_display_rectangle(framebuffer);
+            let view = framebuffer.view(display_rectangle.x_range(), display_rectangle.y_range());
+
+            let mut captured = OwnedTexture::from_value(view.width(), view.height(), BLACK.into());
+            captured.copy_from(view, CopyMode::Nearest);
+
+            (captured, display_geometry.display_size(framebuffer))
+        },
     )
 }
 
 fn scale_to_cells(
     framebuffer: &OwnedTexture<Srgba<u8>>,
+    display_size: Vector2<f32>,
     area: Size,
     font_size: FontSize,
 ) -> DynamicImage {
     let font_size = Vector2::new(f64::from(font_size.width), f64::from(font_size.height));
-    let source_size = framebuffer.size().cast::<f64>();
+    let source_size = display_size.cast::<f64>();
     let available_size =
         Vector2::new(f64::from(area.width), f64::from(area.height)).component_mul(&font_size);
 

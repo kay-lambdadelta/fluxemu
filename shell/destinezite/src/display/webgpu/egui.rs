@@ -3,6 +3,7 @@ use egui_wgpu::{Callback, ScreenDescriptor};
 use fluxemu_frontend::graphics::GraphicsRuntime;
 use fluxemu_frontend_egui::rendering::{EguiCapableGraphicsRuntime, webgpu::FramebufferCallback};
 use fluxemu_graphics::{api::GraphicsApi, shader::ShaderType};
+use fluxemu_math::rectangle::Rectangle;
 use palette::Srgb;
 use wgpu::{
     CommandEncoderDescriptor, CurrentSurfaceTexture, LoadOp, Operations, RenderPassColorAttachment,
@@ -118,6 +119,7 @@ impl<D: WebgpuCompatibleDisplayContext> EguiCapableGraphicsRuntime for WebgpuGra
         &mut self,
         rect: egui::Rect,
         framebuffer: &<Self::GraphicsApi as GraphicsApi>::Framebuffer,
+        display_rectangle: Rectangle<usize>,
         shader: ShaderType,
     ) -> PaintCallback {
         let ConfigurationDependentData {
@@ -133,7 +135,11 @@ impl<D: WebgpuCompatibleDisplayContext> EguiCapableGraphicsRuntime for WebgpuGra
 
         Callback::new_paint_callback(
             rect,
-            FramebufferCallback::new(framebuffer, framebuffer_callback_resources.clone()),
+            FramebufferCallback::new(
+                framebuffer,
+                display_rectangle,
+                framebuffer_callback_resources.clone(),
+            ),
         )
     }
 }

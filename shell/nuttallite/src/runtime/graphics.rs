@@ -5,6 +5,7 @@ use fluxemu_graphics::{
     shader::ShaderType,
     texture::{AsViewTexture, CopyMode, CowTexture, OwnedTexture},
 };
+use fluxemu_math::rectangle::Rectangle;
 use fluxemu_runtime::graphics::GraphicsRequirements;
 use palette::{Srgb, Srgba, named::BLACK};
 
@@ -71,8 +72,12 @@ impl EguiCapableGraphicsRuntime for GraphicsRuntime {
         &mut self,
         rect: egui::Rect,
         framebuffer: &<Self::GraphicsApi as GraphicsApi>::Framebuffer,
+        display_rectangle: Rectangle<usize>,
         _shader: ShaderType,
     ) -> egui::PaintCallback {
+        let framebuffer =
+            framebuffer.view(display_rectangle.x_range(), display_rectangle.y_range());
+
         let mut converted_framebuffer =
             OwnedTexture::from_value(framebuffer.width(), framebuffer.height(), BLACK.into());
         converted_framebuffer.map_from(framebuffer, CopyMode::Nearest, From::from);

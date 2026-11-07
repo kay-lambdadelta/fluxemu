@@ -1,10 +1,10 @@
 use std::{collections::BTreeMap, marker::PhantomData, ops::RangeInclusive};
 
 use fluxemu_graphics::texture::Texture;
-use fluxemu_math::range::ContiguousRange;
+use fluxemu_math::{range::ContiguousRange, rectangle::Rectangle};
 use fluxemu_runtime::{
     component::config::{ComponentConfig, LateContext},
-    graphics::SimpleDisplayBackend,
+    graphics::{DisplayGeometry, SimpleDisplayBackend},
     machine::builder::ComponentBuilder,
     memory::{AddressSpaceId, MemoryMapCommand, Permissions},
     path::ComponentPath,
@@ -51,13 +51,26 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<
                 Mode::OnDemand,
                 FrequencyBased::new(R::frequency(), Self::Component::task),
             )
-            .framebuffer("framebuffer", |component, path| {
-                component
-                    .backend
-                    .as_mut()
-                    .unwrap()
-                    .produce_initial_framebuffer(path)
-            });
+            .framebuffer(
+                "framebuffer",
+                DisplayGeometry {
+                    pixel_aspect_ratio: R::pixel_aspect_ratio(),
+                    display_rectangle: Some(Rectangle::from_min_and_max(
+                        Point2::new(0, R::DISPLAYED_SCANLINES.start as usize),
+                        Point2::new(
+                            VISIBLE_SCANLINE_LENGTH as usize,
+                            R::DISPLAYED_SCANLINES.end as usize,
+                        ),
+                    )),
+                },
+                |component, path| {
+                    component
+                        .backend
+                        .as_mut()
+                        .unwrap()
+                        .produce_initial_framebuffer(path)
+                },
+            );
 
         let my_path = component_builder.path().clone();
 

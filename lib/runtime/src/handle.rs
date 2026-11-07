@@ -10,7 +10,8 @@ use fluxemu_graphics::api::GraphicsApi;
 use crate::{
     ComponentPath, ResourcePath,
     component::{Component, ComponentId, ComponentRegistry, LocalComponentRegistryData},
-    machine::Machine,
+    graphics::DisplayGeometry,
+    machine::{FramebufferSlot, Machine},
     memory::{AddressSpace, AddressSpaceId, LocalMemoryRegistryData},
     scheduler::{Period, event::EventMode},
 };
@@ -115,15 +116,19 @@ impl RuntimeHandle {
     pub fn write_framebuffer<G: GraphicsApi, T>(
         &self,
         path: &ResourcePath,
-        callback: impl FnOnce(&mut G::Framebuffer) -> T,
+        callback: impl FnOnce(&mut G::Framebuffer, &mut DisplayGeometry) -> T,
     ) -> Option<T> {
-        let framebuffer = self.machine.framebuffers.get(path)?;
-        let mut framebuffer_guard = framebuffer.lock().unwrap();
+        let slot = self.machine.framebuffers.get(path)?;
+        let mut slot = slot.lock().unwrap();
+        let FramebufferSlot {
+            framebuffer,
+            display_geometry,
+        } = &mut *slot;
 
-        let framebuffer = (*framebuffer_guard).downcast_mut()?;
-        let result = callback(framebuffer);
+        let framebuffer = framebuffer.downcast_mut()?;
+        let result = callback(framebuffer, display_geometry);
 
-        drop(framebuffer_guard);
+        drop(slot);
 
         if let Some(listener) = self.machine.framebuffer_listener.get() {
             listener.framebuffer_written();

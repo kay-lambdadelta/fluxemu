@@ -2,7 +2,13 @@
 
 use std::ops::BitOr;
 
-use fluxemu_graphics::{api::GraphicsApi, texture::RefTexture};
+use fluxemu_graphics::{
+    api::{Framebuffer, GraphicsApi},
+    texture::RefTexture,
+};
+use fluxemu_math::rectangle::Rectangle;
+use nalgebra::{Point2, Vector2};
+pub use num::rational::Ratio;
 use palette::Srgba;
 use serde::{Deserialize, Serialize};
 
@@ -54,6 +60,50 @@ impl<G: GraphicsApi> Default for GraphicsRequirements<G> {
             required: Default::default(),
             preferred: Default::default(),
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DisplayGeometry {
+    pub pixel_aspect_ratio: Ratio<u32>,
+    pub display_rectangle: Option<Rectangle<usize>>,
+}
+
+impl DisplayGeometry {
+    pub const SQUARE: Self = Self {
+        pixel_aspect_ratio: Ratio::new_raw(1, 1),
+        display_rectangle: None,
+    };
+
+    pub fn resolve_display_rectangle(&self, framebuffer: &impl Framebuffer) -> Rectangle<usize> {
+        let size = Point2::new(framebuffer.width(), framebuffer.height());
+
+        match self.display_rectangle {
+            Some(display_rectangle) => Rectangle::from_min_and_max(
+                display_rectangle.min.inf(&size),
+                display_rectangle.max.inf(&size),
+            ),
+            None => Rectangle::from_size(size.coords),
+        }
+    }
+
+    pub fn display_size(&self, framebuffer: &impl Framebuffer) -> Vector2<f32> {
+        let size = self
+            .resolve_display_rectangle(framebuffer)
+            .size()
+            .cast::<f32>();
+
+        Vector2::new(
+            size.x * *self.pixel_aspect_ratio.numer() as f32
+                / *self.pixel_aspect_ratio.denom() as f32,
+            size.y,
+        )
+    }
+}
+
+impl Default for DisplayGeometry {
+    fn default() -> Self {
+        Self::SQUARE
     }
 }
 

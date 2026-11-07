@@ -3,14 +3,14 @@ use core::{marker::PhantomData, ops::RangeInclusive};
 
 use fluxemu_definition_mos6502::{Mos6502, Mos6502Event, Pin, variant::Ricoh2A0x};
 use fluxemu_graphics::texture::{AsViewTexture, OwnedTexture, Texture};
-use fluxemu_math::range::ContiguousRange;
+use fluxemu_math::{range::ContiguousRange, rectangle::Rectangle};
 use fluxemu_runtime::{
     ResourcePath, RuntimeHandle,
     component::{
         Component,
         config::{ComponentConfig, LateContext},
     },
-    graphics::SimpleDisplayBackend,
+    graphics::{DisplayGeometry, SimpleDisplayBackend},
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId, MemoryError, MemoryMapCommand, Permissions},
     path::ComponentPath,
@@ -135,13 +135,26 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<
                 Mode::OnDemand,
                 FrequencyBased::new(frequency, Self::Component::task),
             )
-            .framebuffer("framebuffer", |component, path| {
-                component
-                    .backend
-                    .as_mut()
-                    .unwrap()
-                    .produce_initial_framebuffer(path)
-            });
+            .framebuffer(
+                "framebuffer",
+                DisplayGeometry {
+                    pixel_aspect_ratio: R::pixel_aspect_ratio(),
+                    display_rectangle: Some(Rectangle::from_min_and_max(
+                        Point2::new(0, R::DISPLAYED_SCANLINES.start as usize),
+                        Point2::new(
+                            VISIBLE_SCANLINE_LENGTH as usize,
+                            R::DISPLAYED_SCANLINES.end as usize,
+                        ),
+                    )),
+                },
+                |component, path| {
+                    component
+                        .backend
+                        .as_mut()
+                        .unwrap()
+                        .produce_initial_framebuffer(path)
+                },
+            );
 
         let my_path = component_builder.path().clone();
 
@@ -648,7 +661,7 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
                 self.update_nmi_line(runtime);
                 self.decay_io_latch();
 
-                runtime.write_framebuffer::<G, _>(&self.framebuffer_path, |framebuffer| {
+                runtime.write_framebuffer::<G, _>(&self.framebuffer_path, |framebuffer, _| {
                     self.backend
                         .as_mut()
                         .unwrap()

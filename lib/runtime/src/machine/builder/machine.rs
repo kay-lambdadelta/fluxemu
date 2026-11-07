@@ -13,10 +13,10 @@ use rustc_hash::FxBuildHasher;
 use crate::{
     ResourcePath,
     component::{ComponentRegistryData, config::ComponentConfig},
-    graphics::GraphicsRequirements,
+    graphics::{DisplayGeometry, GraphicsRequirements},
     input::LogicalInputDevice,
     machine::{
-        Machine,
+        FramebufferSlot, Machine,
         builder::{
             ComponentBuilder, ComponentData, FramebufferLateInitializer, RomRequirement,
             SealedMachineBuilder,
@@ -55,6 +55,8 @@ pub struct MachineBuilder<P: Platform> {
     pub(super) input_devices: HashMap<ResourcePath, Arc<LogicalInputDevice>, FxBuildHasher>,
     pub(super) framebuffer_late_initializers:
         HashMap<ResourcePath, FramebufferLateInitializer<P>, FxBuildHasher>,
+    pub(super) framebuffer_display_geometries:
+        HashMap<ResourcePath, DisplayGeometry, FxBuildHasher>,
     pub(super) audio_channels: HashSet<ResourcePath, FxBuildHasher>,
     pub(super) required_memory_regions:
         HashMap<ResourcePath, RegionInitializationData, FxBuildHasher>,
@@ -76,6 +78,7 @@ impl<P: Platform> MachineBuilder<P> {
             component_data: HashMap::default(),
             input_devices: HashMap::default(),
             framebuffer_late_initializers: HashMap::default(),
+            framebuffer_display_geometries: HashMap::default(),
             audio_channels: HashSet::default(),
             scheduler: Scheduler::default(),
         }
@@ -300,11 +303,16 @@ impl<P: Platform> MachineBuilder<P> {
         let required_memory_regions = self.required_memory_regions;
 
         let framebuffers = self
-            .framebuffer_late_initializers
-            .keys()
-            .map(|path| {
+            .framebuffer_display_geometries
+            .into_iter()
+            .map(|(path, display_geometry)| {
                 // Put dummy value in hashmap until initialization is complete
-                (path.clone(), Mutex::new(Box::new(()) as Box<_>))
+                let slot = FramebufferSlot {
+                    framebuffer: Box::new(()),
+                    display_geometry,
+                };
+
+                (path, Mutex::new(slot))
             })
             .collect();
 

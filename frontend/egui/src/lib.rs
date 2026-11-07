@@ -20,9 +20,8 @@ use egui::{
 use fluxemu_frontend::{
     FrontendCore, FrontendEvent, Platform, SlotKind, notification::NotificationReceiver,
 };
-use fluxemu_graphics::api::{Framebuffer, GraphicsApi};
+use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_runtime::machine::{Machine, builder::SealedMachineBuilder};
-use nalgebra::Vector2;
 use palette::{
     WithAlpha,
     named::{BLACK, WHITE},
@@ -235,16 +234,20 @@ impl<P: Platform> Frontend<P> {
                 .read_framebuffer::<P::GraphicsApi, _>(
                     framebuffer,
                     runtime.safe_advance_timestamp(),
-                    |framebuffer| {
-                        let size =
-                            Vector2::new(framebuffer.width() as f32, framebuffer.height() as f32);
+                    |framebuffer, display_geometry| {
+                        let size = display_geometry.display_size(framebuffer);
 
                         let (rect, response) =
                             allocate_fill_aspect(ui, size, self.machine_view_area, Sense::click());
 
                         resume_requested = response.clicked() && controller.get_paused();
 
-                        graphics_runtime.produce_callback_for_framebuffer(rect, framebuffer, shader)
+                        graphics_runtime.produce_callback_for_framebuffer(
+                            rect,
+                            framebuffer,
+                            display_geometry.resolve_display_rectangle(framebuffer),
+                            shader,
+                        )
                     },
                 )
                 .unwrap();

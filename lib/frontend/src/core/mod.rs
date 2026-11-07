@@ -10,13 +10,13 @@ use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::{ENVIRONMENT_LOCATION, Environment};
 use fluxemu_graphics::{
     api::GraphicsApi,
-    texture::{CowTexture, OwnedTexture},
+    texture::{CopyMode, OwnedTexture},
 };
 use fluxemu_input::{InputState, physical::PhysicalInputDeviceInstanceId};
 use fluxemu_program::{ProgramManager, RomId, RomStoreSpecification};
 use fluxemu_runtime::machine::{Machine, builder::SealedMachineBuilder};
 use indexmap::IndexMap;
-use palette::Srgba;
+use palette::{Srgba, named::BLACK};
 use ron::ser::PrettyConfig;
 use tokio::{runtime::Handle, task::JoinHandle};
 
@@ -356,10 +356,20 @@ impl<P: Platform> FrontendCore<P> {
             }
 
             guard
-                .read_primary_framebuffer::<P::GraphicsApi, _>(|framebuffer| {
-                    graphics_runtime
-                        .screenshot(framebuffer)
-                        .map(CowTexture::into_owned)
+                .read_primary_framebuffer::<P::GraphicsApi, _>(|framebuffer, display_geometry| {
+                    let display_rectangle = display_geometry.resolve_display_rectangle(framebuffer);
+                    let screenshot = graphics_runtime.screenshot(framebuffer)?;
+                    let screenshot =
+                        screenshot.view(display_rectangle.x_range(), display_rectangle.y_range());
+
+                    let mut cropped = OwnedTexture::from_value(
+                        screenshot.width(),
+                        screenshot.height(),
+                        BLACK.into(),
+                    );
+                    cropped.copy_from(screenshot, CopyMode::Nearest);
+
+                    Some(cropped)
                 })
                 .flatten()
         });

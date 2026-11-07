@@ -18,6 +18,7 @@ use tracing::Level;
 use crate::{
     CURRENT_THREAD_RUNTIME_HANDLE, DispatchGuard, RuntimeHandle,
     component::{ComponentRegistry, ComponentRegistryData},
+    graphics::DisplayGeometry,
     input::LogicalInputDevice,
     machine::builder::MachineBuilder,
     memory::{AddressSpace, AddressSpaceData, AddressSpaceId, MemoryRegistryData},
@@ -31,6 +32,12 @@ pub mod builder;
 
 pub trait FramebufferListener: Debug + Send + Sync {
     fn framebuffer_written(&self);
+}
+
+#[derive(Debug)]
+pub(crate) struct FramebufferSlot {
+    pub(crate) framebuffer: Box<dyn Any + Send + Sync>,
+    pub(crate) display_geometry: DisplayGeometry,
 }
 
 /// The main context of the runtime, encapsulating all state and resources for a running machine.
@@ -50,8 +57,7 @@ where
     /// Memory Registry
     pub(crate) memory_registry_data: MemoryRegistryData,
     /// All framebuffers this machine has
-    pub(crate) framebuffers:
-        HashMap<ResourcePath, Mutex<Box<dyn Any + Send + Sync>>, FxBuildHasher>,
+    pub(crate) framebuffers: HashMap<ResourcePath, Mutex<FramebufferSlot>, FxBuildHasher>,
     pub(crate) framebuffer_listener: OnceLock<Box<dyn FramebufferListener>>,
     /// All audio outputs this machine has
     pub(crate) audio_channels: HashSet<ResourcePath, FxBuildHasher>,
@@ -225,19 +231,19 @@ impl RuntimeGuard<'_> {
         &self,
         path: &ResourcePath,
         target_timestamp: Period,
-        callback: impl FnOnce(&G::Framebuffer) -> T,
+        callback: impl FnOnce(&G::Framebuffer, &DisplayGeometry) -> T,
     ) -> Option<T> {
         // Ensure we are advanced to at least this timestamp
         self.runtime.component_registry().interact_dyn(
             path.parent().unwrap(),
             target_timestamp,
             |_| {
-                let framebuffer = self.runtime.machine().framebuffers.get(path)?;
-                let framebuffer_guard = framebuffer.lock().unwrap();
+                let slot = self.runtime.machine().framebuffers.get(path)?;
+                let slot = slot.lock().unwrap();
 
-                let framebuffer = (*framebuffer_guard).downcast_ref()?;
+                let framebuffer = slot.framebuffer.downcast_ref()?;
 
-                Some(callback(framebuffer))
+                Some(callback(framebuffer, &slot.display_geometry))
             },
         )?
     }

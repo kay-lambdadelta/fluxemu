@@ -10,7 +10,7 @@ use fluxemu_program::{ProgramManager, RomId};
 
 use crate::{
     component::{Component, TaskEntry, config::ComponentConfig},
-    graphics::GraphicsRequirements,
+    graphics::{DisplayGeometry, GraphicsRequirements},
     input::{LogicalInputDevice, LogicalInputDeviceMetadata},
     machine::builder::{ComponentLateInitializer, MachineBuilder, MachineError, RomRequirement},
     memory::{Address, AddressSpaceId, MemoryMapCommand},
@@ -115,6 +115,7 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
     pub fn framebuffer(
         self,
         name: impl Into<Cow<'static, str>>,
+        display_geometry: DisplayGeometry,
         produce_initial_framebuffer: impl FnOnce(
             &mut C,
             &ResourcePath,
@@ -139,6 +140,10 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
             previous.is_none(),
             "Duplicate framebuffer path: {resource_path}"
         );
+
+        self.machine_builder
+            .framebuffer_display_geometries
+            .insert(resource_path.clone(), display_geometry);
 
         (self, resource_path)
     }

@@ -1,6 +1,6 @@
-use core::fmt::Debug;
+use core::{fmt::Debug, ops::Range};
 
-use fluxemu_runtime::scheduler::Frequency;
+use fluxemu_runtime::{graphics::Ratio, scheduler::Frequency};
 use palette::Srgb;
 
 use crate::ppu::DUMMY_SCANLINE_COUNT;
@@ -21,7 +21,9 @@ pub trait Region: Send + Sync + Debug + 'static {
     const SKIPS_DOT_ON_ODD_FRAME: bool;
     const PPU_CLOCK_DIVISOR: u8;
     const CPU_CLOCK_DIVISOR: u8;
+    const DISPLAYED_SCANLINES: Range<u16>;
 
     fn master_clock() -> Frequency;
+    fn pixel_aspect_ratio() -> Ratio<u32>;
     fn generate_palette() -> [[Srgb<u8>; 64]; 8];
 }

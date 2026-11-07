@@ -1,6 +1,6 @@
-use std::sync::LazyLock;
+use std::{ops::Range, sync::LazyLock};
 
-use fluxemu_runtime::scheduler::Frequency;
+use fluxemu_runtime::{graphics::Ratio, scheduler::Frequency};
 use nalgebra::SMatrix;
 use palette::{FromColor, Hsl, Srgb};
 
@@ -54,11 +54,17 @@ static COLOR_PALETTE: LazyLock<SMatrix<Srgb<u8>, 16, 8>> = LazyLock::new(|| {
 pub struct Ntsc;
 
 impl Region for Ntsc {
+    const DISPLAYED_SCANLINES: Range<u16> = 22..250;
     const TOTAL_SCANLINES: u16 = 262;
 
     #[inline]
     fn frequency() -> Frequency {
         Frequency::from_num(3579545)
+    }
+
+    #[inline]
+    fn pixel_aspect_ratio() -> Ratio<u32> {
+        Ratio::new(12, 7)
     }
 
     fn color_to_srgb(color: TiaColor) -> Srgb<u8> {

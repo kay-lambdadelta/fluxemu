@@ -26,12 +26,15 @@ impl<R: Region, G: SupportedGraphicsApi> Tia<R, G> {
 
                     // Commit frame
                     RuntimeHandle::with_current(|handle| {
-                        handle.write_framebuffer::<G, _>(&self.framebuffer_path, |framebuffer| {
-                            self.backend
-                                .as_mut()
-                                .unwrap()
-                                .commit_staging_buffer(self.staging_buffer.as_view(), framebuffer);
-                        });
+                        handle.write_framebuffer::<G, _>(
+                            &self.framebuffer_path,
+                            |framebuffer, _| {
+                                self.backend.as_mut().unwrap().commit_staging_buffer(
+                                    self.staging_buffer.as_view(),
+                                    framebuffer,
+                                );
+                            },
+                        );
                     });
                 }
             }

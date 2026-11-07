@@ -6,6 +6,7 @@ use fluxemu_graphics::{
     shader::ShaderType,
     texture::{AsViewTextureMut, CopyMode, OwnedTexture},
 };
+use fluxemu_math::rectangle::Rectangle;
 use palette::{Srgb, cast::Packed, named::BLACK, rgb::channels::Bgra};
 
 use crate::display::software::{SoftwareCompatibleDisplayContext, SoftwareGraphicsRuntime};
@@ -46,8 +47,12 @@ impl<D: SoftwareCompatibleDisplayContext> EguiCapableGraphicsRuntime
         &mut self,
         rect: egui::Rect,
         framebuffer: &<Self::GraphicsApi as GraphicsApi>::Framebuffer,
+        display_rectangle: Rectangle<usize>,
         _shader: ShaderType,
     ) -> PaintCallback {
+        let framebuffer =
+            framebuffer.view(display_rectangle.x_range(), display_rectangle.y_range());
+
         let mut converted_framebuffer = OwnedTexture::<Packed<Bgra, [u8; 4]>>::from_value(
             framebuffer.width(),
             framebuffer.height(),

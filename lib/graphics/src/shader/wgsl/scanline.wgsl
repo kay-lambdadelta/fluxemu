@@ -1,6 +1,8 @@
 struct Uniforms {
     viewport_size: vec2<f32>,
     framebuffer_size: vec2<f32>,
+    display_minimum_uv: vec2<f32>,
+    display_maximum_uv: vec2<f32>,
 };
 
 @group(0) @binding(0)
@@ -33,7 +35,7 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 
     var out: VertexOutput;
     out.position = vec4<f32>(position[vertex_index], 0.0, 1.0);
-    out.uv = uv[vertex_index];
+    out.uv = mix(uniforms.display_minimum_uv, uniforms.display_maximum_uv, uv[vertex_index]);
 
     return out;
 }

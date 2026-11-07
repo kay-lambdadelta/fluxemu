@@ -10,7 +10,7 @@ use fluxemu_runtime::{
         Component,
         config::{ComponentConfig, LateContext},
     },
-    graphics::SimpleDisplayBackend,
+    graphics::{DisplayGeometry, SimpleDisplayBackend},
     machine::builder::ComponentBuilder,
     persistence::PersistentComponentState,
     platform::Platform,
@@ -185,7 +185,7 @@ impl<G: SupportedGraphicsApi> Chip8Display<G> {
         }
 
         if commit_staging_buffer {
-            runtime_handle.write_framebuffer::<G, _>(&self.framebuffer_path, |framebuffer| {
+            runtime_handle.write_framebuffer::<G, _>(&self.framebuffer_path, |framebuffer, _| {
                 self.backend
                     .as_mut()
                     .unwrap()
@@ -226,7 +226,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<P> for Chip
                 Mode::OnDemand,
                 FrequencyBased::new(Frequency::from_num(60), Self::Component::task),
             )
-            .framebuffer("framebuffer", |component, path| {
+            .framebuffer("framebuffer", DisplayGeometry::SQUARE, |component, path| {
                 component
                     .backend
                     .as_mut()

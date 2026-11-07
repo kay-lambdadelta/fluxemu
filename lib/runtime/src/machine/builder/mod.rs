@@ -81,13 +81,13 @@ impl<P: Platform> SealedMachineBuilder<P> {
                 .unwrap();
 
             // Replace the dummy value with the real framebuffer
-            *self
-                .machine
+            self.machine
                 .framebuffers
                 .get(&path)
                 .unwrap()
                 .lock()
-                .unwrap() = Box::new(framebuffer) as Box<_>;
+                .unwrap()
+                .framebuffer = Box::new(framebuffer);
         }
 
         drop(runtime_guard);

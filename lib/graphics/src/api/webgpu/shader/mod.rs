@@ -6,4 +6,6 @@ use nalgebra::Vector2;
 pub struct ShaderUniform {
     pub viewport_size: Vector2<f32>,
     pub framebuffer_size: Vector2<f32>,
+    pub display_minimum_uv: Vector2<f32>,
+    pub display_maximum_uv: Vector2<f32>,
 }

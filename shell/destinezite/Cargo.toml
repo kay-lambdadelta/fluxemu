@@ -37,6 +37,7 @@ fluxemu-frontend-egui = { workspace = true, optional = true }
 fluxemu-frontend-ratatui = { workspace = true, optional = true }
 fluxemu-graphics = { workspace = true }
 fluxemu-input = { workspace = true }
+fluxemu-math = { workspace = true }
 fluxemu-program = { workspace = true, features = ["mmap"] }
 fluxemu-runtime = { workspace = true }
 fontique = { workspace = true }

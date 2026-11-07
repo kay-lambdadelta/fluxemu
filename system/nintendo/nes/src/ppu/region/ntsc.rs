@@ -1,7 +1,7 @@
-use core::f32::consts::TAU;
+use core::{f32::consts::TAU, ops::Range};
 
 use fluxemu_math::color::YIQ_TO_RGB_NTSC_1953;
-use fluxemu_runtime::scheduler::Frequency;
+use fluxemu_runtime::{graphics::Ratio, scheduler::Frequency};
 use nalgebra::{Rotation, SMatrix};
 use palette::Srgb;
 
@@ -14,6 +14,7 @@ pub struct Ntsc;
 impl Region for Ntsc {
     const BYPASS_READ_BUFFER_FOR_PPUDATA_PALETTE_READS: bool = true;
     const CPU_CLOCK_DIVISOR: u8 = 12;
+    const DISPLAYED_SCANLINES: Range<u16> = 8..232;
     const PPU_CLOCK_DIVISOR: u8 = 4;
     const SKIPS_DOT_ON_ODD_FRAME: bool = true;
     const VBLANK_LENGTH: u16 = 20;
@@ -23,6 +24,11 @@ impl Region for Ntsc {
     fn master_clock() -> Frequency {
         // 236.25 MHz / 11
         Frequency::from_num(236250000) / 11
+    }
+
+    #[inline]
+    fn pixel_aspect_ratio() -> Ratio<u32> {
+        Ratio::new(8, 7)
     }
 
     #[inline]

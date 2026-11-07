@@ -6,6 +6,7 @@ use fluxemu_graphics::{
     api::webgpu::shader::ShaderUniform,
     shader::{BUILTIN_SHADERS, ShaderLanguage, ShaderType},
 };
+use fluxemu_math::rectangle::Rectangle;
 use nalgebra::Vector2;
 use wgpu::{
     BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
@@ -147,13 +148,19 @@ impl Resources {
 
 pub struct FramebufferCallback {
     framebuffer: Texture,
+    display_rectangle: Rectangle<usize>,
     resources: Arc<Resources>,
 }
 
 impl FramebufferCallback {
-    pub fn new(framebuffer: Texture, resources: Arc<Resources>) -> Self {
+    pub fn new(
+        framebuffer: Texture,
+        display_rectangle: Rectangle<usize>,
+        resources: Arc<Resources>,
+    ) -> Self {
         Self {
             framebuffer,
+            display_rectangle,
             resources,
         }
     }
@@ -173,10 +180,23 @@ impl CallbackTrait for FramebufferCallback {
             .create_view(&TextureViewDescriptor::default());
 
         let size = self.framebuffer.size();
+        let framebuffer_size = Vector2::new(size.width as f32, size.height as f32);
 
         let uniforms = ShaderUniform {
             viewport_size: Vector2::new(info.viewport.width(), info.viewport.height()),
-            framebuffer_size: Vector2::new(size.width as f32, size.height as f32),
+            framebuffer_size,
+            display_minimum_uv: self
+                .display_rectangle
+                .min
+                .coords
+                .cast::<f32>()
+                .component_div(&framebuffer_size),
+            display_maximum_uv: self
+                .display_rectangle
+                .max
+                .coords
+                .cast::<f32>()
+                .component_div(&framebuffer_size),
         };
 
         self.resources.queue.write_buffer(

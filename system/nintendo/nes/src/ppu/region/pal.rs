@@ -1,7 +1,7 @@
-use core::f32::consts::TAU;
+use core::{f32::consts::TAU, ops::Range};
 
 use fluxemu_math::color::YUV_TO_RGB_SDTV_WITH_BT470;
-use fluxemu_runtime::scheduler::Frequency;
+use fluxemu_runtime::{graphics::Ratio, scheduler::Frequency};
 use nalgebra::Rotation;
 use palette::Srgb;
 
@@ -14,6 +14,7 @@ pub struct Pal;
 impl Region for Pal {
     const BYPASS_READ_BUFFER_FOR_PPUDATA_PALETTE_READS: bool = true;
     const CPU_CLOCK_DIVISOR: u8 = 16;
+    const DISPLAYED_SCANLINES: Range<u16> = 0..240;
     const PPU_CLOCK_DIVISOR: u8 = 5;
     const SKIPS_DOT_ON_ODD_FRAME: bool = false;
     const VBLANK_LENGTH: u16 = 70;
@@ -22,6 +23,10 @@ impl Region for Pal {
     fn master_clock() -> Frequency {
         // ~53.203425 MHZ / 2
         Frequency::from_num(53203425) / 2
+    }
+
+    fn pixel_aspect_ratio() -> Ratio<u32> {
+        Ratio::new(2950000, 2128137)
     }
 
     fn generate_palette() -> [[Srgb<u8>; 64]; 8] {
