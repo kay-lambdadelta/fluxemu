@@ -1,6 +1,6 @@
+use alloc::boxed::Box;
 use core::ops::RangeInclusive;
 
-use alloc::boxed::Box;
 use fluxemu_math::range::ContiguousRange;
 use fluxemu_runtime::{
     RuntimeHandle,
