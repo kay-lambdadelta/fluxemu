@@ -13,6 +13,7 @@ use fluxemu_runtime::{
         Permissions,
     },
     path::ComponentPath,
+    persistence::PersistentComponentState,
     platform::Platform,
     scheduler::{
         Frequency, Period,
@@ -45,14 +46,14 @@ struct TimerSnapshot {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct State {
+pub struct State {
     swacnt: bool,
     swbcnt: bool,
     instat: u8,
     timer: Option<TimerSnapshot>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RiotEvent {
     TimerUnderflow,
 }
@@ -93,8 +94,20 @@ impl Mos6532Riot {
     }
 }
 
+impl PersistentComponentState<Mos6532Riot> for State {
+    fn capture(component: &Mos6532Riot) -> impl Serialize {
+        &component.state
+    }
+
+    fn apply(self, component: &mut Mos6532Riot) {
+        component.state = self;
+    }
+}
+
 impl Component for Mos6532Riot {
     type Event = RiotEvent;
+    type Save = ();
+    type Snapshot = State;
 
     fn memory_read(
         &mut self,

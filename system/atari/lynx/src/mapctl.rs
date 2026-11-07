@@ -7,6 +7,7 @@ use fluxemu_runtime::{
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId, MapTarget, MemoryError, MemoryMapCommand, Permissions},
     path::ComponentPath,
+    persistence::PersistentComponentState,
     platform::Platform,
 };
 use serde::{Deserialize, Serialize};
@@ -26,6 +27,16 @@ pub struct Mapctl {
     config: MapctlConfig,
     state: State,
     path: ComponentPath,
+}
+
+impl PersistentComponentState<Mapctl> for State {
+    fn capture(component: &Mapctl) -> impl Serialize {
+        &component.state
+    }
+
+    fn apply(self, component: &mut Mapctl) {
+        component.state = self;
+    }
 }
 
 impl Mapctl {
@@ -87,6 +98,14 @@ impl Mapctl {
 
 impl Component for Mapctl {
     type Event = ();
+    type Save = ();
+    type Snapshot = State;
+
+    fn state_restored(&mut self) {
+        if self.state.written {
+            RuntimeHandle::with_current(|runtime| self.update_mapping(runtime));
+        }
+    }
 
     fn memory_read(
         &mut self,

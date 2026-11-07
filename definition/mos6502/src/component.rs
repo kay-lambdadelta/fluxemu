@@ -6,12 +6,14 @@ use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId},
+    persistence::PersistentComponentState,
     scheduler::{
         Frequency, QuantaAllocator,
         event::{Event, downcast_event},
         task::{FrequencyBased, Mode},
     },
 };
+use serde::Serialize;
 
 use crate::{
     Bus, FlagRegister, IRQ_VECTOR, Mos6502Event, NMI_VECTOR, NmiFlag, Pin, RESET_VECTOR,
@@ -27,8 +29,20 @@ pub struct Mos6502<V: Variant> {
     _variant: PhantomData<V>,
 }
 
+impl<V: Variant> PersistentComponentState<Mos6502<V>> for State {
+    fn capture(component: &Mos6502<V>) -> impl Serialize {
+        &component.state
+    }
+
+    fn apply(self, component: &mut Mos6502<V>) {
+        component.state = self;
+    }
+}
+
 impl<V: Variant> Component for Mos6502<V> {
     type Event = Mos6502Event;
+    type Save = ();
+    type Snapshot = State;
 
     fn handle_event(&mut self, event: Box<dyn Event>) {
         let event = downcast_event::<Self>(event);

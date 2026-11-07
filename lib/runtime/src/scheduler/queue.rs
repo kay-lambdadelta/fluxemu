@@ -7,10 +7,14 @@ use std::{
     },
 };
 
+use serde::{Deserialize, Serialize};
+use serde_with::{Bytes, serde_as};
+
 use crate::{
     ComponentPath,
     component::ComponentRegistry,
     path::ResourcePath,
+    persistence::SnapshotError,
     scheduler::{
         Period,
         event::{Event, EventMode},
@@ -166,7 +170,123 @@ impl Queue {
     pub(crate) fn preemption_signal(&self) -> &PreemptionSignal {
         &self.preemption_signal
     }
+
+    pub(crate) fn capture(
+        &self,
+        registry: &ComponentRegistry<'_>,
+    ) -> Result<QueueSnapshot, SnapshotError> {
+        let state = self.state.lock().unwrap();
+
+        let mut items = state
+            .heap
+            .iter()
+            .map(|item| {
+                let Reverse((deadline, sequence)) = item.key;
+
+                let target = match &item.type_ {
+                    Type::Event { path, mode, data } => {
+                        let codec = registry
+                            .codec(path)
+                            .ok_or_else(|| SnapshotError::UnknownComponent(path.clone()))?;
+
+                        QueueTargetSnapshot::Event {
+                            path: path.clone(),
+                            mode: *mode,
+                            data: (codec.encode_event)(data.as_ref())?,
+                        }
+                    }
+                    Type::AlwaysModeTask { path } => {
+                        QueueTargetSnapshot::AlwaysModeTask { path: path.clone() }
+                    }
+                };
+
+                Ok(QueueItemSnapshot {
+                    deadline,
+                    sequence,
+                    target,
+                })
+            })
+            .collect::<Result<Vec<_>, SnapshotError>>()?;
+
+        items.sort_unstable_by_key(|item| (item.deadline, item.sequence));
+
+        Ok(QueueSnapshot {
+            next_sequence: state.next_sequence,
+            items,
+        })
+    }
+
+    pub(crate) fn restore(&self, queue: DecodedQueue) {
+        *self.state.lock().unwrap() = queue.0;
+
+        self.preemption_signal.bump();
+    }
 }
+
+#[serde_as]
+#[derive(Debug, Serialize, Deserialize)]
+enum QueueTargetSnapshot {
+    Event {
+        path: ComponentPath,
+        mode: EventMode,
+        #[serde_as(as = "Bytes")]
+        data: Vec<u8>,
+    },
+    AlwaysModeTask {
+        path: ResourcePath,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct QueueItemSnapshot {
+    deadline: Period,
+    sequence: u64,
+    target: QueueTargetSnapshot,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct QueueSnapshot {
+    next_sequence: u64,
+    items: Vec<QueueItemSnapshot>,
+}
+
+impl QueueSnapshot {
+    pub fn decode(self, registry: &ComponentRegistry<'_>) -> Result<DecodedQueue, SnapshotError> {
+        let heap = self
+            .items
+            .into_iter()
+            .map(|item| {
+                let type_ = match item.target {
+                    QueueTargetSnapshot::Event { path, mode, data } => {
+                        let codec = registry
+                            .codec(&path)
+                            .ok_or_else(|| SnapshotError::UnknownComponent(path.clone()))?;
+
+                        Type::Event {
+                            data: (codec.decode_event)(&data)?,
+                            path,
+                            mode,
+                        }
+                    }
+                    QueueTargetSnapshot::AlwaysModeTask { path } => Type::AlwaysModeTask { path },
+                };
+
+                Ok(QueueItem {
+                    key: Reverse((item.deadline, item.sequence)),
+                    type_,
+                })
+            })
+            .collect::<Result<BinaryHeap<_>, SnapshotError>>()?;
+
+        Ok(DecodedQueue(QueueState {
+            heap,
+            next_sequence: self.next_sequence,
+        }))
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct DecodedQueue(QueueState);
 
 #[derive(Debug)]
 struct QueueItem {

@@ -4,9 +4,11 @@ use fluxemu_input::{InputId, InputState};
 use fluxemu_math::range::ContiguousRange;
 use nalgebra::SVector;
 use ringbuffer::AllocRingBuffer;
+use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
     memory::{Address, AddressSpaceId, MemoryError, MemoryErrorType},
+    persistence::Section,
     scheduler::event::Event,
 };
 
@@ -28,7 +30,15 @@ pub trait Component: Send + Sync + Debug + Any {
     /// You may still receive dummy events being used as a synchronization barrier however
     ///
     /// FIXME: When rust gets default associated types, this should be `()`
-    type Event: Event
+    type Event: Event + Serialize + DeserializeOwned
+    where
+        Self: Sized;
+
+    type Save: Section<Self> + 'static
+    where
+        Self: Sized;
+
+    type Snapshot: Section<Self>
     where
         Self: Sized;
 
@@ -71,6 +81,11 @@ pub trait Component: Send + Sync + Debug + Any {
     ///
     /// This will as an invariant, only pass in inputs the component registered as supporting
     fn handle_input(&mut self, destination: &str, id: InputId, state: InputState) {}
+
+    /// Called after a snapshot or save has been loaded
+    ///
+    /// Memory maps are not stored, so anything remapped at runtime must be reapplied here
+    fn state_restored(&mut self) {}
 }
 
 /// A source of audio samples for the runtime

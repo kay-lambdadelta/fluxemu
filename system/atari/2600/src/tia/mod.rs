@@ -10,6 +10,7 @@ use fluxemu_runtime::{
     ComponentPath, ResourcePath, RuntimeHandle,
     component::Component,
     memory::{Address, AddressSpaceId, MemoryError},
+    persistence::PersistentComponentState,
     scheduler::QuantaAllocator,
 };
 use itertools::Itertools;
@@ -125,8 +126,20 @@ pub(crate) struct Tia<R: Region, G: SupportedGraphicsApi> {
     framebuffer_path: ResourcePath,
 }
 
+impl<R: Region, G: SupportedGraphicsApi> PersistentComponentState<Tia<R, G>> for State {
+    fn capture(component: &Tia<R, G>) -> impl Serialize {
+        &component.state
+    }
+
+    fn apply(self, component: &mut Tia<R, G>) {
+        component.state = self;
+    }
+}
+
 impl<R: Region, G: SupportedGraphicsApi> Component for Tia<R, G> {
     type Event = ();
+    type Save = ();
+    type Snapshot = State;
 
     fn memory_read(
         &mut self,

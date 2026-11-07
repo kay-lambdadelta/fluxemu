@@ -7,6 +7,7 @@ use fluxemu_runtime::{
     machine::builder::ComponentBuilder,
     memory::AddressSpaceId,
     path::ComponentPath,
+    persistence::PersistentComponentState,
     platform::Platform,
     scheduler::{
         Frequency, QuantaAllocator,
@@ -187,8 +188,20 @@ impl<G: SupportedGraphicsApi> Chip8Processor<G> {
     }
 }
 
+impl<G: SupportedGraphicsApi> PersistentComponentState<Chip8Processor<G>> for ProcessorState {
+    fn capture(component: &Chip8Processor<G>) -> impl Serialize {
+        &component.state
+    }
+
+    fn apply(self, component: &mut Chip8Processor<G>) {
+        component.state = self;
+    }
+}
+
 impl<G: SupportedGraphicsApi> Component for Chip8Processor<G> {
     type Event = ();
+    type Save = ();
+    type Snapshot = ProcessorState;
 }
 
 #[derive(Debug)]

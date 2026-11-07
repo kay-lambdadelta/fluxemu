@@ -8,6 +8,7 @@ use fluxemu_runtime::{
     input::LogicalInputDevice,
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId, MemoryError, MemoryMapCommand, Permissions},
+    persistence::PersistentComponentState,
     platform::Platform,
 };
 use serde::{Deserialize, Serialize};
@@ -37,8 +38,20 @@ pub struct StandardNesControllers {
     state: ControllerState,
 }
 
+impl PersistentComponentState<StandardNesControllers> for ControllerState {
+    fn capture(component: &StandardNesControllers) -> impl Serialize {
+        &component.state
+    }
+
+    fn apply(self, component: &mut StandardNesControllers) {
+        component.state = self;
+    }
+}
+
 impl Component for StandardNesControllers {
     type Event = ();
+    type Save = ();
+    type Snapshot = ControllerState;
 
     fn memory_read(
         &mut self,

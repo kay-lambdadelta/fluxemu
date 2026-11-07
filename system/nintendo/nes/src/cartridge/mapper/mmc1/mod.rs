@@ -10,6 +10,7 @@ use fluxemu_runtime::{
     },
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId, MapTarget, MemoryError, MemoryMapCommand, Permissions},
+    persistence::PersistentComponentState,
     platform::Platform,
 };
 use serde::{Deserialize, Serialize};
@@ -59,6 +60,16 @@ pub struct State {
 pub struct Mmc1 {
     state: State,
     config: Mmc1Config,
+}
+
+impl PersistentComponentState<Mmc1> for State {
+    fn capture(component: &Mmc1) -> impl Serialize {
+        &component.state
+    }
+
+    fn apply(self, component: &mut Mmc1) {
+        component.state = self;
+    }
 }
 
 impl Mmc1 {
@@ -317,6 +328,16 @@ impl Mmc1 {
 
 impl Component for Mmc1 {
     type Event = ();
+    type Save = ();
+    type Snapshot = State;
+
+    fn state_restored(&mut self) {
+        RuntimeHandle::with_current(|runtime| {
+            self.update_prg_banking(runtime);
+            self.update_chr_banking(runtime);
+            self.update_nametables(runtime);
+        });
+    }
 
     fn memory_write(
         &mut self,

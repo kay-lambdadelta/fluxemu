@@ -10,6 +10,7 @@ use fluxemu_runtime::{
     },
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId, MapTarget, MemoryError, MemoryMapCommand, Permissions},
+    persistence::PersistentComponentState,
     platform::Platform,
 };
 use serde::{Deserialize, Serialize};
@@ -27,6 +28,16 @@ pub struct State {
 pub struct CnRom {
     state: State,
     config: CnRomConfig,
+}
+
+impl PersistentComponentState<CnRom> for State {
+    fn capture(component: &CnRom) -> impl Serialize {
+        &component.state
+    }
+
+    fn apply(self, component: &mut CnRom) {
+        component.state = self;
+    }
 }
 
 impl CnRom {
@@ -55,6 +66,12 @@ impl CnRom {
 
 impl Component for CnRom {
     type Event = ();
+    type Save = ();
+    type Snapshot = State;
+
+    fn state_restored(&mut self) {
+        RuntimeHandle::with_current(|runtime| self.update_chr_banking(runtime));
+    }
 
     fn memory_write(
         &mut self,

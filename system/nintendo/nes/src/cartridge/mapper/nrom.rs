@@ -16,6 +16,8 @@ pub struct NRom;
 
 impl Component for NRom {
     type Event = ();
+    type Save = ();
+    type Snapshot = ();
 }
 
 #[derive(Debug)]

@@ -17,6 +17,8 @@ pub struct Joystick {
 
 impl Component for Joystick {
     type Event = ();
+    type Save = ();
+    type Snapshot = ();
 
     fn memory_read(
         &mut self,

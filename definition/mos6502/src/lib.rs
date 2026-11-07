@@ -65,24 +65,24 @@ impl FlagRegister {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct State {
-    pub a: u8,
-    pub x: u8,
-    pub y: u8,
-    pub flags: FlagRegister,
-    pub stack: u8,
-    pub instruction_pointer: u16,
-    pub cycle_queue: heapless::Deque<Cycle, 8>,
-    pub bus: Bus,
-    pub effective_address: heapless::Vec<u8, 2>,
-    pub consume_effective_address: bool,
-    pub operand: u8,
-    pub rdy: bool,
-    pub nmi: NmiFlag,
-    pub irq: bool,
-    pub pending_irq: bool,
-    pub in_interrupt_sequence: bool,
-    pub interrupt_vector: u16,
+pub struct State {
+    pub(crate) a: u8,
+    pub(crate) x: u8,
+    pub(crate) y: u8,
+    pub(crate) flags: FlagRegister,
+    pub(crate) stack: u8,
+    pub(crate) instruction_pointer: u16,
+    pub(crate) cycle_queue: heapless::Deque<Cycle, 8>,
+    pub(crate) bus: Bus,
+    pub(crate) effective_address: heapless::Vec<u8, 2>,
+    pub(crate) consume_effective_address: bool,
+    pub(crate) operand: u8,
+    pub(crate) rdy: bool,
+    pub(crate) nmi: NmiFlag,
+    pub(crate) irq: bool,
+    pub(crate) pending_irq: bool,
+    pub(crate) in_interrupt_sequence: bool,
+    pub(crate) interrupt_vector: u16,
 }
 
 /// NMI is falling edge
@@ -113,14 +113,14 @@ impl NmiFlag {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Pin {
     Nmi,
     Irq,
     Rdy,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Mos6502Event {
     FlagChange { pin: Pin, value: bool },
 }

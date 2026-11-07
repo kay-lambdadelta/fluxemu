@@ -2272,6 +2272,7 @@ dependencies = [
  "rangemap",
  "redb",
  "ringbuffer",
+ "rmp",
  "rmp-serde",
  "rustc-hash 2.1.3",
  "scc",

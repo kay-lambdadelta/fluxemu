@@ -20,6 +20,8 @@ pub struct Intel8080 {}
 
 impl Component for Intel8080 {
     type Event = ();
+    type Save = ();
+    type Snapshot = ();
 }
 
 #[derive(Default, Debug)]

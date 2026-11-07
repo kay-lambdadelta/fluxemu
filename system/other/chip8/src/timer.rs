@@ -2,6 +2,7 @@ use fluxemu_runtime::{
     RuntimeHandle,
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
+    persistence::PersistentComponentState,
     platform::Platform,
     scheduler::{
         Frequency, QuantaAllocator,
@@ -19,6 +20,16 @@ pub struct State {
 #[derive(Debug)]
 pub struct Chip8Timer {
     state: State,
+}
+
+impl PersistentComponentState<Chip8Timer> for State {
+    fn capture(component: &Chip8Timer) -> impl Serialize {
+        &component.state
+    }
+
+    fn apply(self, component: &mut Chip8Timer) {
+        component.state = self;
+    }
 }
 
 impl Chip8Timer {
@@ -40,6 +51,8 @@ impl Chip8Timer {
 
 impl Component for Chip8Timer {
     type Event = ();
+    type Save = ();
+    type Snapshot = State;
 }
 
 #[derive(Debug, Default)]

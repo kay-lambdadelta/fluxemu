@@ -16,6 +16,7 @@ use crate::{
         registry::handle::{ComponentHandle, MutableData},
     },
     path::ComponentPath,
+    persistence::{ComponentCodec, ComponentRecord, SnapshotError, TaskTiming},
     scheduler::{Context, Period, task::Mode},
 };
 
@@ -26,6 +27,7 @@ pub(crate) use handle::TaskEntry;
 #[derive(Debug)]
 struct GlobalComponentMetadata {
     id: ComponentId,
+    codec: ComponentCodec,
 }
 
 #[derive(Debug, Default)]
@@ -75,7 +77,13 @@ impl ComponentRegistryData {
             },
         );
 
-        self.metadata.insert(path, GlobalComponentMetadata { id });
+        self.metadata.insert(
+            path,
+            GlobalComponentMetadata {
+                id,
+                codec: ComponentCodec::new::<C>(),
+            },
+        );
 
         id
     }
@@ -412,6 +420,197 @@ impl<'a> ComponentRegistry<'a> {
 
     pub(crate) fn id_for_path(&self, path: &ComponentPath) -> Option<ComponentId> {
         Some(self.data().metadata.get(path)?.id)
+    }
+
+    pub(crate) fn sorted_paths(&self) -> Vec<&'a ComponentPath> {
+        let mut paths: Vec<_> = self
+            .runtime
+            .machine()
+            .component_registry_data
+            .metadata
+            .keys()
+            .collect();
+        paths.sort_unstable();
+
+        paths
+    }
+
+    pub(crate) fn codec(&self, path: &ComponentPath) -> Option<&'a ComponentCodec> {
+        self.runtime
+            .machine()
+            .component_registry_data
+            .metadata
+            .get(path)
+            .map(|metadata| &metadata.codec)
+    }
+
+    pub fn store_component<'b>(
+        &'b self,
+        path: &'b ComponentPath,
+        output: &mut Vec<u8>,
+    ) -> Result<(), SnapshotError> {
+        let (id, codec) = self.lookup(path)?;
+
+        let store = unsafe { &mut *self.local_data().get() };
+        let data = self
+            .fetch_or_acquire_component(id, store)
+            .data
+            .as_ref()
+            .expect("Component is reentrant on itself");
+
+        let mut tasks: Vec<_> = data
+            .tasks
+            .iter()
+            .map(|(name, entry)| {
+                (
+                    name.as_ref(),
+                    TaskTiming {
+                        current_timestamp: entry.current_timestamp,
+                        required_next_allocation: entry.required_next_allocation,
+                        last_requeued_deadline: entry.last_requeued_deadline,
+                    },
+                )
+            })
+            .collect();
+        tasks.sort_unstable_by_key(|(name, _)| *name);
+
+        rmp_serde::encode::write(output, &(codec.snapshot_version, tasks))?;
+
+        (codec.store_snapshot)(data.component.as_ref(), output)
+    }
+
+    pub fn load_component<'b>(
+        &'b self,
+        path: &'b ComponentPath,
+        record: &[u8],
+    ) -> Result<(), SnapshotError> {
+        self.validate_component(path, record)?;
+        self.load_component_state(path, record)?;
+
+        self.interact_dyn(path, Period::ZERO, |component| component.state_restored());
+
+        Ok(())
+    }
+
+    pub(crate) fn has_save(&self, path: &ComponentPath) -> bool {
+        self.codec(path).is_some_and(|codec| codec.has_save)
+    }
+
+    pub(crate) fn store_component_save(
+        &self,
+        path: &ComponentPath,
+        output: &mut Vec<u8>,
+    ) -> Result<(), SnapshotError> {
+        let (id, codec) = self.lookup(path)?;
+
+        let store = unsafe { &mut *self.local_data().get() };
+        let data = self
+            .fetch_or_acquire_component(id, store)
+            .data
+            .as_ref()
+            .expect("Component is reentrant on itself");
+
+        let tasks: [(&str, TaskTiming); 0] = [];
+        rmp_serde::encode::write(output, &(codec.save_version, tasks))?;
+
+        (codec.store_save)(data.component.as_ref(), output)
+    }
+
+    pub(crate) fn load_component_save(
+        &self,
+        path: &ComponentPath,
+        record: &[u8],
+    ) -> Result<(), SnapshotError> {
+        let (id, codec) = self.lookup(path)?;
+        let (record, section) = ComponentRecord::parse(record)?;
+
+        let store = unsafe { &mut *self.local_data().get() };
+        let data = self
+            .fetch_or_acquire_component(id, store)
+            .data
+            .as_mut()
+            .expect("Component is reentrant on itself");
+
+        (codec.load_save)(data.component.as_mut(), record.section_version, section)
+    }
+
+    pub(crate) fn validate_component(
+        &self,
+        path: &ComponentPath,
+        record: &[u8],
+    ) -> Result<(), SnapshotError> {
+        let (id, codec) = self.lookup(path)?;
+        let (record, _) = ComponentRecord::parse(record)?;
+
+        if record.section_version != codec.snapshot_version {
+            return Err(SnapshotError::VersionMismatch {
+                path: path.clone(),
+                expected: codec.snapshot_version,
+                found: record.section_version,
+            });
+        }
+
+        let store = unsafe { &mut *self.local_data().get() };
+        let data = self
+            .fetch_or_acquire_component(id, store)
+            .data
+            .as_ref()
+            .expect("Component is reentrant on itself");
+
+        let tasks_match = record.tasks.len() == data.tasks.len()
+            && record
+                .tasks
+                .iter()
+                .all(|(name, _)| data.tasks.contains_key(name.as_str()));
+
+        if !tasks_match {
+            return Err(SnapshotError::TaskMismatch(path.clone()));
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn load_component_state(
+        &self,
+        path: &ComponentPath,
+        record: &[u8],
+    ) -> Result<(), SnapshotError> {
+        let (id, codec) = self.lookup(path)?;
+        let (record, section) = ComponentRecord::parse(record)?;
+
+        let store = unsafe { &mut *self.local_data().get() };
+        let data = self
+            .fetch_or_acquire_component(id, store)
+            .data
+            .as_mut()
+            .expect("Component is reentrant on itself");
+
+        (codec.load_snapshot)(data.component.as_mut(), record.section_version, section)?;
+
+        for (name, timing) in record.tasks {
+            let entry = data.tasks.get_mut(name.as_str()).unwrap();
+
+            entry.current_timestamp = timing.current_timestamp;
+            entry.required_next_allocation = timing.required_next_allocation;
+            entry.last_requeued_deadline = timing.last_requeued_deadline;
+        }
+
+        Ok(())
+    }
+
+    fn lookup(
+        &self,
+        path: &ComponentPath,
+    ) -> Result<(ComponentId, &'a ComponentCodec), SnapshotError> {
+        let metadata = self
+            .runtime
+            .machine()
+            .component_registry_data
+            .metadata
+            .get(path)
+            .ok_or_else(|| SnapshotError::UnknownComponent(path.clone()))?;
+
+        Ok((metadata.id, &metadata.codec))
     }
 }
 

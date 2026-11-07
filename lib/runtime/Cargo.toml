@@ -27,6 +27,7 @@ palette = { workspace = true }
 rangemap = { workspace = true }
 redb = { workspace = true }
 ringbuffer = { workspace = true }
+rmp = { workspace = true }
 rmp-serde = { workspace = true }
 rustc-hash = { workspace = true }
 scc = { workspace = true }

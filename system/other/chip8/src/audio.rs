@@ -3,6 +3,7 @@ use fluxemu_runtime::{
     RuntimeHandle,
     component::{Component, SampleSource, config::ComponentConfig},
     machine::builder::ComponentBuilder,
+    persistence::PersistentComponentState,
     platform::Platform,
     scheduler::{
         Frequency, Period, QuantaAllocator,
@@ -30,6 +31,16 @@ pub struct Chip8Audio {
     state: State,
     buffer: AllocRingBuffer<SVector<f32, 1>>,
     processor_frequency: Frequency,
+}
+
+impl PersistentComponentState<Chip8Audio> for State {
+    fn capture(component: &Chip8Audio) -> impl Serialize {
+        &component.state
+    }
+
+    fn apply(self, component: &mut Chip8Audio) {
+        component.state = self;
+    }
 }
 
 impl Chip8Audio {
@@ -70,6 +81,8 @@ impl Chip8Audio {
 
 impl Component for Chip8Audio {
     type Event = ();
+    type Save = ();
+    type Snapshot = State;
 
     fn get_audio_channel(&mut self, _name: &str) -> SampleSource<'_> {
         SampleSource {

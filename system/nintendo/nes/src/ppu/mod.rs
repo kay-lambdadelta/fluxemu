@@ -14,6 +14,7 @@ use fluxemu_runtime::{
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId, MemoryError, MemoryMapCommand, Permissions},
     path::ComponentPath,
+    persistence::PersistentComponentState,
     platform::Platform,
     scheduler::{
         Period,
@@ -256,8 +257,20 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<
     }
 }
 
+impl<R: Region, G: SupportedGraphicsApi> PersistentComponentState<Ppu<R, G>> for State {
+    fn capture(component: &Ppu<R, G>) -> impl Serialize {
+        &component.state
+    }
+
+    fn apply(self, component: &mut Ppu<R, G>) {
+        component.state = self;
+    }
+}
+
 impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
     type Event = PpuEvent;
+    type Save = ();
+    type Snapshot = State;
 
     fn memory_read(
         &mut self,
@@ -712,7 +725,7 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PpuEvent {
     VblankStart,
     ArmNmi,

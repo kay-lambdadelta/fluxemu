@@ -16,6 +16,8 @@ pub struct NonbankedCart;
 
 impl Component for NonbankedCart {
     type Event = ();
+    type Save = ();
+    type Snapshot = ();
 }
 
 #[derive(Debug)]

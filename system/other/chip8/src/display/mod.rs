@@ -12,6 +12,7 @@ use fluxemu_runtime::{
     },
     graphics::SimpleDisplayBackend,
     machine::builder::ComponentBuilder,
+    persistence::PersistentComponentState,
     platform::Platform,
     scheduler::{
         Frequency, QuantaAllocator,
@@ -46,6 +47,16 @@ pub struct Chip8Display<G: SupportedGraphicsApi> {
     state: State,
     config: Chip8DisplayConfig,
     framebuffer_path: ResourcePath,
+}
+
+impl<G: SupportedGraphicsApi> PersistentComponentState<Chip8Display<G>> for State {
+    fn capture(component: &Chip8Display<G>) -> impl Serialize {
+        &component.state
+    }
+
+    fn apply(self, component: &mut Chip8Display<G>) {
+        component.state = self;
+    }
 }
 
 impl<G: SupportedGraphicsApi> Chip8Display<G> {
@@ -186,6 +197,8 @@ impl<G: SupportedGraphicsApi> Chip8Display<G> {
 
 impl<G: SupportedGraphicsApi> Component for Chip8Display<G> {
     type Event = ();
+    type Save = ();
+    type Snapshot = State;
 }
 
 #[derive(Debug, Default)]

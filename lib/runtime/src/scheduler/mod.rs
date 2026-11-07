@@ -24,6 +24,10 @@ impl Scheduler {
         *self.safe_advance_timestamp.lock().unwrap()
     }
 
+    pub(crate) fn set_safe_advance_timestamp(&self, timestamp: Period) {
+        *self.safe_advance_timestamp.lock().unwrap() = timestamp;
+    }
+
     pub fn start_time(&self) -> Period {
         self.start_time
     }

@@ -6,6 +6,7 @@ use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId, MemoryError, MemoryMapCommand, Permissions},
+    persistence::PersistentComponentState,
     platform::Platform,
 };
 use serde::{Deserialize, Serialize};
@@ -33,8 +34,20 @@ pub struct Apu {
     pub state: State,
 }
 
+impl PersistentComponentState<Apu> for State {
+    fn capture(component: &Apu) -> impl Serialize {
+        &component.state
+    }
+
+    fn apply(self, component: &mut Apu) {
+        component.state = self;
+    }
+}
+
 impl Component for Apu {
     type Event = ();
+    type Save = ();
+    type Snapshot = State;
 
     fn memory_read(
         &mut self,

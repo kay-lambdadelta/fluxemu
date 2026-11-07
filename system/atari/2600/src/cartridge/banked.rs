@@ -9,6 +9,7 @@ use fluxemu_runtime::{
         Address, AddressSpaceId, MapTarget, MemoryError, MemoryErrorType, MemoryMapCommand,
         Permissions,
     },
+    persistence::PersistentComponentState,
     platform::Platform,
 };
 use serde::{Deserialize, Serialize};
@@ -45,8 +46,20 @@ pub struct BankedCart {
     state: State,
 }
 
+impl PersistentComponentState<BankedCart> for State {
+    fn capture(component: &BankedCart) -> impl Serialize {
+        &component.state
+    }
+
+    fn apply(self, component: &mut BankedCart) {
+        component.state = self;
+    }
+}
+
 impl Component for BankedCart {
     type Event = ();
+    type Save = ();
+    type Snapshot = State;
 
     fn memory_read(
         &mut self,
