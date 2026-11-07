@@ -71,7 +71,7 @@ pub struct DisplayGeometry {
 
 impl DisplayGeometry {
     pub const SQUARE: Self = Self {
-        pixel_aspect_ratio: Ratio::new_raw(1, 1),
+        pixel_aspect_ratio: Ratio::ONE,
         display_rectangle: None,
     };
 
