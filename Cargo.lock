@@ -2388,6 +2388,7 @@ dependencies = [
  "fluxemu-database",
  "fluxemu-environment",
  "fluxemu-input",
+ "fluxemu-math",
  "fluxemu-program",
  "fluxemu-runtime",
  "redb",

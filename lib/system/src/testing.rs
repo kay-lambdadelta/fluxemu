@@ -1,14 +1,23 @@
 extern crate std;
 
-use std::{eprintln, format, io::Write, prelude::rust_2024::*, sync::Arc, time::Duration};
+use std::{
+    eprintln, format, io::Write, ops::RangeInclusive, prelude::rust_2024::*, sync::Arc,
+    time::Duration,
+};
 
 use criterion::{Criterion, Throughput};
 use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::load_environment;
 use fluxemu_input::{InputId, InputState};
+use fluxemu_math::range::ContiguousRange;
 use fluxemu_program::{Manifest, ProgramManager};
-use fluxemu_runtime::{machine::Machine, platform::TestPlatform, scheduler::Period};
-use redb::Database;
+use fluxemu_runtime::{
+    machine::{Machine, RuntimeGuard},
+    memory::{Address, AddressSpaceId},
+    platform::TestPlatform,
+    scheduler::Period,
+};
+use redb::ReadOnlyDatabase;
 use tokio::runtime::Runtime;
 
 use crate::System;
@@ -18,6 +27,9 @@ const CONTINUATION_FRAMES: u32 = 90;
 const INPUT_INTERVAL_FRAMES: u32 = 30;
 const INPUT_HOLD_FRAMES: u32 = 6;
 const FRAME_FRACTIONS: [u32; 2] = [7, 11];
+const BLARGG_SIGNATURE: [u8; 3] = [0xde, 0xb0, 0x61];
+const BLARGG_RUNNING: u8 = 0x80;
+const BLARGG_TEXT_LIMIT: usize = 0x1000;
 
 #[derive(Debug, Clone, Copy)]
 pub enum TestRom {
@@ -42,7 +54,7 @@ impl TestRom {
 
 struct Context {
     runtime: Runtime,
-    program_database: Arc<ProgramDatabase>,
+    program_database: Option<Arc<ProgramDatabase<ReadOnlyDatabase>>>,
     program_manager: Arc<ProgramManager>,
 }
 
@@ -50,12 +62,25 @@ impl Context {
     fn new() -> Self {
         let environment = load_environment();
 
+        let program_database = if environment.database_location.exists() {
+            match ReadOnlyDatabase::open(&environment.database_location) {
+                Ok(database) => Some(ProgramDatabase::read_only(database)),
+                Err(err) => {
+                    let _ = writeln!(
+                        std::io::stderr(),
+                        "warning: not using program database: {err}"
+                    );
+
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         Self {
             runtime: Runtime::new().unwrap(),
-            program_database: ProgramDatabase::new(
-                Database::create(environment.database_location).unwrap(),
-            )
-            .unwrap(),
+            program_database,
             program_manager: ProgramManager::new(environment.rom_stores).unwrap(),
         }
     }
@@ -68,7 +93,19 @@ impl Context {
 
                     self.program_manager.load(id).await.unwrap()?;
 
-                    let mut specifications = self.program_database.identify_program([id]).unwrap();
+                    let mut specifications = match &self.program_database {
+                        Some(program_database) => program_database
+                            .identify_program([id])
+                            .unwrap_or_else(|err| {
+                                let _ = writeln!(
+                                    std::io::stderr(),
+                                    "warning: could not identify {id} from program database: {err}"
+                                );
+
+                                Vec::new()
+                            }),
+                        None => Vec::new(),
+                    };
 
                     if specifications.is_empty() {
                         self.program_manager
@@ -336,4 +373,75 @@ pub fn benchmark_emulation<S: System<TestPlatform, Quirks: Default>>(
     }
 
     group.finish();
+}
+
+pub fn run_until<S: System<TestPlatform, Quirks: Default>, T>(
+    system: S,
+    rom: &TestRom,
+    frame_limit: u32,
+    mut poll: impl FnMut(&RuntimeGuard) -> Option<T>,
+) -> Option<T> {
+    let context = Context::new();
+    let name = rom.name();
+
+    let specification = context
+        .resolve(rom)
+        .unwrap_or_else(|| std::panic!("{name}: missing test program"));
+    let machine = context.build(&system, &specification);
+
+    for _ in 0..frame_limit {
+        let runtime = machine.enter_runtime();
+        runtime.run(frame());
+
+        if let Some(result) = poll(&runtime) {
+            return Some(result);
+        }
+    }
+
+    None
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlarggStatus {
+    pub code: u8,
+    pub text: String,
+}
+
+impl BlarggStatus {
+    pub fn is_running(&self) -> bool {
+        self.code >= BLARGG_RUNNING
+    }
+}
+
+// For further information visit:
+//
+// /external/nes-test-roms/instr_test-v5/readme.txt
+pub fn read_blargg_status(
+    runtime: &RuntimeGuard,
+    address_space: AddressSpaceId,
+    base: Address,
+) -> Option<BlarggStatus> {
+    let mut address_space = runtime.address_space(address_space).unwrap();
+    let timestamp = runtime.safe_advance_timestamp();
+
+    let mut read = |address| {
+        address_space
+            .read_le_value::<u8, true>(address, timestamp)
+            .ok()
+    };
+
+    for (offset, expected) in BLARGG_SIGNATURE.into_iter().enumerate() {
+        if read(base + 1 + offset)? != expected {
+            return None;
+        }
+    }
+
+    let code = read(base)?;
+
+    let text = RangeInclusive::from_start_and_length(base + 4, BLARGG_TEXT_LIMIT)
+        .map_while(|address| read(address).filter(|&byte| byte != 0))
+        .map(char::from)
+        .collect();
+
+    Some(BlarggStatus { code, text })
 }

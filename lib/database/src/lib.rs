@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use fluxemu_program::{Manifest, ProgramId, ProgramInfo, RomId};
-use redb::{Database, MultimapTableDefinition, ReadableDatabase};
+use redb::{Database, MultimapTableDefinition, ReadOnlyDatabase, ReadableDatabase};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -27,8 +27,14 @@ pub const PROGRAM_INFORMATION_TABLE: MultimapTableDefinition<ProgramId, ProgramI
 pub const HASH_ALIAS_TABLE: MultimapTableDefinition<RomId, ProgramId> =
     MultimapTableDefinition::new("hash_alias");
 
-pub struct ProgramDatabase {
-    database: Database,
+pub struct ProgramDatabase<D: ReadableDatabase = Database> {
+    database: D,
+}
+
+impl ProgramDatabase<ReadOnlyDatabase> {
+    pub fn read_only(database: ReadOnlyDatabase) -> Arc<Self> {
+        Arc::new(Self { database })
+    }
 }
 
 impl ProgramDatabase {
@@ -41,7 +47,9 @@ impl ProgramDatabase {
 
         Ok(Arc::new(Self { database }))
     }
+}
 
+impl<D: ReadableDatabase> ProgramDatabase<D> {
     /// Attempts to identify a program from its program ids
     pub fn identify_program(
         &self,
@@ -78,7 +86,9 @@ impl ProgramDatabase {
 
         Ok(possible_programs)
     }
+}
 
+impl ProgramDatabase {
     pub fn database(&self) -> &Database {
         &self.database
     }

@@ -33,7 +33,7 @@ jobs:
             check: |
               cargo clippy -p fluxemu-shell-destinezite --all-features
               cargo clippy -p fluxemu-utils
-            test: RUSTFLAGS="-C opt-level=0" cargo test --workspace --exclude 'fluxemu-shell-*'
+            test: cargo nextest run --workspace --exclude 'fluxemu-shell-*'
 
           - name: Debian Trixie (aarch64-unknown-linux-gnu)
             runner: ubuntu-26.04-arm
@@ -42,7 +42,7 @@ jobs:
             check: |
               cargo clippy -p fluxemu-shell-destinezite --all-features
               cargo clippy -p fluxemu-utils
-            test: RUSTFLAGS="-C opt-level=0" cargo test --workspace --exclude 'fluxemu-shell-*'
+            test: cargo nextest run --workspace --exclude 'fluxemu-shell-*'
 
           - name: NuttX (raspberrypi-pico-2)
             runner: ubuntu-26.04
@@ -51,7 +51,7 @@ jobs:
             dependencies: debian-nuttx
             shell: nuttallite
             tools: cargo install cargo-nuttx --locked
-            check: cargo nuttx clippy -b raspberrypi-pico-2 --release
+            check: cargo nuttx clippy --board raspberrypi-pico-2 --release
 
     steps:
       - name: Install checkout dependencies
@@ -73,6 +73,12 @@ jobs:
       - name: Install tools
         if: matrix.tools
         run: ${{ matrix.tools }}
+
+      - name: Install cargo-nextest
+        if: matrix.test
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
 
       - name: Check
         run: ${{ matrix.check }}

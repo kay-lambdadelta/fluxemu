@@ -11,6 +11,7 @@ criterion = { workspace = true, optional = true }
 fluxemu-database = { workspace = true, optional = true }
 fluxemu-environment = { workspace = true, optional = true }
 fluxemu-input = { workspace = true, optional = true }
+fluxemu-math = { workspace = true, optional = true }
 fluxemu-program = { workspace = true }
 fluxemu-runtime = { workspace = true }
 redb = { workspace = true, optional = true }
@@ -23,6 +24,7 @@ testing = [
   "dep:fluxemu-database",
   "dep:fluxemu-environment",
   "dep:fluxemu-input",
+  "dep:fluxemu-math",
   "dep:redb",
   "dep:tokio",
 ]

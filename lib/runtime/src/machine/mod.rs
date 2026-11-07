@@ -22,7 +22,7 @@ use crate::{
     input::LogicalInputDevice,
     machine::builder::MachineBuilder,
     memory::{AddressSpace, AddressSpaceData, AddressSpaceId, MemoryRegistryData},
-    path::ResourcePath,
+    path::{ComponentPath, ResourcePath},
     platform::{Platform, TestPlatform},
     scheduler::{Period, Scheduler},
 };
@@ -265,6 +265,22 @@ impl RuntimeGuard<'_> {
     #[inline]
     pub fn address_space(&self, address_space_id: AddressSpaceId) -> Option<AddressSpace<'_>> {
         self.runtime.address_space(address_space_id)
+    }
+
+    pub fn bus_master_address_spaces(
+        &self,
+        path: &ComponentPath,
+    ) -> impl Iterator<Item = AddressSpaceId> + '_ {
+        let component_id = self.runtime.component_registry().id_for_path(path);
+
+        self.runtime
+            .machine()
+            .address_spaces
+            .iter()
+            .filter(move |(_, data)| {
+                component_id.is_some_and(|component_id| data.bus_masters.contains(&component_id))
+            })
+            .map(|(id, _)| *id)
     }
 
     #[inline]

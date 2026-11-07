@@ -49,4 +49,20 @@ pub const TEST_ROMS: &[TestRom] = &[
         name: "Xevious (Japan) (En).nes",
         id: "c4a36c14de32424f0ee2f9cd3fa8ec28103f9bf0",
     },
+    TestRom::Embedded {
+        file_name: "StarsSE.NES",
+        data: include_bytes!("../../../external/nes-test-roms/stars_se/StarsSE.NES"),
+    },
+    TestRom::Embedded {
+        file_name: "all_instrs.nes",
+        data: include_bytes!("../../../external/nes-test-roms/instr_test-v5/all_instrs.nes"),
+    },
+    TestRom::Embedded {
+        file_name: "FLAME.NES",
+        data: include_bytes!("../../../external/nes-test-roms/other/FLAME.NES"),
+    },
+    TestRom::Embedded {
+        file_name: "ny2011.nes",
+        data: include_bytes!("../../../external/nes-test-roms/ny2011/ny2011.nes"),
+    },
 ];
