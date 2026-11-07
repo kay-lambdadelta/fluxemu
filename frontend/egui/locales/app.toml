@@ -18,6 +18,9 @@ en = "Not a directory that can be accessed, check permissions"
 [browser.open_native_file_dialog]
 en = "Open your operating systems native file dialog"
 
+[browser.loading_directory]
+en = "Loading directory"
+
 [rom_stores.heading]
 en = "ROM Stores"
 

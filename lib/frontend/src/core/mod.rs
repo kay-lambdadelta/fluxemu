@@ -107,6 +107,10 @@ impl<P: Platform> FrontendCore<P> {
         core
     }
 
+    pub fn runtime(&self) -> &Handle {
+        &self.runtime
+    }
+
     pub fn environment(&self) -> &Environment {
         &self.environment
     }

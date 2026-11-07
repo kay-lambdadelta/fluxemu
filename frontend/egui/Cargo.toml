@@ -23,7 +23,6 @@ fluxemu-system = { workspace = true }
 indexmap = { workspace = true }
 nalgebra = { workspace = true }
 palette = { workspace = true }
-pollster = { workspace = true }
 rand = { workspace = true }
 rfd = { workspace = true, optional = true }
 ringbuffer = { workspace = true }
@@ -32,6 +31,7 @@ rustc-hash = { workspace = true }
 serde = { workspace = true }
 jiff = { workspace = true }
 strum = { workspace = true }
+tokio = { workspace = true, features = ["fs", "rt", "sync"] }
 tracing = { workspace = true }
 uuid = { workspace = true }
 wgpu = { workspace = true, optional = true }

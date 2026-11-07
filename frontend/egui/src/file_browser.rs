@@ -1,14 +1,13 @@
 use std::{
-    ffi::OsString,
-    fs::{File, read_dir},
-    path::{Path, PathBuf},
-    thread::JoinHandle,
+    ffi::{OsStr, OsString},
+    fs::Metadata,
+    path::PathBuf,
     time::SystemTime,
 };
 
 use egui::{
-    Align, Button, ComboBox, Frame, Layout, Response, ScrollArea, Sense, TextEdit, TextWrapMode,
-    Widget,
+    Align, Button, ComboBox, Context, Frame, Layout, Response, ScrollArea, Sense, Spinner,
+    TextEdit, TextWrapMode, Widget,
 };
 use fluxemu_frontend::{FrontendCore, Platform};
 use indexmap::IndexMap;
@@ -18,6 +17,10 @@ use palette::{
 };
 use rust_i18n::t;
 use strum::{AsRefStr, EnumIter};
+use tokio::{
+    fs::{DirEntry, File, read_dir},
+    sync::mpsc::{UnboundedReceiver, UnboundedSender, error::TryRecvError, unbounded_channel},
+};
 
 use crate::utils::to_egui_color;
 
@@ -41,6 +44,8 @@ pub enum PathBarState {
     Editing(String),
 }
 
+pub type DirectoryScanMessage = Result<(OsString, DirectoryEntry), std::io::Error>;
+
 #[derive(Debug)]
 pub struct FileBrowserState {
     pub pathbar_state: PathBarState,
@@ -51,11 +56,11 @@ pub struct FileBrowserState {
     pub show_hidden: bool,
     pub directory_to_navigate_to: Option<PathBuf>,
 
-    pub refresh_directory_results:
-        Option<JoinHandle<Result<IndexMap<OsString, DirectoryEntry>, std::io::Error>>>,
+    pub directory_scan: Option<UnboundedReceiver<DirectoryScanMessage>>,
 
     #[cfg(feature = "external-file-dialog")]
-    pub native_file_picker_dialog_job: Option<JoinHandle<Option<Vec<rfd::FileHandle>>>>,
+    pub native_file_picker_dialog_job:
+        Option<tokio::task::JoinHandle<Option<Vec<rfd::FileHandle>>>>,
 }
 
 impl FileBrowserState {
@@ -67,7 +72,7 @@ impl FileBrowserState {
             reverse_sorting: false,
             show_hidden: false,
             current_directory_contents: IndexMap::default(),
-            refresh_directory_results: None,
+            directory_scan: None,
             directory_to_navigate_to: Some(home_directory),
             #[cfg(feature = "external-file-dialog")]
             native_file_picker_dialog_job: None,
@@ -89,7 +94,7 @@ impl<P: Platform> Widget for FileBrowser<'_, P> {
             show_hidden,
             current_directory,
             current_directory_contents,
-            refresh_directory_results,
+            directory_scan,
             directory_to_navigate_to,
             #[cfg(feature = "external-file-dialog")]
             native_file_picker_dialog_job,
@@ -105,12 +110,9 @@ impl<P: Platform> Widget for FileBrowser<'_, P> {
 
                 match native_file_picker_dialog_job {
                     Some(job) if job.is_finished() => {
-                        let native_file_picker_dialog_job =
-                            native_file_picker_dialog_job.take().unwrap();
+                        let job = native_file_picker_dialog_job.take().unwrap();
 
-                        if native_file_picker_dialog_job.is_finished()
-                            && let Some(file_handles) =
-                                native_file_picker_dialog_job.join().unwrap()
+                        if let Some(file_handles) = self.core.runtime().block_on(job).unwrap()
                             && !file_handles.is_empty()
                         {
                             self.core.load_roms(
@@ -122,13 +124,18 @@ impl<P: Platform> Widget for FileBrowser<'_, P> {
                         }
                     }
                     None if clicked => {
-                        let handle = std::thread::spawn(|| {
-                            use pollster::FutureExt;
+                        let context = ui.ctx().clone();
 
-                            rfd::AsyncFileDialog::new().pick_files().block_on()
+                        let job = self.core.runtime().spawn(async move {
+                            let file_handles = rfd::AsyncFileDialog::new().pick_files().await;
+
+                            // Wake the UI so it picks up the result without waiting for input
+                            context.request_repaint();
+
+                            file_handles
                         });
 
-                        *native_file_picker_dialog_job = Some(handle);
+                        *native_file_picker_dialog_job = Some(job);
                     }
                     _ => {}
                 }
@@ -202,7 +209,7 @@ impl<P: Platform> Widget for FileBrowser<'_, P> {
                 *directory_to_navigate_to = Some(path.clone());
             }
 
-            let old_settings = (*sorting_method, *reverse_sorting, *show_hidden);
+            let old_sorting = (*sorting_method, *reverse_sorting);
 
             if ui
                 .button(if *reverse_sorting { "⬆️" } else { "⬇️" })
@@ -224,23 +231,38 @@ impl<P: Platform> Widget for FileBrowser<'_, P> {
             ui.toggle_value(show_hidden, "👁️")
                 .on_hover_text("Toggle hidden file visiblity");
 
-            if old_settings != (*sorting_method, *reverse_sorting, *show_hidden) {
-                *directory_to_navigate_to = Some(current_directory.clone());
-            }
+            let mut needs_sorting = old_sorting != (*sorting_method, *reverse_sorting);
 
-            if let Some(job) = refresh_directory_results.as_mut()
-                && job.is_finished()
-            {
-                let job = refresh_directory_results.take().unwrap();
-
-                match job.join().unwrap() {
-                    Ok(new_contents) => {
-                        *current_directory_contents = new_contents;
-                    }
-                    Err(err) => {
-                        tracing::error!("Could not refresh directory: {}", err);
+            if let Some(receiver) = directory_scan {
+                loop {
+                    match receiver.try_recv() {
+                        Ok(Ok((name, entry))) => {
+                            current_directory_contents.insert(name, entry);
+                            needs_sorting = true;
+                        }
+                        Ok(Err(err)) => {
+                            tracing::error!("Could not refresh directory: {}", err);
+                        }
+                        Err(TryRecvError::Empty) => break,
+                        Err(TryRecvError::Disconnected) => {
+                            *directory_scan = None;
+                            break;
+                        }
                     }
                 }
+            }
+
+            if needs_sorting {
+                sort_directory_contents(
+                    current_directory_contents,
+                    *sorting_method,
+                    *reverse_sorting,
+                );
+            }
+
+            if directory_scan.is_some() {
+                ui.add(Spinner::new())
+                    .on_hover_text(t!("browser.loading_directory"));
             }
         });
 
@@ -288,6 +310,13 @@ impl<P: Platform> Widget for FileBrowser<'_, P> {
                             }
                         }
                     }
+
+                    if directory_scan.is_some() && current_directory_contents.is_empty() {
+                        ui.horizontal(|ui| {
+                            ui.add(Spinner::new());
+                            ui.label(t!("browser.loading_directory"));
+                        });
+                    }
                 },
             );
         });
@@ -298,81 +327,114 @@ impl<P: Platform> Widget for FileBrowser<'_, P> {
             *pathbar_state = PathBarState::Normal(directory_to_navigate_to.clone());
             *current_directory = directory_to_navigate_to.clone();
 
-            let sorting_method = *sorting_method;
-            let reverse_sorting = *reverse_sorting;
+            // Dropping the old receiver makes any scan still running stop at its next send
+            let (sender, receiver) = unbounded_channel();
+            let context = ui.ctx().clone();
 
-            let handle = std::thread::spawn(move || {
-                refresh_current_dir_task(directory_to_navigate_to, sorting_method, reverse_sorting)
-            });
+            self.core.runtime().spawn(scan_directory_task(
+                directory_to_navigate_to,
+                sender,
+                context,
+            ));
 
-            *refresh_directory_results = Some(handle);
+            *directory_scan = Some(receiver);
         }
 
         ui.allocate_rect(ui.min_rect(), Sense::empty())
     }
 }
 
-/// Populates cwd_tracker with the contents of directory
-fn refresh_current_dir_task(
+async fn scan_directory_task(
     directory: PathBuf,
-    sorting_method: SortingMethod,
-    reverse: bool,
-) -> Result<IndexMap<OsString, DirectoryEntry>, std::io::Error> {
-    let mut contents = IndexMap::default();
-    let directory_reader = read_dir(&directory)?;
+    sender: UnboundedSender<DirectoryScanMessage>,
+    context: Context,
+) {
+    let mut directory_reader = match read_dir(&directory).await {
+        Ok(directory_reader) => directory_reader,
+        Err(err) => {
+            let _ = sender.send(Err(err));
+            context.request_repaint();
+            return;
+        }
+    };
 
-    for entry in directory_reader {
-        let entry = entry?;
-        let path = entry.path();
-        let name = entry.file_name();
+    loop {
+        let message = match directory_reader.next_entry().await {
+            Ok(Some(entry)) => Ok(read_directory_entry(entry).await),
+            Ok(None) => break,
+            Err(err) => Err(err),
+        };
 
-        let readable = path_is_readable(&path);
-        let is_hidden = path_is_hidden(&path);
+        if sender.send(message).is_err() {
+            return;
+        }
 
-        let modified = path
-            .metadata()
-            .and_then(|metadata| metadata.modified())
-            .unwrap_or_else(|_| SystemTime::now());
-
-        contents.insert(
-            name,
-            DirectoryEntry {
-                readable,
-                modified,
-                is_hidden,
-                is_directory: path.is_dir(),
-            },
-        );
+        context.request_repaint();
     }
 
+    // Wake the UI so it sees the disconnect and hides the loading indicator
+    drop(sender);
+    context.request_repaint();
+}
+
+async fn read_directory_entry(entry: DirEntry) -> (OsString, DirectoryEntry) {
+    let path = entry.path();
+    let metadata = tokio::fs::metadata(&path).await.ok();
+
+    let is_directory = metadata.as_ref().is_some_and(Metadata::is_dir);
+    let is_file = metadata.as_ref().is_some_and(Metadata::is_file);
+
+    let modified = metadata
+        .as_ref()
+        .and_then(|metadata| metadata.modified().ok())
+        .unwrap_or_else(SystemTime::now);
+
+    let readable = if is_file {
+        File::open(&path).await.is_ok()
+    } else if is_directory {
+        read_dir(&path).await.is_ok()
+    } else {
+        true
+    };
+
+    let name = entry.file_name();
+    let is_hidden = path_is_hidden(&name, metadata.as_ref());
+
+    (
+        name,
+        DirectoryEntry {
+            readable,
+            modified,
+            is_hidden,
+            is_directory,
+        },
+    )
+}
+
+fn sort_directory_contents(
+    contents: &mut IndexMap<OsString, DirectoryEntry>,
+    sorting_method: SortingMethod,
+    reverse: bool,
+) {
     match sorting_method {
-        SortingMethod::Name => contents.sort_by_key(|name, _| name.clone()),
-        SortingMethod::Modified => contents.sort_by_key(|_, entry| entry.modified),
+        SortingMethod::Name => contents.sort_unstable_keys(),
+        SortingMethod::Modified => contents.sort_unstable_by(|a_name, a, b_name, b| {
+            a.modified.cmp(&b.modified).then_with(|| a_name.cmp(b_name))
+        }),
     };
 
     if reverse {
         contents.reverse();
     }
-
-    Ok(contents)
 }
 
-fn path_is_readable(path: &Path) -> bool {
-    if path.is_file() {
-        File::open(path).is_ok()
-    } else if path.is_dir() {
-        path.read_dir().is_ok()
-    } else {
-        true
-    }
-}
+fn path_is_hidden(name: &OsStr, metadata: Option<&Metadata>) -> bool {
+    // Each platform only looks at one of these
+    let _ = (name, metadata);
 
-fn path_is_hidden(path: &std::path::Path) -> bool {
     #[cfg(target_family = "unix")]
     {
-        path.file_name()
-            .map(|name| name.to_string_lossy().starts_with('.'))
-            .unwrap_or(false)
+        name.to_string_lossy().starts_with('.')
     }
 
     #[cfg(target_os = "windows")]
@@ -380,9 +442,7 @@ fn path_is_hidden(path: &std::path::Path) -> bool {
         use std::os::windows::fs::MetadataExt;
         const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
 
-        path.metadata()
-            .map(|m| m.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0)
-            .unwrap_or(false)
+        metadata.is_some_and(|metadata| metadata.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0)
     }
 
     #[cfg(not(any(target_family = "unix", target_os = "windows")))]
