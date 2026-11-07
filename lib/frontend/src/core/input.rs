@@ -34,6 +34,38 @@ impl<P: Platform> FrontendCore<P> {
         state: InputState,
         machine_has_focus: bool,
     ) -> InputRouting {
+        let mut deferred_hotkey = None;
+
+        let routing = self.route_input(
+            origin,
+            input_id,
+            state,
+            machine_has_focus,
+            &mut deferred_hotkey,
+        );
+
+        match deferred_hotkey {
+            Some(Hotkey::LoadSnapshot) => self.load_snapshot(self.active_snapshot_slot()),
+            Some(Hotkey::StoreSnapshot) => {
+                self.pending_snapshot_stores
+                    .push(self.active_snapshot_slot());
+            }
+            Some(Hotkey::UndoLoadSnapshot) => self.undo_load_snapshot(),
+            Some(Hotkey::UndoStoreSnapshot) => self.undo_store_snapshot(),
+            _ => {}
+        }
+
+        routing
+    }
+
+    fn route_input(
+        &mut self,
+        origin: PhysicalInputDeviceInstanceId,
+        input_id: InputId,
+        state: InputState,
+        machine_has_focus: bool,
+        deferred_hotkey: &mut Option<Hotkey>,
+    ) -> InputRouting {
         let Some(physical_input_device_state) = self.physical_input_devices.get_mut(&origin) else {
             tracing::error!("Ignoring unknown device {}", origin);
 
@@ -82,9 +114,16 @@ impl<P: Platform> FrontendCore<P> {
                         Hotkey::ToggleMenu => {
                             self.events.push(FrontendEvent::MenuToggleRequested);
                         }
+                        Hotkey::ToggleDebugOverlay => {
+                            self.events.push(FrontendEvent::DebugOverlayToggleRequested);
+                        }
                         Hotkey::FastForward => {}
-                        Hotkey::LoadSnapshot => {}
-                        Hotkey::StoreSnapshot => {}
+                        Hotkey::LoadSnapshot
+                        | Hotkey::StoreSnapshot
+                        | Hotkey::UndoLoadSnapshot
+                        | Hotkey::UndoStoreSnapshot => {
+                            *deferred_hotkey = Some(*hotkey_action);
+                        }
                         Hotkey::IncrementSnapshotCounter => {
                             self.environment.active_snapshot_slot += 1;
 
@@ -114,6 +153,7 @@ impl<P: Platform> FrontendCore<P> {
                 if let Some(MachineContext {
                     machine,
                     controller,
+                    ..
                 }) = &self.machine_context
                     && !controller.get_paused()
                     && let Some(program_specification) = machine.program_specification()

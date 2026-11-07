@@ -1,4 +1,4 @@
-use egui::{Align, ComboBox, Grid, Layout, ScrollArea, Slider, Ui, WidgetText};
+use egui::{ComboBox, Grid, ScrollArea, Slider, Ui, WidgetText};
 use fluxemu_environment::graphics::GraphicsApi;
 use fluxemu_frontend::Platform;
 use fluxemu_graphics::shader::ShaderType;
@@ -9,18 +9,14 @@ use crate::Frontend;
 
 impl<P: Platform> Frontend<P> {
     pub fn handle_settings(&mut self, ui: &mut Ui) {
-        ui.horizontal(|ui| {
-            ui.heading(t!("settings.heading"));
-
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ui
-                    .button(t!("settings.save"))
-                    .on_hover_text(t!("settings.save_hint"))
-                    .clicked()
-                {
-                    self.core.save_environment();
-                }
-            });
+        ui.horizontal_top(|ui| {
+            if ui
+                .button(t!("settings.save"))
+                .on_hover_text(t!("settings.save_hint"))
+                .clicked()
+            {
+                self.core.save_environment();
+            }
         });
         ui.separator();
 
@@ -99,9 +95,7 @@ impl<P: Platform> Frontend<P> {
 }
 
 fn section(ui: &mut Ui, title: impl Into<WidgetText>, add_contents: impl FnOnce(&mut Ui)) {
-    ui.add_space(8.0);
-    ui.label(title.into().heading());
-    ui.add_space(4.0);
-    ui.indent(ui.scope_id().with("section"), add_contents);
-    ui.add_space(12.0);
+    ui.label(title.into().strong());
+    add_contents(ui);
+    ui.separator();
 }

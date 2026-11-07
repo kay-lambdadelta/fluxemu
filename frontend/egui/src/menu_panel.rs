@@ -5,26 +5,24 @@ use strum::{AsRefStr, EnumIter, IntoEnumIterator};
 pub enum TabId {
     #[default]
     Machine,
-    Library,
+    Snapshots,
+    Saves,
     FileBrowser,
     Settings,
-    Log,
-    Controller,
-    Debug,
-    About,
 }
 
 impl TabId {
+    fn needs_machine(self) -> bool {
+        matches!(self, Self::Snapshots | Self::Saves)
+    }
+
     pub fn icon(self) -> &'static str {
         match self {
             Self::Machine => "▶️",
+            Self::Snapshots => "📸",
+            Self::Saves => "💾",
             Self::FileBrowser => "📁",
-            Self::Library => "📚",
             Self::Settings => "⚙️",
-            Self::Log => "📝",
-            Self::Controller => "🎮",
-            Self::Debug => "🐞",
-            Self::About => "ℹ️",
         }
     }
 }
@@ -32,6 +30,7 @@ impl TabId {
 pub struct MenuPanel {
     pub current_tab: TabId,
     pub is_expanded: bool,
+    pub machine_running: bool,
 }
 
 impl Default for MenuPanel {
@@ -39,17 +38,26 @@ impl Default for MenuPanel {
         Self {
             current_tab: TabId::default(),
             is_expanded: true,
+            machine_running: false,
         }
     }
 }
 
 impl Widget for &mut MenuPanel {
     fn ui(self, ui: &mut Ui) -> Response {
+        if self.current_tab.needs_machine() && !self.machine_running {
+            self.current_tab = TabId::default();
+        }
+
+        let machine_running = self.machine_running;
+        let visible_tabs =
+            move || TabId::iter().filter(move |tab| machine_running || !tab.needs_machine());
+
         Panel::top("menu_selection")
             .show_collapsible(ui, &mut self.is_expanded, |ui| {
                 Frame::default().inner_margin(8.0).show(ui, |ui| {
                     let button_size = egui::vec2(48.0, 48.0);
-                    let count = TabId::iter().count() as f32;
+                    let count = visible_tabs().count() as f32;
 
                     let spacing = ui.spacing().item_spacing.x;
                     let total_width = count * button_size.x + (count - 1.0) * spacing;
@@ -57,7 +65,7 @@ impl Widget for &mut MenuPanel {
                     ui.horizontal(|ui| {
                         ui.add_space(((ui.available_width() - total_width) / 2.0).max(0.0));
 
-                        for tab in TabId::iter() {
+                        for tab in visible_tabs() {
                             let mut icon = RichText::new(tab.icon()).size(32.0);
 
                             if self.current_tab == tab {

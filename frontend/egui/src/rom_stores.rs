@@ -1,6 +1,6 @@
 use std::collections::{BTreeSet, HashMap};
 
-use egui::{Align, Button, ComboBox, Frame, Layout, TextEdit, Ui, vec2};
+use egui::{Button, ComboBox, TextEdit, Ui, vec2};
 use fluxemu_frontend::{FrontendCore, Platform};
 use fluxemu_program::RomStoreSpecification;
 use indexmap::IndexMap;
@@ -95,20 +95,16 @@ impl RomStoreEditor {
 
         for (store_index, draft) in self.drafts.iter_mut().enumerate() {
             ui.push_id(store_index, |ui| {
-                Frame::group(ui.style()).show(ui, |ui| {
-                    ui.set_width(ui.available_width());
-
-                    if show_store(
-                        ui,
-                        draft,
-                        name_validity[store_index],
-                        &self.available_schemes,
-                    ) {
-                        removed_store = Some(store_index);
-                    }
-                });
+                if show_store(
+                    ui,
+                    draft,
+                    name_validity[store_index],
+                    &self.available_schemes,
+                ) {
+                    removed_store = Some(store_index);
+                }
             });
-            ui.add_space(4.0);
+            ui.separator();
         }
 
         if let Some(store_index) = removed_store {
@@ -121,7 +117,7 @@ impl RomStoreEditor {
             .iter()
             .eq(core.environment().rom_stores.iter());
 
-        ui.horizontal(|ui| {
+        ui.horizontal_top(|ui| {
             if ui.button(t!("rom_stores.add_store")).clicked() {
                 self.drafts.push(RomStoreDraft::new(
                     self.unused_name(),
@@ -129,27 +125,25 @@ impl RomStoreEditor {
                 ));
             }
 
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ui
-                    .add_enabled(is_modified, Button::new(t!("rom_stores.revert")))
-                    .clicked()
-                {
-                    *self = Self::new(&core.environment().rom_stores);
-                }
+            if ui
+                .add_enabled(
+                    is_modified && names_are_valid,
+                    Button::new(t!("rom_stores.apply")),
+                )
+                .clicked()
+            {
+                self.error = core
+                    .set_rom_stores(specifications)
+                    .err()
+                    .map(|err| err.to_string());
+            }
 
-                if ui
-                    .add_enabled(
-                        is_modified && names_are_valid,
-                        Button::new(t!("rom_stores.apply")),
-                    )
-                    .clicked()
-                {
-                    self.error = core
-                        .set_rom_stores(specifications)
-                        .err()
-                        .map(|err| err.to_string());
-                }
-            });
+            if ui
+                .add_enabled(is_modified, Button::new(t!("rom_stores.revert")))
+                .clicked()
+            {
+                *self = Self::new(&core.environment().rom_stores);
+            }
         });
 
         if !names_are_valid {
@@ -196,9 +190,7 @@ fn show_store(
             draft.to_specification().documentation_url(),
         );
 
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            remove_store = ui.button(t!("rom_stores.remove_store")).clicked();
-        });
+        remove_store = ui.button(t!("rom_stores.remove_store")).clicked();
     });
 
     ui.add_space(4.0);

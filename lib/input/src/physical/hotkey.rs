@@ -14,6 +14,9 @@ pub enum Hotkey {
     StoreSnapshot,
     IncrementSnapshotCounter,
     DecrementSnapshotCounter,
+    UndoLoadSnapshot,
+    UndoStoreSnapshot,
+    ToggleDebugOverlay,
 }
 
 pub fn default_hotkeys() -> impl Iterator<Item = (BTreeSet<InputId>, Hotkey)> {
@@ -89,6 +92,42 @@ pub fn default_hotkeys() -> impl Iterator<Item = (BTreeSet<InputId>, Hotkey)> {
         (
             [InputId::Keyboard(KeyboardInputId::F6)].into(),
             Hotkey::DecrementSnapshotCounter,
+        ),
+        (
+            [
+                InputId::Gamepad(GamepadInputId::Mode),
+                InputId::Gamepad(GamepadInputId::FPadRight),
+            ]
+            .into(),
+            Hotkey::UndoLoadSnapshot,
+        ),
+        (
+            [InputId::Keyboard(KeyboardInputId::F7)].into(),
+            Hotkey::UndoLoadSnapshot,
+        ),
+        (
+            [
+                InputId::Gamepad(GamepadInputId::Mode),
+                InputId::Gamepad(GamepadInputId::FPadLeft),
+            ]
+            .into(),
+            Hotkey::UndoStoreSnapshot,
+        ),
+        (
+            [InputId::Keyboard(KeyboardInputId::F8)].into(),
+            Hotkey::UndoStoreSnapshot,
+        ),
+        (
+            [
+                InputId::Gamepad(GamepadInputId::Mode),
+                InputId::Gamepad(GamepadInputId::FPadUp),
+            ]
+            .into(),
+            Hotkey::ToggleDebugOverlay,
+        ),
+        (
+            [InputId::Keyboard(KeyboardInputId::F9)].into(),
+            Hotkey::ToggleDebugOverlay,
         ),
     ]
     .into_iter()

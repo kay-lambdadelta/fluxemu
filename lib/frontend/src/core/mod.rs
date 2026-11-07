@@ -1,12 +1,22 @@
-use std::{collections::HashMap, ops::Deref, path::PathBuf, sync::Arc};
+use std::{
+    collections::HashMap,
+    num::Wrapping,
+    ops::Deref,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::{ENVIRONMENT_LOCATION, Environment};
-use fluxemu_graphics::api::GraphicsApi;
+use fluxemu_graphics::{
+    api::GraphicsApi,
+    texture::{CowTexture, OwnedTexture},
+};
 use fluxemu_input::{InputState, physical::PhysicalInputDeviceInstanceId};
 use fluxemu_program::{ProgramManager, RomId, RomStoreSpecification};
 use fluxemu_runtime::machine::{Machine, builder::SealedMachineBuilder};
 use indexmap::IndexMap;
+use palette::Srgba;
 use ron::ser::PrettyConfig;
 use tokio::{runtime::Handle, task::JoinHandle};
 
@@ -15,8 +25,18 @@ use self::input::PhysicalInputDeviceState;
 use crate::{
     Platform,
     audio::{AudioRuntime, mixer::AudioMixer},
+    graphics::GraphicsRuntime,
     machine::FactoryManager,
+    metadata::{
+        SlotInfo, SlotKind, SlotMetadata, delete_slot, list_slots, next_free_slot, read_metadata,
+        write_metadata,
+    },
+    save::{
+        SaveFlusher, active_save_slot, open_save, program_directory, save_path,
+        set_active_save_slot,
+    },
     simulation_controller::Controller,
+    snapshot,
 };
 
 mod input;
@@ -24,11 +44,13 @@ mod input;
 #[derive(Debug, Clone)]
 pub enum FrontendEvent {
     MenuToggleRequested,
+    DebugOverlayToggleRequested,
 }
 
 struct MachineContext {
     machine: Arc<Machine>,
     controller: Controller,
+    _save_flusher: Option<SaveFlusher>,
 }
 
 pub struct FrontendCore<P: Platform> {
@@ -44,6 +66,7 @@ pub struct FrontendCore<P: Platform> {
     audio_runtime: P::AudioRuntime,
     audio_mixer: Arc<AudioMixer>,
     events: Vec<FrontendEvent>,
+    pending_snapshot_stores: Vec<u8>,
     environment: Environment,
 }
 
@@ -73,6 +96,7 @@ impl<P: Platform> FrontendCore<P> {
             audio_runtime,
             audio_mixer,
             events: Vec::default(),
+            pending_snapshot_stores: Vec::default(),
             environment,
         };
 
@@ -153,7 +177,11 @@ impl<P: Platform> FrontendCore<P> {
     }
 
     /// Advance any in progress machine initialization
-    pub fn poll(&mut self) {
+    pub fn poll(&mut self, graphics_runtime: &P::GraphicsRuntime) {
+        for slot in std::mem::take(&mut self.pending_snapshot_stores) {
+            self.store_snapshot(slot, graphics_runtime);
+        }
+
         let Some(job) = self.machine_initialization.take_if(|job| job.is_finished()) else {
             return;
         };
@@ -198,6 +226,19 @@ impl<P: Platform> FrontendCore<P> {
         // Exit runtime
         drop(runtime_guard);
 
+        let save_flusher = machine.program_specification().and_then(|specification| {
+            let path = save_path(&self.environment.save_directory, &specification.id);
+
+            let baseline = open_save(&machine, &path, self.environment.check_archive_hashes)?;
+
+            Some(SaveFlusher::new(
+                machine.clone(),
+                path,
+                self.environment.save_flush_interval,
+                baseline,
+            ))
+        });
+
         let controller = Controller::new(machine.clone(), self.audio_mixer.clone());
 
         // Make sure the simulation is currently running
@@ -206,6 +247,7 @@ impl<P: Platform> FrontendCore<P> {
         self.machine_context = Some(MachineContext {
             controller,
             machine,
+            _save_flusher: save_flusher,
         });
 
         true
@@ -222,27 +264,186 @@ impl<P: Platform> FrontendCore<P> {
         let Some(MachineContext {
             machine,
             controller,
+            ..
         }) = &self.machine_context
         else {
             return;
         };
 
-        // Enter runtime
-        let runtime_guard = machine.enter_runtime();
-
-        // Unset ALL inputs
-        for (logical_input_device_path, logical_input_device) in runtime_guard.input_devices() {
-            let unset_inputs = logical_input_device
-                .metadata()
-                .present_inputs
-                .iter()
-                .copied()
-                .map(|input_id| (input_id, InputState::RELEASED));
-
-            runtime_guard.insert_inputs(logical_input_device_path, unset_inputs);
-        }
+        release_all_inputs(machine);
 
         controller.set_paused(false);
+    }
+
+    fn slot_directory(&self, kind: SlotKind) -> Option<PathBuf> {
+        let specification = self.machine()?.program_specification()?;
+
+        let root = match kind {
+            SlotKind::Save => &self.environment.save_directory,
+            SlotKind::Snapshot => &self.environment.snapshot_directory,
+        };
+
+        Some(program_directory(root, &specification.id))
+    }
+
+    pub fn slot_metadata(&self, kind: SlotKind, slot: u8) -> SlotMetadata {
+        self.slot_directory(kind)
+            .map(|directory| read_metadata(&directory, slot))
+            .unwrap_or_default()
+    }
+
+    pub fn set_slot_metadata(&self, kind: SlotKind, slot: u8, metadata: &SlotMetadata) {
+        let Some(directory) = self.slot_directory(kind) else {
+            return;
+        };
+
+        if let Err(error) = write_metadata(&directory, slot, metadata) {
+            tracing::error!("Could not write metadata for slot {}: {}", slot, error);
+        }
+    }
+
+    pub fn delete_slot(&self, kind: SlotKind, slot: u8) {
+        let Some(directory) = self.slot_directory(kind) else {
+            return;
+        };
+
+        if kind == SlotKind::Save && slot == active_save_slot(&directory) {
+            tracing::warn!("Cannot delete the save slot currently in use");
+
+            return;
+        }
+
+        if let Err(error) = delete_slot(&directory, slot) {
+            tracing::error!("Could not delete slot {}: {}", slot, error);
+        }
+    }
+
+    pub fn list_slots(&self, kind: SlotKind) -> Vec<SlotInfo> {
+        self.slot_directory(kind)
+            .map(|directory| list_slots(&directory, kind))
+            .unwrap_or_default()
+    }
+
+    pub fn next_free_slot(&self, kind: SlotKind) -> Option<u8> {
+        next_free_slot(&self.slot_directory(kind)?, kind)
+    }
+
+    pub fn slot_screenshot(&self, slot: u8) -> Option<OwnedTexture<Srgba<u8>>> {
+        snapshot::read_screenshot(&self.slot_directory(SlotKind::Snapshot)?, slot)
+    }
+
+    pub fn active_snapshot_slot(&self) -> u8 {
+        self.environment.active_snapshot_slot.0
+    }
+
+    pub fn set_active_snapshot_slot(&mut self, slot: u8) {
+        self.environment.active_snapshot_slot = Wrapping(slot);
+    }
+
+    pub fn store_snapshot(&self, slot: u8, graphics_runtime: &P::GraphicsRuntime) {
+        let (Some(context), Some(directory)) = (
+            &self.machine_context,
+            self.slot_directory(SlotKind::Snapshot),
+        ) else {
+            return;
+        };
+
+        let capture_screenshots = self.environment.snapshot_screenshots;
+
+        snapshot::store_snapshot(&context.machine, directory, slot, &self.runtime, |guard| {
+            if !capture_screenshots {
+                return None;
+            }
+
+            guard
+                .read_primary_framebuffer::<P::GraphicsApi, _>(|framebuffer| {
+                    graphics_runtime
+                        .screenshot(framebuffer)
+                        .map(CowTexture::into_owned)
+                })
+                .flatten()
+        });
+    }
+
+    fn load_snapshot_file(&self, source: impl FnOnce(&Path) -> PathBuf) -> bool {
+        let (Some(context), Some(directory)) = (
+            &self.machine_context,
+            self.slot_directory(SlotKind::Snapshot),
+        ) else {
+            return false;
+        };
+
+        snapshot::load_snapshot(
+            &context.machine,
+            &self.audio_mixer,
+            &source(&directory),
+            &directory,
+            self.environment.check_archive_hashes,
+            &self.runtime,
+        )
+        .is_some()
+    }
+
+    pub fn load_snapshot(&self, slot: u8) {
+        if self.load_snapshot_file(|directory| snapshot::snapshot_path(directory, slot)) {
+            tracing::info!("Loaded snapshot from slot {}", slot);
+        }
+    }
+
+    pub fn can_undo_load_snapshot(&self) -> bool {
+        self.slot_directory(SlotKind::Snapshot)
+            .is_some_and(|directory| snapshot::undo_load_path(&directory).exists())
+    }
+
+    pub fn undo_load_snapshot(&self) {
+        if self.load_snapshot_file(snapshot::undo_load_path) {
+            tracing::info!("Undid snapshot load");
+        }
+    }
+
+    pub fn can_undo_store_snapshot(&self) -> bool {
+        self.slot_directory(SlotKind::Snapshot)
+            .is_some_and(|directory| snapshot::can_undo_store(&directory))
+    }
+
+    pub fn undo_store_snapshot(&self) {
+        let Some(directory) = self.slot_directory(SlotKind::Snapshot) else {
+            return;
+        };
+
+        match snapshot::undo_store(&directory) {
+            Ok(Some(slot)) => tracing::info!("Undid snapshot store in slot {}", slot),
+            Ok(None) => tracing::warn!("No snapshot store to undo"),
+            Err(error) => tracing::error!("Could not undo snapshot store: {}", error),
+        }
+    }
+
+    pub fn active_save_slot(&self) -> u8 {
+        self.slot_directory(SlotKind::Save)
+            .map_or(0, |directory| active_save_slot(&directory))
+    }
+
+    pub fn use_save_slot(&mut self, slot: u8) {
+        let Some(directory) = self.slot_directory(SlotKind::Save) else {
+            return;
+        };
+
+        let Some(specification) = self
+            .machine()
+            .and_then(|machine| machine.program_specification())
+        else {
+            return;
+        };
+
+        let roms: Vec<_> = specification.info.filesystem().keys().copied().collect();
+
+        if let Err(error) = set_active_save_slot(&directory, slot) {
+            tracing::error!("Could not switch save slot: {}", error);
+
+            return;
+        }
+
+        self.start_machine_initialization(async move { Some(roms) });
     }
 
     pub fn save_environment(&self) {
@@ -294,6 +495,23 @@ impl<P: Platform> Drop for FrontendCore<P> {
     // Save on exit
     fn drop(&mut self) {
         self.save_environment();
+    }
+}
+
+pub(crate) fn release_all_inputs(machine: &Arc<Machine>) {
+    // Enter runtime
+    let runtime_guard = machine.enter_runtime();
+
+    // Unset ALL inputs
+    for (logical_input_device_path, logical_input_device) in runtime_guard.input_devices() {
+        let unset_inputs = logical_input_device
+            .metadata()
+            .present_inputs
+            .iter()
+            .copied()
+            .map(|input_id| (input_id, InputState::RELEASED));
+
+        runtime_guard.insert_inputs(logical_input_device_path, unset_inputs);
     }
 }
 

@@ -28,6 +28,7 @@ use tracing::Level;
 
 use crate::{
     external_input::{ExternalInputSender, Message},
+    graphics::TerminalGraphicsRuntime,
     input::{SyntheticReleaseTracker, crossterm2key, gamepad2key},
     machine_view::MachineView,
 };
@@ -66,7 +67,8 @@ struct LogEntry {
     received: Instant,
 }
 
-pub struct Frontend<P: Platform<GraphicsApi = Software>> {
+pub struct Frontend<P: Platform<GraphicsApi = Software, GraphicsRuntime = TerminalGraphicsRuntime>>
+{
     core: FrontendCore<P>,
     notifications: NotificationReceiver,
     picker: Picker,
@@ -87,7 +89,7 @@ pub struct Frontend<P: Platform<GraphicsApi = Software>> {
     exit_requested: bool,
 }
 
-impl<P: Platform<GraphicsApi = Software>> Frontend<P> {
+impl<P: Platform<GraphicsApi = Software, GraphicsRuntime = TerminalGraphicsRuntime>> Frontend<P> {
     pub fn new(
         mut core: FrontendCore<P>,
         notifications: NotificationReceiver,
@@ -155,7 +157,7 @@ impl<P: Platform<GraphicsApi = Software>> Frontend<P> {
     }
 
     pub fn tick(&mut self) {
-        self.core.poll();
+        self.core.poll(&TerminalGraphicsRuntime);
 
         if self.core.has_pending_machine() && self.core.start_pending_machine(|_| ()) {
             if let Some(machine) = self.core.machine() {
@@ -401,6 +403,7 @@ impl<P: Platform<GraphicsApi = Software>> Frontend<P> {
                         self.resume_machine();
                     }
                 }
+                FrontendEvent::DebugOverlayToggleRequested => {}
             }
         }
     }

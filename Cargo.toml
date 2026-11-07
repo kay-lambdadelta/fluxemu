@@ -37,7 +37,6 @@ drm = "0.15"
 dyn-clone = "1.0"
 egui = { version = "0.37", default-features = false }
 egui_demo_lib = "0.37"
-egui_extras = "0.37"
 egui-wgpu = "0.37"
 egui-winit = "0.37"
 epaint = { version = "0.37", default-features = false }
@@ -53,6 +52,7 @@ input = {
   features = ["log"],
 }
 itertools = "0.15"
+jiff = "0.2"
 libc = "0.2"
 libseat = "0.2"
 memmap2 = "0.9"
@@ -69,6 +69,7 @@ nod = { git = "https://github.com/encounter/nod", rev = "ebd80cac99b48a323200d84
 num = { version = "0.4", features = ["serde"] }
 opendal = { version = "0.59", default-features = false }
 palette = { version = "0.7", features = ["bytemuck", "named", "serializing"] }
+percent-encoding = "2.3"
 pollster = "1.0"
 proc-macro2 = "1.0"
 quick-xml = { version = "0.42", features = ["serialize"] }
@@ -100,6 +101,7 @@ tempfile = "3.27"
 thin-vec = "0.2"
 thiserror = "2.0"
 tokio = "1.54"
+toml = "1.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 udev = "0.9"

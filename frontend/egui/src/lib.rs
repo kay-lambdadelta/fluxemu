@@ -8,6 +8,7 @@ pub mod rendering;
 mod rom_stores;
 mod settings;
 mod simulation_controller;
+mod slots;
 mod utils;
 
 use std::sync::Arc;
@@ -16,7 +17,9 @@ use egui::{
     Align, CentralPanel, FontDefinitions, Frame, FullOutput, Id, Layout, RawInput, Rect, Sense,
     pos2, vec2,
 };
-use fluxemu_frontend::{FrontendCore, FrontendEvent, Platform, notification::NotificationReceiver};
+use fluxemu_frontend::{
+    FrontendCore, FrontendEvent, Platform, SlotKind, notification::NotificationReceiver,
+};
 use fluxemu_graphics::api::{Framebuffer, GraphicsApi};
 use fluxemu_runtime::machine::{Machine, builder::SealedMachineBuilder};
 use nalgebra::Vector2;
@@ -32,7 +35,8 @@ use crate::{
     menu_panel::{MenuPanel, TabId},
     rendering::EguiCapableGraphicsRuntime,
     rom_stores::RomStoreEditor,
-    utils::{allocate_fill_aspect, setup_egui_context, to_egui_color},
+    slots::SlotList,
+    utils::{allocate_fill_aspect, paint_focus_outline, setup_egui_context, to_egui_color},
 };
 
 rust_i18n::i18n!("locales", fallback = "en");
@@ -43,8 +47,11 @@ pub struct Frontend<P: Platform> {
     egui_context: egui::Context,
     file_browser_state: FileBrowserState,
     menu_panel: MenuPanel,
+    snapshot_slots: SlotList,
+    save_slots: SlotList,
     rom_store_editor: RomStoreEditor,
     simulation_controller_ui_state: simulation_controller::State,
+    debug_overlay_visible: bool,
     notification_marquee: NotificationMarquee,
     font_definitions: FontDefinitions,
     egui_input_translator: EguiInputTranslator,
@@ -68,8 +75,11 @@ impl<P: Platform> Frontend<P> {
             egui_context: setup_egui_context(font_definitions.clone()),
             file_browser_state,
             menu_panel: MenuPanel::default(),
+            snapshot_slots: SlotList::default(),
+            save_slots: SlotList::default(),
             rom_store_editor,
             simulation_controller_ui_state: simulation_controller::State::default(),
+            debug_overlay_visible: false,
             notification_marquee: NotificationMarquee::default(),
             font_definitions,
             egui_input_translator: EguiInputTranslator::default(),
@@ -124,12 +134,13 @@ impl<P: Platform> Frontend<P> {
             .events
             .extend(self.egui_input_translator.drain_events());
 
-        self.core.poll();
+        self.core.poll(graphics_runtime);
         self.handle_core_events();
 
         let full_output = self.egui_context.clone().run_ui(external_input, |ui| {
             self.notification_marquee.show(ui);
 
+            self.menu_panel.machine_running = self.core.machine().is_some();
             ui.add(&mut self.menu_panel);
 
             // Remove the margin on the machine tab
@@ -145,7 +156,10 @@ impl<P: Platform> Frontend<P> {
                         TabId::Machine => {
                             self.draw_machine_view_area(ui, graphics_runtime);
                         }
-                        TabId::Library => {}
+                        TabId::Snapshots => {
+                            self.handle_slots(ui, SlotKind::Snapshot, graphics_runtime);
+                        }
+                        TabId::Saves => self.handle_slots(ui, SlotKind::Save, graphics_runtime),
                         TabId::FileBrowser => {
                             ui.add(FileBrowser {
                                 state: &mut self.file_browser_state,
@@ -155,20 +169,11 @@ impl<P: Platform> Frontend<P> {
                         TabId::Settings => {
                             self.handle_settings(ui);
                         }
-                        TabId::Log => {}
-                        TabId::Controller => {}
-                        TabId::Debug => {
-                            if let Some(controller) = self.core.controller() {
-                                let ui_state = &mut self.simulation_controller_ui_state;
-
-                                ui_state.update(controller);
-                                ui.add(ui_state);
-                            }
-                        }
-                        TabId::About => {}
                     });
                 });
             });
+
+            paint_focus_outline(ui.ctx(), self.machine_view_area);
         });
 
         // Pick up anything the UI caused this frame
@@ -201,6 +206,10 @@ impl<P: Platform> Frontend<P> {
                         self.set_machine_focus(false);
                         self.menu_panel.is_expanded = true;
                     }
+                }
+                FrontendEvent::DebugOverlayToggleRequested => {
+                    self.debug_overlay_visible = !self.debug_overlay_visible;
+                    self.egui_context.request_repaint();
                 }
             }
         }
@@ -265,6 +274,13 @@ impl<P: Platform> Frontend<P> {
             } else {
                 // Repaint as soon as possible, in reality limited to vsync
                 self.egui_context.request_repaint();
+            }
+
+            if self.debug_overlay_visible {
+                let ui_state = &mut self.simulation_controller_ui_state;
+
+                ui_state.update(controller);
+                ui_state.show_overlay(ui.ctx(), rect.min + vec2(8.0, 8.0));
             }
         }
 

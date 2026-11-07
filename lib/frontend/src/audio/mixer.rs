@@ -30,6 +30,10 @@ impl AudioMixer {
         }
     }
 
+    pub fn clear(&self) {
+        self.state.lock().unwrap().audio_ring.clear();
+    }
+
     pub fn set_volume(&self, volume: f32) {
         let mut state_guard = self.state.lock().unwrap();
         state_guard.volume = volume;

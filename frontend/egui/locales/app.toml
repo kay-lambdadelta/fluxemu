@@ -60,9 +60,6 @@ en = "Apply"
 [rom_stores.revert]
 en = "Revert"
 
-[settings.heading]
-en = "Settings"
-
 [settings.save]
 en = "Save"
 
@@ -86,3 +83,54 @@ en = "Audio"
 
 [settings.volume]
 en = "Volume"
+
+[slots.slot]
+en = "Slot"
+
+[slots.unnamed]
+en = "Unnamed"
+
+[slots.empty]
+en = "Nothing here yet"
+
+[slots.load]
+en = "Load"
+
+[slots.overwrite]
+en = "Overwrite"
+
+[slots.make_active]
+en = "Make active"
+
+[slots.delete]
+en = "Delete"
+
+[slots.delete_prompt]
+en = "Delete this slot?"
+
+[slots.cancel]
+en = "Cancel"
+
+[slots.save_changes]
+en = "Save"
+
+[slots.name]
+en = "Name"
+
+[slots.notes]
+en = "Notes"
+
+[slots.new_snapshot]
+en = "New snapshot"
+
+[slots.new_save]
+en = "New save"
+
+[slots.use_save]
+en = "Use this save"
+
+[slots.undo_load]
+en = "Undo load"
+
+[slots.undo_store]
+en = "Undo overwrite"
