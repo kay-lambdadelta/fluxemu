@@ -138,16 +138,8 @@ impl ProgramManager {
         let (file_name, name) = external_path
             .into_iter()
             .find_map(|path| {
-                let file_name = path.file_name().unwrap().to_string_lossy().to_string();
-                let name = file_name
-                    .split('.')
-                    .next()
-                    .unwrap_or(&file_name)
-                    .to_string();
-
-                if name.is_empty() {
-                    return None;
-                }
+                let file_name = path.file_name()?.to_string_lossy().to_string();
+                let name = path.file_stem()?.to_string_lossy().to_string();
 
                 Some((file_name, name))
             })
