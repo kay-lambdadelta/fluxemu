@@ -1,4 +1,4 @@
-use core::ops::{Mul, RangeInclusive};
+use core::ops::{Mul, Range};
 
 use nalgebra::{ClosedAddAssign, ClosedSubAssign, Point2, Scalar, Vector2};
 use num::Zero;
@@ -36,11 +36,8 @@ impl<T: Scalar> Rectangle<T> {
     }
 
     #[inline]
-    pub fn from_range(x: RangeInclusive<T>, y: RangeInclusive<T>) -> Self {
-        Self::from_min_and_max(
-            Point2::new(x.start().clone(), y.start().clone()),
-            Point2::new(x.end().clone(), y.end().clone()),
-        )
+    pub fn from_range(x: Range<T>, y: Range<T>) -> Self {
+        Self::from_min_and_max(Point2::new(x.start, y.start), Point2::new(x.end, y.end))
     }
 
     #[inline]
@@ -94,27 +91,27 @@ impl<T: Scalar> Rectangle<T> {
     #[inline]
     pub fn overlaps(&self, other: &Self) -> bool
     where
-        T: ClosedAddAssign + PartialOrd,
+        T: PartialOrd,
     {
-        self.max.x >= other.min.x
-            && self.min.x <= other.max.x
-            && self.max.y >= other.min.y
-            && self.min.y <= other.max.y
+        self.max.x > other.min.x
+            && self.min.x < other.max.x
+            && self.max.y > other.min.y
+            && self.min.y < other.max.y
     }
 
     #[inline]
-    pub fn x_range(&self) -> RangeInclusive<T>
+    pub fn x_range(&self) -> Range<T>
     where
-        T: ClosedAddAssign + Clone,
+        T: Clone,
     {
-        self.min.x.clone()..=self.max.x.clone()
+        self.min.x.clone()..self.max.x.clone()
     }
 
     #[inline]
-    pub fn y_range(&self) -> RangeInclusive<T>
+    pub fn y_range(&self) -> Range<T>
     where
-        T: ClosedAddAssign + Clone,
+        T: Clone,
     {
-        self.min.y.clone()..=self.max.y.clone()
+        self.min.y.clone()..self.max.y.clone()
     }
 }

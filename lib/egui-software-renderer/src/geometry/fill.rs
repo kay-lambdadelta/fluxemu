@@ -25,22 +25,22 @@ pub fn fill_quad<
     solid_quad: SolidQuad<I>,
     mut target_texture: Texture<impl StorageMut<Pixel = P>>,
 ) {
-    let texture_max = Point2::from(target_texture.size().map(|size| from_usize::<I>(size - 1)));
+    let texture_size = Point2::from(target_texture.size().map(from_usize::<I>));
 
     let min = intermediate::component_max(solid_quad.rectangle.min, clip.min)
-        .map(|component| intermediate::max(component, I::zero()));
+        .map(|component| intermediate::max(floor(component), I::zero()));
 
     let max = intermediate::component_min(
         intermediate::component_min(solid_quad.rectangle.max, clip.max),
-        texture_max,
-    );
+        texture_size,
+    )
+    .map(ceil);
 
-    let rect = Rectangle::from_min_and_max(min, max);
-    if !rect.is_valid() {
+    if min.x >= max.x || min.y >= max.y {
         return;
     }
 
-    let rect = Rectangle::from_min_and_max(rect.min.map(to_index), rect.max.map(to_index));
+    let rect = Rectangle::from_min_and_max(min.map(to_index), max.map(to_index));
 
     target_texture
         .view_mut(rect.x_range(), rect.y_range())
@@ -72,10 +72,13 @@ pub fn fill_triangle<
     );
 
     // Clip the clipping box by the target texture size
-    let clip_max = intermediate::component_min(clip.max, max_texture_coordinates);
+    let clip_max = intermediate::component_min(
+        clip.max.map(|component| ceil(component) - I::one()),
+        max_texture_coordinates,
+    );
 
     // Clip the triangle
-    let triangle_bounding_max = intermediate::component_min(vector_max, clip_max).map(floor);
+    let triangle_bounding_max = intermediate::component_min(vector_max.map(floor), clip_max);
 
     let vertex_min = intermediate::component_min(
         intermediate::component_min(triangle.v0.position, triangle.v1.position),
