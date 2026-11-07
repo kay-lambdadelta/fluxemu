@@ -2,10 +2,7 @@ use std::{
     ffi::{CStr, c_char},
     fs::File,
     io::LineWriter,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 use fluxemu_database::ProgramDatabase;
@@ -16,10 +13,7 @@ use redb::Database;
 use tokio::runtime::Runtime;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{
-    EnvFilter, Layer,
-    fmt::format::FmtSpan,
-    layer::{Filter, SubscriberExt},
-    util::SubscriberInitExt,
+    Layer, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,
 };
 
 mod build_machine;
@@ -107,13 +101,6 @@ fn main(arguments: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let environment = load_environment();
     let frontend_selection = FrontendSelection::from_arguments(arguments);
 
-    let filter = Arc::new(
-        EnvFilter::builder()
-            .with_regex(true)
-            .with_default_directive(LevelFilter::INFO.into())
-            .from_env_lossy(),
-    );
-
     let stderr_layer = tracing_subscriber::fmt::layer()
         .with_writer(|| LineWriter::new(std::io::stderr()))
         .with_ansi(true)
@@ -127,8 +114,8 @@ fn main(arguments: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let (notification_layer, notifications) = notification_channel();
 
     let subscriber_builder = tracing_subscriber::registry()
-        .with(stderr_layer.with_filter(filter.clone() as Arc<_>))
-        .with(notification_layer.with_filter(filter.clone() as Arc<_>));
+        .with(stderr_layer.with_filter(LevelFilter::INFO))
+        .with(notification_layer.with_filter(LevelFilter::INFO));
 
     if let Ok(file) = File::create(&environment.log_location) {
         let file_layer = tracing_subscriber::fmt::layer()
@@ -136,7 +123,7 @@ fn main(arguments: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             .with_ansi(false);
 
         subscriber_builder
-            .with(file_layer.with_filter(filter.clone() as Arc<dyn Filter<_> + Send + Sync>))
+            .with(file_layer.with_filter(LevelFilter::INFO))
             .init();
     } else {
         subscriber_builder.init();

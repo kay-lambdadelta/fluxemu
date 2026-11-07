@@ -1,0 +1,8 @@
+[unstable]
+build-std-features = ["optimize_for_size"]
+panic-immediate-abort = true
+profile-rustflags = true
+
+[profile.release]
+panic = "immediate-abort"
+rustflags = ["-Zlocation-detail=none"]
