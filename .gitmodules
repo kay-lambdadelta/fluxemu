@@ -1,3 +1,7 @@
 [submodule "external/unscii"]
 path = external/unscii
 url = https://github.com/kay-lambdadelta/unscii
+
+[submodule "external/nes-test-roms"]
+path = external/nes-test-roms
+url = https://github.com/christopherpow/nes-test-roms
