@@ -325,7 +325,9 @@ impl<V: Variant> Mos6502<V> {
             .address_space(self.config.assigned_address_space)
             .unwrap();
 
-        for timestamp in quanta_allocator {
+        for quantum in quanta_allocator {
+            let timestamp = quantum.midpoint();
+
             if self.state.cycle_queue.is_empty() {
                 self.state
                     .cycle_queue

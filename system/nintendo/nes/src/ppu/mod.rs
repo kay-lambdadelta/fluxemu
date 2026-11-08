@@ -74,8 +74,11 @@ const HBLANK_LENGTH: u16 = 85;
 const TOTAL_SCANLINE_LENGTH: u16 = VISIBLE_SCANLINE_LENGTH + HBLANK_LENGTH;
 const NMI_ARM_DELAY: u128 = 2;
 const VRAM_ADDRESS_WRITE_DELAY: u128 = 3;
+const RENDERING_ENABLE_DELAY: u128 = 1;
 const SPRITE_FLAG_READ_LATENCY: u16 = 1;
 const NMI_ENABLE_CUTOFF: u128 = 1;
+const OAM_DMA_STALL_CYCLES: u128 = 513;
+const OAM_DMA_PUT_CYCLE_PARITY: u128 = 0;
 const IO_LATCH_DECAY_FRAMES: u32 = 36;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
@@ -246,7 +249,6 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<
                 shadow_vram_address_pointer: 0,
                 odd_frame: false,
                 skipped_dot_this_frame: false,
-                rendering_enabled_for_skip: false,
                 emphasis_index: 0,
                 frame_count: 0,
                 io_latch: 0,
@@ -466,12 +468,22 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
                     self.state.greyscale = *buffer & 0b0000_0001 != 0;
                     self.state.background.show_leftmost_pixels = *buffer & 0b0000_0010 != 0;
                     self.state.oam.show_leftmost_pixels = *buffer & 0b0000_0100 != 0;
-                    self.state.background.rendering_enabled = *buffer & 0b0000_1000 != 0;
-                    self.state.oam.rendering_enabled = *buffer & 0b0001_0000 != 0;
                     self.state.color_emphasis.red = *buffer & 0b0010_0000 != 0;
                     self.state.color_emphasis.green = *buffer & 0b0100_0000 != 0;
                     self.state.color_emphasis.blue = *buffer & 0b1000_0000 != 0;
                     self.state.emphasis_index = *buffer >> 5;
+
+                    RuntimeHandle::with_current(|runtime| {
+                        runtime.schedule_event_relative::<Self>(
+                            &self.path,
+                            EventMode::Once,
+                            self.period * RENDERING_ENABLE_DELAY,
+                            PpuEvent::ApplyRenderingEnable {
+                                background: *buffer & 0b0000_1000 != 0,
+                                sprites: *buffer & 0b0001_0000 != 0,
+                            },
+                        );
+                    });
                 }
                 CpuAccessibleRegister::OamAddr => {
                     self.state.oam.oam_addr = *buffer;
@@ -567,13 +579,18 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
                             },
                         );
 
-                        let processor_frequency = R::master_clock() / R::CPU_CLOCK_DIVISOR as u128;
+                        let processor_period =
+                            (R::master_clock() / R::CPU_CLOCK_DIVISOR as u128).recip();
+                        let write_cycle = (timestamp / processor_period).to_num::<u128>();
+                        let halt_cycle = write_cycle + 1;
+                        let stall_cycles = OAM_DMA_STALL_CYCLES
+                            + u128::from(halt_cycle % 2 == OAM_DMA_PUT_CYCLE_PARITY);
 
                         // Make sure the cpu wakes up
-                        runtime.schedule_event_relative::<Mos6502<Ricoh2A0x>>(
+                        runtime.schedule_event_at::<Mos6502<Ricoh2A0x>>(
                             &self.processor_path,
                             EventMode::Once,
-                            processor_frequency.recip() * 514,
+                            processor_period * (halt_cycle + stall_cycles),
                             Mos6502Event::FlagChange {
                                 pin: Pin::Rdy,
                                 value: true,
@@ -649,6 +666,13 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
             }
             PpuEvent::ApplyVramAddress => {
                 self.state.vram_address_pointer = self.state.shadow_vram_address_pointer;
+            }
+            PpuEvent::ApplyRenderingEnable {
+                background,
+                sprites,
+            } => {
+                self.state.background.rendering_enabled = background;
+                self.state.oam.rendering_enabled = sprites;
             }
             PpuEvent::ArmNmi => {
                 self.state.nmi_armed = true;
@@ -745,4 +769,5 @@ pub enum PpuEvent {
     VblankEnd,
     FrameLengthDecided,
     ApplyVramAddress,
+    ApplyRenderingEnable { background: bool, sprites: bool },
 }

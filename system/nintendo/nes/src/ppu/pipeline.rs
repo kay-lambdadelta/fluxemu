@@ -15,8 +15,6 @@ use crate::ppu::{
     state::VramAddressPointerContents,
 };
 
-const ODD_FRAME_SKIP_SAMPLE_DOT: u16 = 337;
-
 impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
     #[inline]
     pub(super) fn task(
@@ -28,22 +26,20 @@ impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
             .address_space(self.ppu_address_space)
             .unwrap();
 
-        for timestamp in quanta_allocator {
+        for quantum in quanta_allocator {
+            let timestamp = quantum.midpoint();
+
             if (0..R::VISIBLE_SCANLINES).contains(&self.state.cycle_counter.y) {
                 self.handle_visible_scanlines(&mut ppu_address_space, timestamp);
             } else if self.state.cycle_counter.y == R::PRERENDER_SCANLINE {
                 self.handle_prerender(&mut ppu_address_space, timestamp);
             }
 
-            if self.state.cycle_counter.x == ODD_FRAME_SKIP_SAMPLE_DOT {
-                self.state.rendering_enabled_for_skip = self.rendering_enabled();
-            }
-
             if R::SKIPS_DOT_ON_ODD_FRAME
                 && self.state.cycle_counter.y == R::PRERENDER_SCANLINE
                 && self.state.cycle_counter.x == 339
                 && self.state.odd_frame
-                && self.state.rendering_enabled_for_skip
+                && self.rendering_enabled()
             {
                 self.state.cycle_counter = Point2::default();
                 self.state.skipped_dot_this_frame = true;

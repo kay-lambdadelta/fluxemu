@@ -30,6 +30,7 @@ pub mod region;
 const HBLANK_LENGTH: u16 = 68;
 const VISIBLE_SCANLINE_LENGTH: u16 = 160;
 const SCANLINE_LENGTH: u16 = HBLANK_LENGTH + VISIBLE_SCANLINE_LENGTH;
+const RSYNC_RESTART_POSITION: u16 = SCANLINE_LENGTH - 5;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Serialize, Deserialize)]
 enum ObjectId {

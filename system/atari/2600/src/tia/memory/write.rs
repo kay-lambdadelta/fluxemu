@@ -5,12 +5,11 @@ use fluxemu_runtime::{
     graphics::SimpleDisplayBackend,
     scheduler::{Period, event::EventMode},
 };
-use nalgebra::Point2;
 
 use super::WriteRegisters;
 use crate::tia::{
-    DelayChangeGraphicPlayer, DelayEnableChangeBall, InputControl, SCANLINE_LENGTH,
-    SupportedGraphicsApi, Tia, color::TiaColor, region::Region,
+    DelayChangeGraphicPlayer, DelayEnableChangeBall, InputControl, RSYNC_RESTART_POSITION,
+    SCANLINE_LENGTH, SupportedGraphicsApi, Tia, color::TiaColor, region::Region,
 };
 
 impl<R: Region, G: SupportedGraphicsApi> Tia<R, G> {
@@ -20,7 +19,7 @@ impl<R: Region, G: SupportedGraphicsApi> Tia<R, G> {
                 if data & 0b0000_0010 != 0 {
                     self.state.in_vsync = true;
 
-                    self.state.electron_beam = Point2::new(0, 0);
+                    self.state.electron_beam.y = 0;
                 } else if self.state.in_vsync {
                     self.state.in_vsync = false;
 
@@ -86,7 +85,7 @@ impl<R: Region, G: SupportedGraphicsApi> Tia<R, G> {
                 });
             }
             WriteRegisters::Rsync => {
-                self.state.electron_beam.x = 0;
+                self.state.electron_beam.x = RSYNC_RESTART_POSITION;
             }
             WriteRegisters::Nusiz0 => {}
             WriteRegisters::Nusiz1 => {}

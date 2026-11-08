@@ -25,7 +25,6 @@ pub struct State {
     pub shadow_vram_address_pointer: u16,
     pub odd_frame: bool,
     pub skipped_dot_this_frame: bool,
-    pub rendering_enabled_for_skip: bool,
     pub emphasis_index: u8,
     pub frame_count: u32,
     pub io_latch: u8,

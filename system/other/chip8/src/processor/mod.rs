@@ -102,7 +102,9 @@ impl<G: SupportedGraphicsApi> Chip8Processor<G> {
             .address_space(self.config.cpu_address_space)
             .unwrap();
 
-        for timestamp in quanta_allocator {
+        for quantum in quanta_allocator {
+            let timestamp = quantum.midpoint();
+
             'main: {
                 match &self.state.execution_state {
                     ExecutionState::Normal => {

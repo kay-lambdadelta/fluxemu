@@ -17,7 +17,7 @@ use crate::{
     },
     path::ComponentPath,
     persistence::{ComponentCodec, ComponentRecord, SnapshotError, TaskTiming},
-    scheduler::{Context, Period, task::Mode},
+    scheduler::{Context, Period, acts_before, task::Mode},
 };
 
 mod handle;
@@ -246,10 +246,12 @@ impl<'a> ComponentRegistry<'a> {
             let mut any_incomplete = false;
 
             for (name, entry) in &mut data.tasks {
-                let delta = target_timestamp.saturating_sub(entry.current_timestamp);
-
                 // Attempt to allocate time for the task
-                if entry.required_next_allocation <= delta {
+                if acts_before(
+                    entry.current_timestamp,
+                    entry.required_next_allocation,
+                    target_timestamp,
+                ) {
                     let guard = DispatchGuard::enter(id, entry.current_timestamp);
 
                     let mut context = Context {
@@ -270,15 +272,15 @@ impl<'a> ComponentRegistry<'a> {
                         "Task attempted to allocate zero time"
                     );
 
-                    // Check if the goal was not reached
-                    let delta = target_timestamp.saturating_sub(entry.current_timestamp);
-
-                    // If the delta is enough that it could have allocated, that means the task yielded
+                    // If the task could still have acted before the target, that means it yielded
                     //
                     // Check for any items in the queue
-                    if delta >= entry.required_next_allocation
-                        && let Some(blocking_deadline) =
-                            self.runtime.machine().scheduler.queue.next_deadline()
+                    if acts_before(
+                        entry.current_timestamp,
+                        entry.required_next_allocation,
+                        target_timestamp,
+                    ) && let Some(blocking_deadline) =
+                        self.runtime.machine().scheduler.queue.next_deadline()
                         && blocking_deadline <= target_timestamp
                     {
                         earliest_hazard = earliest_hazard.min(blocking_deadline);

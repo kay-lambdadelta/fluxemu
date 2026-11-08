@@ -80,6 +80,7 @@ impl<'a> Context<'a> {
             period,
             budget: u32::MAX,
             last_seen_generation,
+            quantum_in_progress: false,
             context: self,
         };
 
@@ -95,13 +96,61 @@ pub struct QuantaAllocator<'b, 'a> {
     period: Period,
     budget: u32,
     last_seen_generation: Generation,
+    quantum_in_progress: bool,
     context: &'b mut Context<'a>,
 }
 
+#[inline]
+pub(crate) fn acts_before(current_timestamp: Period, period: Period, stop_time: Period) -> bool {
+    current_timestamp + period / 2 < stop_time
+}
+
+#[inline]
+fn quanta_acting_before(current_timestamp: Period, period: Period, stop_time: Period) -> u32 {
+    let available = stop_time.saturating_sub(current_timestamp) / period;
+    let half = Period::from_num(1) / 2;
+
+    if available <= half {
+        0
+    } else {
+        (available - half).ceil().saturating_to_num()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Quantum {
+    start: Period,
+    period: Period,
+}
+
+impl Quantum {
+    #[inline]
+    pub fn start(&self) -> Period {
+        self.start
+    }
+
+    #[inline]
+    pub fn end(&self) -> Period {
+        self.start + self.period
+    }
+
+    #[inline]
+    pub fn period(&self) -> Period {
+        self.period
+    }
+
+    #[inline]
+    pub fn midpoint(&self) -> Period {
+        self.start + self.period / 2
+    }
+}
+
 impl Iterator for QuantaAllocator<'_, '_> {
-    type Item = Period;
+    type Item = Quantum;
 
     fn next(&mut self) -> Option<Self::Item> {
+        self.finish_quantum();
+
         let preemption_signal = self
             .context
             .runtime
@@ -125,15 +174,34 @@ impl Iterator for QuantaAllocator<'_, '_> {
             return None;
         }
 
-        let next_timestamp = *self.context.current_timestamp + self.period;
-        *self.context.current_timestamp = next_timestamp;
-        DispatchGuard::advance(next_timestamp);
+        self.quantum_in_progress = true;
 
-        Some(next_timestamp)
+        let quantum = Quantum {
+            start: *self.context.current_timestamp,
+            period: self.period,
+        };
+        DispatchGuard::advance(quantum.midpoint());
+
+        Some(quantum)
+    }
+}
+
+impl Drop for QuantaAllocator<'_, '_> {
+    fn drop(&mut self) {
+        self.finish_quantum();
     }
 }
 
 impl QuantaAllocator<'_, '_> {
+    #[inline]
+    fn finish_quantum(&mut self) {
+        if core::mem::take(&mut self.quantum_in_progress) {
+            let next_timestamp = *self.context.current_timestamp + self.period;
+            *self.context.current_timestamp = next_timestamp;
+            DispatchGuard::advance(next_timestamp);
+        }
+    }
+
     #[cold]
     fn rebudget(&mut self) {
         let mut stop_time = self.context.target_timestamp;
@@ -151,9 +219,8 @@ impl QuantaAllocator<'_, '_> {
         }
 
         // Recalculate budget
-        let new_budget = (stop_time.saturating_sub(*self.context.current_timestamp) / self.period)
-            .floor()
-            .saturating_to_num();
+        let new_budget =
+            quanta_acting_before(*self.context.current_timestamp, self.period, stop_time);
 
         self.budget = self.budget.min(new_budget);
     }

@@ -86,11 +86,22 @@ impl Mos6532Riot {
             return 0;
         };
 
-        let elapsed_ticks = RuntimeHandle::with_current(|handle| {
-            ((handle.current_timestamp() - timestamp) / self.period).to_num::<u64>()
-                / divider as u64
+        let elapsed_cycles = RuntimeHandle::with_current(|handle| {
+            ((handle.current_timestamp() - timestamp) / self.period)
+                .round()
+                .to_num::<u64>()
         });
+
+        if elapsed_cycles == 0 {
+            return value;
+        }
+
+        let elapsed_ticks = 1 + (elapsed_cycles - 1) / u64::from(divider);
         value.wrapping_sub(elapsed_ticks as u8)
+    }
+
+    fn underflow_timestamp(&self, timer: &TimerSnapshot) -> Period {
+        timer.timestamp + self.period * (1 + u128::from(timer.divider) * u128::from(timer.value))
     }
 }
 
@@ -243,16 +254,17 @@ impl Component for Mos6532Riot {
                         };
 
                         RuntimeHandle::with_current(|runtime| {
-                            self.state.timer = Some(TimerSnapshot {
+                            let timer = TimerSnapshot {
                                 value: *buffer_section,
                                 timestamp: runtime.current_timestamp(),
                                 divider,
-                            });
+                            };
+                            self.state.timer = Some(timer);
 
-                            runtime.schedule_event_relative::<Self>(
+                            runtime.schedule_event_at::<Self>(
                                 &self.path,
                                 EventMode::Once,
-                                self.period * divider as u128 * (*buffer_section as u128 + 1),
+                                self.underflow_timestamp(&timer),
                                 RiotEvent::TimerUnderflow,
                             );
                         });
@@ -269,17 +281,24 @@ impl Component for Mos6532Riot {
         let event = downcast_event::<Self>(event);
 
         match event {
-            RiotEvent::TimerUnderflow => {
-                self.state.instat |= 0b1000_0000;
+            RiotEvent::TimerUnderflow => RuntimeHandle::with_current(|runtime| {
+                let timestamp = runtime.current_timestamp();
 
-                RuntimeHandle::with_current(|runtime| {
-                    self.state.timer = Some(TimerSnapshot {
-                        value: 0xff,
-                        timestamp: runtime.current_timestamp(),
-                        divider: 1,
-                    });
+                if self
+                    .state
+                    .timer
+                    .is_none_or(|timer| self.underflow_timestamp(&timer) != timestamp)
+                {
+                    return;
+                }
+
+                self.state.instat |= 0b1000_0000;
+                self.state.timer = Some(TimerSnapshot {
+                    value: 0xff,
+                    timestamp,
+                    divider: 1,
                 });
-            }
+            }),
         }
     }
 }
