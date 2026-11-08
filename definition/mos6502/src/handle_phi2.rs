@@ -241,15 +241,33 @@ impl<V: Variant> Mos6502<V> {
                     }
                 }
                 Phi2::RotateRightThroughAdder => {
-                    let result = (self.state.a >> 1) | ((self.state.flags.carry as u8) << 7);
+                    let anded = self.state.a;
+                    let mut result = (anded >> 1) | ((self.state.flags.carry as u8) << 7);
 
-                    let bit_5 = (result & 0b0010_0000) != 0;
-                    let bit_6 = (result & 0b0100_0000) != 0;
+                    if V::SUPPORTS_DECIMAL && self.state.flags.decimal {
+                        self.state.flags.negative = self.state.flags.carry;
+                        self.state.flags.zero = result == 0;
+                        self.state.flags.overflow = ((result ^ anded) & 0b0100_0000) != 0;
 
-                    self.state.flags.carry = bit_6;
-                    self.state.flags.overflow = bit_6 != bit_5;
-                    self.state.flags.negative = (result as i8).is_negative();
-                    self.state.flags.zero = result == 0;
+                        if (anded & 0x0f) + (anded & 0x01) > 0x05 {
+                            result = (result & 0xf0) | (result.wrapping_add(0x06) & 0x0f);
+                        }
+
+                        self.state.flags.carry =
+                            u16::from(anded & 0xf0) + u16::from(anded & 0x10) > 0x50;
+
+                        if self.state.flags.carry {
+                            result = result.wrapping_add(0x60);
+                        }
+                    } else {
+                        let bit_5 = (result & 0b0010_0000) != 0;
+                        let bit_6 = (result & 0b0100_0000) != 0;
+
+                        self.state.flags.carry = bit_6;
+                        self.state.flags.overflow = bit_6 != bit_5;
+                        self.state.flags.negative = (result as i8).is_negative();
+                        self.state.flags.zero = result == 0;
+                    }
 
                     self.state.a = result;
                 }
@@ -330,6 +348,98 @@ impl<V: Variant> Mos6502<V> {
 
     #[inline]
     fn phi2_add(&mut self, invert_operand: bool) {
+        let a = self.state.a;
+        let carry = self.state.flags.carry;
+
+        self.phi2_binary_add(invert_operand);
+
+        if V::SUPPORTS_DECIMAL && self.state.flags.decimal {
+            if invert_operand {
+                self.phi2_decimal_subtract(a, carry);
+            } else {
+                self.phi2_decimal_add(a, carry);
+            }
+        }
+    }
+
+    // Sigh
+    //
+    // https://6502.org/tutorials/decimal_mode.html
+    //
+    // This patches the result of a binary add that has already run, and overrides it for decimal handling
+    //
+    // View the appendixes for why this is so complex
+    #[inline]
+    fn phi2_decimal_add(&mut self, a: u8, carry: bool) {
+        let operand = self.state.operand;
+
+        let mut low = i16::from(a & 0x0f) + i16::from(operand & 0x0f) + i16::from(carry);
+        if low >= 0x0a {
+            low = ((low + 0x06) & 0x0f) + 0x10;
+        }
+
+        let mut high = i16::from(a & 0xf0) + i16::from(operand & 0xf0) + low;
+        let signed_high = i16::from((a & 0xf0) as i8) + i16::from((operand & 0xf0) as i8) + low;
+
+        self.state.flags.overflow = i8::try_from(signed_high).is_err();
+
+        if !V::WDC_VARIANT {
+            self.state.flags.negative = (high & 0x80) != 0;
+        }
+
+        if high >= 0xa0 {
+            high += 0x60;
+        }
+
+        self.state.flags.carry = high >= 0x100;
+        self.state.a = high as u8;
+
+        if V::WDC_VARIANT {
+            self.state.flags.negative = (self.state.a as i8).is_negative();
+            self.state.flags.zero = self.state.a == 0;
+        }
+    }
+
+    #[inline]
+    fn phi2_decimal_subtract(&mut self, a: u8, carry: bool) {
+        let operand = self.state.operand;
+        let borrow = i16::from(!carry);
+
+        let low = i16::from(a & 0x0f) - i16::from(operand & 0x0f) - borrow;
+
+        let result = if V::WDC_VARIANT {
+            let mut result = i16::from(a) - i16::from(operand) - borrow;
+            if result < 0 {
+                result -= 0x60;
+            }
+            if low < 0 {
+                result -= 0x06;
+            }
+            result
+        } else {
+            let low = if low < 0 {
+                ((low - 0x06) & 0x0f) - 0x10
+            } else {
+                low
+            };
+
+            let mut result = i16::from(a & 0xf0) - i16::from(operand & 0xf0) + low;
+            if result < 0 {
+                result -= 0x60;
+            }
+            result
+        };
+
+        self.state.a = result as u8;
+
+        if V::WDC_VARIANT {
+            self.state.flags.negative = (self.state.a as i8).is_negative();
+            self.state.flags.zero = self.state.a == 0;
+        }
+    }
+
+    #[inline]
+    fn phi2_binary_add(&mut self, invert_operand: bool) {
         let operand = if invert_operand {
             !self.state.operand
         } else {

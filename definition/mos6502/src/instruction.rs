@@ -183,6 +183,7 @@ impl<V: Variant> Mos6502<V> {
                         },
                     ],
                 );
+                self.push_decimal_correction_cycle(instruction, 0x007f);
             }
             Opcode::Mos6502(Mos6502Opcode::Anc) => {
                 self.patch_read_maybe_effective_address_dependent(
@@ -675,6 +676,7 @@ impl<V: Variant> Mos6502<V> {
                         },
                     ],
                 );
+                self.push_decimal_correction_cycle(instruction, 0x0000);
             }
             Opcode::Mos6502(Mos6502Opcode::Sbx) => {
                 self.patch_read_maybe_effective_address_dependent(
@@ -919,6 +921,30 @@ impl<V: Variant> Mos6502<V> {
                 todo!()
             }
         }
+    }
+
+    #[inline]
+    fn push_decimal_correction_cycle(
+        &mut self,
+        instruction: &Mos6502InstructionSet,
+        immediate_address: u16,
+    ) {
+        if !(V::WDC_VARIANT && V::SUPPORTS_DECIMAL && self.state.flags.decimal) {
+            return;
+        }
+
+        let phi1 = if instruction.addressing_mode
+            == Some(AddressingMode::Mos6502(Mos6502AddressingMode::Immediate))
+        {
+            Some(Phi1Source::Constant(immediate_address))
+        } else {
+            None
+        };
+
+        self.state
+            .cycle_queue
+            .push_back(Cycle::new(BusMode::Read, phi1, []))
+            .unwrap();
     }
 
     #[inline]
