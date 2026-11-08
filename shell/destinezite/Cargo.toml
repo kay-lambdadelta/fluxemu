@@ -22,10 +22,10 @@ depends = ["$auto", "fonts-noto"]
 maintainer-scripts = "assets/linux/debian"
 
 [dependencies]
+blake3 = { workspace = true }
 bytemuck = { workspace = true }
 clap = { workspace = true }
 cpal = { workspace = true }
-digest-io = { workspace = true }
 egui = { workspace = true, optional = true }
 epaint = { workspace = true, features = ["color_fonts"], optional = true }
 fluxemu-audio = { workspace = true }
@@ -48,7 +48,6 @@ palette = { workspace = true }
 pollster = { workspace = true }
 raw-window-handle = { workspace = true, optional = true }
 redb = { workspace = true }
-sha2 = { workspace = true }
 strum = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 tracing = { workspace = true }

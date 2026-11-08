@@ -1,12 +1,10 @@
-use std::{collections::HashMap, io::Write, time::Duration};
+use std::{collections::HashMap, time::Duration};
 
-use digest_io::IoWrapper;
 use fluxemu_input::{
     GamepadInputId, InputId, InputState,
     physical::{PhysicalInputDeviceId, PhysicalInputDeviceInstanceId, PhysicalInputDeviceKind},
 };
 use gilrs::{Axis, Button, Event, GamepadId, Gilrs, GilrsBuilder};
-use sha2::{Digest, Sha256};
 use uuid::{NonNilUuid, Uuid};
 
 #[inline]
@@ -96,11 +94,9 @@ fn calculate_gamepad_id(gamepad: gilrs::Gamepad<'_>) -> PhysicalInputDeviceId {
             gamepad.name()
         );
 
-        let mut hasher = IoWrapper(Sha256::default());
-        hasher.write_all(gamepad.name().as_bytes()).unwrap();
-        let hash: [u8; 32] = hasher.0.finalize().into();
+        let hash = blake3::hash(gamepad.name().as_bytes());
 
-        let uuid = Uuid::from_slice(&hash[..16]).unwrap();
+        let uuid = Uuid::from_slice(&hash.as_bytes()[..16]).unwrap();
 
         PhysicalInputDeviceId(uuid)
     }
