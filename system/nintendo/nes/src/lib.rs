@@ -23,7 +23,10 @@ use crate::{
     apu::ApuConfig,
     cartridge::{
         ines::{INesVersion, ParsingError, expansion_device::DefaultExpansionDevice},
-        mapper::{cnrom::CnRomConfig, mmc1::Mmc1Config, nrom::NRomConfig, uxrom::UxRomConfig},
+        mapper::{
+            axrom::AxRomConfig, cnrom::CnRomConfig, mmc1::Mmc1Config, nrom::NRomConfig,
+            uxrom::UxRomConfig,
+        },
     },
     gamepad::standard_controllers::NesControllerConfig,
     ppu::{
@@ -252,6 +255,19 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Nes {
                         "cnrom_cartridge",
                         CnRomConfig {
                             config: cart_config,
+                        },
+                    )?
+                    .0;
+            }
+            007 => {
+                let bus_conflicts = matches!(header.version, INesVersion::V2 { submapper: 2, .. });
+
+                machine_builder = machine_builder
+                    .component(
+                        "axrom_cartridge",
+                        AxRomConfig {
+                            config: cart_config,
+                            bus_conflicts,
                         },
                     )?
                     .0;
