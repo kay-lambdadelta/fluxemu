@@ -1,11 +1,13 @@
-use std::{f64::consts::TAU, time::Duration};
+use std::{f64::consts::TAU, sync::Arc, time::Duration};
 
 use egui::{
-    Color32, Context, FontDefinitions, FontFamily, Id, LayerId, Order, Rect, Response, Sense,
-    Stroke, StrokeKind, TextStyle,
+    Color32, Context, FontData, FontDefinitions, FontFamily, Id, LayerId, Order, Rect, Response,
+    Sense, Stroke, StrokeKind, TextStyle,
 };
 use nalgebra::Vector2;
 use palette::Srgba;
+
+use crate::icon;
 
 const FOCUS_OUTLINE_WIDTH: f32 = 3.0;
 const FOCUS_PULSE_PERIOD_SECONDS: f64 = 2.0;
@@ -64,7 +66,20 @@ pub fn allocate_fill_aspect(
 }
 
 #[inline]
-pub fn setup_egui_context(font_definitions: FontDefinitions) -> Context {
+pub fn setup_egui_context(mut font_definitions: FontDefinitions) -> Context {
+    font_definitions.font_data.insert(
+        icon::FONT_NAME.to_string(),
+        Arc::new(FontData::from_static(icon::FONT)),
+    );
+
+    for family in [FontFamily::Proportional, FontFamily::Monospace] {
+        font_definitions
+            .families
+            .entry(family)
+            .or_default()
+            .push(icon::FONT_NAME.to_string());
+    }
+
     let egui_context = egui::Context::default();
 
     egui_context.global_style_mut(|style| {

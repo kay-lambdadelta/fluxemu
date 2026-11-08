@@ -1,12 +1,37 @@
-use egui::{Frame, Margin, Panel, Sense, Stroke, TextStyle, Ui, pos2, vec2};
+use egui::{
+    Color32, CornerRadius, Frame, Panel, Rect, Sense, Stroke, TextStyle, Ui, Visuals, pos2, vec2,
+};
 use fluxemu_frontend::notification::Notification;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
+use tracing::Level;
+
+use crate::icon;
 
 const SCROLL_SPEED: f32 = 150.0;
 const MESSAGE_SPACING: f32 = 64.0;
 const SEPARATOR_HEIGHT: f32 = 0.7;
+const BACKGROUND_OPACITY: f32 = 0.15;
+const VERTICAL_PADDING: f32 = 2.0;
 
-// TODO: These need actual icons
+fn level_icon(level: Level) -> &'static str {
+    match level {
+        Level::ERROR => icon::CIRCLE_X,
+        Level::WARN => icon::TRIANGLE_ALERT,
+        Level::INFO => icon::INFO,
+        Level::DEBUG => icon::BUG,
+        Level::TRACE => icon::FOOTPRINTS,
+    }
+}
+
+fn level_color(visuals: &Visuals, level: Level) -> Color32 {
+    match level {
+        Level::ERROR => visuals.error_fg_color,
+        Level::WARN => visuals.warn_fg_color,
+        // This is probably a nice shade of blue most of the time
+        Level::INFO => visuals.hyperlink_color,
+        Level::DEBUG | Level::TRACE => visuals.weak_text_color(),
+    }
+}
 
 struct Entry {
     notification: Notification,
@@ -43,13 +68,14 @@ impl NotificationMarquee {
             .frame(Frame::NONE.fill(ui.visuals().panel_fill))
             .show_collapsible(ui, &mut is_expanded, |ui| {
                 Frame::NONE
-                    .inner_margin(Margin::symmetric(8, 2))
                     .fill(ui.visuals().extreme_bg_color)
                     .show(ui, |ui| {
                         let font = TextStyle::Body.resolve(ui.style());
                         let label_font = TextStyle::Small.resolve(ui.style());
                         let label_height = ui.text_style_height(&TextStyle::Small);
-                        let height = label_height + ui.text_style_height(&TextStyle::Body);
+                        let height = label_height
+                            + ui.text_style_height(&TextStyle::Body)
+                            + VERTICAL_PADDING * 2.0;
 
                         let (rect, _) = ui.allocate_exact_size(
                             vec2(ui.available_width(), height),
@@ -66,17 +92,19 @@ impl NotificationMarquee {
                             .shrink(height * (1.0 - SEPARATOR_HEIGHT) / 2.0);
 
                         let text_color = ui.visuals().text_color();
-                        let label_color = ui.visuals().weak_text_color();
                         let mut previous_end = None;
 
                         for entry in &mut self.entries {
+                            let level = entry.notification.level;
+                            let label_color = level_color(ui.visuals(), level);
+
                             let galley = painter.layout_no_wrap(
                                 entry.notification.message.clone(),
                                 font.clone(),
                                 text_color,
                             );
                             let label_galley = painter.layout_no_wrap(
-                                entry.notification.level.to_string(),
+                                format!("{} {}", level_icon(level), level),
                                 label_font.clone(),
                                 label_color,
                             );
@@ -95,6 +123,18 @@ impl NotificationMarquee {
                                 }
                             };
 
+                            let left = rect.left() + position;
+
+                            painter.rect_filled(
+                                Rect::from_x_y_ranges(
+                                    (left - MESSAGE_SPACING / 2.0)
+                                        ..=(left + entry.width + MESSAGE_SPACING / 2.0),
+                                    rect.y_range(),
+                                ),
+                                CornerRadius::ZERO,
+                                label_color.gamma_multiply(BACKGROUND_OPACITY),
+                            );
+
                             if let Some(end) = previous_end {
                                 painter.vline(
                                     rect.left() + end + MESSAGE_SPACING / 2.0,
@@ -104,14 +144,10 @@ impl NotificationMarquee {
                             }
                             previous_end = Some(position + entry.width);
 
-                            let left = rect.left() + position;
+                            let top = rect.top() + VERTICAL_PADDING;
 
-                            painter.galley(pos2(left, rect.top()), label_galley, label_color);
-                            painter.galley(
-                                pos2(left, rect.top() + label_height),
-                                galley,
-                                text_color,
-                            );
+                            painter.galley(pos2(left, top), label_galley, label_color);
+                            painter.galley(pos2(left, top + label_height), galley, text_color);
                         }
 
                         ui.ctx().request_repaint();

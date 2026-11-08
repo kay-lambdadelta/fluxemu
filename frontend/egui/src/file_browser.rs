@@ -22,7 +22,7 @@ use tokio::{
     sync::mpsc::{UnboundedReceiver, UnboundedSender, error::TryRecvError, unbounded_channel},
 };
 
-use crate::utils::to_egui_color;
+use crate::{icon, utils::to_egui_color};
 
 #[derive(Clone, Debug)]
 pub struct DirectoryEntry {
@@ -104,7 +104,7 @@ impl<P: Platform> Widget for FileBrowser<'_, P> {
             #[cfg(feature = "external-file-dialog")]
             {
                 let clicked = ui
-                    .button("📂")
+                    .button(icon::FOLDER_OPEN)
                     .on_hover_text(t!("browser.open_native_file_dialog"))
                     .clicked();
 
@@ -156,7 +156,7 @@ impl<P: Platform> Widget for FileBrowser<'_, P> {
                     }
 
                     if ui
-                        .button("✏️")
+                        .button(icon::PENCIL)
                         .on_hover_text("Manually edit path bar")
                         .clicked()
                     {
@@ -201,7 +201,7 @@ impl<P: Platform> Widget for FileBrowser<'_, P> {
 
         ui.horizontal_top(|ui| {
             if ui
-                .button("🔄")
+                .button(icon::REFRESH_CW)
                 .on_hover_text("Refresh file browser file listings")
                 .clicked()
                 && let PathBarState::Normal(path) = &pathbar_state
@@ -212,7 +212,11 @@ impl<P: Platform> Widget for FileBrowser<'_, P> {
             let old_sorting = (*sorting_method, *reverse_sorting);
 
             if ui
-                .button(if *reverse_sorting { "⬆️" } else { "⬇️" })
+                .button(if *reverse_sorting {
+                    icon::ARROW_UP
+                } else {
+                    icon::ARROW_DOWN
+                })
                 .on_hover_text("Toggle sort order")
                 .clicked()
             {
@@ -228,7 +232,7 @@ impl<P: Platform> Widget for FileBrowser<'_, P> {
                 .response
                 .on_hover_text("Swap the file browser sorting method");
 
-            ui.toggle_value(show_hidden, "👁️")
+            ui.toggle_value(show_hidden, icon::EYE)
                 .on_hover_text("Toggle hidden file visiblity");
 
             let mut needs_sorting = old_sorting != (*sorting_method, *reverse_sorting);
@@ -286,9 +290,9 @@ impl<P: Platform> Widget for FileBrowser<'_, P> {
                         }
 
                         let label = if *is_directory {
-                            format!("📁 {}", name_str)
+                            format!("{} {}", icon::FOLDER, name_str)
                         } else if !*readable {
-                            format!("{} 🔒", name_str)
+                            format!("{} {}", name_str, icon::LOCK)
                         } else {
                             name_str.to_string()
                         };

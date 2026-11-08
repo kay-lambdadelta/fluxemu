@@ -55,6 +55,7 @@ itertools = "0.15"
 jiff = "0.2"
 libc = "0.2"
 libseat = "0.2"
+lucide-icons = "1.70"
 memmap2 = "0.9"
 multiversion = "0.9"
 nalgebra = {
@@ -78,6 +79,7 @@ rand = "0.10"
 rangemap = { version = "1.8", features = ["serde1"] }
 raw-window-handle = "0.6"
 rayon = "1.12"
+read-fonts = "0.46"
 redb = { version = "4.5", features = ["logging"] }
 reqwest = "0.13"
 rfd = "0.18"
@@ -94,6 +96,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_with = "3.23"
 sevenz-rust2 = "0.25"
 sha1 = "0.11"
+skera = "0.9"
 softbuffer = "0.4"
 strum = { version = "0.28", features = ["derive"] }
 syn = { version = "3.0", features = ["full"] }

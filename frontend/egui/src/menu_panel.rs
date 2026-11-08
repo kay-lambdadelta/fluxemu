@@ -1,6 +1,8 @@
 use egui::{Button, Frame, Panel, Response, RichText, Ui, Widget};
 use strum::{AsRefStr, EnumIter, IntoEnumIterator};
 
+use crate::icon;
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, EnumIter, AsRefStr)]
 pub enum TabId {
     #[default]
@@ -18,11 +20,11 @@ impl TabId {
 
     pub fn icon(self) -> &'static str {
         match self {
-            Self::Machine => "▶️",
-            Self::Snapshots => "📸",
-            Self::Saves => "💾",
-            Self::FileBrowser => "📁",
-            Self::Settings => "⚙️",
+            Self::Machine => icon::PLAY,
+            Self::Snapshots => icon::CAMERA,
+            Self::Saves => icon::SAVE,
+            Self::FileBrowser => icon::FOLDER_OPEN,
+            Self::Settings => icon::SETTINGS,
         }
     }
 }

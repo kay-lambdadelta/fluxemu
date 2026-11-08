@@ -36,6 +36,13 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 wgpu = { workspace = true, optional = true }
 
+[build-dependencies]
+lucide-icons = { workspace = true }
+proc-macro2 = { workspace = true }
+quote = { workspace = true }
+read-fonts = { workspace = true }
+skera = { workspace = true }
+
 [features]
 external-file-dialog = ["dep:rfd"]
 webgpu = ["dep:egui-wgpu", "dep:wgpu"]

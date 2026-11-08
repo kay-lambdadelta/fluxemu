@@ -566,6 +566,7 @@ async fn initialize_machine<P: Platform>(
         program_specification
     };
 
+    let program_id = specification.id.clone();
     let machine_builder = Machine::build(Some(specification), program_manager);
 
     match machine_factories
@@ -574,12 +575,12 @@ async fn initialize_machine<P: Platform>(
     {
         Some(Ok(sealed)) => Some(sealed),
         Some(Err(err)) => {
-            tracing::error!("Could not construct machine for program: {}", err);
+            tracing::error!("Could not construct machine for {}: {}", program_id, err);
 
             None
         }
         None => {
-            tracing::error!("Could not construct machine for program");
+            tracing::error!("Could not construct machine for {}", program_id);
 
             None
         }

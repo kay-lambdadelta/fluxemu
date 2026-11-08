@@ -1,6 +1,7 @@
 //! Generic multiplatform frontend implementation for fluxemu
 
 mod file_browser;
+mod icon;
 mod input;
 mod marquee;
 mod menu_panel;
