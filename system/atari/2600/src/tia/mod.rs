@@ -123,6 +123,7 @@ pub(crate) struct Tia<R: Region, G: SupportedGraphicsApi> {
     staging_buffer: OwnedTexture<Srgba<u8>>,
     backend: Option<G::Backend<R>>,
     cpu_path: ComponentPath,
+    joystick_path: ComponentPath,
     framebuffer_path: ResourcePath,
 }
 
@@ -150,7 +151,7 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Tia<R, G> {
     ) -> Result<(), MemoryError> {
         let data = &mut buffer[0];
 
-        if let Some(address) = ReadRegisters::from_repr(address as u16) {
+        if let Some(address) = ReadRegisters::from_repr(address as u16 & 0x0f) {
             tracing::trace!("Reading from TIA register: {:?}", address);
 
             self.handle_read_register(data, address);

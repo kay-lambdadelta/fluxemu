@@ -25,6 +25,8 @@ mod cartridge;
 mod gamepad;
 mod tia;
 
+const RIOT_REGISTERS_ADDRESS: Address = 0x280;
+
 #[derive(Debug, Clone, Copy, Display, PartialEq, Eq, PartialOrd, Ord)]
 enum RegionSelection {
     Ntsc,
@@ -127,7 +129,12 @@ fn common<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>>(
     cpu_address_space: AddressSpaceId,
     machine_builder: MachineBuilder<P>,
 ) -> Result<MachineBuilder<P>, MachineError> {
-    let (machine_builder, joystick) = machine_builder.component("joystick", JoystickConfig)?;
+    let (machine_builder, joystick) = machine_builder.component(
+        "joystick",
+        JoystickConfig {
+            riot_registers_address: RIOT_REGISTERS_ADDRESS,
+        },
+    )?;
 
     let (machine_builder, cpu) = machine_builder.component(
         "mos6502",
@@ -137,10 +144,10 @@ fn common<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>>(
     let (machine_builder, _) = machine_builder.component(
         "mos6532_riot",
         Mos6532RiotConfig {
-            swcha: Some(joystick),
-            swchb: None,
+            swcha: Some(joystick.clone()),
+            swchb: Some(joystick.clone()),
             frequency: R::frequency() / 3,
-            registers_assigned_address: 0x280,
+            registers_assigned_address: RIOT_REGISTERS_ADDRESS,
             ram_assigned_address: 0x80,
             assigned_address_space: cpu_address_space,
         },
@@ -151,6 +158,7 @@ fn common<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>>(
         TiaConfig::<R> {
             cpu,
             cpu_address_space,
+            joystick,
             _phantom: PhantomData,
         },
     )?;

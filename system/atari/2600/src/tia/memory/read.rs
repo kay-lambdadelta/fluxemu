@@ -1,5 +1,10 @@
+use fluxemu_runtime::RuntimeHandle;
+
 use super::ReadRegisters;
-use crate::tia::{ObjectId, SupportedGraphicsApi, Tia, region::Region};
+use crate::{
+    gamepad::joystick::Joystick,
+    tia::{ObjectId, SupportedGraphicsApi, Tia, region::Region},
+};
 
 impl<R: Region, G: SupportedGraphicsApi> Tia<R, G> {
     pub(crate) fn handle_read_register(&self, data: &mut u8, address: ReadRegisters) {
@@ -66,9 +71,24 @@ impl<R: Region, G: SupportedGraphicsApi> Tia<R, G> {
             ReadRegisters::Inpt1 => {}
             ReadRegisters::Inpt2 => {}
             ReadRegisters::Inpt3 => {}
-            ReadRegisters::Inpt4 => {}
-            ReadRegisters::Inpt5 => {}
+            ReadRegisters::Inpt4 => self.read_fire_button(data, 0),
+            ReadRegisters::Inpt5 => self.read_fire_button(data, 1),
         }
+    }
+
+    fn read_fire_button(&self, data: &mut u8, player: usize) {
+        let pressed = RuntimeHandle::with_current(|runtime| {
+            runtime
+                .component_registry()
+                .interact::<Joystick, _>(
+                    &self.joystick_path,
+                    runtime.current_timestamp(),
+                    |joystick| joystick.fire_pressed(player),
+                )
+                .unwrap()
+        });
+
+        *data = (*data & 0b0111_1111) | (!pressed as u8) << 7;
     }
 
     #[inline]

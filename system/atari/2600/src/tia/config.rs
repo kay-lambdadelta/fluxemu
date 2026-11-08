@@ -26,6 +26,7 @@ use crate::tia::{
 pub(crate) struct TiaConfig<R: Region> {
     pub cpu: ComponentPath,
     pub cpu_address_space: AddressSpaceId,
+    pub joystick: ComponentPath,
     pub _phantom: PhantomData<R>,
 }
 
@@ -78,11 +79,13 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<
             self.cpu_address_space,
             MemoryMapCommand::with_component(
                 my_path.clone(),
-                ReadRegisters::iter().map(|address| {
-                    (
-                        RangeInclusive::from_single(address as usize),
-                        Permissions::READ,
-                    )
+                (0x00..=0x30).step_by(0x10).flat_map(|mirror| {
+                    ReadRegisters::iter().map(move |address| {
+                        (
+                            RangeInclusive::from_single(mirror + address as usize),
+                            Permissions::READ,
+                        )
+                    })
                 }),
             ),
         );
@@ -109,6 +112,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<
         Ok(Tia {
             backend: None,
             cpu_path: self.cpu,
+            joystick_path: self.joystick,
             framebuffer_path,
             state: State {
                 collision_matrix: BTreeMap::default(),
