@@ -1,7 +1,8 @@
 toml-version = "v1.1.0"
 
+# Clippy does not support toml 1.1 yet (as of the version we are using)
 [files]
-exclude = ["external/**"]
+exclude = ["external/**", "clippy.toml"]
 
 [format.rules]
 line-ending = "lf"
