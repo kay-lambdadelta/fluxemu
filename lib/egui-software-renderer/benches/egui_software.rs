@@ -1,8 +1,11 @@
-use std::{collections::HashMap, hint::black_box};
+use std::{collections::HashMap, hint::black_box, sync::Arc};
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use egui::{Context, RawInput, Rect, ViewportId, ViewportInfo};
-use egui_demo_lib::DemoWindows;
+use egui::{
+    CentralPanel, Color32, ColorImage, Context, FontData, FontDefinitions, FontFamily, FontId,
+    Image, Panel, ProgressBar, RawInput, Rect, ScrollArea, Slider, Stroke, TextStyle,
+    TextureHandle, TextureOptions, Ui, ViewportId, ViewportInfo, Window,
+};
 use fixed::types::{I16F16, I32F32};
 use fluxemu_egui_software_renderer::{Intermediate, Renderer};
 use fluxemu_graphics::texture::{AsViewTextureMut, OwnedTexture};
@@ -13,6 +16,138 @@ use palette::{
     rgb::channels::{Bgra, Rgba},
 };
 
+const UNSCII_FONT: &[u8] = include_bytes!("../../../external/unscii/fontfiles/unscii-16.otf");
+
+fn setup_context() -> Context {
+    let context = Context::default();
+
+    context.set_fonts(FontDefinitions {
+        font_data: [(
+            "unscii".to_string(),
+            Arc::new(FontData::from_static(UNSCII_FONT)),
+        )]
+        .into_iter()
+        .collect(),
+        families: [
+            (FontFamily::Proportional, vec!["unscii".to_string()]),
+            (FontFamily::Monospace, vec!["unscii".to_string()]),
+        ]
+        .into_iter()
+        .collect(),
+    });
+
+    context.global_style_mut(|style| {
+        style
+            .text_styles
+            .insert(TextStyle::Body, FontId::new(18.0, FontFamily::Proportional));
+        style.text_styles.insert(
+            TextStyle::Button,
+            FontId::new(20.0, FontFamily::Proportional),
+        );
+        style.text_styles.insert(
+            TextStyle::Heading,
+            FontId::new(24.0, FontFamily::Proportional),
+        );
+    });
+
+    context
+}
+
+#[derive(Default)]
+struct Scene {
+    texture: Option<TextureHandle>,
+    volume: f32,
+    enabled: bool,
+}
+
+impl Scene {
+    fn ui(&mut self, ui: &mut Ui) {
+        let texture = self.texture.get_or_insert_with(|| {
+            let size = 64;
+            let pixels = (0..size * size)
+                .map(|index| {
+                    let x = (index % size) as u8;
+                    let y = (index / size) as u8;
+                    Color32::from_rgb(x * 4, y * 4, (x ^ y) * 4)
+                })
+                .collect();
+
+            ui.ctx().load_texture(
+                "scene",
+                ColorImage::new([size, size], pixels),
+                TextureOptions::LINEAR,
+            )
+        });
+
+        Panel::top("menu").show(ui, |ui| {
+            ui.horizontal(|ui| {
+                for name in ["File", "Machine", "Settings", "Help"] {
+                    let _ = ui.button(name);
+                }
+            });
+        });
+
+        Panel::left("library").show(ui, |ui| {
+            ui.heading("Library");
+            ScrollArea::vertical().show(ui, |ui| {
+                for index in 0..64 {
+                    ui.label(format!("Program {index:02}"));
+                }
+            });
+        });
+
+        CentralPanel::default().show(ui, |ui| {
+            let rect = ui.max_rect();
+            let painter = ui.painter_at(rect);
+
+            for index in 0..32 {
+                let offset = index as f32 * 24.0;
+                painter.rect_filled(
+                    Rect::from_min_size(
+                        rect.min + [offset, offset * 0.5].into(),
+                        [160.0, 96.0].into(),
+                    ),
+                    8.0,
+                    Color32::from_rgba_unmultiplied(200, 80, 40, 96),
+                );
+                painter.circle_filled(
+                    rect.center() + [offset - 384.0, 0.0].into(),
+                    48.0,
+                    Color32::from_rgba_unmultiplied(40, 120, 220, 96),
+                );
+                painter.line_segment(
+                    [rect.left_bottom(), rect.min + [offset * 4.0, 0.0].into()],
+                    Stroke::new(2.0, Color32::WHITE),
+                );
+            }
+
+            ui.add(Image::new((texture.id(), [256.0, 256.0].into())));
+        });
+
+        let context = ui.ctx().clone();
+
+        Window::new("Settings")
+            .default_pos([200.0, 120.0])
+            .show(&context, |ui| {
+                ui.checkbox(&mut self.enabled, "Enabled");
+                ui.add(Slider::new(&mut self.volume, 0.0..=1.0).text("Volume"));
+                ui.add(ProgressBar::new(0.6).show_percentage());
+                ui.separator();
+                ui.monospace("The quick brown fox jumps over the lazy dog 0123456789");
+            });
+
+        Window::new("Log")
+            .default_pos([320.0, 240.0])
+            .show(&context, |ui| {
+                ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
+                    for index in 0..32 {
+                        ui.label(format!("[{index:03}] Lorem ipsum dolor sit amet"));
+                    }
+                });
+            });
+    }
+}
+
 fn render<
     I: Intermediate,
     P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'static,
@@ -22,7 +157,7 @@ fn render<
 >(
     renderer: &mut Renderer<I>,
     context: &Context,
-    demo_windows: &mut DemoWindows,
+    scene: &mut Scene,
     mut texture: impl AsViewTextureMut<P>,
 ) {
     texture.as_view_mut().fill(BLACK.with_alpha(u8::MAX).into());
@@ -45,7 +180,7 @@ fn render<
             ..Default::default()
         },
         |ui| {
-            demo_windows.ui(ui);
+            scene.ui(ui);
         },
     );
 
@@ -73,20 +208,20 @@ macro_rules! bench_combinations {
         $(
             {
                 let mut renderer = Renderer::<$number>::default();
-                let context = Context::default();
+                let context = setup_context();
                 let mut texture = OwnedTexture::from_value($w, $h, BLACK.with_alpha(u8::MAX).into());
 
                 let bench_name = format!("{}x{}", $w, $h);
                 let param_combo = format!("{} {} @ Batch Size {}", $number_name, $name, $batch);
 
-                let mut demo_windows = DemoWindows::default();
+                let mut scene = Scene::default();
 
                 $group.bench_function(BenchmarkId::new(bench_name, param_combo), |b| {
                     b.iter(|| {
                         render::<$number, $t, $w, $h, $batch>(
                             &mut renderer,
                             &context,
-                            &mut demo_windows,
+                            &mut scene,
                             black_box(texture.as_view_mut()),
                         )
                     });

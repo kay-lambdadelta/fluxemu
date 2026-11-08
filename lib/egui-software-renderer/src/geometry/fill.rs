@@ -10,9 +10,7 @@ use palette::{
 
 use crate::{
     geometry::{SolidQuad, Triangle},
-    intermediate::{
-        self, Channel, Intermediate, ceil, floor, from_usize, half, to_index, to_texel_index,
-    },
+    intermediate::{Channel, Intermediate},
     powerof2::PowerOfTwoIter,
 };
 
@@ -25,22 +23,22 @@ pub fn fill_quad<
     solid_quad: SolidQuad<I>,
     mut target_texture: Texture<impl StorageMut<Pixel = P>>,
 ) {
-    let texture_size = Point2::from(target_texture.size().map(from_usize::<I>));
+    let texture_size = Point2::from(target_texture.size().map(|i| I::from_usize(i).unwrap()));
 
-    let min = intermediate::component_max(solid_quad.rectangle.min, clip.min)
-        .map(|component| intermediate::max(floor(component), I::zero()));
+    let min = I::component_max(solid_quad.rectangle.min, clip.min)
+        .map(|component| (component - I::half()).ceil().max(I::zero()));
 
-    let max = intermediate::component_min(
-        intermediate::component_min(solid_quad.rectangle.max, clip.max),
+    let max = I::component_min(
+        I::component_min(solid_quad.rectangle.max, clip.max)
+            .map(|component| (component - I::half()).ceil()),
         texture_size,
-    )
-    .map(ceil);
+    );
 
     if min.x >= max.x || min.y >= max.y {
         return;
     }
 
-    let rect = Rectangle::from_min_and_max(min.map(to_index), max.map(to_index));
+    let rect = Rectangle::from_min_and_max(min.map(I::to_index), max.map(I::to_index));
 
     target_texture
         .view_mut(rect.x_range(), rect.y_range())
@@ -63,35 +61,35 @@ pub fn fill_triangle<
     let max_texture_coordinates = Point2::from(
         destination_texture
             .size()
-            .map(|size| from_usize::<I>(size - 1)),
+            .map(|size| I::from_usize(size - 1).unwrap()),
     );
 
-    let vector_max = intermediate::component_max(
-        intermediate::component_max(triangle.v0.position, triangle.v1.position),
+    let first_pixel = |component: I| (component - I::half()).ceil();
+    let last_pixel = |component: I| (component - I::half()).ceil() - I::one();
+
+    let vertex_max = I::component_max(
+        I::component_max(triangle.v0.position, triangle.v1.position),
         triangle.v2.position,
     );
 
     // Clip the clipping box by the target texture size
-    let clip_max = intermediate::component_min(
-        clip.max.map(|component| ceil(component) - I::one()),
-        max_texture_coordinates,
-    );
+    let clip_max = I::component_min(clip.max.map(last_pixel), max_texture_coordinates);
 
     // Clip the triangle
-    let triangle_bounding_max = intermediate::component_min(vector_max.map(floor), clip_max);
+    let triangle_bounding_max = I::component_min(vertex_max.map(last_pixel), clip_max);
 
-    let vertex_min = intermediate::component_min(
-        intermediate::component_min(triangle.v0.position, triangle.v1.position),
+    let vertex_min = I::component_min(
+        I::component_min(triangle.v0.position, triangle.v1.position),
         triangle.v2.position,
     );
 
     // Ensure negative clip values do not exist
     let clip_min = clip
         .min
-        .map(|component| intermediate::max(component, I::zero()));
+        .map(|component| first_pixel(component).max(I::zero()));
 
     // Clip the triangle again
-    let triangle_bounding_min = intermediate::component_max(vertex_min, clip_min).map(ceil);
+    let triangle_bounding_min = I::component_max(vertex_min.map(first_pixel), clip_min);
 
     // Guard against degenerate triangles
     if triangle_bounding_min.x > triangle_bounding_max.x
@@ -100,22 +98,15 @@ pub fn fill_triangle<
         return;
     }
 
-    let mut barycentric_coordinates = barycentric_coordinates(
-        // Offset to the center of the pixel
-        triangle_bounding_min + Vector2::from_element(half::<I>()),
-        &triangle,
-    );
-    let mut row_start_barycentric_coordinates = barycentric_coordinates;
+    let edges = [
+        (triangle.v1.position, triangle.v2.position),
+        (triangle.v2.position, triangle.v0.position),
+        (triangle.v0.position, triangle.v1.position),
+    ];
 
     // Units of which the pixel iteration machine will be advanced incrementally
     let step_x = Vector3::new(triangle.edge1.y, triangle.edge2.y, triangle.edge0.y)
         / triangle.signed_double_area;
-
-    let step_y = Vector3::new(
-        triangle.v2.position.x - triangle.v1.position.x,
-        triangle.v0.position.x - triangle.v2.position.x,
-        triangle.v1.position.x - triangle.v0.position.x,
-    ) / triangle.signed_double_area;
 
     let step_uv = Vector2::new(
         Vector3::new(triangle.v0.uv.x, triangle.v1.uv.x, triangle.v2.uv.x)
@@ -126,61 +117,71 @@ pub fn fill_triangle<
             .sum(),
     );
 
-    let step_color = Srgba::new(
-        Channel(step_x.dot(&Vector3::new(
-            triangle.v0.color.red.0,
-            triangle.v1.color.red.0,
-            triangle.v2.color.red.0,
-        ))),
-        Channel(step_x.dot(&Vector3::new(
-            triangle.v0.color.green.0,
-            triangle.v1.color.green.0,
-            triangle.v2.color.green.0,
-        ))),
-        Channel(step_x.dot(&Vector3::new(
-            triangle.v0.color.blue.0,
-            triangle.v1.color.blue.0,
-            triangle.v2.color.blue.0,
-        ))),
-        Channel(step_x.dot(&Vector3::new(
+    let step_color = PreAlpha {
+        color: Srgb::new(
+            Channel(step_x.dot(&Vector3::new(
+                triangle.v0.color.red.0,
+                triangle.v1.color.red.0,
+                triangle.v2.color.red.0,
+            ))),
+            Channel(step_x.dot(&Vector3::new(
+                triangle.v0.color.green.0,
+                triangle.v1.color.green.0,
+                triangle.v2.color.green.0,
+            ))),
+            Channel(step_x.dot(&Vector3::new(
+                triangle.v0.color.blue.0,
+                triangle.v1.color.blue.0,
+                triangle.v2.color.blue.0,
+            ))),
+        ),
+        alpha: Channel(step_x.dot(&Vector3::new(
             triangle.v0.color.alpha.0,
             triangle.v1.color.alpha.0,
             triangle.v2.color.alpha.0,
         ))),
-    );
+    };
 
-    let texture_dimensions = source_texture.size().map(from_usize::<I>);
+    let texture_dimensions = source_texture.size().map(|i| I::from_usize(i).unwrap());
 
-    for y in to_index(triangle_bounding_min.y)..=to_index(triangle_bounding_max.y) {
-        // This calculates the enter and exit point of which this particular scanline will be relevant
-        // to the triangle we are drawing
-        let x_enter = (0..3)
-            .map(|index| {
-                (if step_x[index] > I::zero() {
-                    triangle_bounding_min.x
-                        - row_start_barycentric_coordinates[index] / step_x[index]
-                } else {
-                    triangle_bounding_min.x
-                }) - half::<I>()
-            })
-            .fold(triangle_bounding_min.x, intermediate::max);
-        let x_enter = to_index(ceil(x_enter));
+    for y in triangle_bounding_min.y.to_index()..=triangle_bounding_max.y.to_index() {
+        let row_center = I::from_usize(y).unwrap() + I::half();
 
-        let x_exit = (0..3)
-            .map(|index| {
-                (if step_x[index] < I::zero() {
-                    triangle_bounding_min.x
-                        - row_start_barycentric_coordinates[index] / step_x[index]
-                } else {
-                    triangle_bounding_max.x
-                }) + half::<I>()
-            })
-            .fold(triangle_bounding_max.x, intermediate::min);
-        let x_exit = to_index(floor(x_exit));
+        let mut x_enter = triangle_bounding_min.x;
+        let mut x_exit = triangle_bounding_max.x;
 
-        // Advance coordinates
-        barycentric_coordinates = row_start_barycentric_coordinates
-            + step_x * (from_usize::<I>(x_enter) - triangle_bounding_min.x);
+        for (start, end) in edges {
+            if start.y == end.y {
+                continue;
+            }
+
+            let (top, bottom) = if start.y < end.y {
+                (start, end)
+            } else {
+                (end, start)
+            };
+
+            let crossing = top.x + (row_center - top.y) * (bottom.x - top.x) / (bottom.y - top.y);
+            let boundary = first_pixel(crossing);
+
+            let is_left_edge = (start.y > end.y) == (triangle.signed_double_area > I::zero());
+
+            if is_left_edge {
+                x_enter = x_enter.max(boundary);
+            } else {
+                x_exit = x_exit.min(boundary - I::one());
+            }
+        }
+
+        if x_enter > x_exit {
+            continue;
+        }
+
+        let barycentric_coordinates =
+            barycentric_coordinates(Point2::new(x_enter + I::half(), row_center), &triangle);
+
+        let x_enter = x_enter.to_index();
+        let x_exit = x_exit.to_index();
 
         let mut current_uv = triangle.v0.uv.coords * barycentric_coordinates.x
             + triangle.v1.uv.coords * barycentric_coordinates.y
@@ -260,13 +261,10 @@ pub fn fill_triangle<
 
             // Advance everything
             x += len;
-            let len_number = from_usize::<I>(len);
-            barycentric_coordinates += step_x * len_number;
+            let len_number = I::from_usize(len).unwrap();
             current_uv += step_uv * len_number;
             current_color += step_color * Channel(len_number);
         }
-
-        row_start_barycentric_coordinates += step_y;
     }
 }
 
@@ -284,9 +282,9 @@ fn pixel_rounds<
     texture: Texture<impl Storage<Pixel = PreAlpha<Srgb<Channel<I>>>>>,
     texture_dimensions: Vector2<I>,
     current_uv: Vector2<I>,
-    current_color: Srgba<Channel<I>>,
+    current_color: PreAlpha<Srgb<Channel<I>>>,
     step_uv: Vector2<I>,
-    step_color: Srgba<Channel<I>>,
+    step_color: PreAlpha<Srgb<Channel<I>>>,
 ) {
     // Assert these dimensions so the compiler doesn't forget
     //
@@ -296,18 +294,18 @@ fn pixel_rounds<
 
     let mut interpolated_uvs: SMatrix<_, C, 2> = SMatrix::from_element(I::zero());
     for index in 0..C {
-        let uv = current_uv + (step_uv * from_usize::<I>(index));
+        let uv = current_uv + (step_uv * I::from_usize(index).unwrap());
 
         interpolated_uvs.row_mut(index).copy_from(&uv.transpose());
     }
 
     let mut interpolated_colors: SMatrix<_, C, 4> = SMatrix::from_element(Channel(I::zero()));
     for index in 0..C {
-        let color = current_color + (step_color * Channel(from_usize::<I>(index)));
+        let color = current_color + step_color * Channel(I::from_usize(index).unwrap());
 
         interpolated_colors
             .row_mut(index)
-            .copy_from_slice(color.premultiply().as_ref());
+            .copy_from_slice(color.as_ref());
     }
 
     let mut scaled_uvs: SMatrix<_, C, 2> = SMatrix::from_element(I::zero());
@@ -332,7 +330,7 @@ fn pixel_rounds<
             .row(index)
             .transpose()
             // Clamp to the edge
-            .zip_map(&max_possible_texture_coordinate, to_texel_index);
+            .zip_map(&max_possible_texture_coordinate, I::to_texel_index);
 
         texture_coordinates
             .row_mut(index)

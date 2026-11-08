@@ -14,9 +14,6 @@ allow = [
   "Unicode-3.0",
   "bzip2-1.0.6",
   "CDLA-Permissive-2.0",
-  # These are required for the egui demo lib and not for the actual application
-  "OFL-1.1",
-  "Ubuntu-font-1.0"
 ]
 
 [bans]

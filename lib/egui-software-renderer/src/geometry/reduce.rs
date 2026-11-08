@@ -4,12 +4,12 @@ use egui::{Context, PaintCallback, epaint::ClippedShape};
 use fluxemu_math::rectangle::Rectangle;
 use itertools::Itertools;
 use nalgebra::Point2;
-use palette::Srgba;
 
 use crate::{
     callback::Callback,
     geometry::{Group, Primitive, SolidQuad, Triangle, Vertex},
-    intermediate::{self, Intermediate, from_f32},
+    intermediate::Intermediate,
+    premultiplied_color,
 };
 
 #[inline]
@@ -75,8 +75,8 @@ pub fn reduce_geometry<P: 'static, I: Intermediate>(
                 let full = scaled_rectangle::<I>(rect, pixels_per_point);
                 let clip = scaled_rectangle(clipped_primitive.clip_rect, pixels_per_point);
 
-                let visible_min = intermediate::component_max(full.min, clip.min);
-                let visible_max = intermediate::component_min(full.max, clip.max);
+                let visible_min = I::component_max(full.min, clip.min);
+                let visible_max = I::component_min(full.max, clip.max);
 
                 let visible = Rectangle::from_min_and_max(visible_min, visible_max);
 
@@ -110,37 +110,40 @@ pub fn reduce_geometry<P: 'static, I: Intermediate>(
 }
 
 #[inline]
-fn scaled_rectangle<T: Intermediate>(rect: egui::Rect, pixels_per_point: f32) -> Rectangle<T> {
+fn scaled_rectangle<I: Intermediate>(rect: egui::Rect, pixels_per_point: f32) -> Rectangle<I> {
     Rectangle::from_min_and_max(
         Point2::new(
-            from_f32(rect.min.x * pixels_per_point),
-            from_f32(rect.min.y * pixels_per_point),
+            I::from_f32(rect.min.x * pixels_per_point).unwrap(),
+            I::from_f32(rect.min.y * pixels_per_point).unwrap(),
         ),
         Point2::new(
-            from_f32(rect.max.x * pixels_per_point),
-            from_f32(rect.max.y * pixels_per_point),
+            I::from_f32(rect.max.x * pixels_per_point).unwrap(),
+            I::from_f32(rect.max.y * pixels_per_point).unwrap(),
         ),
     )
 }
 
-impl<T: Intermediate> Vertex<T> {
+impl<I: Intermediate> Vertex<I> {
     #[inline]
     fn new(vertex: egui::epaint::Vertex, pixels_per_point: f32) -> Self {
         Vertex {
             // Scale for our physical screen dimensions
             position: Point2::new(
-                from_f32(vertex.pos.x * pixels_per_point),
-                from_f32(vertex.pos.y * pixels_per_point),
+                I::from_f32(vertex.pos.x * pixels_per_point).unwrap(),
+                I::from_f32(vertex.pos.y * pixels_per_point).unwrap(),
             ),
-            uv: Point2::new(from_f32(vertex.uv.x), from_f32(vertex.uv.y)),
-            color: Srgba::from_components(vertex.color.to_tuple()).into_format(),
+            uv: Point2::new(
+                I::from_f32(vertex.uv.x).unwrap(),
+                I::from_f32(vertex.uv.y).unwrap(),
+            ),
+            color: premultiplied_color(vertex.color),
         }
     }
 }
 
-impl<T: Intermediate> Triangle<T> {
+impl<I: Intermediate> Triangle<I> {
     #[inline]
-    fn new(v0: Vertex<T>, v1: Vertex<T>, v2: Vertex<T>) -> Option<Self> {
+    fn new(v0: Vertex<I>, v1: Vertex<I>, v2: Vertex<I>) -> Option<Self> {
         let edge0 = v0.position - v1.position;
         let edge1 = v1.position - v2.position;
         let edge2 = v2.position - v0.position;
@@ -148,7 +151,7 @@ impl<T: Intermediate> Triangle<T> {
         let signed_double_area = (-edge0).perp(&edge2);
 
         // Guard against degenerate triangles
-        if !intermediate::is_finite(signed_double_area) || signed_double_area.is_zero() {
+        if !signed_double_area.is_finite() || signed_double_area.is_zero() {
             return None;
         }
 
@@ -225,22 +228,12 @@ impl<T: Intermediate> SolidQuad<T> {
         let (min_x, max_x) = unique_positions.iter().fold(
             (T::max_value(), T::min_value()),
             #[inline]
-            |(min, max), point| {
-                (
-                    intermediate::min(min, point.x),
-                    intermediate::max(max, point.x),
-                )
-            },
+            |(min, max), point| (min.min(point.x), max.max(point.x)),
         );
         let (min_y, max_y) = unique_positions.iter().fold(
             (T::max_value(), T::min_value()),
             #[inline]
-            |(min, max), point| {
-                (
-                    intermediate::min(min, point.y),
-                    intermediate::max(max, point.y),
-                )
-            },
+            |(min, max), point| (min.min(point.y), max.max(point.y)),
         );
 
         let min = Point2::new(min_x, min_y);
@@ -260,7 +253,7 @@ impl<T: Intermediate> SolidQuad<T> {
 
         Some(SolidQuad {
             rectangle: Rectangle::from_min_and_max(min, max),
-            color: potential_color,
+            color: potential_color.unpremultiply(),
         })
     }
 }

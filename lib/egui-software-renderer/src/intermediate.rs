@@ -10,6 +10,7 @@ use num::{
     traits::{Euclid, NumAssignRef, NumRef},
 };
 use palette::{
+    blend::{PreAlpha, Premultiply},
     bool_mask::HasBoolMask,
     num::{Clamp, IsValidDivisor, Real},
     stimulus::IntoStimulus,
@@ -30,6 +31,68 @@ pub trait Intermediate:
     + Sync
     + 'static
 {
+    #[inline]
+    fn half() -> Self {
+        Self::one() / (Self::one() + Self::one())
+    }
+
+    #[inline]
+    fn max_int() -> Self {
+        Self::max_value().floor()
+    }
+
+    #[inline]
+    fn floor(self) -> Self {
+        self - self.rem_euclid(&Self::one())
+    }
+
+    #[inline]
+    fn ceil(self) -> Self {
+        -(-self).floor()
+    }
+
+    #[inline]
+    fn min(self, other: Self) -> Self {
+        if other < self { other } else { self }
+    }
+
+    #[inline]
+    fn max(self, other: Self) -> Self {
+        if other > self { other } else { self }
+    }
+
+    #[inline]
+    fn component_min(a: Point2<Self>, b: Point2<Self>) -> Point2<Self> {
+        Point2::from(a.coords.zip_map(&b.coords, Self::min))
+    }
+
+    #[inline]
+    fn component_max(a: Point2<Self>, b: Point2<Self>) -> Point2<Self> {
+        Point2::from(a.coords.zip_map(&b.coords, Self::max))
+    }
+
+    #[inline]
+    fn is_finite(self) -> bool {
+        (self * Self::zero()).is_zero()
+    }
+
+    #[inline]
+    fn to_index(self) -> usize {
+        if self.partial_cmp(&Self::zero()) != Some(Ordering::Greater) {
+            return 0;
+        }
+
+        self.to_usize().unwrap_or(usize::MAX)
+    }
+
+    #[inline]
+    fn to_texel_index(self, max: u32) -> u32 {
+        if self.partial_cmp(&Self::zero()) != Some(Ordering::Greater) {
+            return 0;
+        }
+
+        self.to_u32().map_or(max, |value| value.min(max))
+    }
 }
 
 impl<
@@ -48,76 +111,6 @@ impl<
         + 'static,
 > Intermediate for T
 {
-}
-
-#[inline]
-pub fn from_usize<T: Intermediate>(value: usize) -> T {
-    T::from_usize(value)
-        .unwrap_or_else(|| panic!("value is out of range for the intermediate type: {}", value))
-}
-
-#[inline]
-pub fn from_f32<T: Intermediate>(value: f32) -> T {
-    T::from_f32(value)
-        .unwrap_or_else(|| panic!("value is out of range for the intermediate type: {}", value))
-}
-
-#[inline]
-pub fn half<T: Intermediate>() -> T {
-    T::one() / (T::one() + T::one())
-}
-
-#[inline]
-pub fn floor<T: Intermediate>(value: T) -> T {
-    value - value.rem_euclid(&T::one())
-}
-
-#[inline]
-pub fn ceil<T: Intermediate>(value: T) -> T {
-    -floor(-value)
-}
-
-#[inline]
-pub fn min<T: Intermediate>(a: T, b: T) -> T {
-    if b < a { b } else { a }
-}
-
-#[inline]
-pub fn max<T: Intermediate>(a: T, b: T) -> T {
-    if b > a { b } else { a }
-}
-
-#[inline]
-pub fn component_min<T: Intermediate>(a: Point2<T>, b: Point2<T>) -> Point2<T> {
-    Point2::from(a.coords.zip_map(&b.coords, min))
-}
-
-#[inline]
-pub fn component_max<T: Intermediate>(a: Point2<T>, b: Point2<T>) -> Point2<T> {
-    Point2::from(a.coords.zip_map(&b.coords, max))
-}
-
-#[inline]
-pub fn is_finite<T: Intermediate>(value: T) -> bool {
-    (value * T::zero()).is_zero()
-}
-
-#[inline]
-pub fn to_index<T: Intermediate>(value: T) -> usize {
-    if value.partial_cmp(&T::zero()) != Some(Ordering::Greater) {
-        return 0;
-    }
-
-    value.to_usize().unwrap_or(usize::MAX)
-}
-
-#[inline]
-pub fn to_texel_index<T: Intermediate>(value: T, max: u32) -> u32 {
-    if value.partial_cmp(&T::zero()) != Some(Ordering::Greater) {
-        return 0;
-    }
-
-    value.to_u32().map_or(max, |value| value.min(max))
 }
 
 /// Wrapper to deal with palette's almost, but not quite, num traits
@@ -163,6 +156,21 @@ impl_channel_operator!(
     Div::div, DivAssign::div_assign;
     Rem::rem, RemAssign::rem_assign;
 );
+
+impl<C, T: Intermediate> Mul<Channel<T>> for PreAlpha<C>
+where
+    C: Mul<Channel<T>, Output = C> + Premultiply<Scalar = Channel<T>>,
+{
+    type Output = Self;
+
+    #[inline(always)]
+    fn mul(self, factor: Channel<T>) -> Self {
+        PreAlpha {
+            color: self.color * factor,
+            alpha: self.alpha * factor,
+        }
+    }
+}
 
 impl<T: Intermediate> Neg for Channel<T> {
     type Output = Self;
@@ -223,12 +231,12 @@ impl<T: Intermediate> Clamp for Channel<T> {
 
     #[inline]
     fn clamp_min(self, min: Self) -> Self {
-        Channel(max(self.0, min.0))
+        Channel(self.0.max(min.0))
     }
 
     #[inline]
     fn clamp_max(self, max: Self) -> Self {
-        Channel(min(self.0, max.0))
+        Channel(self.0.min(max.0))
     }
 }
 
@@ -247,8 +255,8 @@ impl<T: Intermediate> IntoStimulus<u8> for Channel<T> {
     #[inline]
     fn into_stimulus(self) -> u8 {
         let scaled: T = Clamp::clamp(self, Channel(T::zero()), Channel(T::one())).0
-            * from_usize::<T>(u8::MAX as usize)
-            + half::<T>();
+            * T::from_u8(u8::MAX).unwrap()
+            + T::half();
 
         scaled.to_u8().unwrap_or(u8::MAX)
     }
@@ -257,11 +265,6 @@ impl<T: Intermediate> IntoStimulus<u8> for Channel<T> {
 impl<T: Intermediate> IntoStimulus<Channel<T>> for u8 {
     #[inline]
     fn into_stimulus(self) -> Channel<T> {
-        Channel(from_usize::<T>(self as usize) / from_usize::<T>(u8::MAX as usize))
+        Channel(T::from_u8(self).unwrap() / T::from_u8(u8::MAX).unwrap())
     }
-}
-
-#[inline]
-pub fn max_int<T: Intermediate>() -> T {
-    floor(T::max_value())
 }

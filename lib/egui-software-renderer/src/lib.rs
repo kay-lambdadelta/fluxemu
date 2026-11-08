@@ -17,7 +17,7 @@ use crate::{
         fill::{fill_quad, fill_triangle},
         reduce::reduce_geometry,
     },
-    intermediate::{Channel, ceil, floor, from_usize, max_int, to_index},
+    intermediate::Channel,
 };
 
 pub mod callback;
@@ -49,7 +49,7 @@ impl<T: Intermediate> Default for Renderer<T> {
 impl<T: Intermediate> Renderer<T> {
     /// Get the max texture size this instance of the renderer can represent
     pub fn max_texture_size(&self) -> u32 {
-        max_int::<T>().to_u32().unwrap_or(u32::MAX)
+        T::max_int().to_u32().unwrap_or(u32::MAX)
     }
 
     /// Render to a surface
@@ -117,11 +117,7 @@ impl<T: Intermediate> Renderer<T> {
                         .pixels
                         .clone()
                         .into_iter()
-                        .map(|pixel| {
-                            Srgba::from_components(pixel.to_tuple())
-                                .into_format()
-                                .premultiply()
-                        })
+                        .map(premultiplied_color)
                         .collect();
 
                     Texture::from_storage(image.size[0], image.size[1], converted_image)
@@ -187,10 +183,22 @@ fn render_inner<
         );
         run_start = index + 1;
 
-        let min = group.rect.min.map(|component| to_index(floor(component)));
+        let min = group.rect.min.map(|component| component.floor().to_index());
         let max = Point2::new(
-            to_index(ceil(group.rect.max.x)).min(target_texture.width()),
-            to_index(ceil(group.rect.max.y)).min(target_texture.height()),
+            group
+                .rect
+                .max
+                .x
+                .ceil()
+                .to_index()
+                .min(target_texture.width()),
+            group
+                .rect
+                .max
+                .y
+                .ceil()
+                .to_index()
+                .min(target_texture.height()),
         );
 
         let rect = Rectangle::from_min_and_max(min, max);
@@ -237,7 +245,7 @@ fn render_inner<
         bands.into_par_iter().zip(ranges).for_each(
             #[inline]
             |(mut band, band_range)| {
-                let offset = from_usize::<T>(*band_range.start());
+                let offset = T::from_usize(*band_range.start()).unwrap();
 
                 for group in groups {
                     let clip = Rectangle::from_min_and_max(
@@ -282,5 +290,17 @@ fn render_inner<
                 }
             },
         );
+    }
+}
+
+#[inline]
+pub(crate) fn premultiplied_color<T: Intermediate>(
+    color: egui::Color32,
+) -> PreAlpha<Srgb<Channel<T>>> {
+    let color: Srgba<Channel<T>> = Srgba::from_components(color.to_tuple()).into_format();
+
+    PreAlpha {
+        color: color.color,
+        alpha: color.alpha,
     }
 }

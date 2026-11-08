@@ -3,7 +3,7 @@ use std::sync::Arc;
 use egui::TextureId;
 use fluxemu_math::rectangle::Rectangle;
 use nalgebra::{Point2, Vector2};
-use palette::Srgba;
+use palette::{Srgb, Srgba, blend::PreAlpha};
 
 use crate::{
     callback::Callback,
@@ -17,7 +17,7 @@ pub mod reduce;
 pub struct Vertex<T: Intermediate> {
     pub position: Point2<T>,
     pub uv: Point2<T>,
-    pub color: Srgba<Channel<T>>,
+    pub color: PreAlpha<Srgb<Channel<T>>>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
