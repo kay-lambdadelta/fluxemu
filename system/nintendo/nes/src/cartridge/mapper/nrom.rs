@@ -1,11 +1,9 @@
 use alloc::boxed::Box;
-use core::ops::RangeInclusive;
 
-use fluxemu_math::range::ContiguousRange;
 use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
-    memory::{MapTarget, MemoryMapCommand, Permissions},
+    memory::{MemoryMapCommand, Permissions},
     platform::Platform,
 };
 
@@ -44,7 +42,7 @@ impl<P: Platform> ComponentConfig<P> for NRomConfig {
                 component_builder.map_memory(
                     self.config.cpu_address_space,
                     [
-                        MemoryMapCommand::immutable_memory(0x8000, self.config.prg_rom),
+                        MemoryMapCommand::immutable_memory(0x8000, self.config.prg_rom.clone()),
                         MemoryMapCommand::mirror(Permissions::READ, 0xc000..=0xffff, 0x8000),
                     ],
                 )
@@ -59,38 +57,14 @@ impl<P: Platform> ComponentConfig<P> for NRomConfig {
                     self.config.cpu_address_space,
                     [MemoryMapCommand::immutable_memory(
                         0x8000,
-                        self.config.prg_rom,
+                        self.config.prg_rom.clone(),
                     )],
                 )
             }
             _ => return Err("Unsupported PRG ROM size for NROM mapper".into()),
         };
 
-        if let Some(chr_rom) = self.config.chr_rom {
-            if chr_rom.len() != 0x2000 {
-                return Err("CHR-ROM must have exactly 8KB of CHR-ROM".into());
-            }
-
-            component_builder.map_memory(
-                self.config.ppu_address_space,
-                [MemoryMapCommand::immutable_memory(0x0000, chr_rom)],
-            );
-        } else {
-            let (component_builder, chr_ram_path) =
-                component_builder.memory("chr-ram", self.config.chr_ram_size, []);
-
-            component_builder.map_memory(
-                self.config.ppu_address_space,
-                [MemoryMapCommand::Map {
-                    range: RangeInclusive::from_start_and_length(0x0000, self.config.chr_ram_size),
-                    permissions: Permissions::ALL,
-                    target: MapTarget::Memory {
-                        path: chr_ram_path,
-                        subrange: None,
-                    },
-                }],
-            );
-        }
+        self.config.map_fixed_chr(component_builder)?;
 
         Ok(NRom)
     }

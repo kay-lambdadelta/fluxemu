@@ -6,7 +6,7 @@ use alloc::{boxed::Box, format};
 use core::{error::Error, marker::PhantomData, ops::RangeInclusive};
 
 pub use cartridge::ines::INes;
-use cartridge::{CartParams, ines::TimingMode};
+use cartridge::{CartParams, Mirroring, ines::TimingMode};
 use fluxemu_definition_mos6502::variant::Ricoh2A0x;
 use fluxemu_math::range::ContiguousRange;
 use fluxemu_program::{NintendoSystem, SystemId};
@@ -22,10 +22,8 @@ use ppu::PpuConfig;
 use crate::{
     apu::ApuConfig,
     cartridge::{
-        ines::{
-            INesVersion, NametableMirroring, ParsingError, expansion_device::DefaultExpansionDevice,
-        },
-        mapper::{cnrom::CnRomConfig, mmc1::Mmc1Config, nrom::NRomConfig},
+        ines::{INesVersion, ParsingError, expansion_device::DefaultExpansionDevice},
+        mapper::{cnrom::CnRomConfig, mmc1::Mmc1Config, nrom::NRomConfig, uxrom::UxRomConfig},
     },
     gamepad::standard_controllers::NesControllerConfig,
     ppu::{
@@ -235,6 +233,19 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Nes {
                     )?
                     .0;
             }
+            002 => {
+                let bus_conflicts = matches!(header.version, INesVersion::V2 { submapper: 2, .. });
+
+                machine_builder = machine_builder
+                    .component(
+                        "uxrom_cartridge",
+                        UxRomConfig {
+                            config: cart_config,
+                            bus_conflicts,
+                        },
+                    )?
+                    .0;
+            }
             003 => {
                 machine_builder = machine_builder
                     .component(
@@ -339,76 +350,8 @@ fn setup_ppu_nametables<P: Platform>(
     nametables: &[ResourcePath; 2],
     ines: &INes,
 ) -> MachineBuilder<P> {
-    match ines.mirroring {
-        NametableMirroring::Vertical => machine.map_memory(
-            ppu_address_space,
-            [
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[0].clone(),
-                    permissions: Permissions::ALL,
-                    target: MapTarget::Memory {
-                        path: nametables[0].clone(),
-                        subrange: None,
-                    },
-                },
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[1].clone(),
-                    permissions: Permissions::ALL,
-                    target: MapTarget::Memory {
-                        path: nametables[1].clone(),
-                        subrange: None,
-                    },
-                },
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[2].clone(),
-                    permissions: Permissions::ALL,
-                    target: MapTarget::Mirror {
-                        destination: NAMETABLE_ADDRESSES[0].clone(),
-                    },
-                },
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[3].clone(),
-                    permissions: Permissions::ALL,
-                    target: MapTarget::Mirror {
-                        destination: NAMETABLE_ADDRESSES[1].clone(),
-                    },
-                },
-            ],
-        ),
-        NametableMirroring::Horizontal => machine.map_memory(
-            ppu_address_space,
-            [
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[0].clone(),
-                    permissions: Permissions::ALL,
-                    target: MapTarget::Memory {
-                        path: nametables[0].clone(),
-                        subrange: None,
-                    },
-                },
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[2].clone(),
-                    permissions: Permissions::ALL,
-                    target: MapTarget::Memory {
-                        path: nametables[1].clone(),
-                        subrange: None,
-                    },
-                },
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[1].clone(),
-                    permissions: Permissions::ALL,
-                    target: MapTarget::Mirror {
-                        destination: NAMETABLE_ADDRESSES[0].clone(),
-                    },
-                },
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[3].clone(),
-                    permissions: Permissions::ALL,
-                    target: MapTarget::Mirror {
-                        destination: NAMETABLE_ADDRESSES[2].clone(),
-                    },
-                },
-            ],
-        ),
-    }
+    machine.map_memory(
+        ppu_address_space,
+        Mirroring::from(ines.mirroring).nametable_commands(nametables),
+    )
 }

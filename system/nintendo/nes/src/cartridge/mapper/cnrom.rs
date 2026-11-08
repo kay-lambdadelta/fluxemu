@@ -1,7 +1,5 @@
 use alloc::boxed::Box;
-use core::ops::RangeInclusive;
 
-use fluxemu_math::range::ContiguousRange;
 use fluxemu_runtime::{
     RuntimeHandle,
     component::{
@@ -15,7 +13,7 @@ use fluxemu_runtime::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::cartridge::CartParams;
+use crate::cartridge::{CartParams, rom_bank};
 
 const CHR_BANK_SIZE: usize = 8 * 1024;
 
@@ -43,23 +41,18 @@ impl PersistentComponentState<CnRom> for State {
 impl CnRom {
     fn update_chr_banking(&self, runtime: &RuntimeHandle) {
         let chr_rom = self.config.config.chr_rom.as_ref().unwrap();
-        let chr_bank_count = chr_rom.len() / CHR_BANK_SIZE;
 
         runtime
             .address_space(self.config.config.ppu_address_space)
             .unwrap()
             .remap(
                 runtime.current_timestamp(),
-                [MemoryMapCommand::Map {
-                    range: 0x0000..=0x1fff,
-                    target: MapTarget::ImmutableMemory(chr_rom.slice(
-                        RangeInclusive::from_start_and_length(
-                            (self.state.chr_bank_index % chr_bank_count) * CHR_BANK_SIZE,
-                            CHR_BANK_SIZE,
-                        ),
-                    )),
-                    permissions: Permissions::READ,
-                }],
+                [rom_bank(
+                    chr_rom,
+                    0x0000,
+                    CHR_BANK_SIZE,
+                    self.state.chr_bank_index,
+                )],
             );
     }
 }

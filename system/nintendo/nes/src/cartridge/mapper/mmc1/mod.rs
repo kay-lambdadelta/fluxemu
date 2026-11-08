@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, vec, vec::Vec};
+use alloc::boxed::Box;
 use core::ops::RangeInclusive;
 
 use fluxemu_math::range::ContiguousRange;
@@ -15,10 +15,7 @@ use fluxemu_runtime::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    cartridge::{CartParams, mapper::mmc1::shift::ShiftRegister},
-    ppu::NAMETABLE_ADDRESSES,
-};
+use crate::cartridge::{CartParams, Mirroring, mapper::mmc1::shift::ShiftRegister, rom_bank};
 
 mod shift;
 
@@ -36,14 +33,6 @@ enum PrgRomBankMode {
 enum ChrRomBankMode {
     Unified8k,
     Split4k,
-}
-
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-enum Mirroring {
-    OneScreenLower,
-    OneScreenUpper,
-    Vertical,
-    Horizontal,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -83,8 +72,6 @@ impl Mmc1 {
 
         let timestamp = runtime.current_timestamp();
 
-        let mut cpu_commands = Vec::new();
-
         let prg_bank_count = self.config.params.prg_rom.len() / PRG_BANK_SIZE;
 
         let (prg_low_bank, prg_high_bank) = match self.state.prg_rom_bank_mode {
@@ -98,26 +85,12 @@ impl Mmc1 {
                 (self.state.prg_rom_bank_index as usize, prg_bank_count - 1)
             }
         };
-        let (prg_low_bank, prg_high_bank) = (
-            prg_low_bank % prg_bank_count,
-            prg_high_bank % prg_bank_count,
-        );
 
-        cpu_commands.push(MemoryMapCommand::Map {
-            range: 0x8000..=0xbfff,
-            target: MapTarget::ImmutableMemory(self.config.params.prg_rom.slice(
-                RangeInclusive::from_start_and_length(prg_low_bank * PRG_BANK_SIZE, PRG_BANK_SIZE),
-            )),
-            permissions: Permissions::READ,
-        });
-
-        cpu_commands.push(MemoryMapCommand::Map {
-            range: 0xc000..=0xffff,
-            target: MapTarget::ImmutableMemory(self.config.params.prg_rom.slice(
-                RangeInclusive::from_start_and_length(prg_high_bank * PRG_BANK_SIZE, PRG_BANK_SIZE),
-            )),
-            permissions: Permissions::READ,
-        });
+        let prg_rom = &self.config.params.prg_rom;
+        let cpu_commands = [
+            rom_bank(prg_rom, 0x8000, PRG_BANK_SIZE, prg_low_bank),
+            rom_bank(prg_rom, 0xc000, PRG_BANK_SIZE, prg_high_bank),
+        ];
 
         runtime
             .address_space(self.config.params.cpu_address_space)
@@ -129,50 +102,19 @@ impl Mmc1 {
         let timestamp = runtime.current_timestamp();
 
         if let Some(chr_rom) = self.config.params.chr_rom.as_ref() {
-            let chr_bank_count = chr_rom.len() / CHR_BANK_SIZE;
-            let mut ppu_commands = Vec::new();
-
-            match self.state.chr_rom_bank_mode {
+            let [low_bank, high_bank] = match self.state.chr_rom_bank_mode {
                 ChrRomBankMode::Unified8k => {
                     let bank = (self.state.chr_rom_bank_indexes[0] & !1) as usize;
 
-                    ppu_commands.push(MemoryMapCommand::Map {
-                        range: 0x0000..=0x0fff,
-                        target: MapTarget::ImmutableMemory(chr_rom.slice(
-                            RangeInclusive::from_start_and_length(
-                                (bank % chr_bank_count) * CHR_BANK_SIZE,
-                                CHR_BANK_SIZE,
-                            ),
-                        )),
-                        permissions: Permissions::READ,
-                    });
-
-                    ppu_commands.push(MemoryMapCommand::Map {
-                        range: 0x1000..=0x1fff,
-                        target: MapTarget::ImmutableMemory(chr_rom.slice(
-                            RangeInclusive::from_start_and_length(
-                                ((bank + 1) % chr_bank_count) * CHR_BANK_SIZE,
-                                CHR_BANK_SIZE,
-                            ),
-                        )),
-                        permissions: Permissions::READ,
-                    });
+                    [bank, bank + 1]
                 }
-                ChrRomBankMode::Split4k => {
-                    for (i, &bank_index) in self.state.chr_rom_bank_indexes.iter().enumerate() {
-                        let ppu_base = i * 0x1000;
-                        let rom_offset = (bank_index as usize % chr_bank_count) * CHR_BANK_SIZE;
+                ChrRomBankMode::Split4k => self.state.chr_rom_bank_indexes.map(usize::from),
+            };
 
-                        ppu_commands.push(MemoryMapCommand::Map {
-                            range: RangeInclusive::from_start_and_length(ppu_base, 0x1000),
-                            target: MapTarget::ImmutableMemory(chr_rom.slice(
-                                RangeInclusive::from_start_and_length(rom_offset, CHR_BANK_SIZE),
-                            )),
-                            permissions: Permissions::READ,
-                        });
-                    }
-                }
-            }
+            let ppu_commands = [
+                rom_bank(chr_rom, 0x0000, CHR_BANK_SIZE, low_bank),
+                rom_bank(chr_rom, 0x1000, CHR_BANK_SIZE, high_bank),
+            ];
 
             runtime
                 .address_space(self.config.params.ppu_address_space)
@@ -182,142 +124,13 @@ impl Mmc1 {
     }
 
     fn update_nametables(&mut self, runtime: &RuntimeHandle) {
-        let Some(mirroring) = &self.state.mirroring else {
+        let Some(mirroring) = self.state.mirroring else {
             return;
         };
 
         let timestamp = runtime.current_timestamp();
 
-        let [nametable_0, nametable_1] = &self.config.params.nametables;
-
-        let commands = match mirroring {
-            Mirroring::OneScreenLower => vec![
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[0].clone(),
-                    target: MapTarget::Memory {
-                        path: nametable_0.clone(),
-                        subrange: None,
-                    },
-                    permissions: Permissions::ALL,
-                },
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[1].clone(),
-                    target: MapTarget::Mirror {
-                        destination: NAMETABLE_ADDRESSES[0].clone(),
-                    },
-                    permissions: Permissions::ALL,
-                },
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[2].clone(),
-                    target: MapTarget::Mirror {
-                        destination: NAMETABLE_ADDRESSES[0].clone(),
-                    },
-                    permissions: Permissions::ALL,
-                },
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[3].clone(),
-                    target: MapTarget::Mirror {
-                        destination: NAMETABLE_ADDRESSES[0].clone(),
-                    },
-                    permissions: Permissions::ALL,
-                },
-            ],
-            Mirroring::OneScreenUpper => vec![
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[0].clone(),
-                    target: MapTarget::Mirror {
-                        destination: NAMETABLE_ADDRESSES[1].clone(),
-                    },
-                    permissions: Permissions::ALL,
-                },
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[1].clone(),
-                    target: MapTarget::Memory {
-                        path: nametable_1.clone(),
-                        subrange: None,
-                    },
-                    permissions: Permissions::ALL,
-                },
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[2].clone(),
-                    target: MapTarget::Mirror {
-                        destination: NAMETABLE_ADDRESSES[1].clone(),
-                    },
-                    permissions: Permissions::ALL,
-                },
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[3].clone(),
-                    target: MapTarget::Mirror {
-                        destination: NAMETABLE_ADDRESSES[1].clone(),
-                    },
-                    permissions: Permissions::ALL,
-                },
-            ],
-            Mirroring::Vertical => vec![
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[0].clone(),
-                    target: MapTarget::Memory {
-                        path: nametable_0.clone(),
-                        subrange: None,
-                    },
-                    permissions: Permissions::ALL,
-                },
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[1].clone(),
-                    target: MapTarget::Memory {
-                        path: nametable_1.clone(),
-                        subrange: None,
-                    },
-                    permissions: Permissions::ALL,
-                },
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[2].clone(),
-                    target: MapTarget::Mirror {
-                        destination: NAMETABLE_ADDRESSES[0].clone(),
-                    },
-                    permissions: Permissions::ALL,
-                },
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[3].clone(),
-                    target: MapTarget::Mirror {
-                        destination: NAMETABLE_ADDRESSES[1].clone(),
-                    },
-                    permissions: Permissions::ALL,
-                },
-            ],
-            Mirroring::Horizontal => vec![
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[0].clone(),
-                    target: MapTarget::Memory {
-                        path: nametable_0.clone(),
-                        subrange: None,
-                    },
-                    permissions: Permissions::ALL,
-                },
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[1].clone(),
-                    target: MapTarget::Mirror {
-                        destination: NAMETABLE_ADDRESSES[0].clone(),
-                    },
-                    permissions: Permissions::ALL,
-                },
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[2].clone(),
-                    target: MapTarget::Memory {
-                        path: nametable_1.clone(),
-                        subrange: None,
-                    },
-                    permissions: Permissions::ALL,
-                },
-                MemoryMapCommand::Map {
-                    range: NAMETABLE_ADDRESSES[3].clone(),
-                    target: MapTarget::Mirror {
-                        destination: NAMETABLE_ADDRESSES[2].clone(),
-                    },
-                    permissions: Permissions::ALL,
-                },
-            ],
-        };
+        let commands = mirroring.nametable_commands(&self.config.params.nametables);
 
         runtime
             .address_space(self.config.params.ppu_address_space)
@@ -475,39 +288,8 @@ impl<P: Platform> ComponentConfig<P> for Mmc1Config {
             );
         }
 
-        if self.params.chr_rom.is_none()
-            && self.params.chr_ram_size == 0
-            && self.params.chr_nvram_size == 0
-        {
-            return Err("Cartridge has neither CHR-ROM nor CHR-RAM".into());
-        }
-
         if self.params.chr_rom.is_none() {
-            let (size, sram) = if self.params.chr_nvram_size > 0 {
-                (self.params.chr_nvram_size, true)
-            } else {
-                (self.params.chr_ram_size, false)
-            };
-
-            let (cb, chr_ram_path) = if sram {
-                component_builder.save_memory("chr-ram", size, [])
-            } else {
-                component_builder.memory("chr-ram", size, [])
-            };
-
-            let cb = cb.map_memory(
-                self.params.ppu_address_space,
-                [MemoryMapCommand::Map {
-                    range: RangeInclusive::from_start_and_length(0x0000, size),
-                    permissions: Permissions::ALL,
-                    target: MapTarget::Memory {
-                        path: chr_ram_path,
-                        subrange: None,
-                    },
-                }],
-            );
-
-            component_builder = cb;
+            component_builder = self.params.map_chr_ram(component_builder)?;
         }
 
         let prg_ram_size = self.params.prg_ram_size + self.params.prg_nvram_size;
