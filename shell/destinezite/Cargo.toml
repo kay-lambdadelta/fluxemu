@@ -12,8 +12,16 @@ maintainer = "Kay <lambdadeltakay@proton.me>"
 license-file = ["../../LICENSE", "0"]
 assets = [
   ["target/release/fluxemu-shell-destinezite", "usr/bin/", "755"],
-  ["assets/linux/launch.desktop", "usr/share/applications/fluxemu-shell-destinezite-launch.desktop", "644"],
-  ["assets/linux/run.desktop", "usr/share/applications/fluxemu-shell-destinezite-run.desktop", "644"],
+  [
+    "assets/linux/launch.desktop",
+    "usr/share/applications/fluxemu-shell-destinezite-launch.desktop",
+    "644"
+  ],
+  [
+    "assets/linux/run.desktop",
+    "usr/share/applications/fluxemu-shell-destinezite-run.desktop",
+    "644"
+  ],
   ["assets/linux/mime.xml", "usr/share/mime/packages/fluxemu-shell-destinezite.xml", "644"],
 ]
 section = "games"
@@ -94,7 +102,17 @@ fluxemu-system-other-chip8 = {
 
 [features]
 default = ["ratatui", "webgpu", "windowing"]
-drm = ["dep:drm", "dep:evdev", "dep:input", "dep:libseat", "dep:nix", "dep:udev", "dep:xkbcommon", "egui", "wgpu/drm"]
+drm = [
+  "dep:drm",
+  "dep:evdev",
+  "dep:input",
+  "dep:libseat",
+  "dep:nix",
+  "dep:udev",
+  "dep:xkbcommon",
+  "egui",
+  "wgpu/drm"
+]
 egui = ["dep:egui", "dep:epaint", "dep:fluxemu-egui-software-renderer", "dep:fluxemu-frontend-egui"]
 ratatui = ["dep:fluxemu-frontend-ratatui", "dep:ratatui-image"]
 webgpu = [
@@ -108,7 +126,14 @@ webgpu = [
   "fluxemu-system-nintendo-nes/webgpu",
   "fluxemu-system-other-chip8/webgpu",
 ]
-windowing = ["dep:egui-winit", "dep:raw-window-handle", "dep:softbuffer", "dep:winit", "egui", "fluxemu-frontend-egui/external-file-dialog"]
+windowing = [
+  "dep:egui-winit",
+  "dep:raw-window-handle",
+  "dep:softbuffer",
+  "dep:winit",
+  "egui",
+  "fluxemu-frontend-egui/external-file-dialog"
+]
 
 [lints]
 workspace = true

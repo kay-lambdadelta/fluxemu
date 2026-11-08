@@ -21,6 +21,7 @@ fluxemu-program = { workspace = true }
 fluxemu-runtime = { workspace = true }
 fluxemu-system = { workspace = true }
 indexmap = { workspace = true }
+jiff = { workspace = true }
 nalgebra = { workspace = true }
 palette = { workspace = true }
 rand = { workspace = true }
@@ -29,7 +30,6 @@ ringbuffer = { workspace = true }
 rust-i18n = { workspace = true }
 rustc-hash = { workspace = true }
 serde = { workspace = true }
-jiff = { workspace = true }
 strum = { workspace = true }
 tokio = { workspace = true, features = ["fs", "rt", "sync"] }
 tracing = { workspace = true }

@@ -1,0 +1,8 @@
+toml-version = "v1.1.0"
+
+[files]
+exclude = ["external/**"]
+
+[format.rules]
+line-ending = "lf"
+line-width = 100
