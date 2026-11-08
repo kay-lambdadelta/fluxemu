@@ -265,6 +265,14 @@ impl<T: Intermediate> IntoStimulus<u8> for Channel<T> {
 impl<T: Intermediate> IntoStimulus<Channel<T>> for u8 {
     #[inline]
     fn into_stimulus(self) -> Channel<T> {
-        Channel(T::from_u8(self).unwrap() / T::from_u8(u8::MAX).unwrap())
+        let value = T::from_u8(self).unwrap();
+        let max = T::from_u8(u8::MAX).unwrap();
+        let reciprocal = T::one() / max;
+
+        if max * reciprocal == T::one() {
+            Channel(value * reciprocal)
+        } else {
+            Channel(value / max)
+        }
     }
 }

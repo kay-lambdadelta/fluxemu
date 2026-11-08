@@ -4,7 +4,7 @@ use fluxemu_graphics::texture::{AsViewTexture, Storage, StorageMut, Texture};
 use fluxemu_math::{range::ContiguousRange, rectangle::Rectangle};
 use nalgebra::{Point2, SMatrix, Vector2, Vector3};
 use palette::{
-    Srgb, Srgba,
+    Alpha, Srgb, Srgba,
     blend::{Compose, PreAlpha},
 };
 
@@ -142,7 +142,11 @@ pub fn fill_triangle<
         ))),
     };
 
-    let texture_dimensions = source_texture.size().map(|i| I::from_usize(i).unwrap());
+    let source_pixels = source_texture
+        .as_slice()
+        .expect("Source textures are always stored whole");
+    assert!(source_pixels.len() <= u32::MAX as usize);
+    let source_size = source_texture.size().map(|size| size as u32);
 
     for y in triangle_bounding_min.y.to_index()..=triangle_bounding_max.y.to_index() {
         let row_center = I::from_usize(y).unwrap() + I::half();
@@ -202,8 +206,8 @@ pub fn fill_triangle<
             match len {
                 32 => pixel_rounds::<32, P, I>(
                     target_row,
-                    source_texture,
-                    texture_dimensions,
+                    source_pixels,
+                    source_size,
                     current_uv,
                     current_color,
                     step_uv,
@@ -211,8 +215,8 @@ pub fn fill_triangle<
                 ),
                 16 => pixel_rounds::<16, P, I>(
                     target_row,
-                    source_texture,
-                    texture_dimensions,
+                    source_pixels,
+                    source_size,
                     current_uv,
                     current_color,
                     step_uv,
@@ -220,8 +224,8 @@ pub fn fill_triangle<
                 ),
                 8 => pixel_rounds::<8, P, I>(
                     target_row,
-                    source_texture,
-                    texture_dimensions,
+                    source_pixels,
+                    source_size,
                     current_uv,
                     current_color,
                     step_uv,
@@ -229,8 +233,8 @@ pub fn fill_triangle<
                 ),
                 4 => pixel_rounds::<4, P, I>(
                     target_row,
-                    source_texture,
-                    texture_dimensions,
+                    source_pixels,
+                    source_size,
                     current_uv,
                     current_color,
                     step_uv,
@@ -238,8 +242,8 @@ pub fn fill_triangle<
                 ),
                 2 => pixel_rounds::<2, P, I>(
                     target_row,
-                    source_texture,
-                    texture_dimensions,
+                    source_pixels,
+                    source_size,
                     current_uv,
                     current_color,
                     step_uv,
@@ -247,8 +251,8 @@ pub fn fill_triangle<
                 ),
                 1 => pixel_rounds::<1, P, I>(
                     target_row,
-                    source_texture,
-                    texture_dimensions,
+                    source_pixels,
+                    source_size,
                     current_uv,
                     current_color,
                     step_uv,
@@ -279,8 +283,8 @@ fn pixel_rounds<
     I: Intermediate,
 >(
     mut target_row: Texture<impl StorageMut<Pixel = P>>,
-    texture: Texture<impl Storage<Pixel = PreAlpha<Srgb<Channel<I>>>>>,
-    texture_dimensions: Vector2<I>,
+    texture_pixels: &[PreAlpha<Srgb<Channel<I>>>],
+    texture_size: Vector2<u32>,
     current_uv: Vector2<I>,
     current_color: PreAlpha<Srgb<Channel<I>>>,
     step_uv: Vector2<I>,
@@ -308,6 +312,8 @@ fn pixel_rounds<
             .copy_from_slice(color.as_ref());
     }
 
+    let texture_dimensions = texture_size.map(|size| I::from_u32(size).unwrap());
+
     let mut scaled_uvs: SMatrix<_, C, 2> = SMatrix::from_element(I::zero());
     for index in 0..C {
         let scaled_uv = texture_dimensions
@@ -317,12 +323,8 @@ fn pixel_rounds<
         scaled_uvs.row_mut(index).copy_from(&scaled_uv);
     }
 
-    // A coordinate being emitted somehow that ended up being beyond u32::MAX would be absurd, but clamp just in case
-    //
     // We guard against any zero sized textures appearing already (in reduce.rs), so this can't underflow
-    let max_possible_texture_coordinate = texture
-        .size()
-        .map(|size| (size - 1).min(u32::MAX as usize) as u32);
+    let max_possible_texture_coordinate = texture_size.map(|size| size - 1);
 
     let mut texture_coordinates: SMatrix<_, C, 2> = SMatrix::from_element(0);
     for index in 0..C {
@@ -339,11 +341,13 @@ fn pixel_rounds<
 
     let mut sampled_texture_color: SMatrix<_, C, 4> = SMatrix::from_element(Channel(I::zero()));
     for index in 0..C {
-        let texture_coordinate = texture_coordinates.row(index).transpose().cast();
+        let texture_coordinate = texture_coordinates.row(index);
+        let texture_index = texture_coordinate[1] * texture_size.x + texture_coordinate[0];
 
         // SAFETY:
-        //  We clamped to the texture size while producing the texture coordinates
-        let texture_pixel = *unsafe { texture.get_unchecked(texture_coordinate) };
+        //  We clamped to the texture size while producing the texture coordinates, and the caller
+        //  ensures the texture has at most u32::MAX pixels so the index can't overflow
+        let texture_pixel = *unsafe { texture_pixels.get_unchecked(texture_index as usize) };
 
         sampled_texture_color
             .row_mut(index)
@@ -390,7 +394,17 @@ fn pixel_rounds<
         let output_color = output_colors.row(index).transpose();
         let output_color: PreAlpha<Srgb<Channel<I>>> = PreAlpha::from(<[_; 4]>::from(output_color));
 
-        target_row[Point2::new(index, 0)] = output_color.unpremultiply().into_format().into();
+        let inverse_alpha = if output_color.alpha.0.is_zero() {
+            Channel(I::zero())
+        } else {
+            Channel(I::one()) / output_color.alpha
+        };
+        let output_color: Srgba<Channel<I>> = Alpha {
+            color: output_color.color * inverse_alpha,
+            alpha: output_color.alpha,
+        };
+
+        target_row[Point2::new(index, 0)] = output_color.into_format().into();
     }
 }
 
