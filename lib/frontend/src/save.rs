@@ -12,26 +12,12 @@ use std::{
 
 use fluxemu_program::ProgramId;
 use fluxemu_runtime::machine::Machine;
-use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use serde::{Deserialize, Serialize};
 
 const ACTIVE_SLOT_FILE: &str = "active.toml";
 
-const UNSAFE_PATH_CHARACTERS: &AsciiSet = &CONTROLS
-    .add(b'%')
-    .add(b'/')
-    .add(b'\\')
-    .add(b':')
-    .add(b'*')
-    .add(b'?')
-    .add(b'"')
-    .add(b'<')
-    .add(b'>')
-    .add(b'|');
-
 pub(crate) fn program_directory(root: &Path, id: &ProgramId) -> PathBuf {
-    root.join(id.system.to_nointro_string())
-        .join(utf8_percent_encode(&id.main_name, UNSAFE_PATH_CHARACTERS).to_string())
+    root.join(id.path())
 }
 
 #[derive(Debug, Serialize, Deserialize)]

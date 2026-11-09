@@ -21,6 +21,7 @@ opendal = {
     "services-fs",
   ]
 }
+percent-encoding = { workspace = true }
 redb = { workspace = true, optional = true }
 rmp-serde = { workspace = true, optional = true }
 ron = { workspace = true }

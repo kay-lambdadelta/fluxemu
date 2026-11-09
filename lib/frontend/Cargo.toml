@@ -21,7 +21,6 @@ image = { workspace = true, features = ["webp"] }
 indexmap = { workspace = true }
 nalgebra = { workspace = true }
 palette = { workspace = true }
-percent-encoding = { workspace = true }
 rand = { workspace = true }
 ringbuffer = { workspace = true }
 ron = { workspace = true }

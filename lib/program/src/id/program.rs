@@ -1,8 +1,21 @@
-use std::fmt::Display;
+use std::{fmt::Display, path::PathBuf};
 
+use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use serde::{Deserialize, Serialize};
 
 use crate::SystemId;
+
+const UNSAFE_PATH_CHARACTERS: &AsciiSet = &CONTROLS
+    .add(b'%')
+    .add(b'/')
+    .add(b'\\')
+    .add(b':')
+    .add(b'*')
+    .add(b'?')
+    .add(b'"')
+    .add(b'<')
+    .add(b'>')
+    .add(b'|');
 
 /// A identifier for a program
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
@@ -11,6 +24,13 @@ pub struct ProgramId {
     pub system: SystemId,
     /// A identifiable name for the program
     pub main_name: String,
+}
+
+impl ProgramId {
+    pub fn path(&self) -> PathBuf {
+        PathBuf::from(self.system.to_string())
+            .join(utf8_percent_encode(&self.main_name, UNSAFE_PATH_CHARACTERS).to_string())
+    }
 }
 
 impl Display for ProgramId {
