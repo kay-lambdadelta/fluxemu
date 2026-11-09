@@ -42,7 +42,11 @@ impl SystemId {
 
     /// Get a well known file extension for the files this system supports
     pub fn extension(self) -> Option<&'static str> {
-        extension::get_extension(self)
+        self.extensions().first().copied()
+    }
+
+    pub fn extensions(self) -> &'static [&'static str] {
+        extension::get_extensions(self)
     }
 
     /// Attempt to guess the game system from several heuristics including file
