@@ -3,14 +3,31 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use strum::{EnumIter, IntoEnumIterator};
+use serde_with::{DeserializeFromStr, SerializeDisplay};
+use strum::{EnumDiscriminants, EnumIter, EnumString, IntoEnumIterator, IntoStaticStr};
 
 mod extension;
 mod guess;
 
 /// Game systems organized by vendor
 #[derive(
-    Serialize, Deserialize, Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash,
+    Default,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    EnumDiscriminants,
+    SerializeDisplay,
+    DeserializeFromStr,
+)]
+#[strum_discriminants(
+    name(Vendor),
+    derive(IntoStaticStr, EnumString),
+    strum(serialize_all = "lowercase")
 )]
 pub enum SystemId {
     /// Nintendo systems
@@ -160,15 +177,33 @@ impl SystemId {
     }
 }
 
-impl AsRef<str> for SystemId {
-    fn as_ref(&self) -> &str {
-        self.to_nointro_string()
+impl SystemId {
+    pub const VENDOR_SEPARATOR: char = '@';
+
+    pub fn vendor(self) -> Vendor {
+        self.into()
+    }
+
+    fn system_name(self) -> Option<&'static str> {
+        match self {
+            Self::Nintendo(system) => Some(system.into()),
+            Self::Sega(system) => Some(system.into()),
+            Self::Sony(system) => Some(system.into()),
+            Self::Atari(system) => Some(system.into()),
+            Self::Other(system) => Some(system.into()),
+            Self::Unknown => None,
+        }
     }
 }
 
 impl Display for SystemId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_ref())
+        let vendor: &'static str = self.vendor().into();
+
+        match self.system_name() {
+            Some(system) => write!(f, "{system}{}{vendor}", Self::VENDOR_SEPARATOR),
+            None => f.write_str(vendor),
+        }
     }
 }
 
@@ -176,31 +211,77 @@ impl FromStr for SystemId {
     type Err = &'static str;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::iter()
-            .find(|system| system.as_ref() == s)
-            .ok_or("Could not parse")
+        let (system, vendor) = match s.split_once(Self::VENDOR_SEPARATOR) {
+            Some((system, vendor)) => (Some(system), vendor),
+            None => (None, s),
+        };
+        let vendor: Vendor = vendor.parse().map_err(|_| "Unknown vendor")?;
+        let unknown_system = |_| "Unknown system";
+
+        match (vendor, system) {
+            (Vendor::Unknown, None) => Ok(Self::Unknown),
+            (Vendor::Unknown, Some(_)) => Err("Unknown system has no vendor"),
+            (_, None) => Err("Missing vendor separator"),
+            (Vendor::Nintendo, Some(system)) => {
+                system.parse().map(Self::Nintendo).map_err(unknown_system)
+            }
+            (Vendor::Sega, Some(system)) => system.parse().map(Self::Sega).map_err(unknown_system),
+            (Vendor::Sony, Some(system)) => system.parse().map(Self::Sony).map_err(unknown_system),
+            (Vendor::Atari, Some(system)) => {
+                system.parse().map(Self::Atari).map_err(unknown_system)
+            }
+            (Vendor::Other, Some(system)) => {
+                system.parse().map(Self::Other).map_err(unknown_system)
+            }
+        }
     }
 }
 
 #[allow(missing_docs)]
 #[derive(
-    Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIter,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    EnumIter,
+    IntoStaticStr,
+    EnumString,
 )]
 /// All Nintendo systems
 pub enum NintendoSystem {
+    #[strum(serialize = "game-boy")]
     GameBoy,
+    #[strum(serialize = "game-boy-color")]
     GameBoyColor,
+    #[strum(serialize = "game-boy-advance")]
     GameBoyAdvance,
+    #[strum(serialize = "gamecube")]
     GameCube,
+    #[strum(serialize = "wii")]
     Wii,
+    #[strum(serialize = "wii-u")]
     WiiU,
+    #[strum(serialize = "nintendo-entertainment-system")]
     NintendoEntertainmentSystem,
+    #[strum(serialize = "super-nintendo-entertainment-system")]
     SuperNintendoEntertainmentSystem,
+    #[strum(serialize = "nintendo-64")]
     Nintendo64,
+    #[strum(serialize = "nintendo-ds")]
     NintendoDS,
+    #[strum(serialize = "nintendo-dsi")]
     NintendoDSi,
+    #[strum(serialize = "nintendo-3ds")]
     Nintendo3DS,
+    #[strum(serialize = "pokemon-mini")]
     PokemonMini,
+    #[strum(serialize = "virtual-boy")]
     VirtualBoy,
 }
 
@@ -211,14 +292,31 @@ impl NintendoSystem {
 
 #[allow(missing_docs)]
 #[derive(
-    Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIter,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    EnumIter,
+    IntoStaticStr,
+    EnumString,
 )]
 /// All Sega systems
 pub enum SegaSystem {
+    #[strum(serialize = "master-system")]
     MasterSystem,
+    #[strum(serialize = "game-gear")]
     GameGear,
+    #[strum(serialize = "genesis")]
     Genesis,
+    #[strum(serialize = "32x")]
     Sega32X,
+    #[strum(serialize = "sega-cd")]
     SegaCD,
 }
 
@@ -229,14 +327,31 @@ impl SegaSystem {
 
 #[allow(missing_docs)]
 #[derive(
-    Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIter,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    EnumIter,
+    IntoStaticStr,
+    EnumString,
 )]
 /// All Sony systems
 pub enum SonySystem {
+    #[strum(serialize = "playstation")]
     Playstation,
+    #[strum(serialize = "playstation-2")]
     Playstation2,
+    #[strum(serialize = "playstation-3")]
     Playstation3,
+    #[strum(serialize = "playstation-portable")]
     PlaystationPortable,
+    #[strum(serialize = "playstation-vita")]
     PlaystationVita,
 }
 
@@ -247,10 +362,23 @@ impl SonySystem {
 
 #[allow(missing_docs)]
 #[derive(
-    Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIter,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    EnumIter,
+    IntoStaticStr,
+    EnumString,
 )]
 /// Some random assorted other systems
 pub enum OtherSystem {
+    #[strum(serialize = "chip-8")]
     Chip8,
 }
 
@@ -261,17 +389,34 @@ impl OtherSystem {
 
 #[allow(missing_docs)]
 #[derive(
-    Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIter,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    EnumIter,
+    IntoStaticStr,
+    EnumString,
 )]
 /// All Atari systems
 pub enum AtariSystem {
     #[serde(rename = "2600")]
+    #[strum(serialize = "2600")]
     _2600,
     #[serde(rename = "5200")]
+    #[strum(serialize = "5200")]
     _5200,
     #[serde(rename = "7800")]
+    #[strum(serialize = "7800")]
     _7800,
+    #[strum(serialize = "lynx")]
     Lynx,
+    #[strum(serialize = "jaguar")]
     Jaguar,
 }
 
