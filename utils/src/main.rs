@@ -7,12 +7,9 @@ use clap::Parser;
 use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::load_environment;
 use fluxemu_program::{ProgramManager, RomStoreSpecification, SystemId};
+use futures::{StreamExt, TryStreamExt, stream};
 use redb::Database;
-use tokio::{
-    runtime::Runtime,
-    sync::mpsc,
-    task::{JoinSet, spawn_blocking},
-};
+use tokio::{runtime::Runtime, sync::mpsc, task::spawn_blocking};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{
     EnvFilter, Layer,
@@ -225,21 +222,10 @@ async fn for_each_concurrent<
     action: impl Fn(T) -> F,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let limit = available_parallelism().map_or(1, NonZero::get);
-    let mut tasks = JoinSet::new();
-
-    while let Some(item) = receiver.recv().await {
-        if tasks.len() >= limit
-            && let Some(result) = tasks.join_next().await
-        {
-            result??;
-        }
-
-        tasks.spawn(action(item));
-    }
-
-    while let Some(result) = tasks.join_next().await {
-        result??;
-    }
-
-    Ok(())
+    stream::poll_fn(|context| receiver.poll_recv(context))
+        .map(|item| tokio::spawn(action(item)))
+        .buffer_unordered(limit)
+        .map(|result| result?)
+        .try_collect()
+        .await
 }
