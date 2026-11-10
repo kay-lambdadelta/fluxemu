@@ -2,6 +2,7 @@ use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
     error::Error,
+    fmt::Display,
     marker::PhantomData,
     ops::RangeInclusive,
     sync::{Arc, Mutex, OnceLock, RwLock},
@@ -113,33 +114,7 @@ impl<P: Platform> MachineBuilder<P> {
     ) -> Result<Option<Bytes>, MachineError> {
         match self.program_manager.load(id).await? {
             Some(bytes) => Ok(Some(bytes)),
-            None => match requirement {
-                RomRequirement::Sometimes => {
-                    tracing::warn!(
-                        "Missing ROM {}, machine will be emulated without it but accuracy and \
-                         stability may suffer",
-                        id
-                    );
-
-                    Ok(None)
-                }
-                RomRequirement::Optional => {
-                    tracing::info!(
-                        "Missing optional ROM {}, machine will be emulated without it",
-                        id
-                    );
-
-                    Ok(None)
-                }
-                RomRequirement::Required => {
-                    tracing::error!(
-                        "Missing critical ROM {}, emulation cannot occur without it",
-                        id
-                    );
-
-                    Err(MachineError::CouldNotFindEssentialRom)
-                }
-            },
+            None => missing_rom(id, requirement),
         }
     }
 
@@ -358,6 +333,39 @@ impl<P: Platform> MachineBuilder<P> {
             component_late_initializers,
             framebuffer_late_initializers: self.framebuffer_late_initializers,
             graphics_requirements,
+        }
+    }
+}
+
+fn missing_rom(
+    rom: impl Display,
+    requirement: RomRequirement,
+) -> Result<Option<Bytes>, MachineError> {
+    match requirement {
+        RomRequirement::Sometimes => {
+            tracing::warn!(
+                "Missing ROM {}, machine will be emulated without it but accuracy and stability \
+                 may suffer",
+                rom
+            );
+
+            Ok(None)
+        }
+        RomRequirement::Optional => {
+            tracing::info!(
+                "Missing optional ROM {}, machine will be emulated without it",
+                rom
+            );
+
+            Ok(None)
+        }
+        RomRequirement::Required => {
+            tracing::error!(
+                "Missing critical ROM {}, emulation cannot occur without it",
+                rom
+            );
+
+            Err(MachineError::CouldNotFindEssentialRom)
         }
     }
 }
