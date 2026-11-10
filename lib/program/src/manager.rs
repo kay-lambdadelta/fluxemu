@@ -12,8 +12,9 @@ use thiserror::Error;
 use tokio::{fs::File, io::AsyncReadExt};
 
 use crate::{
-    DumpStatus, FileDigest, FileMatch, Manifest, MatchStrength, ProgramId, ProgramInfo, RomFile,
-    RomForm, RomHashes, RomId, RomStoreSpecification, SystemId, Title, Variant,
+    DigestCache, DumpStatus, FileDigest, FileMatch, Manifest, MatchStrength, ProgramId,
+    ProgramInfo, RomFile, RomForm, RomHashes, RomId, RomStoreSpecification, SystemId, Title,
+    Variant,
 };
 
 #[derive(Debug, Error)]
@@ -42,24 +43,62 @@ pub struct ProgramManager {
     embedded_roms: scc::HashMap<RomId, &'static [u8], FxBuildHasher>,
     rom_cache: scc::HashCache<RomId, Bytes>,
     digests: scc::HashMap<RomId, FileDigest, FxBuildHasher>,
+    digest_cache: Option<Arc<DigestCache>>,
     rom_stores: RwLock<Arc<[RomStore]>>,
 }
 
 impl ProgramManager {
+    /// If you are writing a new shell, consider consulting [`Self::with_digest_cache`] first
     pub fn new(
         rom_stores: impl IntoIterator<Item = (String, RomStoreSpecification)>,
+    ) -> Result<Arc<Self>, Error> {
+        Self::with_digest_cache(rom_stores, None)
+    }
+
+    pub fn with_digest_cache(
+        rom_stores: impl IntoIterator<Item = (String, RomStoreSpecification)>,
+        digest_cache: Option<DigestCache>,
     ) -> Result<Arc<Self>, Error> {
         Ok(Arc::new(Self {
             external_roms: scc::HashMap::default(),
             embedded_roms: scc::HashMap::default(),
             rom_cache: scc::HashCache::with_capacity(0, 16),
             digests: scc::HashMap::default(),
+            digest_cache: digest_cache.map(Arc::new),
             rom_stores: RwLock::new(build_rom_stores(rom_stores)?),
         }))
     }
 
+    pub fn collect_digest_cache_garbage(&self, reachable: &BTreeSet<RomId>) {
+        if let Some(digest_cache) = &self.digest_cache
+            && let Err(err) = digest_cache.collect_garbage(reachable)
+        {
+            tracing::warn!("Could not clean up the digest cache: {}", err);
+        }
+    }
+
     pub fn remember_digest(&self, digest: &FileDigest) {
+        self.cache_digest(digest);
         self.digests.upsert_sync(digest.id, digest.clone());
+    }
+
+    fn cached_digest(&self, id: RomId) -> Option<FileDigest> {
+        if let Some(digest_cache) = &self.digest_cache {
+            match digest_cache.get(id) {
+                Ok(digest) => return digest,
+                Err(err) => tracing::warn!("Could not read the digest cache: {}", err),
+            }
+        }
+
+        None
+    }
+
+    fn cache_digest(&self, digest: &FileDigest) {
+        if let Some(digest_cache) = &self.digest_cache
+            && let Err(err) = digest_cache.insert(digest)
+        {
+            tracing::error!("Could not write to the digest cache: {}", err);
+        }
     }
 
     pub fn set_rom_stores(
@@ -84,6 +123,7 @@ impl ProgramManager {
         .await??;
         let rom_id = digest.id;
 
+        self.cache_digest(&digest);
         self.digests.upsert_async(rom_id, digest).await;
 
         self.external_roms
@@ -163,12 +203,19 @@ impl ProgramManager {
             return Ok(Some(digest));
         }
 
+        if let Some(digest) = self.cached_digest(id) {
+            self.digests.upsert_async(id, digest.clone()).await;
+
+            return Ok(Some(digest));
+        }
+
         let Some(rom_bytes) = self.load(id).await? else {
             return Ok(None);
         };
 
         let digest =
             tokio::task::spawn_blocking(move || FileDigest::new(rom_bytes.as_ref())).await??;
+        self.cache_digest(&digest);
         self.digests.upsert_async(id, digest.clone()).await;
 
         Ok(Some(digest))

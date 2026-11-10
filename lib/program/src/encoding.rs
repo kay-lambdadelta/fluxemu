@@ -1,6 +1,8 @@
 use redb::{Key, TypeName, Value};
 
-use crate::{Derivative, GroupId, ProgramId, ProgramInfo, RomHash, RomId, Variant};
+use crate::{
+    Derivative, GroupId, ProgramId, ProgramInfo, RomHash, RomId, Variant, cache::CachedDigest,
+};
 
 #[doc(hidden)]
 #[macro_export]
@@ -65,6 +67,7 @@ messagepack_value!(ProgramInfo, "program_info");
 messagepack_value!(Variant, "variant");
 messagepack_value!(Derivative, "derivative");
 messagepack_value!(RomHash, "rom_hash");
+messagepack_value!(CachedDigest, "cached_digest");
 
 impl Value for RomId {
     type AsBytes<'a> = [u8; 32];

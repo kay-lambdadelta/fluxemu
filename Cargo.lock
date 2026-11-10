@@ -2145,6 +2145,7 @@ dependencies = [
  "data-encoding",
  "fluxemu-locale",
  "fluxemu-math",
+ "jiff",
  "md-5",
  "memmap2",
  "opendal",

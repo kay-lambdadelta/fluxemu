@@ -1,3 +1,4 @@
+mod cache;
 mod encoding;
 mod id;
 mod info;
@@ -6,6 +7,7 @@ mod store;
 
 use std::collections::BTreeMap;
 
+pub use cache::DigestCache;
 pub use encoding::DATABASE_VERSION;
 pub use id::*;
 pub use info::*;

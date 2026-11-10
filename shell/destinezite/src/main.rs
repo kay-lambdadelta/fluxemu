@@ -31,7 +31,7 @@ use cli::{Cli, CliAction};
 use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::load_environment;
 use fluxemu_frontend::notification::notification_channel;
-use fluxemu_program::ProgramManager;
+use fluxemu_program::{DigestCache, ProgramManager};
 use redb::Database;
 use tokio::runtime::Runtime;
 use tracing::level_filters::LevelFilter;
@@ -105,7 +105,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let runtime = Runtime::new()?;
     let program_database = ProgramDatabase::new(Database::create(&environment.database_location)?)?;
-    let program_manager = ProgramManager::new(environment.rom_stores.clone())?;
+    let program_manager = ProgramManager::with_digest_cache(
+        environment.rom_stores.clone(),
+        DigestCache::try_open(&environment.digest_cache_location),
+    )?;
 
     let mut initial_program = None;
 

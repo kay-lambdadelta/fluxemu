@@ -13,6 +13,7 @@ crc32fast = { workspace = true }
 data-encoding = { workspace = true }
 fluxemu-locale = { workspace = true }
 fluxemu-math = { workspace = true }
+jiff = { workspace = true, features = ["serde"] }
 md-5 = { workspace = true }
 memmap2 = { workspace = true, optional = true }
 opendal = {

@@ -30,6 +30,8 @@ pub struct Environment {
     pub log_location: PathBuf,
     #[config(env = "FLUXEMU_DATABASE_LOCATION")]
     pub database_location: PathBuf,
+    #[config(env = "FLUXEMU_DIGEST_CACHE_LOCATION")]
+    pub digest_cache_location: PathBuf,
     #[config(env = "FLUXEMU_SAVE_DIRECTORY")]
     pub save_directory: PathBuf,
     #[config(env = "FLUXEMU_SNAPSHOT_DIRECTORY")]
@@ -47,6 +49,15 @@ pub static STORAGE_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| {
         all(any(target_family = "unix", target_os = "windows"),) => dirs::data_dir()
             .expect("Could not lookup data directory")
             .join("fluxemu"),
+    }
+});
+
+pub static CACHE_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| {
+    cfg_select! {
+        target_os = "nuttx" => STORAGE_DIRECTORY.clone(),
+        all(any(target_family = "unix", target_os = "windows"),) => dirs::cache_dir()
+            .map(|path| path.join("fluxemu"))
+            .unwrap_or(STORAGE_DIRECTORY.clone()),
     }
 });
 
@@ -71,6 +82,7 @@ pub fn load_environment() -> Environment {
         file_browser_home_directory: std::env::home_dir().unwrap_or(STORAGE_DIRECTORY.clone()),
         log_location: STORAGE_DIRECTORY.join("log"),
         database_location: STORAGE_DIRECTORY.join("database.redb"),
+        digest_cache_location: CACHE_DIRECTORY.join("digests.redb"),
         save_directory: STORAGE_DIRECTORY.join("saves"),
         snapshot_directory: STORAGE_DIRECTORY.join("snapshots"),
         rom_stores: IndexMap::from_iter([(
@@ -111,6 +123,7 @@ pub fn load_environment() -> Environment {
     let _ = create_dir_all(&environment.file_browser_home_directory);
     let _ = create_dir_all(environment.log_location.parent().unwrap());
     let _ = create_dir_all(environment.database_location.parent().unwrap());
+    let _ = create_dir_all(environment.digest_cache_location.parent().unwrap());
     let _ = create_dir_all(&environment.save_directory);
     let _ = create_dir_all(&environment.snapshot_directory);
 

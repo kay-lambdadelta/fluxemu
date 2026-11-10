@@ -6,7 +6,7 @@ use std::{
 use clap::Parser;
 use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::load_environment;
-use fluxemu_program::{ProgramManager, RomStoreSpecification, SystemId};
+use fluxemu_program::{DigestCache, ProgramManager, RomStoreSpecification, SystemId};
 use futures::{StreamExt, TryStreamExt, stream};
 use redb::Database;
 use tokio::{runtime::Runtime, sync::mpsc, task::spawn_blocking};
@@ -66,7 +66,11 @@ fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
 
         let program_database =
             ProgramDatabase::new(Database::create(&environment.database_location)?)?;
-        let program_manager = ProgramManager::new(environment.rom_stores.clone())?;
+
+        let program_manager = ProgramManager::with_digest_cache(
+            environment.rom_stores.clone(),
+            DigestCache::try_open(&environment.digest_cache_location),
+        )?;
 
         match args {
             Cli::Database(command) => match command {
