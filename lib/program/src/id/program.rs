@@ -17,12 +17,16 @@ const UNSAFE_PATH_CHARACTERS: &AsciiSet = &CONTROLS
     .add(b'>')
     .add(b'|');
 
-/// A identifier for a program
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
+/// An identifier for a program
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord, Hash)]
 pub struct ProgramId {
     /// The system this program was produced for
     pub system: SystemId,
-    /// A identifiable name for the program
+    /// An identifiable name for the program
+    ///
+    /// This will most often be the full dat name, and is the key many subsystems use
+    ///
+    /// This should be completely unique given the above [`SystemId`]
     pub main_name: String,
 }
 
@@ -39,37 +43,15 @@ impl Display for ProgramId {
     }
 }
 
-#[cfg(feature = "redb")]
-impl redb::Value for ProgramId {
-    type AsBytes<'a> = Vec<u8>;
-    type SelfType<'a> = Self;
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
+pub struct GroupId(ProgramId);
 
-    fn fixed_width() -> Option<usize> {
-        None
+impl GroupId {
+    pub fn from_members<'a>(members: impl IntoIterator<Item = &'a ProgramId>) -> Option<Self> {
+        members.into_iter().min().cloned().map(Self)
     }
 
-    fn from_bytes<'a>(data: &'a [u8]) -> Self::SelfType<'a>
-    where
-        Self: 'a,
-    {
-        rmp_serde::from_slice(data).unwrap()
-    }
-
-    fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
-    where
-        Self: 'b,
-    {
-        rmp_serde::to_vec_named(value).unwrap()
-    }
-
-    fn type_name() -> redb::TypeName {
-        redb::TypeName::new("program_id")
-    }
-}
-
-#[cfg(feature = "redb")]
-impl redb::Key for ProgramId {
-    fn compare(data1: &[u8], data2: &[u8]) -> std::cmp::Ordering {
-        data1.cmp(data2)
+    pub fn get(&self) -> &ProgramId {
+        &self.0
     }
 }

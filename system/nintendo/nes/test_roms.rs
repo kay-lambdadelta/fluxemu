@@ -3,51 +3,51 @@ use fluxemu_system::testing::TestRom;
 pub const TEST_ROMS: &[TestRom] = &[
     TestRom::Stored {
         name: "Legend of Zelda, The (USA) (Rev 1).nes",
-        id: "4671517d72d09799403f6c672cd2b395933e926e",
+        id: "7c3c726d8193389c2515fed9deef34c24c6c3e4f6ff45a92bc7202f78965e7fe",
     },
     TestRom::Stored {
         name: "Metroid (USA).nes",
-        id: "2080059bea4563ffff7535e6c0a0f3bc2f34b194",
+        id: "64291dc223c3d30168821dc2e2ea1eefba21aad18f80dd37856fe8ef3acf106e",
     },
     TestRom::Stored {
         name: "Super Mario Bros. (World).nes",
-        id: "33d23c2f2cfa4c9efec87f7bc1321ce3ce6c89bd",
+        id: "3cff9c1c6453768051fe26e6b85ac3463cfe88b73ca48f9b0e5bed3bdcce928e",
     },
     TestRom::Stored {
         name: "Gradius (USA).nes",
-        id: "92645fe142861c3d3fda209bb906ad2b0e353988",
+        id: "ffd50e15aa94b907e3fbe735291f69f786f954d7ced5c203cdb648e96c3b0bff",
     },
     TestRom::Stored {
         name: "Solomon's Key (USA).nes",
-        id: "5ef1aa6e8d9a811bf19149df6b23ee3469acb111",
+        id: "745b4ffbc937e6f02a8d0f1613f0f0d30cc478a292187e256e93ad086f683bf8",
     },
     TestRom::Stored {
         name: "Blaster Master (USA).nes",
-        id: "0b4599955d7eb11c4f67b778637b58bf879510b4",
+        id: "13286372a770ceff8e0675d5b4a6fcead24692bfec8c972b03f34e6b789af3ba",
     },
     TestRom::Stored {
         name: "Cybernoid - The Fighting Machine (USA).nes",
-        id: "7b3f6d3df818598a83d23ecfcd2060df89f74c6b",
+        id: "207c72f6c3372477688e639b580385c2be5153f6c3930ae7461478c7ab4d5122",
     },
     TestRom::Stored {
         name: "Pennant League!! - Home Run Nighter (Japan).nes",
-        id: "30b02626f7432213b828ab245d7b0335d7b5baf5",
+        id: "1c575d644d73ce8296897f07947885f590543f1c5f142cfb9578a8e0fac16bed",
     },
     TestRom::Stored {
         name: "Hydlide (USA).nes",
-        id: "f9767c7b90b2909fa1e90ade58153bcb911c107f",
+        id: "afdf9890fcfabb98e6a34427b649c0551eb2a41234ec2eabf002efe8784787c2",
     },
     TestRom::Stored {
         name: "Pac-Man (USA) (Tengen).nes",
-        id: "aa3d1672d679a5ca8625ebe67ce46d805719d3fe",
+        id: "a1c1f6b5d11c4d43c063ee225776880cbb9eb56249e870500c7ace2f540eee08",
     },
     TestRom::Stored {
         name: "1942 (Japan, USA) (En).nes",
-        id: "1fc8410c271441b313ad4b382fbe9dcd9eefb6cb",
+        id: "7597a23addcea45345cb3f9b2fadbc92618d2a902e1e7a39442d02034e624d29",
     },
     TestRom::Stored {
         name: "Xevious (Japan) (En).nes",
-        id: "c4a36c14de32424f0ee2f9cd3fa8ec28103f9bf0",
+        id: "1a95917e12cfdfa5f066f77fe99c14a47fbeabc61ad74904e95a37d8b0b9a45f",
     },
     TestRom::Embedded {
         file_name: "StarsSE.NES",

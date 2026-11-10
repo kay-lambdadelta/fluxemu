@@ -118,6 +118,25 @@ impl<P: Platform> MachineBuilder<P> {
         }
     }
 
+    pub async fn open_program_file(
+        &self,
+        path: &str,
+        requirement: RomRequirement,
+    ) -> Result<Option<Bytes>, MachineError> {
+        let Some((file, file_match)) = self
+            .program_specification
+            .as_ref()
+            .and_then(|program_specification| program_specification.file(path))
+        else {
+            return missing_rom(path, requirement);
+        };
+
+        match self.program_manager.load_file(file, file_match).await? {
+            Some(bytes) => Ok(Some(bytes)),
+            None => missing_rom(path, requirement),
+        }
+    }
+
     #[inline]
     pub(super) fn insert_component_with_path<B: ComponentConfig<P>>(
         &mut self,

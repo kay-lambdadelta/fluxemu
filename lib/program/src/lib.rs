@@ -1,8 +1,12 @@
+mod encoding;
 mod id;
 mod info;
 mod manager;
 mod store;
 
+use std::collections::BTreeMap;
+
+pub use encoding::DATABASE_VERSION;
 pub use id::*;
 pub use info::*;
 pub use manager::{ProgramManager, *};
@@ -16,4 +20,12 @@ pub struct Manifest {
     pub id: ProgramId,
     /// (Usually) database derived information
     pub info: ProgramInfo,
+    pub variant: Variant,
+    pub files: BTreeMap<String, FileMatch>,
+}
+
+impl Manifest {
+    pub fn file(&self, path: &str) -> Option<(&RomFile, &FileMatch)> {
+        Some((self.variant.files().get(path)?, self.files.get(path)?))
+    }
 }

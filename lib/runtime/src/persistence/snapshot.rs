@@ -1,5 +1,5 @@
 use fluxemu_graphics::api::GraphicsApi;
-use fluxemu_program::{ProgramInfo, RomId};
+use fluxemu_program::{Manifest, RomId};
 use itertools::Itertools;
 use sdd::Guard;
 use serde::{Deserialize, Serialize};
@@ -57,14 +57,17 @@ pub(super) fn machine_identity(machine: &Machine) -> Identity {
 
     Identity {
         program: specification.map(|specification| specification.id.clone()),
-        roms: specification
-            .map(|specification| rom_ids(&specification.info))
-            .unwrap_or_default(),
+        roms: specification.map(rom_ids).unwrap_or_default(),
     }
 }
 
-fn rom_ids(info: &ProgramInfo) -> Vec<RomId> {
-    info.filesystem().keys().copied().collect()
+fn rom_ids(specification: &Manifest) -> Vec<RomId> {
+    specification
+        .files
+        .values()
+        .map(|file_match| file_match.rom_id)
+        .sorted()
+        .collect()
 }
 
 impl ExclusiveRuntimeGuard<'_> {

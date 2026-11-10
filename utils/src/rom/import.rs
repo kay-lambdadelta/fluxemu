@@ -8,13 +8,12 @@ use std::{
 };
 
 use bytes::Bytes;
-use fluxemu_database::{HASH_ALIAS_TABLE, ProgramDatabase};
-use fluxemu_program::{ProgramId, RomId};
+use fluxemu_database::ProgramDatabase;
+use fluxemu_program::{FileDigest, ProgramManager, RomForm, RomId};
 use nod::{
     common::Format,
     read::{DiscOptions, DiscReader},
 };
-use redb::{ReadOnlyMultimapTable, ReadableDatabase};
 use rustc_hash::FxBuildHasher;
 use sevenz_rust2::Password;
 use tokio::{fs, sync::mpsc, task::spawn_blocking};
@@ -63,24 +62,29 @@ impl ImportSource {
 struct ImportContext {
     rom_store: PathBuf,
     symlink: bool,
-    hash_alias_table: ReadOnlyMultimapTable<RomId, ProgramId>,
+    program_database: Arc<ProgramDatabase>,
+    program_manager: Arc<ProgramManager>,
+}
+
+struct IdentifiedRom {
+    digest: FileDigest,
+    header_length: usize,
 }
 
 pub async fn import(
-    program_database: &ProgramDatabase,
+    program_database: Arc<ProgramDatabase>,
+    program_manager: Arc<ProgramManager>,
     rom_store: PathBuf,
     symlink: bool,
     paths: mpsc::UnboundedReceiver<walkdir::DirEntry>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let read_transaction = program_database.database().begin_read()?;
-    let hash_alias_table = read_transaction.open_multimap_table(HASH_ALIAS_TABLE)?;
-
     let _ = fs::create_dir_all(&rom_store).await;
 
     let context = Arc::new(ImportContext {
         rom_store,
         symlink,
-        hash_alias_table,
+        program_database,
+        program_manager,
     });
 
     for_each_concurrent(paths, move |entry| {
@@ -99,13 +103,13 @@ fn process_entry(context: Arc<ImportContext>, source: ImportSource) -> EntryFutu
             let context = context.clone();
             let source = source.clone();
 
-            move || scan_entry(&source, &sender, &context.hash_alias_table)
+            move || scan_entry(&source, &sender, &context.program_database)
         });
 
         for_each_concurrent(receiver, |source| process_entry(context.clone(), source)).await?;
 
-        if let Some(rom_id) = scanner.await? {
-            store_rom(&context, rom_id, &source).await?;
+        if let Some(identified_rom) = scanner.await? {
+            store_rom(&context, identified_rom, &source).await?;
         }
 
         Ok(())
@@ -115,8 +119,8 @@ fn process_entry(context: Arc<ImportContext>, source: ImportSource) -> EntryFutu
 fn scan_entry(
     source: &ImportSource,
     sender: &mpsc::UnboundedSender<ImportSource>,
-    hash_alias_table: &ReadOnlyMultimapTable<RomId, ProgramId>,
-) -> Option<RomId> {
+    program_database: &ProgramDatabase,
+) -> Option<IdentifiedRom> {
     let mut reader = match source.open() {
         Ok(reader) => reader,
         Err(err) => {
@@ -141,7 +145,7 @@ fn scan_entry(
     }
 
     match reader.rewind() {
-        Ok(_) => identify_rom(reader, hash_alias_table),
+        Ok(_) => identify_rom(reader, program_database),
         Err(err) => {
             tracing::warn!("Seek failed {}", err);
             None
@@ -247,47 +251,68 @@ fn try_as_disc(
     }
 }
 
-fn identify_rom(
-    mut reader: impl Read,
-    hash_alias_table: &ReadOnlyMultimapTable<RomId, ProgramId>,
-) -> Option<RomId> {
-    let rom_id = match RomId::new_sha1(&mut reader) {
-        Ok(rom_id) => rom_id,
+fn identify_rom(reader: impl Read, program_database: &ProgramDatabase) -> Option<IdentifiedRom> {
+    let digest = match FileDigest::new(reader) {
+        Ok(digest) => digest,
         Err(err) => {
             tracing::warn!("Failed to hash ROM: {}", err);
             return None;
         }
     };
 
-    if ALREADY_FOUND_ROMS.contains_sync(&rom_id) {
+    if ALREADY_FOUND_ROMS.contains_sync(&digest.id) {
         return None;
     }
-    let _ = ALREADY_FOUND_ROMS.insert_sync(rom_id);
+    let _ = ALREADY_FOUND_ROMS.insert_sync(digest.id);
 
-    if let Ok(values) = hash_alias_table.get(rom_id) {
-        if values.is_empty() {
+    let identifications = match program_database.identify_file(&digest) {
+        Ok(identifications) => identifications,
+        Err(err) => {
+            tracing::warn!("Failed to identify ROM {}: {}", digest.id, err);
             return None;
-        } else {
-            for access_guard in values.into_iter().flatten() {
-                let program_id = access_guard.value();
-
-                tracing::info!(
-                    "Found ROM {} which is required for program {}",
-                    rom_id,
-                    program_id
-                );
-            }
         }
+    };
+
+    let best = identifications.first()?;
+
+    for identification in &identifications {
+        tracing::info!(
+            "Found ROM {} which is {} in program {} ({:?} match)",
+            digest.id,
+            identification.path,
+            identification.program_id,
+            identification.file_match.strength
+        );
     }
 
-    Some(rom_id)
+    let header_length = match best.file_match.form {
+        RomForm::Canonical => 0,
+        RomForm::WithNonCanonicalHeader => best.file.header_length(),
+    };
+
+    Some(IdentifiedRom {
+        digest,
+        header_length,
+    })
 }
 
 async fn store_rom(
     context: &ImportContext,
-    rom_id: RomId,
+    identified_rom: IdentifiedRom,
     source: &ImportSource,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let (digest, source) = match identified_rom.header_length {
+        0 => (identified_rom.digest, source.clone()),
+        header_length => {
+            let source = source.clone();
+
+            spawn_blocking(move || strip_header(&source, header_length)).await??
+        }
+    };
+
+    context.program_manager.remember_digest(&digest);
+
+    let rom_id = digest.id;
     let rom_store_path = context.rom_store.join(rom_id.to_string());
 
     if fs::try_exists(&rom_store_path).await.unwrap_or(false) {
@@ -296,7 +321,7 @@ async fn store_rom(
 
     let _ = fs::remove_file(&rom_store_path).await;
 
-    match source {
+    match &source {
         ImportSource::File(path) => {
             if let Err(err) = store_file(path, &rom_store_path, context.symlink).await {
                 tracing::error!("Could not import ROM {}: {}", rom_id, err);
@@ -328,6 +353,29 @@ async fn store_rom(
     }
 
     Ok(())
+}
+
+fn strip_header(
+    source: &ImportSource,
+    header_length: usize,
+) -> Result<(FileDigest, ImportSource), Box<dyn Error + Send + Sync>> {
+    let mut bytes = Vec::new();
+    source.open()?.read_to_end(&mut bytes)?;
+
+    if bytes.len() < header_length {
+        return Err("ROM is shorter than its header".into());
+    }
+
+    let contents = Bytes::from(bytes).slice(header_length..);
+    let digest = FileDigest::new(contents.as_ref())?;
+
+    tracing::info!(
+        "Stripped {} byte header, storing as ROM {}",
+        header_length,
+        digest.id
+    );
+
+    Ok((digest, ImportSource::Memory(contents)))
 }
 
 fn store_decoded_disc(

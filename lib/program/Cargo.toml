@@ -7,11 +7,13 @@ repository = { workspace = true }
 license = { workspace = true }
 
 [dependencies]
-bytes = { workspace = true }
+blake3 = { workspace = true }
+bytes = { workspace = true, features = ["serde"] }
+crc32fast = { workspace = true }
 data-encoding = { workspace = true }
-digest-io = { workspace = true }
 fluxemu-locale = { workspace = true }
 fluxemu-math = { workspace = true }
+md-5 = { workspace = true }
 memmap2 = { workspace = true, optional = true }
 opendal = {
   workspace = true,
@@ -21,15 +23,17 @@ opendal = {
     "services-fs",
   ]
 }
+pathfinding = { workspace = true }
 percent-encoding = { workspace = true }
-redb = { workspace = true, optional = true }
-rmp-serde = { workspace = true, optional = true }
+redb = { workspace = true }
+rmp-serde = { workspace = true }
 ron = { workspace = true }
 rustc-hash = { workspace = true }
 scc = { workspace = true }
 serde = { workspace = true }
 serde_with = { workspace = true }
 sha1 = { workspace = true }
+sha2 = { workspace = true }
 strum = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["fs", "io-util", "rt"] }
@@ -37,7 +41,6 @@ tracing = { workspace = true }
 
 [features]
 mmap = ["dep:memmap2"]
-redb = ["dep:redb", "dep:rmp-serde"]
 
 [lints]
 workspace = true

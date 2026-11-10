@@ -35,6 +35,7 @@ const BLARGG_TEXT_LIMIT: usize = 0x1000;
 pub enum TestRom {
     Stored {
         name: &'static str,
+        /// String literal of a RomId, which is a BLAKE3 hash
         id: &'static str,
     },
     Embedded {
@@ -63,8 +64,12 @@ impl Context {
         let environment = load_environment();
 
         let program_database = if environment.database_location.exists() {
-            match ReadOnlyDatabase::open(&environment.database_location) {
-                Ok(database) => Some(ProgramDatabase::read_only(database)),
+            match ReadOnlyDatabase::open(&environment.database_location)
+                .map_err(|err| err.to_string())
+                .and_then(|database| {
+                    ProgramDatabase::read_only(database).map_err(|err| err.to_string())
+                }) {
+                Ok(database) => Some(database),
                 Err(err) => {
                     let _ = writeln!(
                         std::io::stderr(),
@@ -88,22 +93,20 @@ impl Context {
     fn resolve(&self, rom: &TestRom) -> Option<Manifest> {
         self.runtime.block_on(async {
             match rom {
-                TestRom::Stored { id, .. } => {
-                    let id = id.parse().unwrap();
+                TestRom::Stored { name, id } => {
+                    let id = match id.parse() {
+                        Ok(id) => id,
+                        Err(err) => {
+                            return None;
+                        }
+                    };
 
-                    self.program_manager.load(id).await.unwrap()?;
+                    let digest = self.program_manager.digest(id).await.unwrap()?;
 
                     let mut specifications = match &self.program_database {
                         Some(program_database) => program_database
-                            .identify_program([id])
-                            .unwrap_or_else(|err| {
-                                let _ = writeln!(
-                                    std::io::stderr(),
-                                    "warning: could not identify {id} from program database: {err}"
-                                );
-
-                                Vec::new()
-                            }),
+                            .identify_program(&[digest])
+                            .unwrap_or_default(),
                         None => Vec::new(),
                     };
 
@@ -113,7 +116,7 @@ impl Context {
                             .await
                             .unwrap()
                     } else {
-                        Some(specifications.remove(0))
+                        Some(specifications.remove(0).manifest)
                     }
                 }
                 TestRom::Embedded { file_name, data } => {

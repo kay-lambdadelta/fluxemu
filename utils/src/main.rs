@@ -83,8 +83,14 @@ fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
                         .find_map(RomStoreSpecification::filesystem_root)
                         .ok_or("No ROM store is a local directory")?;
 
-                    rom::import(&program_database, rom_store, symlink, walk_for_files(paths))
-                        .await?;
+                    rom::import(
+                        program_database.clone(),
+                        program_manager.clone(),
+                        rom_store,
+                        symlink,
+                        walk_for_files(paths),
+                    )
+                    .await?;
                 }
                 RomCommand::Export {
                     symlink,
@@ -137,23 +143,23 @@ fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
                     if system_filter.is_empty() {
                         for machine_id in SystemId::iter() {
                             if !system_filter.contains(&machine_id)
-                                && let Ok(redump_system) = RedumpSystem::try_from(machine_id)
+                                && RedumpSystem::try_from(machine_id).is_ok()
                             {
                                 download_and_import_redump_system(
                                     &client,
                                     program_database.clone(),
-                                    redump_system,
+                                    machine_id,
                                 )
                                 .await?;
                             }
                         }
                     } else {
                         for machine_id in system_filter {
-                            if let Ok(redump_system) = RedumpSystem::try_from(machine_id) {
+                            if RedumpSystem::try_from(machine_id).is_ok() {
                                 download_and_import_redump_system(
                                     &client,
                                     program_database.clone(),
-                                    redump_system,
+                                    machine_id,
                                 )
                                 .await?;
                             }
@@ -222,6 +228,7 @@ async fn for_each_concurrent<
     action: impl Fn(T) -> F,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let limit = available_parallelism().map_or(1, NonZero::get);
+
     stream::poll_fn(|context| receiver.poll_recv(context))
         .map(|item| tokio::spawn(action(item)))
         .buffer_unordered(limit)

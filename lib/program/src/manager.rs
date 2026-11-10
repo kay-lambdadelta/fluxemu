@@ -5,13 +5,16 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use bytes::Bytes;
+use bytes::{BufMut, Bytes, BytesMut};
 use opendal::{Operator, services::FS_SCHEME};
 use rustc_hash::FxBuildHasher;
 use thiserror::Error;
 use tokio::{fs::File, io::AsyncReadExt};
 
-use crate::{Manifest, ProgramId, ProgramInfo, RomId, RomStoreSpecification, SystemId};
+use crate::{
+    DumpStatus, FileDigest, FileMatch, Manifest, MatchStrength, ProgramId, ProgramInfo, RomFile,
+    RomForm, RomHashes, RomId, RomStoreSpecification, SystemId, Title, Variant,
+};
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
@@ -38,6 +41,7 @@ pub struct ProgramManager {
     external_roms: scc::HashMap<RomId, PathBuf, FxBuildHasher>,
     embedded_roms: scc::HashMap<RomId, &'static [u8], FxBuildHasher>,
     rom_cache: scc::HashCache<RomId, Bytes>,
+    digests: scc::HashMap<RomId, FileDigest, FxBuildHasher>,
     rom_stores: RwLock<Arc<[RomStore]>>,
 }
 
@@ -49,8 +53,13 @@ impl ProgramManager {
             external_roms: scc::HashMap::default(),
             embedded_roms: scc::HashMap::default(),
             rom_cache: scc::HashCache::with_capacity(0, 16),
+            digests: scc::HashMap::default(),
             rom_stores: RwLock::new(build_rom_stores(rom_stores)?),
         }))
+    }
+
+    pub fn remember_digest(&self, digest: &FileDigest) {
+        self.digests.upsert_sync(digest.id, digest.clone());
     }
 
     pub fn set_rom_stores(
@@ -67,12 +76,15 @@ impl ProgramManager {
         let path = path.as_ref();
         let rom_bytes = load_rom_file(path).await?;
 
-        let rom_id = tokio::task::spawn_blocking({
+        let digest = tokio::task::spawn_blocking({
             let rom_bytes = rom_bytes.clone();
 
-            move || RomId::new_sha1(rom_bytes.as_ref())
+            move || FileDigest::new(rom_bytes.as_ref())
         })
         .await??;
+        let rom_id = digest.id;
+
+        self.digests.upsert_async(rom_id, digest).await;
 
         self.external_roms
             .upsert_async(rom_id, path.to_path_buf())
@@ -121,6 +133,47 @@ impl ProgramManager {
         Ok(Some(rom_bytes))
     }
 
+    /// If this was a ROM with a non canonical header that was stripped off, it will be put back on for this function
+    pub async fn load_file(
+        &self,
+        file: &RomFile,
+        file_match: &FileMatch,
+    ) -> Result<Option<Bytes>, Error> {
+        let Some(rom_bytes) = self.load(file_match.rom_id).await? else {
+            return Ok(None);
+        };
+
+        let Some(header) = file.missing_header(file_match.form) else {
+            return Ok(Some(rom_bytes));
+        };
+
+        let mut combined = BytesMut::with_capacity(header.len() + rom_bytes.len());
+        combined.put_slice(header);
+        combined.put_slice(&rom_bytes);
+
+        Ok(Some(combined.freeze()))
+    }
+
+    pub async fn digest(&self, id: RomId) -> Result<Option<FileDigest>, Error> {
+        if let Some(digest) = self
+            .digests
+            .read_async(&id, |_, digest| digest.clone())
+            .await
+        {
+            return Ok(Some(digest));
+        }
+
+        let Some(rom_bytes) = self.load(id).await? else {
+            return Ok(None);
+        };
+
+        let digest =
+            tokio::task::spawn_blocking(move || FileDigest::new(rom_bytes.as_ref())).await??;
+        self.digests.upsert_async(id, digest.clone()).await;
+
+        Ok(Some(digest))
+    }
+
     pub async fn auto_generate_specification(
         &self,
         rom_id: RomId,
@@ -129,9 +182,11 @@ impl ProgramManager {
             .external_roms
             .read_async(&rom_id, |_, path| path.clone())
             .await;
-        let rom = self.load(rom_id).await?;
+        let Some(rom) = self.load(rom_id).await? else {
+            return Ok(None);
+        };
 
-        let Some(machine) = SystemId::guess(external_path.as_deref(), rom.as_deref()) else {
+        let Some(machine) = SystemId::guess(external_path.as_deref(), Some(&rom)) else {
             return Ok(None);
         };
 
@@ -150,19 +205,46 @@ impl ProgramManager {
             main_name: name.clone(),
         };
 
+        let file = RomFile {
+            size: rom.len() as u64,
+            rom_id: Some(rom_id),
+            hashes: RomHashes::default(),
+            status: DumpStatus::Unverified,
+            non_canonical_header: None,
+        };
+
         Ok(Some(Manifest {
             id: program_id,
             info: ProgramInfo::V0 {
-                names: BTreeSet::from_iter([name.clone()]),
-                filesystem: BTreeMap::from_iter([(rom_id, BTreeSet::from_iter([file_name]))]),
+                title: Title {
+                    text: name,
+                    language: None,
+                },
+                alternative_titles: BTreeSet::default(),
+                regions: BTreeSet::default(),
                 languages: BTreeSet::default(),
-                version: None,
+                revision: None,
+                kind: Default::default(),
+                flags: BTreeSet::default(),
+                video_standards: BTreeSet::default(),
+                serials: BTreeSet::default(),
             },
+            variant: Variant::V0 {
+                files: BTreeMap::from([(file_name.clone(), file)]),
+            },
+            files: BTreeMap::from([(
+                file_name,
+                FileMatch {
+                    rom_id,
+                    strength: MatchStrength::Canonical,
+                    form: RomForm::Canonical,
+                },
+            )]),
         }))
     }
 
     pub fn register_embedded_rom(&mut self, bytes: &'static [u8]) -> RomId {
-        let rom_id = RomId::new_sha1(bytes).unwrap();
+        let rom_id = RomId::new(bytes).unwrap();
 
         self.embedded_roms.upsert_sync(rom_id, bytes);
 

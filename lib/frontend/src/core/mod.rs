@@ -449,7 +449,11 @@ impl<P: Platform> FrontendCore<P> {
             return;
         };
 
-        let roms: Vec<_> = specification.info.filesystem().keys().copied().collect();
+        let roms: Vec<_> = specification
+            .files
+            .values()
+            .map(|file_match| file_match.rom_id)
+            .collect();
 
         if let Err(error) = set_active_save_slot(&directory, slot) {
             tracing::error!("Could not switch save slot: {}", error);
@@ -535,13 +539,28 @@ async fn initialize_machine<P: Platform>(
     machine_factories: Arc<FactoryManager<P>>,
     roms: Vec<RomId>,
 ) -> Option<SealedMachineBuilder<P>> {
-    let specifications = tokio::task::spawn_blocking({
-        let roms = roms.clone();
+    let mut digests = Vec::with_capacity(roms.len());
 
-        move || program_database.identify_program(roms)
-    })
-    .await
-    .unwrap();
+    for rom in &roms {
+        match program_manager.digest(*rom).await {
+            Ok(Some(digest)) => digests.push(digest),
+            Ok(None) => {
+                tracing::error!("Could not find ROM {}", rom);
+
+                return None;
+            }
+            Err(err) => {
+                tracing::error!("Could not read ROM {}: {}", rom, err);
+
+                return None;
+            }
+        }
+    }
+
+    let specifications =
+        tokio::task::spawn_blocking(move || program_database.identify_program(&digests))
+            .await
+            .unwrap();
 
     let mut specifications = match specifications {
         Ok(specifications) => specifications,
@@ -553,7 +572,7 @@ async fn initialize_machine<P: Platform>(
     };
 
     let specification = if !specifications.is_empty() {
-        specifications.remove(0)
+        specifications.remove(0).manifest
     } else {
         let Ok(Some(program_specification)) =
             program_manager.auto_generate_specification(roms[0]).await

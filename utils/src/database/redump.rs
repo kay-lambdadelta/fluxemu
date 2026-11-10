@@ -44,10 +44,13 @@ impl TryFrom<SystemId> for RedumpSystem {
 pub async fn download_and_import_redump_system(
     client: &reqwest::Client,
     program_database: Arc<ProgramDatabase>,
-    system: RedumpSystem,
+    system: SystemId,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    tracing::info!("Downloading redump dat for system {}", system);
-    let url = format!("{}/{}", BASE_URL, system.to_string().to_lowercase());
+    let redump_system =
+        RedumpSystem::try_from(system).map_err(|_| format!("{system} is not on redump"))?;
+
+    tracing::info!("Downloading redump dat for system {}", redump_system);
+    let url = format!("{}/{}", BASE_URL, redump_system.to_string().to_lowercase());
 
     let mut temp_file = File::from_std(spawn_blocking(tempfile).await??);
 
@@ -65,14 +68,15 @@ pub async fn download_and_import_redump_system(
         temp_file.rewind()?;
 
         let mut archive = ZipArchive::new(temp_file)?;
+        let mut data_files = Vec::new();
 
         for index in 0..archive.len() {
             let file = BufReader::new(archive.by_index(index)?);
 
-            crate::logiqx::add_to_database(&program_database, file)?;
+            data_files.push((system, crate::logiqx::parse(file)?));
         }
 
-        Ok(())
+        crate::logiqx::add_to_database(&program_database, data_files)
     })
     .await?
 }

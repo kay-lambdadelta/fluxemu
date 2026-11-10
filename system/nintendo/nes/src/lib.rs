@@ -60,17 +60,13 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Nes {
         let program_specification = machine_builder
             .program_specification()
             .ok_or("NES requires a program to boot")?;
-        let filesystem = program_specification.info.filesystem();
+        let files = program_specification.variant.files();
 
-        if filesystem.len() != 1 {
+        if files.len() != 1 {
             return Err("iNES format NES programs only contain a single ROM".into());
         }
 
-        let rom_id = filesystem
-            .first_key_value()
-            .map(|(rom_id, _)| rom_id)
-            .copied()
-            .unwrap();
+        let rom_path = files.keys().next().cloned().unwrap();
 
         let work_ram_range = RangeInclusive::from_start_and_length(0usize, 0x800);
 
@@ -165,7 +161,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Nes {
             );
 
         let rom = machine_builder
-            .open_rom(rom_id, RomRequirement::Required)
+            .open_program_file(&rom_path, RomRequirement::Required)
             .await?
             .unwrap();
 

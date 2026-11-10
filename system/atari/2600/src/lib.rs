@@ -54,20 +54,16 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Atari2600 {
         let program_specification = machine_builder
             .program_specification()
             .ok_or("Atari 2600 requires a program to boot")?;
-        let filesystem = program_specification.info.filesystem();
+        let files = program_specification.variant.files();
 
-        if filesystem.len() != 1 {
+        if files.len() != 1 {
             return Err("Atari 2600 programs only contain a single ROM".into());
         }
 
-        let rom_id = filesystem
-            .first_key_value()
-            .map(|(rom_id, _)| rom_id)
-            .copied()
-            .unwrap();
+        let rom_path = files.keys().next().cloned().unwrap();
 
         let rom = machine_builder
-            .open_rom(rom_id, RomRequirement::Required)
+            .open_program_file(&rom_path, RomRequirement::Required)
             .await?
             .unwrap();
 

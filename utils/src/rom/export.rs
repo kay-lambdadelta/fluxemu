@@ -1,15 +1,14 @@
 use std::{error::Error, path::PathBuf, sync::Arc};
 
-use fluxemu_database::{PROGRAM_INFORMATION_TABLE, ProgramDatabase};
+use fluxemu_database::{FileIdentification, ProgramDatabase};
 use fluxemu_environment::Environment;
-use fluxemu_program::{ProgramId, ProgramInfo, RomId, RomStoreSpecification};
-use redb::{ReadableDatabase, ReadableMultimapTable};
+use fluxemu_program::{FileDigest, RomId, RomStoreSpecification};
 use tokio::{fs, sync::mpsc, task::spawn_blocking};
 
 use crate::{cli::ExportStyle, for_each_concurrent, rom::symlink_file};
 
 struct ExportContext {
-    rom_stores: Vec<PathBuf>,
+    program_database: Arc<ProgramDatabase>,
     destination_path: PathBuf,
     symlink: bool,
     style: ExportStyle,
@@ -24,12 +23,14 @@ pub async fn export(
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let _ = fs::create_dir_all(&destination_path).await;
 
+    let rom_stores: Vec<PathBuf> = environment
+        .rom_stores
+        .values()
+        .filter_map(RomStoreSpecification::filesystem_root)
+        .collect();
+
     let context = Arc::new(ExportContext {
-        rom_stores: environment
-            .rom_stores
-            .values()
-            .filter_map(RomStoreSpecification::filesystem_root)
-            .collect(),
+        program_database,
         destination_path,
         symlink,
         style,
@@ -37,99 +38,120 @@ pub async fn export(
 
     let (sender, receiver) = mpsc::unbounded_channel();
 
-    let table_reader = spawn_blocking(move || -> Result<(), Box<dyn Error + Send + Sync>> {
-        let read_transaction = program_database.database().begin_read()?;
-        let program_information_table =
-            read_transaction.open_multimap_table(PROGRAM_INFORMATION_TABLE)?;
+    let store_reader = spawn_blocking(move || {
+        for rom_store in rom_stores {
+            let Ok(entries) = std::fs::read_dir(&rom_store) else {
+                continue;
+            };
 
-        for (id, info_values) in program_information_table.iter()?.flatten() {
-            let id = id.value();
+            for entry in entries.flatten() {
+                let path = entry.path();
 
-            for info in info_values.into_iter().flatten() {
-                if sender.send((id.clone(), info.value())).is_err() {
-                    return Ok(());
+                let Some(rom_id) = path
+                    .file_name()
+                    .and_then(|file_name| file_name.to_str())
+                    .and_then(|file_name| file_name.parse::<RomId>().ok())
+                else {
+                    continue;
+                };
+
+                if sender.send((rom_id, path)).is_err() {
+                    return;
                 }
             }
         }
-
-        Ok(())
     });
 
-    for_each_concurrent(receiver, move |(id, info)| {
+    for_each_concurrent(receiver, move |(rom_id, source_rom_path)| {
         let context = context.clone();
 
         async move {
-            export_program(&context, id, info).await;
+            export_rom(&context, rom_id, source_rom_path).await;
 
             Ok(())
         }
     })
     .await?;
 
-    table_reader.await?
+    store_reader.await?;
+
+    Ok(())
 }
 
-async fn find_rom(rom_stores: &[PathBuf], rom_id: RomId) -> Option<PathBuf> {
-    for store in rom_stores {
-        let rom_path = store.join(rom_id.to_string());
+async fn export_rom(context: &ExportContext, rom_id: RomId, source_rom_path: PathBuf) {
+    let identifications = spawn_blocking({
+        let program_database = context.program_database.clone();
+        let source_rom_path = source_rom_path.clone();
 
-        if fs::try_exists(&rom_path).await.unwrap_or(false) {
-            return Some(rom_path);
+        move || -> Result<Vec<FileIdentification>, Box<dyn Error + Send + Sync>> {
+            let digest = FileDigest::new(std::fs::File::open(source_rom_path)?)?;
+
+            Ok(program_database.identify_file(&digest)?)
         }
-    }
+    })
+    .await;
 
-    None
-}
+    let identifications = match identifications {
+        Ok(Ok(identifications)) => identifications,
+        Ok(Err(err)) => {
+            tracing::error!("Could not identify ROM {}: {}", rom_id, err);
+            return;
+        }
+        Err(err) => {
+            tracing::error!("Could not identify ROM {}: {}", rom_id, err);
+            return;
+        }
+    };
 
-async fn export_program(context: &ExportContext, id: ProgramId, info: ProgramInfo) {
     let destination_path = &context.destination_path;
 
-    for (rom_id, file_names) in info.filesystem() {
-        let rom_id = *rom_id;
+    for identification in identifications {
+        let destination_rom_path = match context.style {
+            ExportStyle::NoIntro => {
+                let machine_folder =
+                    destination_path.join(identification.program_id.system.to_nointro_string());
+                let program_folder = machine_folder.join(&identification.program_id.main_name);
 
-        for file_name in file_names {
-            let Some(source_rom_path) = find_rom(&context.rom_stores, rom_id).await else {
-                continue;
-            };
+                program_folder.join(&identification.path)
+            }
+            ExportStyle::Native => destination_path.join(rom_id.to_string()),
+            ExportStyle::EmulationStation => todo!(),
+        };
 
-            let destination_rom_path = match context.style {
-                ExportStyle::NoIntro => {
-                    let machine_folder_name = id.system.to_nointro_string();
-                    let machine_folder = destination_path.join(machine_folder_name);
-                    let program_folder = machine_folder.join(&id.main_name);
-                    let final_path = program_folder.join(file_name);
+        if !destination_rom_path.starts_with(destination_path) {
+            tracing::error!("Export path is outside of the target directory");
 
-                    let _ = fs::create_dir_all(final_path.parent().unwrap()).await;
+            continue;
+        }
 
-                    final_path
+        if let Some(parent) = destination_rom_path.parent() {
+            let _ = fs::create_dir_all(parent).await;
+        }
+
+        tracing::info!("Exporting ROM for program {}", identification.program_id);
+
+        let result = match identification
+            .file
+            .missing_header(identification.file_match.form)
+        {
+            Some(header) => match fs::read(&source_rom_path).await {
+                Ok(contents) => {
+                    fs::write(&destination_rom_path, [header.as_ref(), &contents].concat()).await
                 }
-                ExportStyle::Native => destination_path.join(rom_id.to_string()),
-                ExportStyle::EmulationStation => todo!(),
-            };
+                Err(err) => Err(err),
+            },
+            None if context.symlink => symlink_file(&source_rom_path, &destination_rom_path).await,
+            None => fs::copy(&source_rom_path, &destination_rom_path)
+                .await
+                .map(|_| ()),
+        };
 
-            if !destination_rom_path.starts_with(destination_path) {
-                tracing::error!("Export path is outside of the target directory");
-
-                continue;
-            }
-
-            tracing::info!("Exporting ROM for program {}", id);
-
-            let result = if context.symlink {
-                symlink_file(&source_rom_path, &destination_rom_path).await
-            } else {
-                fs::copy(&source_rom_path, &destination_rom_path)
-                    .await
-                    .map(|_| ())
-            };
-
-            if let Err(err) = result {
-                tracing::error!(
-                    "Could not output ROM to path {}: {}",
-                    destination_rom_path.display(),
-                    err
-                );
-            }
+        if let Err(err) = result {
+            tracing::error!(
+                "Could not output ROM to path {}: {}",
+                destination_rom_path.display(),
+                err
+            );
         }
     }
 }

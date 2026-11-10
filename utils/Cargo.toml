@@ -14,6 +14,7 @@ maintainer = "Kay <lambdadeltakay@proton.me>"
 bytes = { workspace = true }
 clap = { workspace = true }
 crc32fast = { workspace = true }
+data-encoding = { workspace = true }
 fluxemu-database = { workspace = true }
 fluxemu-environment = { workspace = true }
 fluxemu-locale = { workspace = true }
@@ -21,6 +22,7 @@ fluxemu-math = { workspace = true }
 fluxemu-program = { workspace = true }
 futures = { workspace = true }
 nod = { workspace = true }
+pathfinding = { workspace = true }
 quick-xml = { workspace = true }
 redb = { workspace = true }
 reqwest = { workspace = true }
