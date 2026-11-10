@@ -1,4 +1,8 @@
-use std::{collections::HashMap, fs::File, path::PathBuf};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fs::File,
+    path::PathBuf,
+};
 
 use csv::Reader;
 use proc_macro2::Span;
@@ -12,6 +16,9 @@ struct CountryRecord {
     alpha_2_code: String,
     #[serde(rename = "ISO3166-1-Alpha-3")]
     alpha_3_code: String,
+    official_name_en: String,
+    #[serde(rename = "UNTERM English Short")]
+    english_short_name: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -36,6 +43,7 @@ pub fn generate_3166() {
     let mut variants_3 = Vec::new();
     let mut mappings_2to3 = HashMap::new();
     let mut mappings_3to2 = HashMap::new();
+    let mut english_names = BTreeMap::new();
 
     for result in reader.deserialize() {
         let record: CountryRecord = result.expect("CSV parse error");
@@ -60,6 +68,14 @@ pub fn generate_3166() {
             discriminant: None,
         });
 
+        for name in [&record.official_name_en, &record.english_short_name] {
+            let name = name.trim().trim_end_matches(" (the)").to_lowercase();
+
+            if !name.is_empty() {
+                english_names.entry(name).or_insert_with(|| ident2.clone());
+            }
+        }
+
         mappings_2to3.insert(ident2.clone(), ident3.clone());
         mappings_3to2.insert(ident3, ident2);
     }
@@ -80,6 +96,9 @@ pub fn generate_3166() {
 
     let arms_2to3 = mappings_2to3.iter().map(|(k, v)| {
         quote! { Self::#k => Iso3166Alpha3::#v, }
+    });
+    let english_name_arms = english_names.iter().map(|(name, ident)| {
+        quote! { #name => Some(Self::#ident), }
     });
     let arms_3to2 = mappings_3to2.iter().map(|(k, v)| {
         quote! { Self::#k => Iso3166Alpha2::#v, }
@@ -116,6 +135,13 @@ pub fn generate_3166() {
             pub fn to_alpha3(&self) -> Iso3166Alpha3 {
                 match self {
                     #(#arms_2to3)*
+                }
+            }
+
+            pub fn from_english_name(name: &str) -> Option<Self> {
+                match name.to_lowercase().as_str() {
+                    #(#english_name_arms)*
+                    _ => None,
                 }
             }
         }
