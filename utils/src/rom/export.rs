@@ -3,9 +3,10 @@ use std::{error::Error, path::PathBuf, sync::Arc};
 use fluxemu_database::{FileIdentification, ProgramDatabase};
 use fluxemu_environment::Environment;
 use fluxemu_program::{FileDigest, RomId, RomStoreSpecification};
-use tokio::{fs, sync::mpsc, task::spawn_blocking};
+use futures::{StreamExt, TryStreamExt, channel::mpsc};
+use tokio::{fs, task::spawn_blocking};
 
-use crate::{cli::ExportStyle, for_each_concurrent, rom::symlink_file};
+use crate::{cli::ExportStyle, concurrency_limit, rom::symlink_file};
 
 struct ExportContext {
     program_database: Arc<ProgramDatabase>,
@@ -36,7 +37,7 @@ pub async fn export(
         style,
     });
 
-    let (sender, receiver) = mpsc::unbounded_channel();
+    let (sender, receiver) = mpsc::unbounded();
 
     let store_reader = spawn_blocking(move || {
         for rom_store in rom_stores {
@@ -55,23 +56,25 @@ pub async fn export(
                     continue;
                 };
 
-                if sender.send((rom_id, path)).is_err() {
+                if sender.unbounded_send((rom_id, path)).is_err() {
                     return;
                 }
             }
         }
     });
 
-    for_each_concurrent(receiver, move |(rom_id, source_rom_path)| {
-        let context = context.clone();
+    receiver
+        .map(Ok::<_, Box<dyn Error + Send + Sync>>)
+        .try_for_each_concurrent(concurrency_limit(), move |(rom_id, source_rom_path)| {
+            let context = context.clone();
 
-        async move {
-            export_rom(&context, rom_id, source_rom_path).await;
+            async move {
+                export_rom(&context, rom_id, source_rom_path).await;
 
-            Ok(())
-        }
-    })
-    .await?;
+                Ok(())
+            }
+        })
+        .await?;
 
     store_reader.await?;
 

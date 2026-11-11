@@ -10,17 +10,18 @@ use std::{
 use bytes::Bytes;
 use fluxemu_database::ProgramDatabase;
 use fluxemu_program::{FileDigest, ProgramManager, RomForm, RomId};
+use futures::{StreamExt, TryStreamExt, channel::mpsc};
 use nod::{
     common::Format,
     read::{DiscOptions, DiscReader},
 };
 use rustc_hash::FxBuildHasher;
 use sevenz_rust2::Password;
-use tokio::{fs, sync::mpsc, task::spawn_blocking};
+use tokio::{fs, task::spawn_blocking};
 use zip::ZipArchive;
 
 use crate::{
-    for_each_concurrent,
+    concurrency_limit,
     rom::{reindex::record_rom_ids, symlink_file},
 };
 
@@ -92,16 +93,18 @@ pub async fn import(
         stored_digests: Mutex::default(),
     });
 
-    for_each_concurrent(paths, {
-        let context = context.clone();
+    paths
+        .map(Ok::<_, Box<dyn Error + Send + Sync>>)
+        .try_for_each_concurrent(concurrency_limit(), {
+            let context = context.clone();
 
-        move |entry| {
-            tracing::debug!("Processing file {:?}", entry.path());
+            move |entry| {
+                tracing::debug!("Processing file {:?}", entry.path());
 
-            process_entry(context.clone(), ImportSource::File(entry.into_path()))
-        }
-    })
-    .await?;
+                process_entry(context.clone(), ImportSource::File(entry.into_path()))
+            }
+        })
+        .await?;
 
     let stored_digests = std::mem::take(&mut *context.stored_digests.lock().unwrap());
 
@@ -110,7 +113,7 @@ pub async fn import(
 
 fn process_entry(context: Arc<ImportContext>, source: ImportSource) -> EntryFuture {
     Box::pin(async move {
-        let (sender, receiver) = mpsc::unbounded_channel();
+        let (sender, receiver) = mpsc::unbounded();
 
         let scanner = spawn_blocking({
             let context = context.clone();
@@ -119,7 +122,12 @@ fn process_entry(context: Arc<ImportContext>, source: ImportSource) -> EntryFutu
             move || scan_entry(&source, &sender, &context.program_database)
         });
 
-        for_each_concurrent(receiver, |source| process_entry(context.clone(), source)).await?;
+        receiver
+            .map(Ok::<_, Box<dyn Error + Send + Sync>>)
+            .try_for_each_concurrent(concurrency_limit(), |source| {
+                process_entry(context.clone(), source)
+            })
+            .await?;
 
         if let Some(identified_rom) = scanner.await? {
             store_rom(&context, identified_rom, &source).await?;
@@ -199,7 +207,7 @@ fn try_as_zip(reader: impl Read + Seek, sender: &mpsc::UnboundedSender<ImportSou
         }
 
         if sender
-            .send(ImportSource::Memory(Bytes::from(buffer)))
+            .unbounded_send(ImportSource::Memory(Bytes::from(buffer)))
             .is_err()
         {
             return;
@@ -227,7 +235,7 @@ fn try_as_7zip(reader: impl Read + Seek, sender: &mpsc::UnboundedSender<ImportSo
         }
 
         Ok(sender
-            .send(ImportSource::Memory(Bytes::from(buffer)))
+            .unbounded_send(ImportSource::Memory(Bytes::from(buffer)))
             .is_ok())
     }) {
         tracing::warn!("7z scanning error: {}", err);
@@ -252,7 +260,7 @@ fn try_as_disc(
         Ok(disc) if disc.meta().lossless => {
             tracing::debug!("Processing {} disc image", disc.meta().format);
 
-            let _ = sender.send(ImportSource::DecodedDisc(Box::new(source.clone())));
+            let _ = sender.unbounded_send(ImportSource::DecodedDisc(Box::new(source.clone())));
         }
         Ok(disc) => {
             tracing::warn!(

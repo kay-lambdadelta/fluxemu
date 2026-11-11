@@ -5,10 +5,11 @@ use std::{
 
 use fluxemu_database::ProgramDatabase;
 use fluxemu_program::SystemId;
-use tokio::{fs, sync::mpsc, task::spawn_blocking};
+use futures::{StreamExt, TryStreamExt, channel::mpsc};
+use tokio::{fs, task::spawn_blocking};
 
 use crate::{
-    for_each_concurrent,
+    concurrency_limit,
     logiqx::{add_to_database, parse},
 };
 
@@ -18,37 +19,43 @@ pub async fn import(
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let data_files = Arc::new(Mutex::new(Vec::new()));
 
-    for_each_concurrent(paths, {
-        let data_files = data_files.clone();
-
-        move |entry| {
+    paths
+        .map(Ok::<_, Box<dyn Error + Send + Sync>>)
+        .try_for_each_concurrent(concurrency_limit(), {
             let data_files = data_files.clone();
 
-            async move {
-                let path = entry.into_path();
-                let bytes = fs::read(&path).await?;
+            move |entry| {
+                let data_files = data_files.clone();
 
-                match spawn_blocking(move || parse(bytes.as_slice())).await? {
-                    Ok(data_file) => match SystemId::from_nointro_str(&data_file.header.name) {
-                        Ok(system) => data_files.lock().unwrap().push((system, data_file)),
+                async move {
+                    let path = entry.into_path();
+                    let bytes = fs::read(&path).await?;
+
+                    match spawn_blocking(move || parse(bytes.as_slice())).await? {
+                        Ok(data_file) => match SystemId::from_nointro_str(&data_file.header.name) {
+                            Ok(system) => data_files.lock().unwrap().push((system, data_file)),
+                            Err(err) => {
+                                tracing::error!(
+                                    "Skipping logiqx database {}: {}",
+                                    path.display(),
+                                    err
+                                );
+                            }
+                        },
                         Err(err) => {
-                            tracing::error!("Skipping logiqx database {}: {}", path.display(), err);
+                            tracing::error!(
+                                "Failed to parse logiqx database {}: {}",
+                                path.display(),
+                                err
+                            );
                         }
-                    },
-                    Err(err) => {
-                        tracing::error!(
-                            "Failed to parse logiqx database {}: {}",
-                            path.display(),
-                            err
-                        );
                     }
-                }
 
-                Ok(())
+                    Ok(())
+                }
             }
-        }
-    })
-    .await?;
+        })
+        .await?;
 
     let data_files = std::mem::take(&mut *data_files.lock().unwrap());
 

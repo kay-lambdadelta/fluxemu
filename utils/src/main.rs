@@ -7,9 +7,9 @@ use clap::Parser;
 use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::load_environment;
 use fluxemu_program::{DigestCache, ProgramManager, RomStoreSpecification, SystemId};
-use futures::{StreamExt, TryStreamExt, stream};
+use futures::channel::mpsc;
 use redb::Database;
-use tokio::{runtime::Runtime, sync::mpsc, task::spawn_blocking};
+use tokio::{runtime::Runtime, task::spawn_blocking};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{
     EnvFilter, Layer,
@@ -205,7 +205,7 @@ async fn compact_database(
 
 /// Turns the paths into a walkdir that automatically walks through links and filters to files
 fn walk_for_files(paths: Vec<PathBuf>) -> mpsc::UnboundedReceiver<walkdir::DirEntry> {
-    let (sender, receiver) = mpsc::unbounded_channel();
+    let (sender, receiver) = mpsc::unbounded();
 
     spawn_blocking(move || {
         for entry in paths
@@ -214,7 +214,7 @@ fn walk_for_files(paths: Vec<PathBuf>) -> mpsc::UnboundedReceiver<walkdir::DirEn
         {
             match entry {
                 Ok(entry) if entry.path().is_file() => {
-                    if sender.send(entry).is_err() {
+                    if sender.unbounded_send(entry).is_err() {
                         return;
                     }
                 }
@@ -229,19 +229,6 @@ fn walk_for_files(paths: Vec<PathBuf>) -> mpsc::UnboundedReceiver<walkdir::DirEn
     receiver
 }
 
-async fn for_each_concurrent<
-    T,
-    F: Future<Output = Result<(), Box<dyn Error + Send + Sync>>> + Send + 'static,
->(
-    mut receiver: mpsc::UnboundedReceiver<T>,
-    action: impl Fn(T) -> F,
-) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let limit = available_parallelism().map_or(1, NonZero::get);
-
-    stream::poll_fn(|context| receiver.poll_recv(context))
-        .map(|item| tokio::spawn(action(item)))
-        .buffer_unordered(limit)
-        .map(|result| result?)
-        .try_collect()
-        .await
+fn concurrency_limit() -> usize {
+    available_parallelism().map_or(1, NonZero::get)
 }

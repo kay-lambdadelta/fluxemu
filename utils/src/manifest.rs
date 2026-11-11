@@ -2,11 +2,12 @@ use std::{error::Error, path::PathBuf, sync::Arc};
 
 use fluxemu_database::ProgramDatabase;
 use fluxemu_program::{ProgramId, ProgramInfo, Variant};
+use futures::{StreamExt, TryStreamExt, channel::mpsc};
 use ron::ser::PrettyConfig;
 use serde::{Deserialize, Serialize};
-use tokio::{fs, sync::mpsc, task::spawn_blocking};
+use tokio::{fs, task::spawn_blocking};
 
-use crate::for_each_concurrent;
+use crate::concurrency_limit;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ManifestFile {
@@ -19,37 +20,40 @@ pub async fn import(
     program_database: Arc<ProgramDatabase>,
     paths: mpsc::UnboundedReceiver<walkdir::DirEntry>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    for_each_concurrent(paths, move |entry| {
-        let program_database = program_database.clone();
+    paths
+        .map(Ok::<_, Box<dyn Error + Send + Sync>>)
+        .try_for_each_concurrent(concurrency_limit(), move |entry| {
+            let program_database = program_database.clone();
 
-        async move {
-            let bytes = fs::read(entry.path()).await?;
+            async move {
+                let bytes = fs::read(entry.path()).await?;
 
-            spawn_blocking(move || -> Result<(), Box<dyn Error + Send + Sync>> {
-                let manifest = match ron::Options::default().from_bytes::<ManifestFile>(&bytes) {
-                    Ok(manifest) => manifest,
-                    Err(err) => {
-                        tracing::warn!("Failed to open file {:?}: {}", entry.path(), err);
+                spawn_blocking(move || -> Result<(), Box<dyn Error + Send + Sync>> {
+                    let manifest = match ron::Options::default().from_bytes::<ManifestFile>(&bytes)
+                    {
+                        Ok(manifest) => manifest,
+                        Err(err) => {
+                            tracing::warn!("Failed to open file {:?}: {}", entry.path(), err);
 
-                        return Ok(());
+                            return Ok(());
+                        }
+                    };
+
+                    let writer = program_database.write()?;
+                    writer.insert_program(&manifest.id, &manifest.info)?;
+
+                    for variant in &manifest.variants {
+                        writer.insert_variant(&manifest.id, variant)?;
                     }
-                };
 
-                let writer = program_database.write()?;
-                writer.insert_program(&manifest.id, &manifest.info)?;
+                    writer.commit()?;
 
-                for variant in &manifest.variants {
-                    writer.insert_variant(&manifest.id, variant)?;
-                }
-
-                writer.commit()?;
-
-                Ok(())
-            })
-            .await?
-        }
-    })
-    .await
+                    Ok(())
+                })
+                .await?
+            }
+        })
+        .await
 }
 
 pub async fn export(
@@ -58,13 +62,16 @@ pub async fn export(
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let _ = fs::create_dir_all(&output_directory).await;
 
-    let (sender, receiver) = mpsc::unbounded_channel();
+    let (sender, receiver) = mpsc::unbounded();
 
     let table_reader = spawn_blocking(move || -> Result<(), Box<dyn Error + Send + Sync>> {
         for (id, info) in program_database.programs(None)? {
             let variants = program_database.variants(&id)?;
 
-            if sender.send(ManifestFile { id, info, variants }).is_err() {
+            if sender
+                .unbounded_send(ManifestFile { id, info, variants })
+                .is_err()
+            {
                 return Ok(());
             }
         }
@@ -72,24 +79,26 @@ pub async fn export(
         Ok(())
     });
 
-    for_each_concurrent(receiver, move |manifest: ManifestFile| {
-        let mut output_path = output_directory.join(manifest.id.path());
-        output_path.as_mut_os_string().push(".ron");
+    receiver
+        .map(Ok::<_, Box<dyn Error + Send + Sync>>)
+        .try_for_each_concurrent(concurrency_limit(), move |manifest: ManifestFile| {
+            let mut output_path = output_directory.join(manifest.id.path());
+            output_path.as_mut_os_string().push(".ron");
 
-        async move {
-            if let Some(parent) = output_path.parent() {
-                fs::create_dir_all(parent).await?;
+            async move {
+                if let Some(parent) = output_path.parent() {
+                    fs::create_dir_all(parent).await?;
+                }
+
+                let output =
+                    ron::Options::default().to_string_pretty(&manifest, PrettyConfig::default())?;
+
+                fs::write(output_path, output).await?;
+
+                Ok(())
             }
-
-            let output =
-                ron::Options::default().to_string_pretty(&manifest, PrettyConfig::default())?;
-
-            fs::write(output_path, output).await?;
-
-            Ok(())
-        }
-    })
-    .await?;
+        })
+        .await?;
 
     table_reader.await?
 }

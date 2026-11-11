@@ -1,23 +1,26 @@
 use std::{error::Error, path::Path, sync::Arc};
 
 use fluxemu_database::ProgramDatabase;
+use futures::{StreamExt, TryStreamExt, channel::mpsc};
 use redb::ReadOnlyDatabase;
-use tokio::{sync::mpsc, task::spawn_blocking};
+use tokio::task::spawn_blocking;
 
-use crate::for_each_concurrent;
+use crate::concurrency_limit;
 
 pub async fn import(
     program_database: Arc<ProgramDatabase>,
     paths: mpsc::UnboundedReceiver<walkdir::DirEntry>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    for_each_concurrent(paths, move |entry| {
-        let program_database = program_database.clone();
+    paths
+        .map(Ok::<_, Box<dyn Error + Send + Sync>>)
+        .try_for_each_concurrent(concurrency_limit(), move |entry| {
+            let program_database = program_database.clone();
 
-        async move {
-            spawn_blocking(move || import_database(&program_database, entry.path())).await?
-        }
-    })
-    .await
+            async move {
+                spawn_blocking(move || import_database(&program_database, entry.path())).await?
+            }
+        })
+        .await
 }
 
 fn import_database(
