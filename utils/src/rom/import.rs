@@ -4,7 +4,7 @@ use std::{
     io::{self, BufReader, Cursor, Read, Seek},
     path::{Path, PathBuf},
     pin::Pin,
-    sync::{Arc, LazyLock},
+    sync::{Arc, LazyLock, Mutex},
 };
 
 use bytes::Bytes;
@@ -19,7 +19,10 @@ use sevenz_rust2::Password;
 use tokio::{fs, sync::mpsc, task::spawn_blocking};
 use zip::ZipArchive;
 
-use crate::{for_each_concurrent, rom::symlink_file};
+use crate::{
+    for_each_concurrent,
+    rom::{reindex::record_rom_ids, symlink_file},
+};
 
 static ALREADY_FOUND_ROMS: LazyLock<scc::HashSet<RomId, FxBuildHasher>> =
     LazyLock::new(scc::HashSet::default);
@@ -64,6 +67,7 @@ struct ImportContext {
     symlink: bool,
     program_database: Arc<ProgramDatabase>,
     program_manager: Arc<ProgramManager>,
+    stored_digests: Mutex<Vec<FileDigest>>,
 }
 
 struct IdentifiedRom {
@@ -83,16 +87,25 @@ pub async fn import(
     let context = Arc::new(ImportContext {
         rom_store,
         symlink,
-        program_database,
+        program_database: program_database.clone(),
         program_manager,
+        stored_digests: Mutex::default(),
     });
 
-    for_each_concurrent(paths, move |entry| {
-        tracing::debug!("Processing file {:?}", entry.path());
+    for_each_concurrent(paths, {
+        let context = context.clone();
 
-        process_entry(context.clone(), ImportSource::File(entry.into_path()))
+        move |entry| {
+            tracing::debug!("Processing file {:?}", entry.path());
+
+            process_entry(context.clone(), ImportSource::File(entry.into_path()))
+        }
     })
-    .await
+    .await?;
+
+    let stored_digests = std::mem::take(&mut *context.stored_digests.lock().unwrap());
+
+    record_rom_ids(program_database, stored_digests).await
 }
 
 fn process_entry(context: Arc<ImportContext>, source: ImportSource) -> EntryFuture {
@@ -311,6 +324,7 @@ async fn store_rom(
     };
 
     context.program_manager.remember_digest(&digest);
+    context.stored_digests.lock().unwrap().push(digest.clone());
 
     let rom_id = digest.id;
     let rom_store_path = context.rom_store.join(rom_id.to_string());

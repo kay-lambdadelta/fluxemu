@@ -25,6 +25,7 @@ impl Cli {
                     add_to_database: true,
                     ..
                 })
+                | Cli::Rom(RomCommand::Import { .. } | RomCommand::Reindex)
                 | Cli::Manifest(ManifestCommand::Import { .. })
                 | Cli::Logiqx(LogiqxCommand::Import { .. } | LogiqxCommand::DownloadRedump { .. })
         )
@@ -64,6 +65,8 @@ pub enum RomCommand {
     },
     /// Verify ROMs within stores
     Verify,
+    /// Record the ROM IDs of files in the listable ROM stores in the database entries they match
+    Reindex,
     /// Patch ROM within store, producing a new ROM
     Patch {
         /// Source ROM to apply patch to

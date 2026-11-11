@@ -86,7 +86,7 @@ impl Context {
         Self {
             runtime: Runtime::new().unwrap(),
             program_database,
-            program_manager: ProgramManager::new(environment.rom_stores).unwrap(),
+            program_manager: ProgramManager::new(environment.rom_stores),
         }
     }
 

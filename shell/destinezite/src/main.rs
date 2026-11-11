@@ -108,7 +108,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let program_manager = ProgramManager::with_digest_cache(
         environment.rom_stores.clone(),
         DigestCache::try_open(&environment.digest_cache_location),
-    )?;
+    );
 
     let mut initial_program = None;
 

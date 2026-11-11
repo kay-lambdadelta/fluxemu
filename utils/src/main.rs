@@ -70,7 +70,7 @@ fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
         let program_manager = ProgramManager::with_digest_cache(
             environment.rom_stores.clone(),
             DigestCache::try_open(&environment.digest_cache_location),
-        )?;
+        );
 
         match args {
             Cli::Database(command) => match command {
@@ -130,6 +130,9 @@ fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
                     .await?;
                 }
                 RomCommand::Verify => {}
+                RomCommand::Reindex => {
+                    rom::reindex(program_database.clone(), program_manager.clone()).await?;
+                }
             },
             Cli::Manifest(command) => match command {
                 ManifestCommand::Import { paths } => {

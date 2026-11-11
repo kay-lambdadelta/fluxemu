@@ -31,42 +31,79 @@ pub enum Error {
     },
 }
 
+#[derive(Clone)]
 struct RomStore {
     name: String,
     operator: Operator,
     filesystem_root: Option<PathBuf>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum RomSource {
+    Embedded,
+    External,
+    Store(String),
+}
+
+#[derive(Clone)]
+pub struct UnlistedRomStore {
+    rom_store: RomStore,
+}
+
+impl UnlistedRomStore {
+    pub fn name(&self) -> &str {
+        &self.rom_store.name
+    }
+
+    pub async fn contains(&self, id: RomId) -> Result<bool, Error> {
+        self.rom_store
+            .operator
+            .exists(&id.to_string())
+            .await
+            .map_err(|source| Error::RomStore {
+                name: self.rom_store.name.clone(),
+                source,
+            })
+    }
+}
+
+pub struct RomIdListing {
+    pub rom_sources: BTreeMap<RomId, BTreeSet<RomSource>>,
+    pub unlisted_rom_stores: Vec<UnlistedRomStore>,
+    pub failed_rom_stores: BTreeMap<String, String>,
+}
+
 /// The ROM manager which contains information about the roms that were loaded
 pub struct ProgramManager {
     external_roms: scc::HashMap<RomId, PathBuf, FxBuildHasher>,
     embedded_roms: scc::HashMap<RomId, &'static [u8], FxBuildHasher>,
-    rom_cache: scc::HashCache<RomId, Bytes>,
     digests: scc::HashMap<RomId, FileDigest, FxBuildHasher>,
     digest_cache: Option<Arc<DigestCache>>,
-    rom_stores: RwLock<Arc<[RomStore]>>,
+    rom_stores: RwLock<Arc<RomStoreSet>>,
+}
+
+struct RomStoreSet {
+    usable: Vec<RomStore>,
+    unavailable: BTreeMap<String, String>,
 }
 
 impl ProgramManager {
     /// If you are writing a new shell, consider consulting [`Self::with_digest_cache`] first
-    pub fn new(
-        rom_stores: impl IntoIterator<Item = (String, RomStoreSpecification)>,
-    ) -> Result<Arc<Self>, Error> {
+    pub fn new(rom_stores: impl IntoIterator<Item = (String, RomStoreSpecification)>) -> Arc<Self> {
         Self::with_digest_cache(rom_stores, None)
     }
 
     pub fn with_digest_cache(
         rom_stores: impl IntoIterator<Item = (String, RomStoreSpecification)>,
         digest_cache: Option<DigestCache>,
-    ) -> Result<Arc<Self>, Error> {
-        Ok(Arc::new(Self {
+    ) -> Arc<Self> {
+        Arc::new(Self {
             external_roms: scc::HashMap::default(),
             embedded_roms: scc::HashMap::default(),
-            rom_cache: scc::HashCache::with_capacity(0, 16),
             digests: scc::HashMap::default(),
             digest_cache: digest_cache.map(Arc::new),
-            rom_stores: RwLock::new(build_rom_stores(rom_stores)?),
-        }))
+            rom_stores: RwLock::new(Arc::new(build_rom_stores_skipping_failures(rom_stores))),
+        })
     }
 
     pub fn collect_digest_cache_garbage(&self, reachable: &BTreeSet<RomId>) {
@@ -106,7 +143,7 @@ impl ProgramManager {
         rom_stores: impl IntoIterator<Item = (String, RomStoreSpecification)>,
     ) -> Result<(), Error> {
         let rom_stores = build_rom_stores(rom_stores)?;
-        *self.rom_stores.write().unwrap() = rom_stores;
+        *self.rom_stores.write().unwrap() = Arc::new(rom_stores);
 
         Ok(())
     }
@@ -129,23 +166,82 @@ impl ProgramManager {
         self.external_roms
             .upsert_async(rom_id, path.to_path_buf())
             .await;
-        let _ = self.rom_cache.put_async(rom_id, rom_bytes).await;
 
         Ok(rom_id)
+    }
+
+    pub async fn rom_ids(&self) -> RomIdListing {
+        let mut rom_sources: BTreeMap<_, BTreeSet<_>> = BTreeMap::new();
+        let mut unlisted_rom_stores = Vec::new();
+        let rom_stores = self.rom_stores.read().unwrap().clone();
+        let mut failed_rom_stores = rom_stores.unavailable.clone();
+
+        self.embedded_roms
+            .iter_async(|rom_id, _| {
+                rom_sources
+                    .entry(*rom_id)
+                    .or_default()
+                    .insert(RomSource::Embedded);
+
+                true
+            })
+            .await;
+
+        self.external_roms
+            .iter_async(|rom_id, _| {
+                rom_sources
+                    .entry(*rom_id)
+                    .or_default()
+                    .insert(RomSource::External);
+
+                true
+            })
+            .await;
+
+        for rom_store in &rom_stores.usable {
+            if !rom_store.operator.info().capability().list {
+                tracing::warn!(
+                    "ROM store {} cannot list its contents, looking for ROMs known to the program \
+                     database in it instead",
+                    rom_store.name
+                );
+
+                unlisted_rom_stores.push(UnlistedRomStore {
+                    rom_store: rom_store.clone(),
+                });
+                continue;
+            }
+
+            match rom_store.operator.list("/").await {
+                Ok(entries) => {
+                    for rom_id in entries
+                        .iter()
+                        .filter_map(|entry| entry.name().parse::<RomId>().ok())
+                    {
+                        rom_sources
+                            .entry(rom_id)
+                            .or_default()
+                            .insert(RomSource::Store(rom_store.name.clone()));
+                    }
+                }
+                Err(err) => {
+                    tracing::warn!("Could not list ROM store {}: {}", rom_store.name, err);
+
+                    failed_rom_stores.insert(rom_store.name.clone(), err.to_string());
+                }
+            }
+        }
+
+        RomIdListing {
+            rom_sources,
+            unlisted_rom_stores,
+            failed_rom_stores,
+        }
     }
 
     pub async fn load(&self, id: RomId) -> Result<Option<Bytes>, Error> {
         if let Some(rom_bytes) = self.embedded_roms.read_async(&id, |_, bytes| *bytes).await {
             return Ok(Some(Bytes::from_static(rom_bytes)));
-        }
-
-        if let Some(rom_bytes) = self
-            .rom_cache
-            .get_async(&id)
-            .await
-            .map(|entry| entry.get().clone())
-        {
-            return Ok(Some(rom_bytes));
         }
 
         let rom_bytes = if let Some(external_rom_path) = self
@@ -167,8 +263,6 @@ impl ProgramManager {
 
             rom_bytes
         };
-
-        let _ = self.rom_cache.put_async(id, rom_bytes.clone()).await;
 
         Ok(Some(rom_bytes))
     }
@@ -294,9 +388,6 @@ impl ProgramManager {
         let rom_id = RomId::new(bytes).unwrap();
 
         self.embedded_roms.upsert_sync(rom_id, bytes);
-
-        // No need to cache a rom permanently bolted in
-        self.rom_cache.remove_sync(&rom_id);
         self.external_roms.remove_sync(&rom_id);
 
         rom_id
@@ -306,7 +397,7 @@ impl ProgramManager {
         let id_as_string = id.to_string();
         let rom_stores = self.rom_stores.read().unwrap().clone();
 
-        for rom_store in rom_stores.iter() {
+        for rom_store in &rom_stores.usable {
             if let Some(filesystem_root) = &rom_store.filesystem_root {
                 match load_rom_file(&filesystem_root.join(&id_as_string)).await {
                     Ok(rom_bytes) => return Ok(Some(rom_bytes)),
@@ -342,24 +433,57 @@ impl ProgramManager {
 
 fn build_rom_stores(
     rom_stores: impl IntoIterator<Item = (String, RomStoreSpecification)>,
-) -> Result<Arc<[RomStore]>, Error> {
-    rom_stores
+) -> Result<RomStoreSet, Error> {
+    let usable = rom_stores
         .into_iter()
         .map(|(name, specification)| {
-            let operator = match Operator::via_iter(&specification.scheme, specification.options) {
-                Ok(operator) => operator,
-                Err(source) => return Err(Error::RomStore { name, source }),
-            };
-            let info = operator.info();
-            let filesystem_root = (info.scheme() == FS_SCHEME).then(|| PathBuf::from(info.root()));
-
-            Ok(RomStore {
-                name,
-                operator,
-                filesystem_root,
-            })
+            build_rom_store(name.clone(), specification)
+                .map_err(|source| Error::RomStore { name, source })
         })
-        .collect()
+        .collect::<Result<_, _>>()?;
+
+    Ok(RomStoreSet {
+        usable,
+        unavailable: BTreeMap::new(),
+    })
+}
+
+fn build_rom_stores_skipping_failures(
+    rom_stores: impl IntoIterator<Item = (String, RomStoreSpecification)>,
+) -> RomStoreSet {
+    let mut usable = Vec::new();
+    let mut unavailable = BTreeMap::new();
+
+    for (name, specification) in rom_stores {
+        match build_rom_store(name.clone(), specification) {
+            Ok(rom_store) => usable.push(rom_store),
+            Err(err) => {
+                tracing::error!("Skipping ROM store {}: {}", name, err);
+
+                unavailable.insert(name, err.to_string());
+            }
+        }
+    }
+
+    RomStoreSet {
+        usable,
+        unavailable,
+    }
+}
+
+fn build_rom_store(
+    name: String,
+    specification: RomStoreSpecification,
+) -> Result<RomStore, opendal::Error> {
+    let operator = Operator::via_iter(&specification.scheme, specification.options)?;
+    let info = operator.info();
+    let filesystem_root = (info.scheme() == FS_SCHEME).then(|| PathBuf::from(info.root()));
+
+    Ok(RomStore {
+        name,
+        operator,
+        filesystem_root,
+    })
 }
 
 async fn load_rom_file(path: &Path) -> Result<Bytes, Error> {

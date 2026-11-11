@@ -138,7 +138,7 @@ fn main(arguments: &[String]) -> Result<(), Box<dyn std::error::Error>> {
 
     let runtime = Runtime::new()?;
     let program_database = ProgramDatabase::new(Database::create(&environment.database_location)?)?;
-    let program_manager = ProgramManager::new(environment.rom_stores.clone())?;
+    let program_manager = ProgramManager::new(environment.rom_stores.clone());
 
     match frontend_selection {
         #[cfg(feature = "egui")]

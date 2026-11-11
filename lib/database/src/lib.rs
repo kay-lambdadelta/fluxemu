@@ -6,7 +6,8 @@ use std::{
 
 use fluxemu_program::{
     Derivative, DumpStatus, FileDigest, FileMatch, GroupId, Manifest, MatchStrength, ProgramId,
-    ProgramInfo, RomFile, RomForm, RomHash, RomId, SystemId, Variant, versioned_table_name,
+    ProgramInfo, RomFile, RomForm, RomHash, RomHashes, RomId, SystemId, Variant,
+    versioned_table_name,
 };
 use redb::{
     Database, MultimapTableDefinition, MultimapTableHandle, ReadOnlyDatabase, ReadableDatabase,
@@ -316,6 +317,13 @@ impl<D: ReadableDatabase> ProgramDatabase<D> {
     }
 }
 
+fn fill_missing_hashes(hashes: &mut RomHashes, digest_hashes: &RomHashes) {
+    hashes.crc32 = hashes.crc32.or(digest_hashes.crc32);
+    hashes.md5 = hashes.md5.or(digest_hashes.md5);
+    hashes.sha1 = hashes.sha1.or(digest_hashes.sha1);
+    hashes.sha256 = hashes.sha256.or(digest_hashes.sha256);
+}
+
 fn warn_about_old_tables(
     database: &impl ReadableDatabase,
     current_tables: &[&str],
@@ -616,6 +624,58 @@ impl ProgramDatabaseWriter {
         }
 
         Ok(())
+    }
+
+    pub fn assign_rom_id(&self, digest: &FileDigest) -> Result<usize, Error> {
+        let candidates = {
+            let rom_id_table = self.transaction.open_multimap_table(ROM_ID_TABLE)?;
+            let hash_table = self.transaction.open_multimap_table(HASH_TABLE)?;
+
+            digest_candidates(&rom_id_table, &hash_table, digest)?
+        };
+
+        let mut assigned = 0;
+
+        for program_id in candidates {
+            let variants: Vec<_> = self
+                .transaction
+                .open_multimap_table(VARIANT_TABLE)?
+                .get(&program_id)?
+                .map(|variant| Ok::<_, Error>(variant?.value()))
+                .collect::<Result<_, _>>()?;
+
+            for variant in variants {
+                let mut updated = variant.clone();
+                let mut changed = false;
+
+                for file in updated.files_mut().values_mut() {
+                    if file.rom_id.is_some() {
+                        continue;
+                    }
+
+                    let Some(file_match) = file.compare(digest) else {
+                        continue;
+                    };
+
+                    if file_match.form != RomForm::Canonical
+                        || file_match.strength == MatchStrength::Weak
+                    {
+                        continue;
+                    }
+
+                    file.rom_id = Some(digest.id);
+                    fill_missing_hashes(&mut file.hashes, &digest.hashes);
+                    changed = true;
+                    assigned += 1;
+                }
+
+                if changed {
+                    self.replace_variant(&program_id, &variant, &updated)?;
+                }
+            }
+        }
+
+        Ok(assigned)
     }
 
     pub fn commit(self) -> Result<(), Error> {

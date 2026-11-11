@@ -87,7 +87,7 @@ impl Machine {
     /// This will probably be completely unsuccessful at running any real world program.
     /// It should only be used for runtime/component sanity unit tests
     pub fn build_test_minimal() -> MachineBuilder<TestPlatform> {
-        Self::build(None, ProgramManager::new([]).unwrap())
+        Self::build(None, ProgramManager::new([]))
     }
 
     /// Enter the runtime for this machine on this thread

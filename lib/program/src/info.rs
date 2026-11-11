@@ -171,6 +171,12 @@ impl Variant {
         }
     }
 
+    pub fn files_mut(&mut self) -> &mut BTreeMap<String, RomFile> {
+        match self {
+            Variant::V0 { files } => files,
+        }
+    }
+
     pub fn rom_ids(&self) -> impl Iterator<Item = RomId> {
         self.files().values().filter_map(|file| file.rom_id)
     }
