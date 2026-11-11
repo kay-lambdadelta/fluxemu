@@ -12,11 +12,11 @@ mod simulation_controller;
 mod slots;
 mod utils;
 
-use std::sync::Arc;
+use std::{f32::consts::FRAC_PI_4, sync::Arc};
 
 use egui::{
-    Align, CentralPanel, FontDefinitions, Frame, FullOutput, Id, Layout, RawInput, Rect, Sense,
-    pos2, vec2,
+    Align, Align2, CentralPanel, FontDefinitions, FontId, Frame, FullOutput, Id, Layout, RawInput,
+    Sense, Vec2, vec2,
 };
 use fluxemu_frontend::{
     FrontendCore, FrontendEvent, Platform, SlotKind, notification::NotificationReceiver,
@@ -262,23 +262,11 @@ impl<P: Platform> Frontend<P> {
                 // Grey out framebuffer
                 painter.rect_filled(rect, 0.0, to_egui_color(BLACK.with_alpha(140)));
 
-                // Draw rudimentary pause symbol
-                let center = rect.center();
-                let bar_height = rect.width().min(rect.height()) * 0.2;
-                let bar_width = bar_height * 0.3;
-                let gap = bar_height * 0.25;
-
-                for side in [-1.0, 1.0] {
-                    let bar_center =
-                        pos2(center.x + side * (gap / 2.0 + bar_width / 2.0), center.y);
-                    let bar = Rect::from_center_size(bar_center, vec2(bar_width, bar_height));
-
-                    painter.rect_filled(bar, bar_width * 0.2, to_egui_color(WHITE.with_alpha(230)));
-                }
-            } else {
-                // Repaint as soon as possible, in reality limited to vsync
-                self.egui_context.request_repaint();
+                paint_pause_grid(&painter, rect, ui.input(|input| input.time));
             }
+
+            // Repaint as soon as possible, in reality limited to vsync
+            self.egui_context.request_repaint();
 
             if self.debug_overlay_visible {
                 let ui_state = &mut self.simulation_controller_ui_state;
@@ -310,5 +298,51 @@ impl<P: Platform> Frontend<P> {
                 memory.surrender_focus(self.machine_view_area);
             }
         })
+    }
+}
+
+/// Draw a staggered grid of pause symbols that pans and scales to the machine view
+fn paint_pause_grid(painter: &egui::Painter, rect: egui::Rect, time: f64) {
+    const ICON_SCALE: f32 = 0.125;
+    const SPACING_SCALE: f32 = 1.5;
+    const SPEED_SCALE: f32 = 0.27;
+    const ICON_SIZE_STEP: f32 = 4.0;
+
+    let icon_size =
+        (rect.width().min(rect.height()) * ICON_SCALE / ICON_SIZE_STEP).round() * ICON_SIZE_STEP;
+    let icon_size = icon_size.max(ICON_SIZE_STEP);
+    let spacing = icon_size * SPACING_SCALE;
+    let speed = icon_size * SPEED_SCALE;
+
+    let color = to_egui_color(WHITE.with_alpha(160));
+    let galley = painter.layout_no_wrap(
+        icon::PAUSE.to_string(),
+        FontId::proportional(icon_size),
+        color,
+    );
+
+    // Wrap vertically every two rows so the row stagger lines up
+    let distance = Vec2::angled(FRAC_PI_4) * time as f32 * speed;
+    let scroll = vec2(
+        distance.x.rem_euclid(spacing),
+        distance.y.rem_euclid(spacing * 2.0),
+    );
+    let origin = rect.min + scroll - vec2(spacing * 2.0, spacing * 2.0);
+
+    let columns = (rect.width() / spacing).ceil() as usize + 3;
+    let rows = (rect.height() / spacing).ceil() as usize + 3;
+
+    for row in 0..rows {
+        let stagger = if row % 2 == 0 { 0.0 } else { spacing / 2.0 };
+
+        for column in 0..columns {
+            let position = origin + vec2(column as f32 * spacing + stagger, row as f32 * spacing);
+
+            let top_left = Align2::CENTER_CENTER
+                .anchor_size(position, galley.size())
+                .min;
+
+            painter.galley(top_left, galley.clone(), color);
+        }
     }
 }

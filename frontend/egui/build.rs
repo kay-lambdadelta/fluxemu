@@ -18,6 +18,7 @@ const ICONS: &[Icon] = &[
     Icon::Footprints,
     Icon::Info,
     Icon::Lock,
+    Icon::Pause,
     Icon::Pencil,
     Icon::Play,
     Icon::RefreshCw,
