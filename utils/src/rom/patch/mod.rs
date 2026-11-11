@@ -11,13 +11,13 @@ use bytes::Bytes;
 use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::Environment;
 use fluxemu_program::{
-    Derivative, DerivativeKind, DumpStatus, FileDigest, Manifest, NonCanonicalHeader, ProgramId,
-    ProgramInfo, ProgramManager, RomFile, RomId, RomStoreSpecification, Title, Variant,
+    Derivative, DerivativeKind, DumpStatus, FileDigest, Manifest, NonCanonicalHeader, ProgramFlag,
+    ProgramId, ProgramInfo, ProgramManager, RomFile, RomId, RomStoreSpecification, Title, Variant,
 };
 use tempfile::tempfile;
 use tokio::task::spawn_blocking;
 
-use crate::rom::patch::ups::Ups;
+use crate::{cli::LanguageChange, rom::patch::ups::Ups};
 
 mod ups;
 
@@ -39,6 +39,7 @@ pub async fn patch(
     source: RomId,
     patch: &Path,
     add_to_database: bool,
+    translation: &[LanguageChange],
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let Some(extension) = patch
         .extension()
@@ -140,6 +141,8 @@ pub async fn patch(
             })
             .transpose()?;
 
+        let translation = translation.to_vec();
+
         spawn_blocking(move || {
             add_patched_rom_to_database(
                 &program_database,
@@ -147,6 +150,7 @@ pub async fn patch(
                 contents_digest,
                 non_canonical_header,
                 patch_name,
+                &translation,
             )
         })
         .await??;
@@ -161,6 +165,7 @@ fn add_patched_rom_to_database(
     contents_digest: FileDigest,
     non_canonical_header: Option<NonCanonicalHeader>,
     patch_name: String,
+    translation: &[LanguageChange],
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let (path, _) = source_manifest.variant.files().first_key_value().unwrap();
     let extension = path.rsplit_once('.').map(|(_, extension)| extension);
@@ -177,9 +182,27 @@ fn add_patched_rom_to_database(
 
     let ProgramInfo::V0 {
         regions,
+        mut languages,
         video_standards,
         ..
     } = source_manifest.info;
+
+    for change in translation {
+        match *change {
+            LanguageChange::Add(language) => {
+                languages.insert(language);
+            }
+            LanguageChange::Remove(language) => {
+                languages.remove(&language);
+            }
+        }
+    }
+
+    let flag = if translation.is_empty() {
+        ProgramFlag::Hack
+    } else {
+        ProgramFlag::Translation
+    };
 
     let info = ProgramInfo::V0 {
         title: Title {
@@ -188,10 +211,10 @@ fn add_patched_rom_to_database(
         },
         alternative_titles: BTreeSet::new(),
         regions,
-        languages: BTreeSet::new(),
+        languages,
         revision: None,
         kind: Default::default(),
-        flags: BTreeSet::new(),
+        flags: BTreeSet::from([flag]),
         video_standards,
         serials: BTreeSet::new(),
     };

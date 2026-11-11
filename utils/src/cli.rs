@@ -1,6 +1,7 @@
 use std::{fmt::Display, path::PathBuf, str::FromStr};
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{ArgAction, Parser, Subcommand, ValueEnum};
+use fluxemu_locale::{Iso639Alpha2, Iso639Alpha3};
 use fluxemu_program::{ProgramManager, RomId, SystemId};
 
 #[derive(Clone, Parser)]
@@ -71,9 +72,18 @@ pub enum RomCommand {
         ///
         /// Supported formats are: UPS
         patch: PathBuf,
-        /// Add the patched ROM to the database, with an entry based on the source ROM
-        #[clap(long)]
+        /// Don't add the patched ROM to the database
+        ///
+        /// By default it gets an entry based on the source ROM
+        #[clap(long = "no-add-to-database", action = ArgAction::SetFalse)]
         add_to_database: bool,
+        /// Mark the patch as a translation, listing the languages it adds (+) and removes (-)
+        ///
+        /// Example: --translation +en,-ja
+        ///
+        /// Otherwise, it will be marked as a hack
+        #[clap(long, value_delimiter = ',', allow_hyphen_values = true)]
+        translation: Vec<LanguageChange>,
     },
 }
 
@@ -157,5 +167,34 @@ impl FromStr for RomSource {
         string.parse::<RomId>().map(RomSource::Id).map_err(|err| {
             format!("\"{string}\" is not an existing path, and not a valid ROM ID: {err}")
         })
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum LanguageChange {
+    Add(Iso639Alpha3),
+    Remove(Iso639Alpha3),
+}
+
+impl FromStr for LanguageChange {
+    type Err = String;
+
+    fn from_str(string: &str) -> Result<Self, Self::Err> {
+        let parse_language = |code: &str| {
+            Iso639Alpha2::from_str(code)
+                .map(|language| language.to_alpha3())
+                .or_else(|_| Iso639Alpha3::from_str(code))
+                .map_err(|_| format!("\"{code}\" is not an ISO 639 language code"))
+        };
+
+        if let Some(code) = string.strip_prefix('+') {
+            parse_language(code).map(LanguageChange::Add)
+        } else if let Some(code) = string.strip_prefix('-') {
+            parse_language(code).map(LanguageChange::Remove)
+        } else {
+            Err(format!(
+                "\"{string}\" must start with + (language added) or - (language removed)"
+            ))
+        }
     }
 }

@@ -114,6 +114,7 @@ fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
                     source,
                     patch,
                     add_to_database,
+                    translation,
                 } => {
                     let source = source.to_id(&program_manager).await?;
 
@@ -124,6 +125,7 @@ fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
                         source,
                         &patch,
                         add_to_database,
+                        &translation,
                     )
                     .await?;
                 }
