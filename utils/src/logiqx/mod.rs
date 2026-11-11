@@ -9,7 +9,7 @@ use std::{
 use bytes::Bytes;
 use data_encoding::HEXLOWER_PERMISSIVE;
 use fluxemu_database::ProgramDatabase;
-use fluxemu_locale::{Iso639Alpha2, Iso639Alpha3, Iso3166Alpha2};
+use fluxemu_locale::{Iso639Alpha2, Iso3166Alpha2};
 use fluxemu_program::{
     DumpStatus, NonCanonicalHeader, ProgramFlag, ProgramId, ProgramInfo, ProgramKind, Region,
     RomFile, RomHash, RomHashes, SystemId, Title, Variant,
