@@ -9,10 +9,6 @@ use clap::Parser;
 const TOOLCHAIN_FILE: &str = "rust-toolchain.toml";
 const CARGO_CONFIG_FILE: &str = ".cargo/config.toml";
 const ZED_SETTINGS_FILE: &str = ".zed/settings.json";
-const SYMLINK_HINT: &str = cfg_select! {
-    windows => " (creating symlinks on Windows requires Developer Mode)",
-    _ => "",
-};
 
 #[derive(Debug, thiserror::Error)]
 enum Error {
@@ -23,7 +19,7 @@ enum Error {
     },
     #[error("{} is not a symlink, refusing to replace it", .0.display())]
     NotASymlink(PathBuf),
-    #[error("Could not create symlink {}: {source}{SYMLINK_HINT}", link.display())]
+    #[error("Could not create symlink {}: {source}", link.display())]
     Symlink { link: PathBuf, source: io::Error },
     #[error(transparent)]
     Io(#[from] io::Error),
