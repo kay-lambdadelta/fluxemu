@@ -384,7 +384,7 @@ impl ProgramManager {
         }))
     }
 
-    pub fn register_embedded_rom(&mut self, bytes: &'static [u8]) -> RomId {
+    pub fn register_embedded_rom(&self, bytes: &'static [u8]) -> RomId {
         let rom_id = RomId::new(bytes).unwrap();
 
         self.embedded_roms.upsert_sync(rom_id, bytes);

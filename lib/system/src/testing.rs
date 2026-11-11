@@ -119,29 +119,13 @@ impl Context {
                         Some(specifications.remove(0).manifest)
                     }
                 }
-                TestRom::Embedded { file_name, data } => {
-                    let path = std::env::temp_dir().join(format!(
-                        "fluxemu-system-test-{}-{file_name}",
-                        std::process::id()
-                    ));
+                TestRom::Embedded { data, .. } => {
+                    let id = self.program_manager.register_embedded_rom(data);
 
-                    std::fs::write(&path, data).unwrap();
-
-                    let id = self
-                        .program_manager
-                        .register_external_rom(&path)
-                        .await
-                        .unwrap();
-
-                    let specification = self
-                        .program_manager
+                    self.program_manager
                         .auto_generate_specification(id)
                         .await
-                        .unwrap();
-
-                    std::fs::remove_file(&path).unwrap();
-
-                    specification
+                        .unwrap()
                 }
             }
         })
