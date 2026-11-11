@@ -72,10 +72,14 @@ pub async fn patch(
             let (path, file) = manifest.variant.files().first_key_value().unwrap();
             let file_match = &manifest.files[path];
 
-            let rom = program_manager
+            let program_file = program_manager
                 .load_file(file, file_match)
                 .await?
                 .ok_or("Could not find ROM")?;
+            let rom = match program_file.non_canonical_header {
+                Some(header) => Bytes::from([header.as_ref(), &program_file.rom].concat()),
+                None => program_file.rom,
+            };
             let header_length = file.header_length();
 
             (rom, header_length)

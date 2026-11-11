@@ -88,7 +88,8 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Chip8 {
         let rom = machine_builder
             .open_program_file(&rom_path, RomRequirement::Required)
             .await?
-            .unwrap();
+            .unwrap()
+            .rom;
 
         if rom.len() > 0x1000 - 0x200 {
             return Err("CHIP8 program does not fit in memory".into());

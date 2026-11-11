@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::Bytes;
 use opendal::{Operator, services::FS_SCHEME};
 use rustc_hash::FxBuildHasher;
 use thiserror::Error;
@@ -65,6 +65,12 @@ impl UnlistedRomStore {
                 source,
             })
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct ProgramFile {
+    pub rom: Bytes,
+    pub non_canonical_header: Option<Bytes>,
 }
 
 pub struct RomIdListing {
@@ -267,25 +273,19 @@ impl ProgramManager {
         Ok(Some(rom_bytes))
     }
 
-    /// If this was a ROM with a non canonical header that was stripped off, it will be put back on for this function
     pub async fn load_file(
         &self,
         file: &RomFile,
         file_match: &FileMatch,
-    ) -> Result<Option<Bytes>, Error> {
-        let Some(rom_bytes) = self.load(file_match.rom_id).await? else {
+    ) -> Result<Option<ProgramFile>, Error> {
+        let Some(rom) = self.load(file_match.rom_id).await? else {
             return Ok(None);
         };
 
-        let Some(header) = file.missing_header(file_match.form) else {
-            return Ok(Some(rom_bytes));
-        };
-
-        let mut combined = BytesMut::with_capacity(header.len() + rom_bytes.len());
-        combined.put_slice(header);
-        combined.put_slice(&rom_bytes);
-
-        Ok(Some(combined.freeze()))
+        Ok(Some(ProgramFile {
+            rom,
+            non_canonical_header: file.missing_header(file_match.form).cloned(),
+        }))
     }
 
     pub async fn digest(&self, id: RomId) -> Result<Option<FileDigest>, Error> {

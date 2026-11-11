@@ -22,7 +22,7 @@ use ppu::PpuConfig;
 use crate::{
     apu::ApuConfig,
     cartridge::{
-        ines::{INesVersion, ParsingError, expansion_device::DefaultExpansionDevice},
+        ines::{HEADER_SIZE, INesVersion, ParsingError, expansion_device::DefaultExpansionDevice},
         mapper::{
             axrom::AxRomConfig, cnrom::CnRomConfig, mmc1::Mmc1Config, nrom::NRomConfig,
             uxrom::UxRomConfig,
@@ -160,17 +160,29 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Nes {
                 ),
             );
 
-        let rom = machine_builder
+        let program_file = machine_builder
             .open_program_file(&rom_path, RomRequirement::Required)
             .await?
             .unwrap();
 
-        let header_bytes = rom
-            .get(0..16)
-            .ok_or(ParsingError::EarlyEOF)?
-            .try_into()
-            .unwrap();
-        let header = INes::parse(header_bytes)?;
+        let (header_bytes, rom) = match program_file.non_canonical_header {
+            Some(header_bytes) => (header_bytes, program_file.rom),
+            None => {
+                let rom = program_file.rom;
+
+                if rom.len() < HEADER_SIZE {
+                    return Err(ParsingError::EarlyEOF.into());
+                }
+
+                (rom.slice(..HEADER_SIZE), rom.slice(HEADER_SIZE..))
+            }
+        };
+        let header = INes::parse(
+            header_bytes
+                .as_ref()
+                .try_into()
+                .map_err(|_| ParsingError::EarlyEOF)?,
+        )?;
         if header.trainer {
             tracing::warn!("This ROM contains a trainer, which is not emulated at this time");
         }

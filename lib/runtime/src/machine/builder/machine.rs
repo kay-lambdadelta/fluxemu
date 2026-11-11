@@ -9,7 +9,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use fluxemu_program::{Manifest, ProgramManager, RomId, SystemId};
+use fluxemu_program::{Manifest, ProgramFile, ProgramManager, RomId, SystemId};
 use rustc_hash::FxBuildHasher;
 
 use crate::{
@@ -122,7 +122,7 @@ impl<P: Platform> MachineBuilder<P> {
         &self,
         path: &str,
         requirement: RomRequirement,
-    ) -> Result<Option<Bytes>, MachineError> {
+    ) -> Result<Option<ProgramFile>, MachineError> {
         let Some((file, file_match)) = self
             .program_specification
             .as_ref()
@@ -132,7 +132,7 @@ impl<P: Platform> MachineBuilder<P> {
         };
 
         match self.program_manager.load_file(file, file_match).await? {
-            Some(bytes) => Ok(Some(bytes)),
+            Some(program_file) => Ok(Some(program_file)),
             None => missing_rom(path, requirement),
         }
     }
@@ -356,10 +356,10 @@ impl<P: Platform> MachineBuilder<P> {
     }
 }
 
-fn missing_rom(
+fn missing_rom<T>(
     rom: impl Display,
     requirement: RomRequirement,
-) -> Result<Option<Bytes>, MachineError> {
+) -> Result<Option<T>, MachineError> {
     match requirement {
         RomRequirement::Sometimes => {
             tracing::warn!(

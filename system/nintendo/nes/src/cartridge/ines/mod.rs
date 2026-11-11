@@ -13,7 +13,7 @@ pub mod expansion_device;
 
 const PRG_BANK_SIZE: usize = 16 * 1024;
 const CHR_BANK_SIZE: usize = 8 * 1024;
-const HEADER_SIZE: usize = 16;
+pub const HEADER_SIZE: usize = 16;
 const TRAINER_SIZE: usize = 512;
 
 #[derive(Error, Debug)]
@@ -250,13 +250,13 @@ impl INes {
     }
 
     pub fn extract_prg_rom(&self, rom: &Bytes) -> Result<Bytes, ParsingError> {
-        let cursor = HEADER_SIZE + if self.trainer { TRAINER_SIZE } else { 0 };
+        let cursor = if self.trainer { TRAINER_SIZE } else { 0 };
 
         extract(rom, cursor, self.prg_rom_size)
     }
 
     pub fn extract_chr_rom(&self, rom: &Bytes) -> Result<Option<Bytes>, ParsingError> {
-        let cursor = HEADER_SIZE + if self.trainer { TRAINER_SIZE } else { 0 } + self.prg_rom_size;
+        let cursor = if self.trainer { TRAINER_SIZE } else { 0 } + self.prg_rom_size;
 
         self.chr_rom_size
             .map(|chr_rom_size| extract(rom, cursor, chr_rom_size))
