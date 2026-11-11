@@ -3,7 +3,7 @@ name = "fluxemu-shell-nuttallite"
 version = "0.0.1"
 edition = { workspace = true }
 rust-version = { workspace = true }
-description = "A multi system emulator"
+description = "Apache NuttX port of the FluxEMU emulation framework"
 repository = { workspace = true }
 license = { workspace = true }
 
