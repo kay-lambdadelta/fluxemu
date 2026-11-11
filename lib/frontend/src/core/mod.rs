@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     num::Wrapping,
     ops::Deref,
     path::{Path, PathBuf},
@@ -13,12 +13,18 @@ use fluxemu_graphics::{
     texture::{CopyMode, OwnedTexture},
 };
 use fluxemu_input::{InputState, physical::PhysicalInputDeviceInstanceId};
-use fluxemu_program::{ProgramManager, RomId, RomStoreSpecification};
+use fluxemu_program::{
+    ListingProblem, Manifest, ProgramId, ProgramManager, RomId, RomStoreSpecification,
+};
 use fluxemu_runtime::machine::{Machine, builder::SealedMachineBuilder};
 use indexmap::IndexMap;
 use palette::{Srgba, named::BLACK};
 use ron::ser::PrettyConfig;
-use tokio::{runtime::Handle, task::JoinHandle};
+use tokio::{
+    runtime::Handle,
+    sync::mpsc::{UnboundedReceiver, error::TryRecvError, unbounded_channel},
+    task::JoinHandle,
+};
 
 pub use self::input::InputRouting;
 use self::input::PhysicalInputDeviceState;
@@ -26,6 +32,7 @@ use crate::{
     Platform,
     audio::{AudioRuntime, mixer::AudioMixer},
     graphics::GraphicsRuntime,
+    library::{LibraryEntry, LibraryKey, LibraryUpdate, scan_library},
     machine::FactoryManager,
     metadata::{
         SlotInfo, SlotKind, SlotMetadata, delete_slot, list_slots, next_free_slot, read_metadata,
@@ -40,6 +47,11 @@ use crate::{
 };
 
 mod input;
+
+struct LibraryScan {
+    task: JoinHandle<()>,
+    receiver: UnboundedReceiver<LibraryUpdate>,
+}
 
 #[derive(Debug, Clone)]
 pub enum FrontendEvent {
@@ -67,6 +79,11 @@ pub struct FrontendCore<P: Platform> {
     audio_mixer: Arc<AudioMixer>,
     events: Vec<FrontendEvent>,
     pending_snapshot_stores: Vec<u8>,
+    library: BTreeMap<LibraryKey, LibraryEntry>,
+    library_keys: BTreeMap<ProgramId, LibraryKey>,
+    listing_problems: BTreeMap<String, ListingProblem>,
+    library_scan: Option<LibraryScan>,
+    refresh_library_after_initialization: bool,
     environment: Environment,
 }
 
@@ -97,12 +114,19 @@ impl<P: Platform> FrontendCore<P> {
             audio_mixer,
             events: Vec::default(),
             pending_snapshot_stores: Vec::default(),
+            library: BTreeMap::default(),
+            library_keys: BTreeMap::default(),
+            listing_problems: BTreeMap::default(),
+            library_scan: None,
+            refresh_library_after_initialization: false,
             environment,
         };
 
         if let Some(roms) = initial_program {
             core.start_machine_initialization(async move { Some(roms) });
         }
+
+        core.refresh_library();
 
         core
     }
@@ -145,8 +169,87 @@ impl<P: Platform> FrontendCore<P> {
     ) -> Result<(), fluxemu_program::Error> {
         self.program_manager.set_rom_stores(rom_stores.clone())?;
         self.environment.rom_stores = rom_stores;
+        self.refresh_library();
 
         Ok(())
+    }
+
+    pub fn library(&self) -> impl Iterator<Item = &LibraryEntry> {
+        self.library.values()
+    }
+
+    pub fn listing_problems(&self) -> &BTreeMap<String, ListingProblem> {
+        &self.listing_problems
+    }
+
+    pub fn is_library_scanning(&self) -> bool {
+        self.library_scan.is_some()
+    }
+
+    pub fn refresh_library(&mut self) {
+        if let Some(scan) = self.library_scan.take() {
+            scan.task.abort();
+        }
+
+        self.library.clear();
+        self.library_keys.clear();
+        self.listing_problems.clear();
+
+        let (sender, receiver) = unbounded_channel();
+        let task = self.runtime.spawn(scan_library(
+            self.program_manager.clone(),
+            self.program_database.clone(),
+            sender,
+        ));
+
+        self.library_scan = Some(LibraryScan { task, receiver });
+    }
+
+    fn receive_library_entries(&mut self) {
+        let Some(scan) = &mut self.library_scan else {
+            return;
+        };
+
+        loop {
+            match scan.receiver.try_recv() {
+                Ok(LibraryUpdate::ListingProblem {
+                    rom_store_name,
+                    problem,
+                }) => {
+                    self.listing_problems.insert(rom_store_name, problem);
+                }
+                Ok(LibraryUpdate::Entry(entry)) => {
+                    let entry = *entry;
+                    let key = LibraryKey::new(&entry);
+
+                    if let Some(old_key) = self
+                        .library_keys
+                        .insert(entry.manifest.id.clone(), key.clone())
+                    {
+                        self.library.remove(&old_key);
+                    }
+
+                    self.library.insert(key, entry);
+                }
+                Err(TryRecvError::Empty) => return,
+                Err(TryRecvError::Disconnected) => {
+                    self.library_scan = None;
+
+                    return;
+                }
+            }
+        }
+    }
+
+    pub fn launch_program(&mut self, manifest: Manifest) {
+        let program_manager = self.program_manager.clone();
+        let machine_factories = self.machine_factory_manager.clone();
+
+        self.machine_initialization = Some(self.runtime.spawn(construct_machine(
+            program_manager,
+            machine_factories,
+            manifest,
+        )));
     }
 
     pub fn set_volume(&mut self, volume: f32) {
@@ -161,6 +264,7 @@ impl<P: Platform> FrontendCore<P> {
     /// Begin the process of turning these files into a running machine
     pub fn load_roms(&mut self, paths: Vec<PathBuf>) {
         let program_manager = self.program_manager.clone();
+        self.refresh_library_after_initialization = true;
 
         self.start_machine_initialization(async move {
             let mut roms = Vec::with_capacity(paths.len());
@@ -186,12 +290,18 @@ impl<P: Platform> FrontendCore<P> {
             self.store_snapshot(slot, graphics_runtime);
         }
 
+        self.receive_library_entries();
+
         let Some(job) = self.machine_initialization.take_if(|job| job.is_finished()) else {
             return;
         };
 
         if let Some(sealed) = self.runtime.block_on(job).unwrap() {
             self.pending_machine = Some(sealed);
+        }
+
+        if std::mem::take(&mut self.refresh_library_after_initialization) {
+            self.refresh_library();
         }
     }
 
@@ -585,6 +695,14 @@ async fn initialize_machine<P: Platform>(
         program_specification
     };
 
+    construct_machine(program_manager, machine_factories, specification).await
+}
+
+async fn construct_machine<P: Platform>(
+    program_manager: Arc<ProgramManager>,
+    machine_factories: Arc<FactoryManager<P>>,
+    specification: Manifest,
+) -> Option<SealedMachineBuilder<P>> {
     let program_id = specification.id.clone();
     let machine_builder = Machine::build(Some(specification), program_manager);
 

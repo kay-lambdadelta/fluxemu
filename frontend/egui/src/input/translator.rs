@@ -65,7 +65,9 @@ impl EguiInputTranslator {
 
     fn gamepadinput2egui(&mut self, input_id: GamepadInputId, state: InputState) {
         match input_id {
-            GamepadInputId::FPadUp => {}
+            GamepadInputId::FPadUp => {
+                self.key_event(Key::Menu, state.as_digital(None));
+            }
             GamepadInputId::FPadDown => {
                 self.key_event(Key::Enter, state.as_digital(None));
             }
@@ -198,7 +200,7 @@ impl EguiInputTranslator {
             KeyboardInputId::AltRight => Some(Key::AltRight),
             KeyboardInputId::Backspace => Some(Key::Backspace),
             KeyboardInputId::CapsLock => None,
-            KeyboardInputId::ContextMenu => None,
+            KeyboardInputId::ContextMenu => Some(Key::Menu),
             KeyboardInputId::ControlLeft => Some(Key::ControlLeft),
             KeyboardInputId::ControlRight => Some(Key::ControlRight),
             KeyboardInputId::Enter => Some(Key::Enter),

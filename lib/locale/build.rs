@@ -26,6 +26,8 @@ struct LanguageRecord {
     alpha2: Option<String>,
     #[serde(rename = "alpha3-b")]
     alpha3: String,
+    #[serde(rename = "English")]
+    english_name: String,
 }
 
 fn main() {
@@ -249,6 +251,7 @@ pub fn generate_639() {
     let mut variants_3 = Vec::new();
     let mut mappings_2to3 = HashMap::new();
     let mut mappings_3to2 = HashMap::new();
+    let mut english_names = Vec::new();
 
     for result in reader.deserialize() {
         let record: LanguageRecord = result.expect("CSV parse error");
@@ -281,6 +284,15 @@ pub fn generate_639() {
             fields: Fields::Unit,
             discriminant: None,
         });
+
+        let english_name = record
+            .english_name
+            .split(';')
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        english_names.push((ident3.clone(), english_name));
 
         if let Some(ident2) = ident2 {
             mappings_2to3.insert(ident2.clone(), ident3.clone());
@@ -322,6 +334,9 @@ pub fn generate_639() {
         let ident = variant.ident.clone();
         let s = ident.to_string().to_lowercase();
         quote! { Self::#ident => #s, }
+    });
+    let english_name_arms_3 = english_names.iter().map(|(ident, name)| {
+        quote! { Self::#ident => #name, }
     });
     let fromstr_arms_3 = variants_3.iter().map(|variant| {
         let ident = variant.ident.clone();
@@ -390,6 +405,12 @@ pub fn generate_639() {
                 match self {
                     #(#arms_3to2)*
                     _ => None,
+                }
+            }
+
+            pub fn english_name(&self) -> &'static str {
+                match self {
+                    #(#english_name_arms_3)*
                 }
             }
         }

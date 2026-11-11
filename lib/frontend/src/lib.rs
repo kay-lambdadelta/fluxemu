@@ -1,7 +1,7 @@
 pub mod audio;
 mod core;
 pub mod graphics;
-mod input;
+mod library;
 pub mod machine;
 mod metadata;
 pub mod notification;
@@ -12,6 +12,7 @@ mod snapshot;
 
 pub use core::{FrontendCore, FrontendEvent, InputRouting};
 
+pub use library::{Identification, LibraryEntry};
 pub use metadata::{SlotInfo, SlotKind, SlotMetadata};
 pub use platform::Platform;
 

@@ -24,7 +24,6 @@ impl<P: Platform> Frontend<P> {
             section(ui, t!("settings.graphics"), |ui| {
                 Grid::new("graphics_settings")
                     .num_columns(2)
-                    .spacing([24.0, 8.0])
                     .show(ui, |ui| {
                         let environment = self.core.environment_mut();
 
@@ -60,31 +59,28 @@ impl<P: Platform> Frontend<P> {
             });
 
             section(ui, t!("settings.audio"), |ui| {
-                Grid::new("audio_settings")
-                    .num_columns(2)
-                    .spacing([24.0, 8.0])
-                    .show(ui, |ui| {
-                        let old_volume = self.core.environment().audio.volume;
-                        let mut volume = old_volume;
+                Grid::new("audio_settings").num_columns(2).show(ui, |ui| {
+                    let old_volume = self.core.environment().audio.volume;
+                    let mut volume = old_volume;
 
-                        ui.label(t!("settings.volume"));
-                        ui.add(
-                            Slider::new(&mut volume, 0.0..=1.0)
-                                .custom_formatter(|value, _| format!("{:.0}%", value * 100.0))
-                                .custom_parser(|text| {
-                                    text.replace('%', "")
-                                        .trim()
-                                        .parse::<f64>()
-                                        .map(|percentage| percentage / 100.0)
-                                        .ok()
-                                }),
-                        );
-                        ui.end_row();
+                    ui.label(t!("settings.volume"));
+                    ui.add(
+                        Slider::new(&mut volume, 0.0..=1.0)
+                            .custom_formatter(|value, _| format!("{:.0}%", value * 100.0))
+                            .custom_parser(|text| {
+                                text.replace('%', "")
+                                    .trim()
+                                    .parse::<f64>()
+                                    .map(|percentage| percentage / 100.0)
+                                    .ok()
+                            }),
+                    );
+                    ui.end_row();
 
-                        if volume != old_volume {
-                            self.core.set_volume(volume);
-                        }
-                    });
+                    if volume != old_volume {
+                        self.core.set_volume(volume);
+                    }
+                });
             });
 
             section(ui, t!("rom_stores.heading"), |ui| {

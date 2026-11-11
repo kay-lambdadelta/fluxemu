@@ -3,6 +3,7 @@
 mod file_browser;
 mod icon;
 mod input;
+mod library;
 mod marquee;
 mod menu_panel;
 pub mod rendering;
@@ -31,6 +32,7 @@ use palette::{
 use crate::{
     file_browser::{FileBrowser, FileBrowserState},
     input::translator::EguiInputTranslator,
+    library::{Library, LibraryState},
     marquee::NotificationMarquee,
     menu_panel::{MenuPanel, TabId},
     rendering::EguiCapableGraphicsRuntime,
@@ -46,6 +48,7 @@ pub struct Frontend<P: Platform> {
     notifications: NotificationReceiver,
     egui_context: egui::Context,
     file_browser_state: FileBrowserState,
+    library_state: LibraryState,
     menu_panel: MenuPanel,
     snapshot_slots: SlotList,
     save_slots: SlotList,
@@ -74,6 +77,7 @@ impl<P: Platform> Frontend<P> {
             notifications,
             egui_context: setup_egui_context(font_definitions.clone()),
             file_browser_state,
+            library_state: LibraryState::default(),
             menu_panel: MenuPanel::default(),
             snapshot_slots: SlotList::default(),
             save_slots: SlotList::default(),
@@ -155,6 +159,12 @@ impl<P: Platform> Frontend<P> {
                     Frame::new().show(ui, |ui| match self.menu_panel.current_tab {
                         TabId::Machine => {
                             self.draw_machine_view_area(ui, graphics_runtime);
+                        }
+                        TabId::Library => {
+                            ui.add(Library {
+                                state: &mut self.library_state,
+                                core: &mut self.core,
+                            });
                         }
                         TabId::Snapshots => {
                             self.handle_slots(ui, SlotKind::Snapshot, graphics_runtime);
@@ -272,7 +282,7 @@ impl<P: Platform> Frontend<P> {
                 let ui_state = &mut self.simulation_controller_ui_state;
 
                 ui_state.update(controller);
-                ui_state.show_overlay(ui.ctx(), rect.min + vec2(8.0, 8.0));
+                ui_state.show_overlay(ui.ctx(), rect.min + ui.spacing().window_margin.left_top());
             }
         }
 

@@ -1,5 +1,9 @@
 _version = 2
 
+# FIXME: This is getting difficult and annoying to maintain
+#
+# Find a different solution for localization
+
 [simulation_controller.execution_timeslice]
 en = "Execution timeslice"
 
@@ -10,7 +14,7 @@ en = "Target timeslice"
 en = "Realtime throughput factor"
 
 [simulation_controller.jitter_ratio]
-en = "Jitter Ratio"
+en = "Jitter ratio"
 
 [browser.cannot_navigate_to_directory]
 en = "Not a directory that can be accessed, check permissions"
@@ -137,3 +141,159 @@ en = "Undo load"
 
 [slots.undo_store]
 en = "Undo overwrite"
+
+[library.refresh]
+en = "Rescan ROM stores"
+
+[library.search]
+en = "Search"
+
+[library.programs]
+en = "programs"
+
+[library.scanning]
+en = "Scanning ROM stores"
+
+[library.empty]
+en = "No programs found. Import ROMs into a ROM store, add a ROM store with existing ROMs, or load one from the file browser."
+
+[library.all_systems]
+en = "All systems"
+
+[library.systems]
+en = "Systems"
+
+[library.all_flags]
+en = "All tags"
+
+[library.all_languages]
+en = "All languages"
+
+[library.all_stores]
+en = "All ROM stores"
+
+[library.source.external]
+en = "Opened files"
+
+[library.source.embedded]
+en = "Built in"
+
+[library.listing_problem.cannot_list]
+en = "ROM store %{name} cannot list its files, so only ROMs known to the program database are shown from it"
+
+[library.listing_problem.failed]
+en = "Could not list ROM store %{name}, so its ROMs are missing from the library"
+
+[library.not_in_database]
+en = "Not in database"
+
+[library.unknown_rom]
+en = "Unknown ROM"
+
+[library.details.identification]
+en = "Identified by"
+
+[library.details.regions]
+en = "Regions"
+
+[library.details.languages]
+en = "Languages"
+
+[library.details.revision]
+en = "Revision"
+
+[library.details.kind]
+en = "Kind"
+
+[library.details.flags]
+en = "Flags"
+
+[library.details.serials]
+en = "Serials"
+
+[library.details.files]
+en = "Files"
+
+[library.details.launch]
+en = "Launch"
+
+[library.details.close]
+en = "Close"
+
+[library.identification.exact]
+en = "Exact match"
+
+[library.identification.strong]
+en = "Hash match"
+
+[library.identification.weak]
+en = "Weak match (size and CRC32 only)"
+
+[library.identification.unknown]
+en = "Not identified"
+
+[library.region.world]
+en = "World"
+
+[library.region.europe]
+en = "Europe"
+
+[library.region.asia]
+en = "Asia"
+
+[library.region.latin_america]
+en = "Latin America"
+
+[library.region.scandinavia]
+en = "Scandinavia"
+
+[library.kind.game]
+en = "Game"
+
+[library.kind.application]
+en = "Application"
+
+[library.kind.demo]
+en = "Demo"
+
+[library.kind.educational]
+en = "Educational"
+
+[library.kind.firmware]
+en = "Firmware"
+
+[library.kind.add_on]
+en = "Add-on"
+
+[library.kind.audio]
+en = "Audio"
+
+[library.kind.video]
+en = "Video"
+
+[library.kind.other]
+en = "Other"
+
+[library.flag.beta]
+en = "Beta"
+
+[library.flag.prototype]
+en = "Prototype"
+
+[library.flag.sample]
+en = "Sample"
+
+[library.flag.unlicensed]
+en = "Unlicensed"
+
+[library.flag.pirate]
+en = "Pirate"
+
+[library.flag.homebrew]
+en = "Homebrew"
+
+[library.flag.hack]
+en = "Hack"
+
+[library.flag.translation]
+en = "Translation"

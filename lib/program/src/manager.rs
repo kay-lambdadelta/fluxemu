@@ -45,6 +45,12 @@ pub enum RomSource {
     Store(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ListingProblem {
+    CannotList,
+    Failed(String),
+}
+
 #[derive(Clone)]
 pub struct UnlistedRomStore {
     rom_store: RomStore,
@@ -123,6 +129,10 @@ impl ProgramManager {
     pub fn remember_digest(&self, digest: &FileDigest) {
         self.cache_digest(digest);
         self.digests.upsert_sync(digest.id, digest.clone());
+    }
+
+    pub fn remember_digest_in_memory(&self, digest: FileDigest) {
+        self.digests.upsert_sync(digest.id, digest);
     }
 
     fn cached_digest(&self, id: RomId) -> Option<FileDigest> {

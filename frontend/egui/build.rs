@@ -8,6 +8,7 @@ use skera::{Plan, SubsetFlags, subset_font};
 
 const ICONS: &[Icon] = &[
     Icon::ArrowDown,
+    Icon::ArrowLeft,
     Icon::ArrowUp,
     Icon::Bug,
     Icon::Camera,
@@ -16,13 +17,16 @@ const ICONS: &[Icon] = &[
     Icon::Folder,
     Icon::FolderOpen,
     Icon::Footprints,
+    Icon::Gamepad2,
     Icon::Info,
+    Icon::Library,
     Icon::Lock,
     Icon::Pause,
     Icon::Pencil,
     Icon::Play,
     Icon::RefreshCw,
     Icon::Save,
+    Icon::Search,
     Icon::Settings,
     Icon::TriangleAlert,
 ];

@@ -17,6 +17,7 @@ fluxemu-math = { workspace = true }
 fluxemu-program = { workspace = true }
 fluxemu-runtime = { workspace = true }
 fluxemu-system = { workspace = true }
+futures = { workspace = true }
 image = { workspace = true, features = ["webp"] }
 indexmap = { workspace = true }
 nalgebra = { workspace = true }
@@ -25,8 +26,10 @@ rand = { workspace = true }
 ringbuffer = { workspace = true }
 ron = { workspace = true }
 rust-i18n = { workspace = true }
+rust-i18n-macro = { workspace = true }
+rust-i18n-support = { workspace = true }
 serde = { workspace = true }
-tokio = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["rt", "sync"] }
 toml = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

@@ -61,7 +61,7 @@ impl State {
             .show(context, |ui| {
                 Frame::NONE
                     .fill(to_egui_color(BLACK.with_alpha(220)))
-                    .inner_margin(8.0)
+                    .inner_margin(ui.spacing().window_margin)
                     .corner_radius(4.0)
                     .show(ui, |ui| {
                         ui.style_mut().override_text_style = Some(TextStyle::Monospace);

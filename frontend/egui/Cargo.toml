@@ -7,15 +7,18 @@ repository = { workspace = true }
 license = { workspace = true }
 
 [dependencies]
+byte-unit = { workspace = true }
 bytemuck = { workspace = true }
 egui = { workspace = true, features = ["rayon"] }
 egui-wgpu = { workspace = true, optional = true }
+egui_virtual_list = { workspace = true }
 fluxemu-audio = { workspace = true }
 fluxemu-egui-software-renderer = { workspace = true }
 fluxemu-environment = { workspace = true }
 fluxemu-frontend = { workspace = true }
 fluxemu-graphics = { workspace = true }
 fluxemu-input = { workspace = true }
+fluxemu-locale = { workspace = true }
 fluxemu-math = { workspace = true }
 fluxemu-program = { workspace = true }
 fluxemu-runtime = { workspace = true }

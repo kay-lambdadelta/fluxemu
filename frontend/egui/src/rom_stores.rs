@@ -193,7 +193,7 @@ fn show_store(
         remove_store = ui.button(t!("rom_stores.remove_store")).clicked();
     });
 
-    ui.add_space(4.0);
+    ui.add_space(ui.spacing().item_spacing.y);
 
     let row_height = ui.spacing().interact_size.y;
     let mut removed_option = None;

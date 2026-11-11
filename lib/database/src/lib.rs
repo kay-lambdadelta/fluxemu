@@ -315,6 +315,40 @@ impl<D: ReadableDatabase> ProgramDatabase<D> {
             })
             .collect()
     }
+
+    pub fn rom_digests(&self) -> Result<Vec<FileDigest>, Error> {
+        let read_transaction = self.database.begin_read()?;
+        let rom_id_table = read_transaction.open_multimap_table(ROM_ID_TABLE)?;
+        let variant_table = read_transaction.open_multimap_table(VARIANT_TABLE)?;
+
+        let mut digests = Vec::new();
+
+        for entry in rom_id_table.iter()? {
+            let (rom_id, program_ids) = entry?;
+            let rom_id = rom_id.value();
+
+            'programs: for program_id in program_ids {
+                for variant in variant_table.get(program_id?.value())? {
+                    if let Some(file) = variant?
+                        .value()
+                        .files()
+                        .values()
+                        .find(|file| file.rom_id == Some(rom_id))
+                    {
+                        digests.push(FileDigest {
+                            id: rom_id,
+                            size: file.size,
+                            hashes: file.hashes,
+                        });
+
+                        break 'programs;
+                    }
+                }
+            }
+        }
+
+        Ok(digests)
+    }
 }
 
 fn fill_missing_hashes(hashes: &mut RomHashes, digest_hashes: &RomHashes) {
