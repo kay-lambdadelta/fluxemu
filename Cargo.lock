@@ -2457,6 +2457,7 @@ dependencies = [
  "fluxemu-program",
  "futures",
  "nod",
+ "opendal",
  "pathfinding",
  "quick-xml 0.42.0",
  "redb",

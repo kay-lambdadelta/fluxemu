@@ -22,6 +22,7 @@ fluxemu-math = { workspace = true }
 fluxemu-program = { workspace = true }
 futures = { workspace = true }
 nod = { workspace = true }
+opendal = { workspace = true }
 pathfinding = { workspace = true }
 quick-xml = { workspace = true }
 redb = { workspace = true }

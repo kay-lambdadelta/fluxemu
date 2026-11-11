@@ -1,22 +1,20 @@
-# FluxEMU Destinezite
+# FluxEMU [Destinezite](https://www.mindat.org/min-5222.html)
 
 This is the shell implementation for desktop type platforms.
 
-It supports the vast majority of popular environments, including Linux, Windows, MacOS, and the open source \*BSDs.
+It supports the vast majority of popular environments, including Linux, Windows, macOS, and the open source \*BSDs, relying on common Rust ecosystem crates to achieve this.
 
 ## Dependencies
 
-The rust toolchain itself can be acquired via the instructions at the [official rust website](https://rust-lang.org/tools/install).
+See the [top level readme](../../readme.md#toolchain) for acquiring the Rust toolchain.
 
-Alternatively, on Linux, you can use your distribution's package manager to install the rust toolchain, if your distro provides a new enough build.
+### Windows and macOS
 
-### Windows and MacOS
-
-This program should not have any further dependencies on these platforms, apart from the SDKs you would need to compile C/C++ programs, and the rust toolchain itself.
+This program should not have any further dependencies on these platforms, apart from the SDKs you would need to compile C/C++ programs, and the Rust toolchain itself.
 
 ### Linux
 
-The instructions for listed distros should work for downstream distros also (ie: the Debian instructions operate for Ubuntu).
+The instructions for listed distros should also work for their downstream distros (e.g. the Debian instructions work for Ubuntu).
 
 | Distro   | Development Package Name                                             |
 | -------- | -------------------------------------------------------------------- |
@@ -25,7 +23,10 @@ The instructions for listed distros should work for downstream distros also (ie:
 | Arch     | `alsa-lib systemd base-devel`                                        |
 | openSUSE | `alsa-lib-devel libudev-devel pkg-config`                            |
 
-Feature specific dependencies (`webgpu`, `windowing`, `egui`, `ratatui` are on by default, the rest are not):
+Feature specific dependencies:
+
+> [!NOTE]
+> `webgpu`, `windowing` and `ratatui` are on by default, and `egui` comes with `windowing`. The rest are not.
 
 #### `webgpu` — WebGPU backend for graphics rendering (via [wgpu](https://crates.io/crates/wgpu))
 
@@ -45,7 +46,7 @@ Feature specific dependencies (`webgpu`, `windowing`, `egui`, `ratatui` are on b
 | Arch     | `libx11 libxkbcommon wayland`                   |
 | openSUSE | `libX11-devel libxkbcommon-devel wayland-devel` |
 
-#### `drm` — DRM backend for interface display (linux only)
+#### `drm` — DRM backend for interface display (Linux only)
 
 | Distro   | Development Package Name                          |
 | -------- | ------------------------------------------------- |
@@ -54,18 +55,18 @@ Feature specific dependencies (`webgpu`, `windowing`, `egui`, `ratatui` are on b
 | Arch     | `libinput libxkbcommon libseat`                   |
 | openSUSE | `libinput-devel libxkbcommon-devel libseat-devel` |
 
-### [`egui`](https://crates.io/crates/egui) - GUI frontend (is enabled by `windowing` or `drm`)
+#### [`egui`](https://crates.io/crates/egui) — GUI frontend (enabled by `windowing` or `drm`)
 
 | Distro   | Development Package Name                  |
 | -------- | ----------------------------------------- |
 | Debian   | `libfontconfig-dev fonts-noto-core`       |
 | Fedora   | `fontconfig-devel google-noto-sans-fonts` |
-| Arch     | `fontconfig noto-fonts `                  |
+| Arch     | `fontconfig noto-fonts`                   |
 | openSUSE | `noto-sans-fonts`                         |
 
-### [`ratatui`](https://crates.io/crates/ratatui) - TUI frontend
+#### [`ratatui`](https://crates.io/crates/ratatui) — TUI frontend
 
-#### Subfeatures
+##### Subfeatures
 
 - `ratatui-image/chafa-dyn` - Enables chafa for potentially better rendering capabilities
 
@@ -76,11 +77,9 @@ Feature specific dependencies (`webgpu`, `windowing`, `egui`, `ratatui` are on b
 | Arch     | `chafa`                  |
 | openSUSE | `chafa-devel`            |
 
-## MSRV (Minimal Supported Rust Version)
+## MSRV (Minimum Supported Rust Version)
 
-Check the `rust-toolchain.toml` file at the project root for the minimium version of the rust compiler required for compilation. Older versions of the rust toolchain may compile and produce a operational program, but they are not supported or tested.
-
-This compiler version will attempt to keep at or behind the version of [`rustc`](https://packages.debian.org/sid/rustc) packaged by Debian Sid.
+Check the [`rust-toolchain.toml`](rust-toolchain.toml) file for the minimum version of the Rust compiler required for compilation. See the [top level readme](../../readme.md#toolchain) for the policy behind it.
 
 ## Building
 
@@ -92,9 +91,11 @@ To build, run one of the following commands:
 cargo build -p fluxemu-shell-destinezite --release --features drm
 ```
 
-Note the `drm` feature is not strictly required for Linux, and not enabling it can drop some dependencies (listed above).
+> [!TIP]
+> The `drm` feature is not strictly required for Linux, and leaving it off drops some dependencies (listed above).
 
-The `drm` feature also requires a working Vulkan implementation (for WebGPU support), or the fallback software renderer (always enabled).
+> [!IMPORTANT]
+> The `drm` feature needs a working Vulkan implementation for WebGPU rendering. Without one, it falls back to the software renderer (always enabled, possibly slow).
 
 ### Others
 
@@ -104,33 +105,29 @@ cargo build -p fluxemu-shell-destinezite --release
 
 ### ROM store backends
 
-ROM stores are accessed through [OpenDAL](https://crates.io/crates/opendal), and only the local filesystem backend (`services-fs`) is built in by default. Other backends can be enabled by passing OpenDAL's features directly:
+ROM stores are accessed through [OpenDAL](https://crates.io/crates/opendal), and only the local filesystem backend (`services-fs`) is built in by default.
 
-```bash
-cargo build -p fluxemu-shell-destinezite --release --features opendal/services-ftp
-```
-
-The full list of backends is available in [OpenDAL's documentation](https://docs.rs/opendal/latest/opendal/services/index.html).
+The full list of backends is available in [OpenDAL's documentation](https://docs.rs/opendal/latest/opendal/services/index.html). See the [top level readme](../../readme.md#rom-store-abstraction) for how to configure them.
 
 ## Packaging
 
 ### Debian
 
-With the [cargo-deb](https://crates.io/crates/cargo-deb) helper program, you can run this command to produce a debian package.
+With the [cargo-deb](https://crates.io/crates/cargo-deb) helper program, you can run this command to produce a Debian package:
 
 ```bash
 cargo deb -p fluxemu-shell-destinezite --features drm
 ```
 
-It will detect link time dependencies automatically.
+It will detect link time dependencies automatically, and other dependencies are manually configured in [Cargo.toml](Cargo.toml)
 
 ## Usage
 
 ```bash
-$EXECUTABLE_PATH --help
+fluxemu-shell-destinezite --help
 ```
 
-or (on the project directory)
+or (from the project directory)
 
 ```bash
 cargo run -p fluxemu-shell-destinezite --release -- --help
