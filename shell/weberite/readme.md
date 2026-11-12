@@ -77,6 +77,7 @@ Copy both next to [`web/index.html`](web/index.html) to get a servable site:
 ```sh
 mkdir -p target/weberite-site
 cp shell/weberite/web/index.html \
+  external/coi-serviceworker/coi-serviceworker.js \
   target/wasm32-unknown-emscripten/release/fluxemu-shell-weberite.js \
   target/wasm32-unknown-emscripten/release/fluxemu_shell_weberite.wasm \
   target/weberite-site/
@@ -91,7 +92,9 @@ Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp
 ```
 
-Emscripten's `emrun` sends them, so for local testing you can run:
+If the host can't send them (e.g. GitHub Pages), the page falls back to [coi-serviceworker](https://github.com/gzuidhof/coi-serviceworker), which adds them from a service worker. This costs one extra reload on the first visit, and may not work correctly in some browsers.
+
+Emscripten's `emrun` sends them correctly, so for local testing you can run:
 
 ```sh
 emrun --no-browser --hostname localhost --port 3434 target/weberite-site/index.html

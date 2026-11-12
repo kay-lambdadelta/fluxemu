@@ -56,11 +56,13 @@ jobs:
               cargo build -p fluxemu-shell-weberite --target wasm32-unknown-emscripten --release
               mkdir -p target/weberite-site
               cp shell/weberite/web/index.html \
+                external/coi-serviceworker/coi-serviceworker.js \
                 target/wasm32-unknown-emscripten/release/fluxemu-shell-weberite.js \
                 target/wasm32-unknown-emscripten/release/fluxemu_shell_weberite.wasm \
                 target/weberite-site/
             artifact_name: fluxemu-shell-weberite-(web)
             artifact_path: target/weberite-site
+            pages: true
 
           - name: Windows (x86_64-pc-windows-msvc)
             runner: windows-latest
@@ -100,3 +102,24 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.artifact_path }}
           if-no-files-found: error
+
+      - name: Upload Pages artifact
+        if: matrix.pages
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: ${{ matrix.artifact_path }}
+
+  pages:
+    name: Deploy to GitHub Pages
+    needs: package
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-26.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v5
