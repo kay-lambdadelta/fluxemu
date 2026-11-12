@@ -6,8 +6,8 @@ use std::{
 };
 
 use fluxemu_database::ProgramDatabase;
-use fluxemu_environment::load_environment;
 use fluxemu_frontend::notification::notification_channel;
+use fluxemu_paths::load_environment;
 use fluxemu_program::ProgramManager;
 use redb::Database;
 use tokio::runtime::Runtime;

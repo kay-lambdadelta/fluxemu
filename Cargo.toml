@@ -138,6 +138,7 @@ fluxemu-graphics = { path = "lib/graphics" }
 fluxemu-input = { path = "lib/input" }
 fluxemu-locale = { path = "lib/locale" }
 fluxemu-math = { path = "lib/math" }
+fluxemu-paths = { path = "lib/paths" }
 fluxemu-platform = { path = "lib/platform" }
 fluxemu-program = { path = "lib/program" }
 fluxemu-runtime = { path = "lib/runtime" }

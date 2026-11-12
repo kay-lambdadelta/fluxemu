@@ -1,5 +1,6 @@
 use std::marker::PhantomData;
 
+use fluxemu_environment::Environment;
 use fluxemu_frontend::graphics::GraphicsRuntime;
 use fluxemu_graphics::api::software::Software;
 
@@ -27,4 +28,10 @@ impl<R: GraphicsRuntime<GraphicsApi = Software>> fluxemu_frontend::Platform for 
     type GraphicsRuntime = R;
 
     const EXTERNAL_FILE_DIALOGS_SUPPORTED: bool = false;
+
+    fn save_environment(
+        environment: &Environment,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        fluxemu_paths::save_environment(environment)
+    }
 }

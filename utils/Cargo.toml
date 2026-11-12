@@ -19,6 +19,7 @@ fluxemu-database = { workspace = true }
 fluxemu-environment = { workspace = true }
 fluxemu-locale = { workspace = true }
 fluxemu-math = { workspace = true }
+fluxemu-paths = { workspace = true }
 fluxemu-program = { workspace = true }
 futures = { workspace = true }
 nod = { workspace = true }

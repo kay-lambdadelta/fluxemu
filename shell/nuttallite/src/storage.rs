@@ -1,6 +1,6 @@
 use std::{ffi::CString, os::unix::ffi::OsStrExt};
 
-use fluxemu_environment::STORAGE_DIRECTORY;
+use fluxemu_paths::STORAGE_DIRECTORY;
 
 use crate::sys;
 

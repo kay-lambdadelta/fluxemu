@@ -9,9 +9,9 @@ license = { workspace = true }
 [dependencies]
 criterion = { workspace = true, optional = true }
 fluxemu-database = { workspace = true, optional = true }
-fluxemu-environment = { workspace = true, optional = true }
 fluxemu-input = { workspace = true, optional = true }
 fluxemu-math = { workspace = true, optional = true }
+fluxemu-paths = { workspace = true, optional = true }
 fluxemu-platform = { workspace = true }
 fluxemu-program = { workspace = true }
 fluxemu-runtime = { workspace = true }
@@ -23,9 +23,9 @@ tokio = { workspace = true, features = ["rt-multi-thread"], optional = true }
 testing = [
   "dep:criterion",
   "dep:fluxemu-database",
-  "dep:fluxemu-environment",
   "dep:fluxemu-input",
   "dep:fluxemu-math",
+  "dep:fluxemu-paths",
   "dep:redb",
   "dep:tokio",
 ]

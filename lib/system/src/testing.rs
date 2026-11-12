@@ -7,9 +7,9 @@ use std::{
 
 use criterion::{Criterion, Throughput};
 use fluxemu_database::ProgramDatabase;
-use fluxemu_environment::load_environment;
 use fluxemu_input::{InputId, InputState};
 use fluxemu_math::range::ContiguousRange;
+use fluxemu_paths::load_environment;
 use fluxemu_platform::TestPlatform;
 use fluxemu_program::{Manifest, ProgramManager};
 use fluxemu_runtime::{

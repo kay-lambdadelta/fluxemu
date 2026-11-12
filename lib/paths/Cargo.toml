@@ -1,0 +1,20 @@
+[package]
+name = "fluxemu-paths"
+version = "0.0.1"
+edition = { workspace = true }
+rust-version = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+confique = { workspace = true }
+fluxemu-environment = { workspace = true }
+fluxemu-program = { workspace = true }
+indexmap = { workspace = true }
+ron = { workspace = true }
+
+[target.'cfg(all(any(target_family = "unix", target_os = "windows"), not(target_os = "nuttx")))'.dependencies]
+dirs = { workspace = true }
+
+[lints]
+workspace = true

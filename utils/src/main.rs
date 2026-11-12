@@ -5,7 +5,7 @@ use std::{
 
 use clap::Parser;
 use fluxemu_database::ProgramDatabase;
-use fluxemu_environment::load_environment;
+use fluxemu_paths::load_environment;
 use fluxemu_program::{DigestCache, ProgramManager, RomStoreSpecification, SystemId};
 use futures::channel::mpsc;
 use redb::Database;

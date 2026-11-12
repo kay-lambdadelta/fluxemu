@@ -1,13 +1,12 @@
 use std::{
     collections::{BTreeMap, HashMap},
     num::Wrapping,
-    ops::Deref,
     path::{Path, PathBuf},
     sync::Arc,
 };
 
 use fluxemu_database::ProgramDatabase;
-use fluxemu_environment::{ENVIRONMENT_LOCATION, Environment};
+use fluxemu_environment::Environment;
 use fluxemu_graphics::{
     api::GraphicsApi,
     texture::{CopyMode, OwnedTexture},
@@ -19,7 +18,6 @@ use fluxemu_program::{
 use fluxemu_runtime::machine::{Machine, builder::SealedMachineBuilder};
 use indexmap::IndexMap;
 use palette::{Srgba, named::BLACK};
-use ron::ser::PrettyConfig;
 use tokio::{
     runtime::Handle,
     sync::mpsc::{UnboundedReceiver, error::TryRecvError, unbounded_channel},
@@ -575,17 +573,7 @@ impl<P: Platform> FrontendCore<P> {
     }
 
     pub fn save_environment(&self) {
-        let environment = match ron::Options::default()
-            .to_string_pretty(&self.environment, PrettyConfig::new())
-        {
-            Ok(environment) => environment,
-            Err(err) => {
-                tracing::error!("Could not serialize environment: {}", err);
-                return;
-            }
-        };
-
-        if let Err(err) = std::fs::write(ENVIRONMENT_LOCATION.deref(), environment) {
+        if let Err(err) = P::save_environment(&self.environment) {
             tracing::error!("Could not save environment: {}", err);
         }
     }

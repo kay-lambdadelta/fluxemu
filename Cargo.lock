@@ -2016,13 +2016,11 @@ name = "fluxemu-environment"
 version = "0.0.1"
 dependencies = [
  "confique",
- "dirs",
  "fluxemu-graphics",
  "fluxemu-input",
  "fluxemu-program",
  "fluxemu-runtime",
  "indexmap 2.14.2",
- "ron",
  "serde",
  "serde_with",
  "strum",
@@ -2168,6 +2166,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "fluxemu-paths"
+version = "0.0.1"
+dependencies = [
+ "confique",
+ "dirs",
+ "fluxemu-environment",
+ "fluxemu-program",
+ "indexmap 2.14.2",
+ "ron",
+]
+
+[[package]]
 name = "fluxemu-platform"
 version = "0.0.1"
 dependencies = [
@@ -2265,6 +2275,7 @@ dependencies = [
  "fluxemu-graphics",
  "fluxemu-input",
  "fluxemu-math",
+ "fluxemu-paths",
  "fluxemu-platform",
  "fluxemu-program",
  "fluxemu-runtime",
@@ -2313,6 +2324,7 @@ dependencies = [
  "fluxemu-graphics",
  "fluxemu-input",
  "fluxemu-math",
+ "fluxemu-paths",
  "fluxemu-platform",
  "fluxemu-program",
  "fluxemu-runtime",
@@ -2338,9 +2350,9 @@ version = "0.0.1"
 dependencies = [
  "criterion",
  "fluxemu-database",
- "fluxemu-environment",
  "fluxemu-input",
  "fluxemu-math",
+ "fluxemu-paths",
  "fluxemu-platform",
  "fluxemu-program",
  "fluxemu-runtime",
@@ -2474,6 +2486,7 @@ dependencies = [
  "fluxemu-environment",
  "fluxemu-locale",
  "fluxemu-math",
+ "fluxemu-paths",
  "fluxemu-program",
  "futures",
  "nod",
