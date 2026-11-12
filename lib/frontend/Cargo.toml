@@ -35,5 +35,8 @@ toml = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
+[features]
+filesystem = ["fluxemu-program/filesystem"]
+
 [lints]
 workspace = true

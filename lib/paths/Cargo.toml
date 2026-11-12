@@ -9,7 +9,7 @@ license = { workspace = true }
 [dependencies]
 confique = { workspace = true }
 fluxemu-environment = { workspace = true }
-fluxemu-program = { workspace = true }
+fluxemu-program = { workspace = true, features = ["filesystem"] }
 indexmap = { workspace = true }
 ron = { workspace = true }
 

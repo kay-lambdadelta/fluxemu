@@ -260,6 +260,7 @@ impl<P: Platform> FrontendCore<P> {
     }
 
     /// Begin the process of turning these files into a running machine
+    #[cfg(feature = "filesystem")]
     pub fn load_roms(&mut self, paths: Vec<PathBuf>) {
         let program_manager = self.program_manager.clone();
         self.refresh_library_after_initialization = true;

@@ -21,7 +21,6 @@ opendal = {
   features = [
     "auto-register-services",
     "executors-tokio",
-    "services-fs",
   ]
 }
 pathfinding = { workspace = true }
@@ -37,11 +36,12 @@ sha1 = { workspace = true }
 sha2 = { workspace = true }
 strum = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["fs", "io-util", "rt"] }
+tokio = { workspace = true, features = ["rt"] }
 tracing = { workspace = true }
 
 [features]
-mmap = ["dep:memmap2"]
+filesystem = ["opendal/services-fs", "tokio/fs", "tokio/io-util"]
+mmap = ["dep:memmap2", "filesystem"]
 
 [lints]
 workspace = true

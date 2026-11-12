@@ -1,15 +1,16 @@
+#[cfg(feature = "filesystem")]
+use std::path::Path;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt::Debug,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{Arc, RwLock},
 };
 
 use bytes::Bytes;
-use opendal::{Operator, services::FS_SCHEME};
+use opendal::Operator;
 use rustc_hash::FxBuildHasher;
 use thiserror::Error;
-use tokio::{fs::File, io::AsyncReadExt};
 
 use crate::{
     DigestCache, DumpStatus, FileDigest, FileMatch, Manifest, MatchStrength, ProgramId,
@@ -35,6 +36,7 @@ pub enum Error {
 struct RomStore {
     name: String,
     operator: Operator,
+    #[cfg(feature = "filesystem")]
     filesystem_root: Option<PathBuf>,
 }
 
@@ -164,6 +166,7 @@ impl ProgramManager {
         Ok(())
     }
 
+    #[cfg(feature = "filesystem")]
     pub async fn register_external_rom(&self, path: impl AsRef<Path>) -> Result<RomId, Error> {
         let path = path.as_ref();
         let rom_bytes = load_rom_file(path).await?;
@@ -260,7 +263,8 @@ impl ProgramManager {
             return Ok(Some(Bytes::from_static(rom_bytes)));
         }
 
-        let rom_bytes = if let Some(external_rom_path) = self
+        #[cfg(feature = "filesystem")]
+        if let Some(external_rom_path) = self
             .external_roms
             .read_async(&id, |_, path| path.clone())
             .await
@@ -271,16 +275,10 @@ impl ProgramManager {
                 external_rom_path.display()
             );
 
-            load_rom_file(&external_rom_path).await?
-        } else {
-            let Some(rom_bytes) = self.load_from_rom_stores(id).await? else {
-                return Ok(None);
-            };
+            return load_rom_file(&external_rom_path).await.map(Some);
+        }
 
-            rom_bytes
-        };
-
-        Ok(Some(rom_bytes))
+        self.load_from_rom_stores(id).await
     }
 
     pub async fn load_file(
@@ -408,6 +406,7 @@ impl ProgramManager {
         let rom_stores = self.rom_stores.read().unwrap().clone();
 
         for rom_store in &rom_stores.usable {
+            #[cfg(feature = "filesystem")]
             if let Some(filesystem_root) = &rom_store.filesystem_root {
                 match load_rom_file(&filesystem_root.join(&id_as_string)).await {
                     Ok(rom_bytes) => return Ok(Some(rom_bytes)),
@@ -486,17 +485,25 @@ fn build_rom_store(
     specification: RomStoreSpecification,
 ) -> Result<RomStore, opendal::Error> {
     let operator = Operator::via_iter(&specification.scheme, specification.options)?;
-    let info = operator.info();
-    let filesystem_root = (info.scheme() == FS_SCHEME).then(|| PathBuf::from(info.root()));
+    #[cfg(feature = "filesystem")]
+    let filesystem_root = {
+        let info = operator.info();
+
+        (info.scheme() == opendal::services::FS_SCHEME).then(|| PathBuf::from(info.root()))
+    };
 
     Ok(RomStore {
         name,
         operator,
+        #[cfg(feature = "filesystem")]
         filesystem_root,
     })
 }
 
+#[cfg(feature = "filesystem")]
 async fn load_rom_file(path: &Path) -> Result<Bytes, Error> {
+    use tokio::{fs::File, io::AsyncReadExt};
+
     let mut rom_file = File::open(path).await?;
 
     #[cfg(feature = "mmap")]

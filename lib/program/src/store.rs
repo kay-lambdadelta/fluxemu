@@ -3,10 +3,9 @@ use std::{
     path::PathBuf,
 };
 
-use opendal::{
-    OperatorRegistry,
-    services::{FILE_SCHEME, FS_SCHEME},
-};
+use opendal::OperatorRegistry;
+#[cfg(feature = "filesystem")]
+use opendal::services::{FILE_SCHEME, FS_SCHEME};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -17,6 +16,7 @@ pub struct RomStoreSpecification {
 }
 
 impl RomStoreSpecification {
+    #[cfg(feature = "filesystem")]
     pub fn filesystem(root: impl Into<PathBuf>) -> Self {
         Self {
             scheme: FS_SCHEME.to_string(),
@@ -32,20 +32,30 @@ impl RomStoreSpecification {
     }
 
     pub fn documentation_url(&self) -> String {
-        let scheme = if self.scheme == FILE_SCHEME {
-            FS_SCHEME
-        } else {
-            &self.scheme
+        let scheme = cfg_select! {
+            feature = "filesystem" => {
+                if self.scheme == FILE_SCHEME {
+                    FS_SCHEME
+                } else {
+                    &self.scheme
+                }
+            }
+            _ => &self.scheme,
         };
 
         format!("https://opendal.apache.org/services/{}", scheme)
     }
 
     pub fn filesystem_root(&self) -> Option<PathBuf> {
-        if self.scheme != FS_SCHEME && self.scheme != FILE_SCHEME {
-            return None;
-        }
+        cfg_select! {
+            feature = "filesystem" => {
+                if self.scheme != FS_SCHEME && self.scheme != FILE_SCHEME {
+                    return None;
+                }
 
-        self.options.get("root").map(PathBuf::from)
+                self.options.get("root").map(PathBuf::from)
+            }
+            _ => None,
+        }
     }
 }

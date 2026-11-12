@@ -15,12 +15,12 @@ egui_virtual_list = { workspace = true }
 fluxemu-audio = { workspace = true }
 fluxemu-egui-software-renderer = { workspace = true }
 fluxemu-environment = { workspace = true }
-fluxemu-frontend = { workspace = true }
+fluxemu-frontend = { workspace = true, features = ["filesystem"] }
 fluxemu-graphics = { workspace = true }
 fluxemu-input = { workspace = true }
 fluxemu-locale = { workspace = true }
 fluxemu-math = { workspace = true }
-fluxemu-program = { workspace = true }
+fluxemu-program = { workspace = true, features = ["filesystem"] }
 fluxemu-runtime = { workspace = true }
 fluxemu-system = { workspace = true }
 indexmap = { workspace = true }
