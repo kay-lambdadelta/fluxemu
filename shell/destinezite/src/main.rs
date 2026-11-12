@@ -186,7 +186,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(feature = "windowing")]
             DisplayBackend::Windowing => {
                 crate::event_loop::windowing::run::<
-                    crate::display::software::SoftwareGraphicsRuntime<_>,
+                    fluxemu_frontend_egui::rendering::software::SoftwareGraphicsRuntime<_>,
                 >(
                     runtime.handle().clone(),
                     environment.clone(),
@@ -199,7 +199,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             #[cfg(feature = "drm")]
             DisplayBackend::Drm => {
-                crate::event_loop::drm::run::<crate::display::software::SoftwareGraphicsRuntime<_>>(
+                crate::event_loop::drm::run::<
+                    fluxemu_frontend_egui::rendering::software::SoftwareGraphicsRuntime<_>,
+                >(
                     runtime.handle().clone(),
                     environment.clone(),
                     program_manager.clone(),
@@ -216,7 +218,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         #[cfg(feature = "webgpu")]
         fluxemu_environment::graphics::GraphicsApi::Webgpu => {
-            use crate::display::webgpu::WebgpuGraphicsRuntime;
+            use fluxemu_frontend_egui::rendering::webgpu::WebgpuGraphicsRuntime;
 
             match cli.display_backend {
                 #[cfg(feature = "windowing")]

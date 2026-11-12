@@ -38,7 +38,6 @@ egui = { workspace = true, optional = true }
 epaint = { workspace = true, features = ["color_fonts"], optional = true }
 fluxemu-audio = { workspace = true }
 fluxemu-database = { workspace = true }
-fluxemu-egui-software-renderer = { workspace = true, optional = true }
 fluxemu-environment = { workspace = true }
 fluxemu-frontend = { workspace = true }
 fluxemu-frontend-egui = { workspace = true, optional = true }
@@ -54,7 +53,6 @@ gilrs = { workspace = true }
 nalgebra = { workspace = true }
 opendal = { workspace = true }
 palette = { workspace = true }
-pollster = { workspace = true }
 raw-window-handle = { workspace = true, optional = true }
 redb = { workspace = true }
 strum = { workspace = true }
@@ -64,7 +62,6 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 uuid = { workspace = true }
 
 # Webgpu required stuff
-egui-wgpu = { workspace = true, optional = true }
 wgpu = { workspace = true, optional = true }
 
 # Windowing required stuff
@@ -115,10 +112,9 @@ drm = [
   "egui",
   "wgpu/drm"
 ]
-egui = ["dep:egui", "dep:epaint", "dep:fluxemu-egui-software-renderer", "dep:fluxemu-frontend-egui"]
+egui = ["dep:egui", "dep:epaint", "dep:fluxemu-frontend-egui"]
 ratatui = ["dep:fluxemu-frontend-ratatui", "dep:ratatui-image"]
 webgpu = [
-  "dep:egui-wgpu",
   "dep:wgpu",
   "fluxemu-frontend-egui/webgpu",
   "fluxemu-graphics/webgpu",

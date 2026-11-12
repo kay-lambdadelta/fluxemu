@@ -6,4 +6,4 @@ mod graphics;
 
 pub use audio::AudioRuntime;
 #[cfg(feature = "egui")]
-pub use graphics::GraphicsRuntime;
+pub use graphics::{GraphicsRuntime, open_graphics_runtime};

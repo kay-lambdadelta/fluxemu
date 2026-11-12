@@ -5,8 +5,10 @@ use drm::{
         dumbbuffer::{DumbBuffer, DumbMapping},
     },
 };
-use fluxemu_egui_software_renderer::Renderer;
 use fluxemu_frontend::graphics::ProducableGraphicsRuntime;
+use fluxemu_frontend_egui::rendering::software::{
+    SoftwareCompatibleDisplayContext, SoftwareGraphicsRuntime,
+};
 use fluxemu_graphics::{
     api::software::Software,
     texture::{AsViewTexture, AsViewTextureMut, RefMutTexture, RefTexture},
@@ -19,10 +21,7 @@ use nix::{
 };
 use palette::{cast::Packed, rgb::channels::Bgra};
 
-use crate::{
-    display::software::{SoftwareCompatibleDisplayContext, SoftwareGraphicsRuntime},
-    event_loop::drm::DrmContext,
-};
+use crate::event_loop::drm::DrmContext;
 
 pub struct Surface {
     buffers: [DumbBuffer; 2],
@@ -94,25 +93,25 @@ impl ProducableGraphicsRuntime<DrmContext> for SoftwareGraphicsRuntime<DrmContex
             .add(&context.card, EpollEvent::new(EpollFlags::EPOLLIN, 0))
             .unwrap();
 
-        SoftwareGraphicsRuntime {
-            renderer: Renderer::default(),
-            surface: Surface {
+        SoftwareGraphicsRuntime::new(
+            context.clone(),
+            Surface {
                 buffers: [buffer_0, buffer_1],
                 framebuffers: [framebuffer_handle_0, framebuffer_handle_1],
                 epoll,
                 on_back_buffer: true,
             },
-            display_handle: context.clone(),
-        }
+        )
     }
 
     fn display_context(&self) -> &DrmContext {
-        &self.display_handle
+        SoftwareGraphicsRuntime::display_context(self)
     }
 }
 
 impl SoftwareCompatibleDisplayContext for DrmContext {
     type MappingError = std::io::Error;
+    type Pixel = Packed<Bgra, [u8; 4]>;
     type PresentError = std::io::Error;
     type ResizeError = std::io::Error;
     type Surface = Surface;
@@ -133,7 +132,7 @@ impl SoftwareCompatibleDisplayContext for DrmContext {
     fn map_surface_buffer<'a>(
         &'a self,
         surface: &'a mut Self::Surface,
-    ) -> Result<impl AsViewTextureMut<Packed<Bgra, [u8; 4]>> + 'a, Self::MappingError> {
+    ) -> Result<impl AsViewTextureMut<Self::Pixel> + 'a, Self::MappingError> {
         let back_buffer = &mut surface.buffers[surface.on_back_buffer as usize];
 
         let (width, height) = self.params.mode.size();

@@ -4,7 +4,9 @@ use egui::{FontData, FontDefinitions, FontFamily, RawInput, Rect, ViewportId, Vi
 use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::Environment;
 use fluxemu_frontend::{
-    FrontendCore, graphics::GraphicsRuntime as _, notification::NotificationReceiver,
+    FrontendCore,
+    graphics::{DisplayContext as _, GraphicsRuntime as _},
+    notification::NotificationReceiver,
 };
 use fluxemu_frontend_egui::{Frontend, rendering::EguiCapableGraphicsRuntime};
 use fluxemu_program::ProgramManager;
@@ -14,7 +16,7 @@ use tokio::runtime::Handle;
 use crate::{
     build_machine::get_software_factories,
     platform::Platform,
-    runtime::{AudioRuntime, GraphicsRuntime},
+    runtime::{AudioRuntime, GraphicsRuntime, open_graphics_runtime},
 };
 
 const UNSCII_FONT: &[u8] = include_bytes!("../../../../external/unscii/fontfiles/unscii-16.otf");
@@ -50,7 +52,9 @@ pub fn run(
         None,
     );
     let mut frontend = Frontend::new(core, notifications, font_definitions);
-    let mut graphics_runtime = GraphicsRuntime::new()?;
+    let mut graphics_runtime = open_graphics_runtime()?;
+
+    let display_dimensions = graphics_runtime.display_context().dimensions();
 
     let start_time = Instant::now();
 
@@ -73,11 +77,7 @@ pub fn run(
             )]),
             screen_rect: Some(Rect {
                 min: [0.0, 0.0].into(),
-                max: [
-                    graphics_runtime.framebuffer.front_page().width() as f32,
-                    graphics_runtime.framebuffer.front_page().height() as f32,
-                ]
-                .into(),
+                max: [display_dimensions.x as f32, display_dimensions.y as f32].into(),
             }),
             time: Some(start_time.elapsed().as_secs_f64()),
             focused: true,

@@ -19,6 +19,10 @@ use wgpu::{
     VertexState,
 };
 
+mod runtime;
+
+pub use runtime::{WebgpuCompatibleDisplayContext, WebgpuGraphicsRuntime};
+
 #[derive(Debug)]
 pub struct Resources {
     bind_group_layout: BindGroupLayout,

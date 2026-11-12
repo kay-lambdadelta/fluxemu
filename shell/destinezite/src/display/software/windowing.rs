@@ -1,5 +1,7 @@
-use fluxemu_egui_software_renderer::Renderer;
 use fluxemu_frontend::graphics::ProducableGraphicsRuntime;
+use fluxemu_frontend_egui::rendering::software::{
+    SoftwareCompatibleDisplayContext, SoftwareGraphicsRuntime,
+};
 use fluxemu_graphics::{
     api::software::Software,
     texture::{AsViewTexture, AsViewTextureMut, RefMutTexture, RefTexture},
@@ -8,10 +10,7 @@ use fluxemu_runtime::graphics::GraphicsRequirements;
 use palette::{cast::Packed, rgb::channels::Bgra};
 use softbuffer::{Buffer, Context, SoftBufferError, Surface};
 
-use crate::{
-    display::software::{SoftwareCompatibleDisplayContext, SoftwareGraphicsRuntime},
-    event_loop::windowing::Window,
-};
+use crate::event_loop::windowing::Window;
 
 pub struct SurfaceBufferGuard<'a> {
     buffer: Buffer<'a, Window, Window>,
@@ -49,20 +48,17 @@ impl ProducableGraphicsRuntime<Window> for SoftwareGraphicsRuntime<Window> {
             )
             .unwrap();
 
-        SoftwareGraphicsRuntime {
-            surface,
-            renderer: Renderer::default(),
-            display_handle: window.clone(),
-        }
+        SoftwareGraphicsRuntime::new(window.clone(), surface)
     }
 
     fn display_context(&self) -> &Window {
-        &self.display_handle
+        SoftwareGraphicsRuntime::display_context(self)
     }
 }
 
 impl SoftwareCompatibleDisplayContext for Window {
     type MappingError = SoftBufferError;
+    type Pixel = Packed<Bgra, [u8; 4]>;
     type PresentError = SoftBufferError;
     type ResizeError = SoftBufferError;
     type Surface = softbuffer::Surface<Window, Window>;
@@ -79,7 +75,7 @@ impl SoftwareCompatibleDisplayContext for Window {
     fn map_surface_buffer<'a>(
         &'a self,
         surface: &'a mut Self::Surface,
-    ) -> Result<impl AsViewTextureMut<Packed<Bgra, [u8; 4]>> + 'a, Self::MappingError> {
+    ) -> Result<impl AsViewTextureMut<Self::Pixel> + 'a, Self::MappingError> {
         let buffer = surface.buffer_mut()?;
 
         Ok(SurfaceBufferGuard { buffer })

@@ -43,7 +43,6 @@ crate-type = ["staticlib"]
 egui = { workspace = true, optional = true }
 fluxemu-audio = { workspace = true }
 fluxemu-database = { workspace = true }
-fluxemu-egui-software-renderer = { workspace = true, optional = true }
 fluxemu-environment = { workspace = true }
 fluxemu-frontend = { workspace = true }
 fluxemu-frontend-egui = { workspace = true, optional = true }
@@ -83,7 +82,7 @@ bindgen = { workspace = true }
 
 [features]
 default = ["egui"]
-egui = ["dep:egui", "dep:fluxemu-egui-software-renderer", "dep:fluxemu-frontend-egui"]
+egui = ["dep:egui", "dep:fluxemu-frontend-egui"]
 ratatui = ["dep:fluxemu-frontend-ratatui"]
 
 [lints]

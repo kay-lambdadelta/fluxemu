@@ -27,6 +27,7 @@ indexmap = { workspace = true }
 jiff = { workspace = true }
 nalgebra = { workspace = true }
 palette = { workspace = true }
+pollster = { workspace = true, optional = true }
 rand = { workspace = true }
 rfd = { workspace = true, optional = true }
 ringbuffer = { workspace = true }
@@ -48,7 +49,7 @@ skera = { workspace = true }
 
 [features]
 external-file-dialog = ["dep:rfd"]
-webgpu = ["dep:egui-wgpu", "dep:wgpu"]
+webgpu = ["dep:egui-wgpu", "dep:pollster", "dep:wgpu", "fluxemu-graphics/webgpu"]
 
 [lints]
 workspace = true

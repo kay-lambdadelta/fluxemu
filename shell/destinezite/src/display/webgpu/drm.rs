@@ -1,45 +1,9 @@
-use std::{
-    os::fd::AsRawFd,
-    sync::{Arc, Mutex},
-};
+use std::os::fd::AsRawFd;
 
-use fluxemu_frontend::graphics::ProducableGraphicsRuntime;
-use fluxemu_graphics::api::webgpu::Webgpu;
-use fluxemu_runtime::graphics::GraphicsRequirements;
-use nalgebra::Vector2;
+use fluxemu_frontend_egui::rendering::webgpu::WebgpuCompatibleDisplayContext;
 use wgpu::{Backends, Instance, InstanceDescriptor, SurfaceTargetUnsafe};
 
-use crate::{
-    display::webgpu::{
-        ConfigurationDependentData, WebgpuCompatibleDisplayContext, WebgpuGraphicsRuntime,
-    },
-    event_loop::drm::{DrmContext, mode_refresh_millihertz},
-};
-
-impl ProducableGraphicsRuntime<DrmContext> for WebgpuGraphicsRuntime<DrmContext> {
-    fn new(
-        context: &DrmContext,
-        graphics_requirements: GraphicsRequirements<Webgpu>,
-    ) -> WebgpuGraphicsRuntime<DrmContext> {
-        let (width, height) = context.params.mode.size();
-
-        let configuration_dependent_data = ConfigurationDependentData::new(
-            Vector2::new(width as u32, height as u32),
-            graphics_requirements,
-            context,
-        );
-
-        WebgpuGraphicsRuntime {
-            display_handle: context.clone(),
-            gpu_submission_lock: Arc::new(Mutex::new(())),
-            configuration_dependent_data: Some(configuration_dependent_data),
-        }
-    }
-
-    fn display_context(&self) -> &DrmContext {
-        &self.display_handle
-    }
-}
+use crate::event_loop::drm::{DrmContext, mode_refresh_millihertz};
 
 impl WebgpuCompatibleDisplayContext for DrmContext {
     fn produce_instance_and_surface(

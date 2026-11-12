@@ -1,89 +1,58 @@
-use fluxemu_egui_software_renderer::{Renderer, callback::Callback};
-use fluxemu_frontend_egui::rendering::{EguiCapableGraphicsRuntime, software::FramebufferCallback};
-use fluxemu_graphics::{
-    api::{GraphicsApi, software::Software},
-    shader::ShaderType,
-    texture::{AsViewTexture, CopyMode, CowTexture, OwnedTexture},
+use std::io;
+
+use fluxemu_frontend::graphics::DisplayContext;
+use fluxemu_frontend_egui::rendering::software::{
+    SoftwareCompatibleDisplayContext, SoftwareGraphicsRuntime,
 };
-use fluxemu_math::rectangle::Rectangle;
-use fluxemu_runtime::graphics::GraphicsRequirements;
-use palette::{Srgb, Srgba, named::BLACK};
+use fluxemu_graphics::texture::AsViewTextureMut;
+use nalgebra::Vector2;
 
 use crate::runtime::framebuffer::{Framebuffer, FramebufferError, Pixel};
 
-pub struct GraphicsRuntime {
-    egui_renderer: Renderer,
-    pub framebuffer: Framebuffer,
+pub type GraphicsRuntime = SoftwareGraphicsRuntime<FramebufferDisplay, 2>;
+
+pub fn open_graphics_runtime() -> Result<GraphicsRuntime, FramebufferError> {
+    let framebuffer = Framebuffer::open()?;
+    let front_page = framebuffer.front_page();
+    let display = FramebufferDisplay {
+        dimensions: Vector2::new(front_page.width() as u32, front_page.height() as u32),
+    };
+
+    Ok(GraphicsRuntime::new(display, framebuffer))
 }
 
-impl GraphicsRuntime {
-    pub fn new() -> Result<Self, FramebufferError> {
-        Ok(Self {
-            egui_renderer: Renderer::default(),
-            framebuffer: Framebuffer::open()?,
-        })
-    }
+#[derive(Debug, Clone, Copy)]
+pub struct FramebufferDisplay {
+    dimensions: Vector2<u32>,
 }
 
-impl fluxemu_frontend::graphics::GraphicsRuntime for GraphicsRuntime {
-    type GraphicsApi = Software;
-
-    fn reconfigure(&mut self, _graphics_requirements: GraphicsRequirements<Self::GraphicsApi>) {}
-
-    fn refresh_surface(&mut self) {}
-
-    fn component_initialization_data(
-        &self,
-    ) -> <Self::GraphicsApi as GraphicsApi>::InitializationData {
-    }
-
-    fn max_texture_side(&self) -> u32 {
-        u32::MAX
-    }
-
-    fn screenshot<'a>(
-        &self,
-        framebuffer: &'a <Self::GraphicsApi as GraphicsApi>::Framebuffer,
-    ) -> Option<CowTexture<'a, Srgba<u8>>> {
-        Some(framebuffer.as_view().into())
+impl DisplayContext for FramebufferDisplay {
+    fn dimensions(&self) -> Vector2<u32> {
+        self.dimensions
     }
 }
 
-impl EguiCapableGraphicsRuntime for GraphicsRuntime {
-    fn present(
-        &mut self,
-        context: &egui::Context,
-        clear_color: Srgb<u8>,
-        full_output: egui::FullOutput,
-    ) {
-        self.framebuffer.wait_for_back_page().unwrap();
+impl SoftwareCompatibleDisplayContext for FramebufferDisplay {
+    type MappingError = io::Error;
+    type Pixel = Pixel;
+    type PresentError = io::Error;
+    type ResizeError = io::Error;
+    type Surface = Framebuffer;
 
-        let page = self.framebuffer.back_page();
-
-        page.fill(clear_color.into());
-
-        self.egui_renderer
-            .render::<_, 2>(context, full_output, page);
-
-        self.framebuffer.present().unwrap();
+    fn resize_surface(&self, _surface: &mut Self::Surface) -> Result<(), Self::ResizeError> {
+        Ok(())
     }
 
-    fn produce_callback_for_framebuffer(
-        &mut self,
-        rect: egui::Rect,
-        framebuffer: &<Self::GraphicsApi as GraphicsApi>::Framebuffer,
-        display_rectangle: Rectangle<usize>,
-        _shader: ShaderType,
-    ) -> egui::PaintCallback {
-        let framebuffer =
-            framebuffer.view(display_rectangle.x_range(), display_rectangle.y_range());
+    fn map_surface_buffer<'a>(
+        &'a self,
+        surface: &'a mut Self::Surface,
+    ) -> Result<impl AsViewTextureMut<Self::Pixel> + 'a, Self::MappingError> {
+        surface.wait_for_back_page()?;
 
-        let mut converted_framebuffer =
-            OwnedTexture::from_value(framebuffer.width(), framebuffer.height(), BLACK.into());
-        converted_framebuffer.map_from(framebuffer, CopyMode::Nearest, From::from);
+        Ok(surface.back_page())
+    }
 
-        let callback = FramebufferCallback::new(converted_framebuffer);
-
-        Callback::<Pixel>::new_paint_callback(rect, callback)
+    fn present(&self, surface: &mut Self::Surface) -> Result<(), Self::PresentError> {
+        surface.present()
     }
 }

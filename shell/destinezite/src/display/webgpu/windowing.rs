@@ -1,39 +1,7 @@
-use std::sync::{Arc, Mutex};
-
-use fluxemu_frontend::graphics::ProducableGraphicsRuntime;
-use fluxemu_graphics::api::webgpu::Webgpu;
-use fluxemu_runtime::graphics::GraphicsRequirements;
-use nalgebra::Vector2;
+use fluxemu_frontend_egui::rendering::webgpu::WebgpuCompatibleDisplayContext;
 use wgpu::{CreateSurfaceError, Instance, InstanceDescriptor, Surface};
 
-use crate::{
-    display::webgpu::{
-        ConfigurationDependentData, WebgpuCompatibleDisplayContext, WebgpuGraphicsRuntime,
-    },
-    event_loop::windowing::Window,
-};
-
-impl ProducableGraphicsRuntime<Window> for WebgpuGraphicsRuntime<Window> {
-    fn new(window: &Window, graphics_requirements: GraphicsRequirements<Webgpu>) -> Self {
-        let inner_size = window.0.inner_size();
-
-        let configuration_dependent_data = ConfigurationDependentData::new(
-            Vector2::new(inner_size.width, inner_size.height),
-            graphics_requirements,
-            window,
-        );
-
-        WebgpuGraphicsRuntime {
-            display_handle: window.clone(),
-            gpu_submission_lock: Arc::new(Mutex::new(())),
-            configuration_dependent_data: Some(configuration_dependent_data),
-        }
-    }
-
-    fn display_context(&self) -> &Window {
-        &self.display_handle
-    }
-}
+use crate::event_loop::windowing::Window;
 
 impl WebgpuCompatibleDisplayContext for Window {
     fn produce_instance_and_surface(
