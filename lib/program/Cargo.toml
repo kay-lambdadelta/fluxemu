@@ -20,7 +20,6 @@ opendal = {
   workspace = true,
   features = [
     "auto-register-services",
-    "executors-tokio",
   ]
 }
 pathfinding = { workspace = true }
@@ -38,6 +37,9 @@ strum = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 tracing = { workspace = true }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+opendal = { workspace = true, features = ["executors-tokio"] }
 
 [features]
 filesystem = ["opendal/services-fs", "tokio/fs", "tokio/io-util"]

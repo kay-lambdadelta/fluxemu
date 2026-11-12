@@ -13,7 +13,7 @@ fluxemu-program = { workspace = true, features = ["filesystem"] }
 indexmap = { workspace = true }
 ron = { workspace = true }
 
-[target.'cfg(all(any(target_family = "unix", target_os = "windows"), not(target_os = "nuttx")))'.dependencies]
+[target.'cfg(all(any(target_family = "unix", target_os = "windows"), not(any(target_os = "nuttx", target_os = "emscripten"))))'.dependencies]
 dirs = { workspace = true }
 
 [lints]

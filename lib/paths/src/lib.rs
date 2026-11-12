@@ -12,6 +12,7 @@ use ron::{Options, extensions::Extensions, ser::PrettyConfig};
 pub static STORAGE_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| {
     cfg_select! {
         target_os = "nuttx" => PathBuf::from("/data/fluxemu"),
+        target_os = "emscripten" => PathBuf::from("/fluxemu"),
         all(any(target_family = "unix", target_os = "windows"),) => dirs::data_dir()
             .expect("Could not lookup data directory")
             .join("fluxemu"),
@@ -20,7 +21,7 @@ pub static STORAGE_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| {
 
 pub static CACHE_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| {
     cfg_select! {
-        target_os = "nuttx" => STORAGE_DIRECTORY.clone(),
+        any(target_os = "nuttx", target_os = "emscripten") => STORAGE_DIRECTORY.clone(),
         all(any(target_family = "unix", target_os = "windows"),) => dirs::cache_dir()
             .map(|path| path.join("fluxemu"))
             .unwrap_or(STORAGE_DIRECTORY.clone()),
@@ -29,7 +30,9 @@ pub static CACHE_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| {
 
 pub static ENVIRONMENT_LOCATION: LazyLock<PathBuf> = LazyLock::new(|| {
     cfg_select! {
-        target_os = "nuttx" => STORAGE_DIRECTORY.join("environment.ron"),
+        any(target_os = "nuttx", target_os = "emscripten") => {
+            STORAGE_DIRECTORY.join("environment.ron")
+        }
         all(any(target_family = "unix", target_os = "windows"),) => dirs::config_dir()
             .map(|path| path.join("fluxemu"))
             .unwrap_or(STORAGE_DIRECTORY.clone())
