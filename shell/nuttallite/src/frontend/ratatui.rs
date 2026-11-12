@@ -2,8 +2,10 @@ use std::sync::Arc;
 
 use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::Environment;
-use fluxemu_frontend::{FrontendCore, notification::NotificationReceiver};
-use fluxemu_frontend_ratatui::{TerminalGraphicsRuntime, external_input_channel};
+use fluxemu_frontend::{
+    FrontendCore, graphics::PassthroughGraphicsRuntime, notification::NotificationReceiver,
+};
+use fluxemu_frontend_ratatui::external_input_channel;
 use fluxemu_program::ProgramManager;
 use tokio::runtime::Handle;
 
@@ -18,7 +20,7 @@ pub fn run(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (_external_input_sender, external_input_receiver) = external_input_channel();
 
-    let core = FrontendCore::<Platform<TerminalGraphicsRuntime>>::new(
+    let core = FrontendCore::<Platform<PassthroughGraphicsRuntime>>::new(
         runtime,
         environment,
         get_software_factories(),

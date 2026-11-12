@@ -6,6 +6,7 @@ use std::{
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use fluxemu_frontend::{
     FrontendCore, FrontendEvent, InputRouting, Platform,
+    graphics::PassthroughGraphicsRuntime,
     notification::{Notification, NotificationReceiver},
 };
 use fluxemu_graphics::api::software::Software;
@@ -28,7 +29,6 @@ use tracing::Level;
 
 use crate::{
     external_input::{ExternalInputSender, Message},
-    graphics::TerminalGraphicsRuntime,
     input::{SyntheticReleaseTracker, crossterm2key, gamepad2key},
     machine_view::MachineView,
 };
@@ -67,8 +67,9 @@ struct LogEntry {
     received: Instant,
 }
 
-pub struct Frontend<P: Platform<GraphicsApi = Software, GraphicsRuntime = TerminalGraphicsRuntime>>
-{
+pub struct Frontend<
+    P: Platform<GraphicsApi = Software, GraphicsRuntime = PassthroughGraphicsRuntime>,
+> {
     core: FrontendCore<P>,
     notifications: NotificationReceiver,
     picker: Picker,
@@ -89,7 +90,9 @@ pub struct Frontend<P: Platform<GraphicsApi = Software, GraphicsRuntime = Termin
     exit_requested: bool,
 }
 
-impl<P: Platform<GraphicsApi = Software, GraphicsRuntime = TerminalGraphicsRuntime>> Frontend<P> {
+impl<P: Platform<GraphicsApi = Software, GraphicsRuntime = PassthroughGraphicsRuntime>>
+    Frontend<P>
+{
     pub fn new(
         mut core: FrontendCore<P>,
         notifications: NotificationReceiver,
@@ -157,7 +160,7 @@ impl<P: Platform<GraphicsApi = Software, GraphicsRuntime = TerminalGraphicsRunti
     }
 
     pub fn tick(&mut self) {
-        self.core.poll(&TerminalGraphicsRuntime);
+        self.core.poll(&PassthroughGraphicsRuntime);
 
         if self.core.has_pending_machine() && self.core.start_pending_machine(|_| ()) {
             if let Some(machine) = self.core.machine() {

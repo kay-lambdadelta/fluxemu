@@ -1,13 +1,11 @@
 use std::sync::Arc;
 
-use fluxemu_graphics::{
-    api::software::Software,
-    texture::{CopyMode, OwnedTexture, RefMutTexture},
-};
+use fluxemu_frontend::graphics::capture_framebuffer;
+use fluxemu_graphics::texture::{CopyMode, OwnedTexture, RefMutTexture};
 use fluxemu_runtime::machine::Machine;
 use image::{DynamicImage, RgbaImage};
 use nalgebra::Vector2;
-use palette::{Srgba, named::BLACK};
+use palette::Srgba;
 use ratatui::{
     Frame,
     layout::{Rect, Size},
@@ -74,25 +72,6 @@ impl MachineView {
             frame.render_widget(Image::new(&encoded_frame.protocol), centered_area);
         }
     }
-}
-
-fn capture_framebuffer(machine: &Arc<Machine>) -> Option<(OwnedTexture<Srgba<u8>>, Vector2<f32>)> {
-    let runtime = machine.enter_runtime();
-    let framebuffer_path = runtime.list_framebuffers().next()?;
-
-    runtime.read_framebuffer::<Software, _>(
-        framebuffer_path,
-        runtime.safe_advance_timestamp(),
-        |framebuffer, display_geometry| {
-            let display_rectangle = display_geometry.resolve_display_rectangle(framebuffer);
-            let view = framebuffer.view(display_rectangle.x_range(), display_rectangle.y_range());
-
-            let mut captured = OwnedTexture::from_value(view.width(), view.height(), BLACK.into());
-            captured.copy_from(view, CopyMode::Nearest);
-
-            (captured, display_geometry.display_size(framebuffer))
-        },
-    )
 }
 
 fn scale_to_cells(

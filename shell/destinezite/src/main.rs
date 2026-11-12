@@ -132,8 +132,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(feature = "ratatui")]
     if cli.display_backend == DisplayBackend::Ratatui {
-        use fluxemu_frontend::FrontendCore;
-        use fluxemu_frontend_ratatui::TerminalGraphicsRuntime;
+        use fluxemu_frontend::{FrontendCore, graphics::PassthroughGraphicsRuntime};
 
         use crate::{audio::CpalAudioRuntime, gamepad::GamepadContext, platform::DesktopPlatform};
 
@@ -163,7 +162,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let audio_runtime =
             CpalAudioRuntime::new().map_err(|_| "Could not initialize audio runtime")?;
 
-        let core = FrontendCore::<DesktopPlatform<TerminalGraphicsRuntime, false>>::new(
+        let core = FrontendCore::<DesktopPlatform<PassthroughGraphicsRuntime, false>>::new(
             runtime.handle().clone(),
             environment,
             // TODO: Support webgpu for the ratatui backend

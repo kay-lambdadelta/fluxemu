@@ -15,7 +15,10 @@ use crossterm::{
     execute,
     terminal::supports_keyboard_enhancement,
 };
-use fluxemu_frontend::{FrontendCore, Platform, notification::NotificationReceiver};
+use fluxemu_frontend::{
+    FrontendCore, Platform, graphics::PassthroughGraphicsRuntime,
+    notification::NotificationReceiver,
+};
 use fluxemu_graphics::api::software::Software;
 use ratatui::{Terminal, backend::CrosstermBackend};
 use ratatui_image::picker::Picker;
@@ -23,14 +26,13 @@ use ratatui_image::picker::Picker;
 use crate::{
     external_input::{ExternalInputReceiver, ExternalInputSender, Message},
     frontend::Frontend,
-    graphics::TerminalGraphicsRuntime,
     output::{OutputMonitor, TerminalOutput},
 };
 
 const TERMINAL_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const IDLE_FRAME_INTERVAL: Duration = Duration::from_millis(250);
 
-pub fn run<P: Platform<GraphicsApi = Software, GraphicsRuntime = TerminalGraphicsRuntime>>(
+pub fn run<P: Platform<GraphicsApi = Software, GraphicsRuntime = PassthroughGraphicsRuntime>>(
     core: FrontendCore<P>,
     notifications: NotificationReceiver,
     external_input: ExternalInputReceiver,
@@ -109,7 +111,7 @@ pub fn run<P: Platform<GraphicsApi = Software, GraphicsRuntime = TerminalGraphic
     })
 }
 
-fn event_loop<P: Platform<GraphicsApi = Software, GraphicsRuntime = TerminalGraphicsRuntime>>(
+fn event_loop<P: Platform<GraphicsApi = Software, GraphicsRuntime = PassthroughGraphicsRuntime>>(
     terminal: &mut Terminal<CrosstermBackend<TerminalOutput>>,
     monitor: &OutputMonitor,
     frontend: &mut Frontend<P>,
