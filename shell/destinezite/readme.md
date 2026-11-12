@@ -68,7 +68,7 @@ Feature specific dependencies:
 
 ##### Subfeatures
 
-- `ratatui-image/chafa-dyn` - Enables chafa for potentially better rendering capabilities
+- `ratatui-image/chafa-dyn` — Enables chafa for potentially better rendering capabilities
 
 | Distro   | Development Package Name |
 | -------- | ------------------------ |
