@@ -2081,6 +2081,7 @@ dependencies = [
  "fluxemu-system",
  "indexmap 2.14.2",
  "jiff",
+ "keyboard-types",
  "lucide-icons",
  "nalgebra",
  "palette",
@@ -2112,6 +2113,7 @@ dependencies = [
  "fluxemu-input",
  "fluxemu-runtime",
  "image",
+ "keyboard-types",
  "nalgebra",
  "palette",
  "ratatui",
@@ -2140,6 +2142,7 @@ dependencies = [
 name = "fluxemu-input"
 version = "0.0.1"
 dependencies = [
+ "keyboard-types",
  "serde",
  "strum",
  "uuid",
@@ -2286,6 +2289,7 @@ dependencies = [
  "fontique",
  "gilrs",
  "input",
+ "keyboard-types",
  "libseat",
  "nalgebra",
  "nix 0.31.3",
@@ -2375,6 +2379,7 @@ dependencies = [
  "fluxemu-runtime",
  "fluxemu-system",
  "itertools 0.15.0",
+ "keyboard-types",
  "nalgebra",
  "palette",
  "serde",
@@ -2434,6 +2439,7 @@ dependencies = [
  "fluxemu-runtime",
  "fluxemu-system",
  "heapless",
+ "keyboard-types",
  "nalgebra",
  "palette",
  "rand 0.10.3",
@@ -2461,6 +2467,7 @@ dependencies = [
  "fluxemu-runtime",
  "fluxemu-system",
  "heapless",
+ "keyboard-types",
  "nalgebra",
  "palette",
  "rand 0.10.3",
@@ -3670,6 +3677,16 @@ dependencies = [
  "hashbrown 0.17.1",
  "portable-atomic",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "keyboard-types"
+version = "0.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0fbe853b403ae61a04233030ae8a79d94975281ed9770a1f9e246732b534b28d"
+dependencies = [
+ "bitflags 2.13.2",
+ "serde",
 ]
 
 [[package]]

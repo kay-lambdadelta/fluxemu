@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use fluxemu_definition_mos6532::Register;
-use fluxemu_input::{GamepadInputId, InputId, KeyboardInputId};
+use fluxemu_input::{GamepadInputId, InputId};
 use fluxemu_platform::Platform;
 use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
@@ -9,6 +9,7 @@ use fluxemu_runtime::{
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId},
 };
+use keyboard_types::Code;
 
 const IDLE_CONSOLE_SWITCHES: u8 = 0b0000_1000;
 
@@ -161,31 +162,31 @@ const DEFAULT_MAPPINGS: [(InputId, InputId); 18] = [
         InputId::Gamepad(GamepadInputId::Select),
     ),
     (
-        InputId::Keyboard(KeyboardInputId::ArrowDown),
+        InputId::Keyboard(Code::ArrowDown),
         InputId::Gamepad(GamepadInputId::LeftStickDown),
     ),
     (
-        InputId::Keyboard(KeyboardInputId::ArrowUp),
+        InputId::Keyboard(Code::ArrowUp),
         InputId::Gamepad(GamepadInputId::LeftStickUp),
     ),
     (
-        InputId::Keyboard(KeyboardInputId::ArrowLeft),
+        InputId::Keyboard(Code::ArrowLeft),
         InputId::Gamepad(GamepadInputId::LeftStickLeft),
     ),
     (
-        InputId::Keyboard(KeyboardInputId::ArrowRight),
+        InputId::Keyboard(Code::ArrowRight),
         InputId::Gamepad(GamepadInputId::LeftStickRight),
     ),
     (
-        InputId::Keyboard(KeyboardInputId::KeyZ),
+        InputId::Keyboard(Code::KeyZ),
         InputId::Gamepad(GamepadInputId::FPadDown),
     ),
     (
-        InputId::Keyboard(KeyboardInputId::Enter),
+        InputId::Keyboard(Code::Enter),
         InputId::Gamepad(GamepadInputId::Start),
     ),
     (
-        InputId::Keyboard(KeyboardInputId::ShiftRight),
+        InputId::Keyboard(Code::ShiftRight),
         InputId::Gamepad(GamepadInputId::Select),
     ),
 ];

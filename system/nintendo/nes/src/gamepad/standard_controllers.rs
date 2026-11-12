@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, format, string::String, sync::Arc};
 use core::ops::RangeInclusive;
 
-use fluxemu_input::{GamepadInputId, InputId, KeyboardInputId};
+use fluxemu_input::{GamepadInputId, InputId};
 use fluxemu_math::range::ContiguousRange;
 use fluxemu_platform::Platform;
 use fluxemu_runtime::{
@@ -11,6 +11,7 @@ use fluxemu_runtime::{
     memory::{Address, AddressSpaceId, MemoryError, MemoryMapCommand, Permissions},
     persistence::PersistentComponentState,
 };
+use keyboard_types::Code;
 use serde::{Deserialize, Serialize};
 
 const CONTROLLER_0: Address = 0x4016;
@@ -125,35 +126,35 @@ impl<P: Platform> ComponentConfig<P> for NesControllerConfig {
                     .map(|input| (input, input))
                     .chain([
                         (
-                            InputId::Keyboard(KeyboardInputId::ArrowDown),
+                            InputId::Keyboard(Code::ArrowDown),
                             InputId::Gamepad(GamepadInputId::DPadDown),
                         ),
                         (
-                            InputId::Keyboard(KeyboardInputId::ArrowUp),
+                            InputId::Keyboard(Code::ArrowUp),
                             InputId::Gamepad(GamepadInputId::DPadUp),
                         ),
                         (
-                            InputId::Keyboard(KeyboardInputId::ArrowLeft),
+                            InputId::Keyboard(Code::ArrowLeft),
                             InputId::Gamepad(GamepadInputId::DPadLeft),
                         ),
                         (
-                            InputId::Keyboard(KeyboardInputId::ArrowRight),
+                            InputId::Keyboard(Code::ArrowRight),
                             InputId::Gamepad(GamepadInputId::DPadRight),
                         ),
                         (
-                            InputId::Keyboard(KeyboardInputId::KeyZ),
+                            InputId::Keyboard(Code::KeyZ),
                             InputId::Gamepad(GamepadInputId::FPadDown),
                         ),
                         (
-                            InputId::Keyboard(KeyboardInputId::KeyX),
+                            InputId::Keyboard(Code::KeyX),
                             InputId::Gamepad(GamepadInputId::FPadRight),
                         ),
                         (
-                            InputId::Keyboard(KeyboardInputId::Enter),
+                            InputId::Keyboard(Code::Enter),
                             InputId::Gamepad(GamepadInputId::Start),
                         ),
                         (
-                            InputId::Keyboard(KeyboardInputId::ShiftRight),
+                            InputId::Keyboard(Code::ShiftRight),
                             InputId::Gamepad(GamepadInputId::Select),
                         ),
                     ]),

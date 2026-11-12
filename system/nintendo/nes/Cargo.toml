@@ -24,6 +24,7 @@ fluxemu-program = { workspace = true }
 fluxemu-runtime = { workspace = true }
 fluxemu-system = { workspace = true }
 heapless = { workspace = true }
+keyboard-types = { workspace = true }
 nalgebra = { workspace = true }
 palette = { workspace = true }
 rand = { workspace = true }

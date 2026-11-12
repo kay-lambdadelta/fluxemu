@@ -25,6 +25,7 @@ fluxemu-runtime = { workspace = true }
 fluxemu-system = { workspace = true }
 indexmap = { workspace = true }
 jiff = { workspace = true }
+keyboard-types = { workspace = true }
 nalgebra = { workspace = true }
 palette = { workspace = true }
 pollster = { workspace = true, optional = true }

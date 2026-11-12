@@ -2,18 +2,15 @@
 
 extern crate alloc;
 
+use keyboard_types::Code;
 use serde::{Deserialize, Serialize};
-use strum::IntoEnumIterator;
 
 /// Virtual gamepad
 mod gamepad;
-/// Keyboard enums
-mod keyboard;
 
 pub mod physical;
 
 pub use gamepad::*;
-pub use keyboard::*;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Enum covering all possible input types
@@ -21,16 +18,7 @@ pub enum InputId {
     /// Input is for a gamepad device
     Gamepad(GamepadInputId),
     /// Input is for a keyboard device
-    Keyboard(KeyboardInputId),
-}
-
-impl InputId {
-    /// Iterate over every possible input
-    pub fn iter() -> impl Iterator<Item = Self> {
-        GamepadInputId::iter()
-            .map(InputId::Gamepad)
-            .chain(KeyboardInputId::iter().map(InputId::Keyboard))
-    }
+    Keyboard(Code),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Default)]

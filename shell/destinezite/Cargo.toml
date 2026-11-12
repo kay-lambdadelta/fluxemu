@@ -50,6 +50,7 @@ fluxemu-program = { workspace = true, features = ["mmap"] }
 fluxemu-runtime = { workspace = true }
 fontique = { workspace = true }
 gilrs = { workspace = true }
+keyboard-types = { workspace = true }
 nalgebra = { workspace = true }
 opendal = { workspace = true }
 palette = { workspace = true }

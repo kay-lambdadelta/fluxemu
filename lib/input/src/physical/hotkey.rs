@@ -1,9 +1,10 @@
 use alloc::collections::btree_set::BTreeSet;
 
+use keyboard_types::Code;
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
-use crate::{GamepadInputId, InputId, KeyboardInputId};
+use crate::{GamepadInputId, InputId};
 
 /// Possible hotkeys this emulator could use
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash, EnumIter)]
@@ -29,10 +30,7 @@ pub fn default_hotkeys() -> impl Iterator<Item = (BTreeSet<InputId>, Hotkey)> {
             .into(),
             Hotkey::ToggleMenu,
         ),
-        (
-            [InputId::Keyboard(KeyboardInputId::F1)].into(),
-            Hotkey::ToggleMenu,
-        ),
+        ([InputId::Keyboard(Code::F1)].into(), Hotkey::ToggleMenu),
         (
             [
                 InputId::Gamepad(GamepadInputId::Mode),
@@ -41,10 +39,7 @@ pub fn default_hotkeys() -> impl Iterator<Item = (BTreeSet<InputId>, Hotkey)> {
             .into(),
             Hotkey::FastForward,
         ),
-        (
-            [InputId::Keyboard(KeyboardInputId::F2)].into(),
-            Hotkey::FastForward,
-        ),
+        ([InputId::Keyboard(Code::F2)].into(), Hotkey::FastForward),
         (
             [
                 InputId::Gamepad(GamepadInputId::Mode),
@@ -53,10 +48,7 @@ pub fn default_hotkeys() -> impl Iterator<Item = (BTreeSet<InputId>, Hotkey)> {
             .into(),
             Hotkey::StoreSnapshot,
         ),
-        (
-            [InputId::Keyboard(KeyboardInputId::F3)].into(),
-            Hotkey::StoreSnapshot,
-        ),
+        ([InputId::Keyboard(Code::F3)].into(), Hotkey::StoreSnapshot),
         (
             [
                 InputId::Gamepad(GamepadInputId::Mode),
@@ -65,10 +57,7 @@ pub fn default_hotkeys() -> impl Iterator<Item = (BTreeSet<InputId>, Hotkey)> {
             .into(),
             Hotkey::LoadSnapshot,
         ),
-        (
-            [InputId::Keyboard(KeyboardInputId::F4)].into(),
-            Hotkey::LoadSnapshot,
-        ),
+        ([InputId::Keyboard(Code::F4)].into(), Hotkey::LoadSnapshot),
         (
             [
                 InputId::Gamepad(GamepadInputId::Mode),
@@ -78,7 +67,7 @@ pub fn default_hotkeys() -> impl Iterator<Item = (BTreeSet<InputId>, Hotkey)> {
             Hotkey::IncrementSnapshotCounter,
         ),
         (
-            [InputId::Keyboard(KeyboardInputId::F5)].into(),
+            [InputId::Keyboard(Code::F5)].into(),
             Hotkey::IncrementSnapshotCounter,
         ),
         (
@@ -90,7 +79,7 @@ pub fn default_hotkeys() -> impl Iterator<Item = (BTreeSet<InputId>, Hotkey)> {
             Hotkey::DecrementSnapshotCounter,
         ),
         (
-            [InputId::Keyboard(KeyboardInputId::F6)].into(),
+            [InputId::Keyboard(Code::F6)].into(),
             Hotkey::DecrementSnapshotCounter,
         ),
         (
@@ -102,7 +91,7 @@ pub fn default_hotkeys() -> impl Iterator<Item = (BTreeSet<InputId>, Hotkey)> {
             Hotkey::UndoLoadSnapshot,
         ),
         (
-            [InputId::Keyboard(KeyboardInputId::F7)].into(),
+            [InputId::Keyboard(Code::F7)].into(),
             Hotkey::UndoLoadSnapshot,
         ),
         (
@@ -114,7 +103,7 @@ pub fn default_hotkeys() -> impl Iterator<Item = (BTreeSet<InputId>, Hotkey)> {
             Hotkey::UndoStoreSnapshot,
         ),
         (
-            [InputId::Keyboard(KeyboardInputId::F8)].into(),
+            [InputId::Keyboard(Code::F8)].into(),
             Hotkey::UndoStoreSnapshot,
         ),
         (
@@ -126,7 +115,7 @@ pub fn default_hotkeys() -> impl Iterator<Item = (BTreeSet<InputId>, Hotkey)> {
             Hotkey::ToggleDebugOverlay,
         ),
         (
-            [InputId::Keyboard(KeyboardInputId::F9)].into(),
+            [InputId::Keyboard(Code::F9)].into(),
             Hotkey::ToggleDebugOverlay,
         ),
     ]
