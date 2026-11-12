@@ -5,6 +5,7 @@ url = https://github.com/kay-lambdadelta/unscii
 [submodule "external/nes-test-roms"]
 path = external/nes-test-roms
 url = https://github.com/christopherpow/nes-test-roms
+
 [submodule "external/coi-serviceworker"]
-	path = external/coi-serviceworker
-	url = https://github.com/gzuidhof/coi-serviceworker
+path = external/coi-serviceworker
+url = https://github.com/gzuidhof/coi-serviceworker
