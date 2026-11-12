@@ -1960,6 +1960,7 @@ name = "fluxemu-definition-intel8080"
 version = "0.0.1"
 dependencies = [
  "bytemuck",
+ "fluxemu-platform",
  "fluxemu-runtime",
  "strum",
 ]
@@ -1971,6 +1972,7 @@ dependencies = [
  "bytes",
  "criterion",
  "fluxemu-math",
+ "fluxemu-platform",
  "fluxemu-runtime",
  "heapless",
  "serde",
@@ -1983,6 +1985,7 @@ name = "fluxemu-definition-mos6532"
 version = "0.0.1"
 dependencies = [
  "fluxemu-math",
+ "fluxemu-platform",
  "fluxemu-runtime",
  "serde",
  "strum",
@@ -2036,6 +2039,7 @@ dependencies = [
  "fluxemu-graphics",
  "fluxemu-input",
  "fluxemu-math",
+ "fluxemu-platform",
  "fluxemu-program",
  "fluxemu-runtime",
  "fluxemu-system",
@@ -2164,6 +2168,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "fluxemu-platform"
+version = "0.0.1"
+dependencies = [
+ "fluxemu-graphics",
+]
+
+[[package]]
 name = "fluxemu-program"
 version = "0.0.1"
 dependencies = [
@@ -2207,6 +2218,7 @@ dependencies = [
  "fluxemu-graphics",
  "fluxemu-input",
  "fluxemu-math",
+ "fluxemu-platform",
  "fluxemu-program",
  "itertools 0.15.0",
  "nalgebra",
@@ -2253,6 +2265,7 @@ dependencies = [
  "fluxemu-graphics",
  "fluxemu-input",
  "fluxemu-math",
+ "fluxemu-platform",
  "fluxemu-program",
  "fluxemu-runtime",
  "fluxemu-system-atari-2600",
@@ -2300,6 +2313,7 @@ dependencies = [
  "fluxemu-graphics",
  "fluxemu-input",
  "fluxemu-math",
+ "fluxemu-platform",
  "fluxemu-program",
  "fluxemu-runtime",
  "fluxemu-system-atari-2600",
@@ -2327,6 +2341,7 @@ dependencies = [
  "fluxemu-environment",
  "fluxemu-input",
  "fluxemu-math",
+ "fluxemu-platform",
  "fluxemu-program",
  "fluxemu-runtime",
  "redb",
@@ -2346,6 +2361,7 @@ dependencies = [
  "fluxemu-graphics",
  "fluxemu-input",
  "fluxemu-math",
+ "fluxemu-platform",
  "fluxemu-program",
  "fluxemu-runtime",
  "fluxemu-system",
@@ -2365,6 +2381,7 @@ dependencies = [
  "fluxemu-definition-mos6502",
  "fluxemu-graphics",
  "fluxemu-math",
+ "fluxemu-platform",
  "fluxemu-program",
  "fluxemu-runtime",
  "fluxemu-system",
@@ -2383,6 +2400,7 @@ name = "fluxemu-system-nintendo-gameboy"
 version = "0.0.1"
 dependencies = [
  "fluxemu-definition-intel8080",
+ "fluxemu-platform",
  "fluxemu-program",
  "fluxemu-runtime",
  "fluxemu-system",
@@ -2402,6 +2420,7 @@ dependencies = [
  "fluxemu-graphics",
  "fluxemu-input",
  "fluxemu-math",
+ "fluxemu-platform",
  "fluxemu-program",
  "fluxemu-runtime",
  "fluxemu-system",
@@ -2428,6 +2447,7 @@ dependencies = [
  "fluxemu-graphics",
  "fluxemu-input",
  "fluxemu-math",
+ "fluxemu-platform",
  "fluxemu-program",
  "fluxemu-runtime",
  "fluxemu-system",

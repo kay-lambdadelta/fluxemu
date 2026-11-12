@@ -3,13 +3,13 @@ use core::ops::RangeInclusive;
 
 use fluxemu_input::{GamepadInputId, InputId, KeyboardInputId};
 use fluxemu_math::range::ContiguousRange;
+use fluxemu_platform::Platform;
 use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     input::LogicalInputDevice,
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId, MemoryError, MemoryMapCommand, Permissions},
     persistence::PersistentComponentState,
-    platform::Platform,
 };
 use serde::{Deserialize, Serialize};
 

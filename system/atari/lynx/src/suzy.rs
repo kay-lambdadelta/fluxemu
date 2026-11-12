@@ -1,10 +1,10 @@
 use std::ops::RangeInclusive;
 
+use fluxemu_platform::Platform;
 use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId, MapTarget, MemoryError, MemoryMapCommand, Permissions},
-    platform::Platform,
 };
 
 use crate::SUZY_ADDRESSES;

@@ -12,6 +12,7 @@ fluxemu-database = { workspace = true, optional = true }
 fluxemu-environment = { workspace = true, optional = true }
 fluxemu-input = { workspace = true, optional = true }
 fluxemu-math = { workspace = true, optional = true }
+fluxemu-platform = { workspace = true }
 fluxemu-program = { workspace = true }
 fluxemu-runtime = { workspace = true }
 redb = { workspace = true, optional = true }

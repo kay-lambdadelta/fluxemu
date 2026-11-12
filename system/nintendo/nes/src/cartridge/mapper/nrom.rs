@@ -1,10 +1,10 @@
 use alloc::boxed::Box;
 
+use fluxemu_platform::Platform;
 use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
     memory::{MemoryMapCommand, Permissions},
-    platform::Platform,
 };
 
 use crate::cartridge::CartParams;

@@ -1,10 +1,8 @@
 use std::error::Error;
 
+use fluxemu_platform::Platform;
 use fluxemu_program::{NintendoSystem, SystemId};
-use fluxemu_runtime::{
-    Platform,
-    machine::builder::{MachineBuilder, SealedMachineBuilder},
-};
+use fluxemu_runtime::machine::builder::{MachineBuilder, SealedMachineBuilder};
 use fluxemu_system::System;
 
 #[derive(Debug, Default)]

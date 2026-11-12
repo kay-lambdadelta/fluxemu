@@ -1,10 +1,10 @@
 use fluxemu_audio::{SampleFormat, SquareWave};
+use fluxemu_platform::Platform;
 use fluxemu_runtime::{
     RuntimeHandle,
     component::{Component, SampleSource, config::ComponentConfig},
     machine::builder::ComponentBuilder,
     persistence::PersistentComponentState,
-    platform::Platform,
     scheduler::{
         Frequency, Period, QuantaAllocator,
         task::{FrequencyBased, Mode},

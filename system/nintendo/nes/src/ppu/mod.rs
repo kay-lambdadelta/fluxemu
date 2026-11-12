@@ -4,6 +4,7 @@ use core::{marker::PhantomData, ops::RangeInclusive};
 use fluxemu_definition_mos6502::{Mos6502, Mos6502Event, Pin, variant::Ricoh2A0x};
 use fluxemu_graphics::texture::{AsViewTexture, OwnedTexture, Texture};
 use fluxemu_math::{range::ContiguousRange, rectangle::Rectangle};
+use fluxemu_platform::Platform;
 use fluxemu_runtime::{
     ResourcePath, RuntimeHandle,
     component::{
@@ -15,7 +16,6 @@ use fluxemu_runtime::{
     memory::{Address, AddressSpaceId, MemoryError, MemoryMapCommand, Permissions},
     path::ComponentPath,
     persistence::PersistentComponentState,
-    platform::Platform,
     scheduler::{
         Period,
         event::{Event, EventMode, downcast_event},

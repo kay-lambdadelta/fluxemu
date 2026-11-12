@@ -10,6 +10,7 @@ use std::{
 
 use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_input::{InputId, InputState};
+use fluxemu_platform::{Platform, TestPlatform};
 use fluxemu_program::{Manifest, ProgramManager};
 use num::FromPrimitive;
 use rustc_hash::FxBuildHasher;
@@ -23,7 +24,6 @@ use crate::{
     machine::builder::MachineBuilder,
     memory::{AddressSpace, AddressSpaceData, AddressSpaceId, MemoryRegistryData},
     path::{ComponentPath, ResourcePath},
-    platform::{Platform, TestPlatform},
     scheduler::{Period, Scheduler},
 };
 

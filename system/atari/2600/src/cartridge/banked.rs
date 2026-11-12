@@ -2,6 +2,7 @@ use std::ops::RangeInclusive;
 
 use bytes::Bytes;
 use fluxemu_math::range::ContiguousRange;
+use fluxemu_platform::Platform;
 use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
@@ -10,7 +11,6 @@ use fluxemu_runtime::{
         Permissions,
     },
     persistence::PersistentComponentState,
-    platform::Platform,
 };
 use serde::{Deserialize, Serialize};
 

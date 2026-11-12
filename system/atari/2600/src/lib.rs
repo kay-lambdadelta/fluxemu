@@ -2,11 +2,11 @@ use std::{error::Error, marker::PhantomData};
 
 use fluxemu_definition_mos6502::variant::Mos6507;
 use fluxemu_definition_mos6532::Mos6532RiotConfig;
+use fluxemu_platform::Platform;
 use fluxemu_program::{AtariSystem, SystemId};
 use fluxemu_runtime::{
     machine::builder::{MachineBuilder, MachineError, RomRequirement, SealedMachineBuilder},
     memory::{Address, AddressSpaceId, MemoryMapCommand, Permissions},
-    platform::Platform,
 };
 use fluxemu_system::System;
 use gamepad::joystick::JoystickConfig;

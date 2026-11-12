@@ -2,12 +2,12 @@ use alloc::boxed::Box;
 use core::ops::RangeInclusive;
 
 use fluxemu_math::range::ContiguousRange;
+use fluxemu_platform::Platform;
 use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId, MemoryError, MemoryMapCommand, Permissions},
     persistence::PersistentComponentState,
-    platform::Platform,
 };
 use serde::{Deserialize, Serialize};
 

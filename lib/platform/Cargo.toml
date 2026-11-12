@@ -1,0 +1,13 @@
+[package]
+name = "fluxemu-platform"
+version = "0.0.1"
+edition = { workspace = true }
+rust-version = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+fluxemu-graphics = { workspace = true }
+
+[lints]
+workspace = true

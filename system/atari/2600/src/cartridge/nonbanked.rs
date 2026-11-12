@@ -2,8 +2,8 @@ use std::ops::RangeInclusive;
 
 use bytes::Bytes;
 use fluxemu_math::range::ContiguousRange;
+use fluxemu_platform::Platform;
 use fluxemu_runtime::{
-    Platform,
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
     memory::{AddressSpaceId, MapTarget, MemoryMapCommand, Permissions},

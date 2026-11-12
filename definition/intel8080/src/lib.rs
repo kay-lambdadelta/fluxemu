@@ -1,7 +1,7 @@
+use fluxemu_platform::Platform;
 use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
-    platform::Platform,
 };
 
 // mod decode;

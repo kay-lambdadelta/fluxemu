@@ -8,6 +8,7 @@ license = { workspace = true }
 
 [dependencies]
 fluxemu-definition-intel8080 = { workspace = true }
+fluxemu-platform = { workspace = true }
 fluxemu-program = { workspace = true }
 fluxemu-runtime = { workspace = true }
 fluxemu-system = { workspace = true }

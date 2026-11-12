@@ -10,6 +10,7 @@ license = { workspace = true }
 fluxemu-definition-mos6502 = { workspace = true }
 fluxemu-graphics = { workspace = true }
 fluxemu-math = { workspace = true }
+fluxemu-platform = { workspace = true }
 fluxemu-program = { workspace = true }
 fluxemu-runtime = { workspace = true }
 fluxemu-system = { workspace = true }

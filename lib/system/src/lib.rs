@@ -5,11 +5,9 @@ extern crate alloc;
 use alloc::boxed::Box;
 use core::error::Error;
 
+use fluxemu_platform::Platform;
 use fluxemu_program::SystemId;
-use fluxemu_runtime::{
-    Platform,
-    machine::builder::{MachineBuilder, SealedMachineBuilder},
-};
+use fluxemu_runtime::machine::builder::{MachineBuilder, SealedMachineBuilder};
 use serde::{Serialize, de::DeserializeOwned};
 
 #[cfg(feature = "testing")]

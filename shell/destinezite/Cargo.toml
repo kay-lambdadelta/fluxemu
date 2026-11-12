@@ -74,6 +74,7 @@ winit = { workspace = true, optional = true }
 # DRM required stuff
 drm = { workspace = true, optional = true }
 evdev = { workspace = true, optional = true }
+fluxemu-platform = { workspace = true }
 input = { workspace = true, optional = true }
 libseat = { workspace = true, optional = true }
 nix = { workspace = true, features = ["event", "poll"], optional = true }

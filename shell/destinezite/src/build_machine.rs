@@ -1,5 +1,5 @@
 use fluxemu_frontend::machine::FactoryManager;
-use fluxemu_runtime::platform::Platform;
+use fluxemu_platform::Platform;
 use fluxemu_system_atari_2600::Atari2600;
 use fluxemu_system_atari_lynx::AtariLynx;
 use fluxemu_system_nintendo_gameboy::Gameboy;

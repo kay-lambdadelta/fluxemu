@@ -6,6 +6,7 @@ use std::{
 use bytes::Bytes;
 use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_input::InputId;
+use fluxemu_platform::Platform;
 use fluxemu_program::{ProgramManager, RomId};
 
 use crate::{
@@ -15,7 +16,6 @@ use crate::{
     machine::builder::{ComponentLateInitializer, MachineBuilder, MachineError, RomRequirement},
     memory::{Address, AddressSpaceId, MemoryMapCommand},
     path::{ComponentPath, ResourcePath},
-    platform::Platform,
     scheduler::{
         Period,
         event::EventMode,

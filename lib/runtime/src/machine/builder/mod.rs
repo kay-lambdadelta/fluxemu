@@ -1,12 +1,13 @@
 use std::{collections::HashMap, sync::Arc};
 
+use fluxemu_platform::Platform;
+
 use crate::{
     ResourcePath,
     component::{Component, config::LateContext},
     graphics::GraphicsRequirements,
     machine::Machine,
     path::ComponentPath,
-    platform::Platform,
     scheduler::Period,
 };
 

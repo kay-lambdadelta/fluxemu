@@ -1,9 +1,9 @@
+use fluxemu_platform::Platform;
 use fluxemu_runtime::{
     RuntimeHandle,
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
     persistence::PersistentComponentState,
-    platform::Platform,
     scheduler::{
         Frequency, QuantaAllocator,
         task::{FrequencyBased, Mode},

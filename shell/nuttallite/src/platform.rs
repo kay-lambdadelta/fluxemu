@@ -18,7 +18,7 @@ impl<R: GraphicsRuntime<GraphicsApi = Software>> Clone for Platform<R> {
     }
 }
 
-impl<R: GraphicsRuntime<GraphicsApi = Software>> fluxemu_runtime::Platform for Platform<R> {
+impl<R: GraphicsRuntime<GraphicsApi = Software>> fluxemu_platform::Platform for Platform<R> {
     type GraphicsApi = Software;
 }
 

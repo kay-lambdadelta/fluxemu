@@ -9,12 +9,12 @@ pub use cartridge::ines::INes;
 use cartridge::{CartParams, Mirroring, ines::TimingMode};
 use fluxemu_definition_mos6502::variant::Ricoh2A0x;
 use fluxemu_math::range::ContiguousRange;
+use fluxemu_platform::Platform;
 use fluxemu_program::{NintendoSystem, SystemId};
 use fluxemu_runtime::{
     ResourcePath,
     machine::builder::{MachineBuilder, RomRequirement, SealedMachineBuilder},
     memory::{AddressSpaceId, MapTarget, MemoryMapCommand, Permissions},
-    platform::Platform,
 };
 use fluxemu_system::System;
 use ppu::PpuConfig;

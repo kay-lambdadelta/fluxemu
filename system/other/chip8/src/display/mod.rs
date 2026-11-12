@@ -4,6 +4,7 @@ use fluxemu_graphics::{
     api::GraphicsApi,
     texture::{AsViewTexture, CopyMode, OwnedTexture, Texture},
 };
+use fluxemu_platform::Platform;
 use fluxemu_runtime::{
     ResourcePath, RuntimeHandle,
     component::{
@@ -13,7 +14,6 @@ use fluxemu_runtime::{
     graphics::{DisplayGeometry, SimpleDisplayBackend},
     machine::builder::ComponentBuilder,
     persistence::PersistentComponentState,
-    platform::Platform,
     scheduler::{
         Frequency, QuantaAllocator,
         task::{FrequencyBased, Mode},

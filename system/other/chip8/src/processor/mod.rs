@@ -1,5 +1,6 @@
 use std::{marker::PhantomData, sync::Arc};
 
+use fluxemu_platform::Platform;
 use fluxemu_runtime::{
     RuntimeHandle,
     component::{Component, config::ComponentConfig},
@@ -8,7 +9,6 @@ use fluxemu_runtime::{
     memory::AddressSpaceId,
     path::ComponentPath,
     persistence::{PersistentComponentState, PersistentRandomGenerator},
-    platform::Platform,
     scheduler::{
         Frequency, QuantaAllocator,
         task::{FrequencyBased, Mode},

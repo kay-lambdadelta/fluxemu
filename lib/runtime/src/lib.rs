@@ -10,10 +10,8 @@ pub mod machine;
 pub mod memory;
 pub mod path;
 pub mod persistence;
-pub mod platform;
 pub mod scheduler;
 
 pub use handle::RuntimeHandle;
 pub(crate) use handle::{CURRENT_THREAD_RUNTIME_HANDLE, DispatchGuard};
 pub use path::{ComponentPath, ResourcePath};
-pub use platform::Platform;

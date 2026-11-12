@@ -11,6 +11,7 @@ harness = false
 name = "bench"
 
 [dependencies]
+fluxemu-platform = { workspace = true }
 fluxemu-runtime = { workspace = true }
 heapless = { workspace = true }
 serde = { workspace = true }

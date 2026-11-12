@@ -3,12 +3,12 @@ use core::{error::Error, ops::RangeInclusive};
 
 use bytes::Bytes;
 use fluxemu_math::range::ContiguousRange;
+use fluxemu_platform::Platform;
 use fluxemu_runtime::{
     ResourcePath,
     component::Component,
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId, MapTarget, MemoryMapCommand, Permissions},
-    platform::Platform,
 };
 use serde::{Deserialize, Serialize};
 

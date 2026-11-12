@@ -2,13 +2,13 @@ use std::{collections::BTreeMap, marker::PhantomData, ops::RangeInclusive};
 
 use fluxemu_graphics::texture::Texture;
 use fluxemu_math::{range::ContiguousRange, rectangle::Rectangle};
+use fluxemu_platform::Platform;
 use fluxemu_runtime::{
     component::config::{ComponentConfig, LateContext},
     graphics::{DisplayGeometry, SimpleDisplayBackend},
     machine::builder::ComponentBuilder,
     memory::{AddressSpaceId, MemoryMapCommand, Permissions},
     path::ComponentPath,
-    platform::Platform,
     scheduler::task::{FrequencyBased, Mode},
 };
 use nalgebra::Point2;

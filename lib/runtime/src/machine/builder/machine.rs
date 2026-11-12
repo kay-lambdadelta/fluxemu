@@ -9,6 +9,7 @@ use std::{
 };
 
 use bytes::Bytes;
+use fluxemu_platform::Platform;
 use fluxemu_program::{Manifest, ProgramFile, ProgramManager, RomId, SystemId};
 use rustc_hash::FxBuildHasher;
 
@@ -29,7 +30,6 @@ use crate::{
         RegionInitializationData,
     },
     path::ComponentPath,
-    platform::Platform,
     scheduler::{Period, Scheduler},
 };
 

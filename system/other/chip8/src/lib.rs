@@ -4,11 +4,11 @@ use audio::Chip8AudioConfig;
 use bytes::Bytes;
 use display::Chip8DisplayConfig;
 use fluxemu_math::range::ContiguousRange;
+use fluxemu_platform::Platform;
 use fluxemu_program::{OtherSystem, SystemId};
 use fluxemu_runtime::{
     machine::builder::{MachineBuilder, RomRequirement, SealedMachineBuilder},
     memory::{MapTarget, MemoryMapCommand, Permissions},
-    platform::Platform,
     scheduler::Frequency,
 };
 use fluxemu_system::System;

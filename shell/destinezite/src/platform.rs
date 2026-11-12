@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use fluxemu_frontend::graphics::GraphicsRuntime;
-use fluxemu_runtime::platform::Platform;
+use fluxemu_platform::Platform;
 
 use crate::audio::CpalAudioRuntime;
 

@@ -1,6 +1,7 @@
 use std::ops::RangeInclusive;
 
 use fluxemu_math::range::ContiguousRange;
+use fluxemu_platform::Platform;
 use fluxemu_runtime::{
     ResourcePath, RuntimeHandle,
     component::{Component, config::ComponentConfig},
@@ -8,7 +9,6 @@ use fluxemu_runtime::{
     memory::{Address, AddressSpaceId, MapTarget, MemoryError, MemoryMapCommand, Permissions},
     path::ComponentPath,
     persistence::PersistentComponentState,
-    platform::Platform,
 };
 use serde::{Deserialize, Serialize};
 

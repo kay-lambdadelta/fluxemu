@@ -8,6 +8,7 @@ license = { workspace = true }
 
 [dependencies]
 fluxemu-math = { workspace = true }
+fluxemu-platform = { workspace = true }
 fluxemu-runtime = { workspace = true }
 serde = { workspace = true }
 strum = { workspace = true }

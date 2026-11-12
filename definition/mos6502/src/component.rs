@@ -1,8 +1,9 @@
 use alloc::boxed::Box;
 use core::marker::PhantomData;
 
+use fluxemu_platform::Platform;
 use fluxemu_runtime::{
-    Platform, RuntimeHandle,
+    RuntimeHandle,
     component::{Component, config::ComponentConfig},
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId},

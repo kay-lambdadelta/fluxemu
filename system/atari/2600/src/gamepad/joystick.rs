@@ -2,12 +2,12 @@ use std::sync::Arc;
 
 use fluxemu_definition_mos6532::Register;
 use fluxemu_input::{GamepadInputId, InputId, KeyboardInputId};
+use fluxemu_platform::Platform;
 use fluxemu_runtime::{
     component::{Component, config::ComponentConfig},
     input::LogicalInputDevice,
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId},
-    platform::Platform,
 };
 
 const IDLE_CONSOLE_SWITCHES: u8 = 0b0000_1000;

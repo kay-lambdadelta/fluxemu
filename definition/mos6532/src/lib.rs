@@ -1,6 +1,7 @@
 use std::{fmt::Debug, ops::RangeInclusive};
 
 use fluxemu_math::range::ContiguousRange;
+use fluxemu_platform::Platform;
 use fluxemu_runtime::{
     RuntimeHandle,
     component::{
@@ -14,7 +15,6 @@ use fluxemu_runtime::{
     },
     path::ComponentPath,
     persistence::PersistentComponentState,
-    platform::Platform,
     scheduler::{
         Frequency, Period,
         event::{Event, EventMode, downcast_event},

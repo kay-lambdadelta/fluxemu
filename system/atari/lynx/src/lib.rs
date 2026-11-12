@@ -1,11 +1,11 @@
 use std::{error::Error, ops::RangeInclusive, str::FromStr};
 
 use fluxemu_math::range::ContiguousRange;
+use fluxemu_platform::Platform;
 use fluxemu_program::{AtariSystem, RomId, SystemId};
 use fluxemu_runtime::{
     machine::builder::{MachineBuilder, MachineError, SealedMachineBuilder},
     memory::{Address, MapTarget, MemoryMapCommand, Permissions},
-    platform::Platform,
 };
 use fluxemu_system::System;
 use mapctl::MapctlConfig;

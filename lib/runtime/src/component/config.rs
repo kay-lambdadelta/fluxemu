@@ -1,8 +1,9 @@
 use std::{error::Error, fmt::Debug};
 
 use fluxemu_graphics::api::GraphicsApi;
+use fluxemu_platform::Platform;
 
-use crate::{Platform, component::Component, machine::builder::ComponentBuilder};
+use crate::{component::Component, machine::builder::ComponentBuilder};
 
 /// Factory config to construct a component
 pub trait ComponentConfig<P: Platform>: Debug + Sized + Sync + Send {
