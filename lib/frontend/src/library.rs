@@ -11,7 +11,9 @@ use fluxemu_program::{
     RomIdListing, RomSource,
 };
 use futures::{StreamExt, stream};
-use tokio::{sync::mpsc::UnboundedSender, task::spawn_blocking};
+use tokio::{runtime::Handle, sync::mpsc::UnboundedSender, task::spawn_blocking};
+
+use crate::spawn::spawn;
 
 #[derive(Debug, Clone)]
 pub struct LibraryEntry {
@@ -70,6 +72,7 @@ impl ScanState {
 }
 
 pub(crate) async fn scan_library(
+    runtime: Handle,
     program_manager: Arc<ProgramManager>,
     program_database: Arc<ProgramDatabase>,
     sender: UnboundedSender<LibraryUpdate>,
@@ -103,10 +106,16 @@ pub(crate) async fn scan_library(
         ..Default::default()
     };
     let mut digests = stream::iter(rom_ids.iter().copied())
-        .map(|rom_id| {
+        .map({
             let program_manager = program_manager.clone();
 
-            tokio::spawn(async move { (rom_id, program_manager.digest(rom_id).await) })
+            move |rom_id| {
+                let program_manager = program_manager.clone();
+
+                spawn(&runtime, async move {
+                    (rom_id, program_manager.digest(rom_id).await)
+                })
+            }
         })
         .buffer_unordered(limit);
 

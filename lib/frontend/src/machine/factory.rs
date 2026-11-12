@@ -1,6 +1,6 @@
-use std::{collections::HashMap, error::Error, fmt::Debug, pin::Pin};
+use std::{collections::HashMap, error::Error, fmt::Debug};
 
-use fluxemu_platform::Platform;
+use fluxemu_platform::{MaybeSendBoxFuture, Platform};
 use fluxemu_program::SystemId;
 use fluxemu_runtime::machine::builder::{MachineBuilder, SealedMachineBuilder};
 use fluxemu_system::System;
@@ -9,8 +9,7 @@ type MachineConstructor<P> = Box<
     dyn Fn(
             ron::Value,
             MachineBuilder<P>,
-        )
-            -> Pin<Box<dyn Future<Output = Result<SealedMachineBuilder<P>, Box<dyn Error>>> + Send>>
+        ) -> MaybeSendBoxFuture<'static, Result<SealedMachineBuilder<P>, Box<dyn Error>>>
         + Send
         + Sync,
 >;

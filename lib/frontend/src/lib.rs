@@ -9,6 +9,7 @@ mod platform;
 mod save;
 pub mod simulation_controller;
 mod snapshot;
+mod spawn;
 
 pub use core::{FrontendCore, FrontendEvent, InputRouting};
 

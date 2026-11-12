@@ -12,6 +12,7 @@ use fluxemu_graphics::{
     texture::{CopyMode, OwnedTexture},
 };
 use fluxemu_input::{InputState, physical::PhysicalInputDeviceInstanceId};
+use fluxemu_platform::MaybeSend;
 use fluxemu_program::{
     ListingProblem, Manifest, ProgramId, ProgramManager, RomId, RomStoreSpecification,
 };
@@ -42,6 +43,7 @@ use crate::{
     },
     simulation_controller::Controller,
     snapshot,
+    spawn::spawn,
 };
 
 mod input;
@@ -194,11 +196,15 @@ impl<P: Platform> FrontendCore<P> {
         self.listing_problems.clear();
 
         let (sender, receiver) = unbounded_channel();
-        let task = self.runtime.spawn(scan_library(
-            self.program_manager.clone(),
-            self.program_database.clone(),
-            sender,
-        ));
+        let task = spawn(
+            &self.runtime,
+            scan_library(
+                self.runtime.clone(),
+                self.program_manager.clone(),
+                self.program_database.clone(),
+                sender,
+            ),
+        );
 
         self.library_scan = Some(LibraryScan { task, receiver });
     }
@@ -243,11 +249,10 @@ impl<P: Platform> FrontendCore<P> {
         let program_manager = self.program_manager.clone();
         let machine_factories = self.machine_factory_manager.clone();
 
-        self.machine_initialization = Some(self.runtime.spawn(construct_machine(
-            program_manager,
-            machine_factories,
-            manifest,
-        )));
+        self.machine_initialization = Some(spawn(
+            &self.runtime,
+            construct_machine(program_manager, machine_factories, manifest),
+        ));
     }
 
     pub fn set_volume(&mut self, volume: f32) {
@@ -581,13 +586,13 @@ impl<P: Platform> FrontendCore<P> {
 
     fn start_machine_initialization(
         &mut self,
-        roms: impl Future<Output = Option<Vec<RomId>>> + Send + 'static,
+        roms: impl Future<Output = Option<Vec<RomId>>> + MaybeSend + 'static,
     ) {
         let program_manager = self.program_manager.clone();
         let program_database = self.program_database.clone();
         let machine_factories = self.machine_factory_manager.clone();
 
-        self.machine_initialization = Some(self.runtime.spawn(async move {
+        self.machine_initialization = Some(spawn(&self.runtime, async move {
             initialize_machine(
                 program_manager,
                 program_database,
