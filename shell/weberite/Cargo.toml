@@ -1,0 +1,51 @@
+[package]
+name = "fluxemu-shell-weberite"
+version = "0.0.1"
+edition = { workspace = true }
+rust-version = { workspace = true }
+description = "Web port of the FluxEMU emulation framework"
+repository = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+bytemuck = { workspace = true }
+fluxemu-audio = { workspace = true }
+fluxemu-database = { workspace = true }
+fluxemu-environment = { workspace = true }
+fluxemu-frontend = { workspace = true, features = ["filesystem"] }
+fluxemu-graphics = { workspace = true }
+fluxemu-input = { workspace = true }
+fluxemu-locale = { workspace = true }
+fluxemu-math = { workspace = true }
+fluxemu-paths = { workspace = true }
+fluxemu-platform = { workspace = true }
+fluxemu-program = { workspace = true }
+fluxemu-runtime = { workspace = true }
+fluxemu-system = { workspace = true }
+fluxemu-system-atari-2600 = { workspace = true }
+fluxemu-system-nintendo-nes = { workspace = true }
+fluxemu-system-other-chip8 = { workspace = true }
+keyboard-types = { workspace = true }
+nalgebra = { workspace = true }
+opendal = { workspace = true }
+palette = { workspace = true }
+redb = { workspace = true }
+rfd = { workspace = true }
+softbuffer = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["fs", "rt-multi-thread"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+wasm-bindgen = { workspace = true }
+web-sys = { workspace = true, features = ["Document", "Element", "HtmlCanvasElement", "KeyboardEvent", "Window"] }
+
+[features]
+webgpu = [
+  "fluxemu-graphics/webgpu",
+  "fluxemu-system-atari-2600/webgpu",
+  "fluxemu-system-nintendo-nes/webgpu",
+  "fluxemu-system-other-chip8/webgpu",
+]
+
+[lints]
+workspace = true

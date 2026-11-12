@@ -1,0 +1,28 @@
+use fluxemu_frontend::machine::FactoryManager;
+use fluxemu_graphics::api::software::Software;
+use fluxemu_platform::Platform;
+use fluxemu_system_atari_2600::Atari2600;
+use fluxemu_system_nintendo_nes::Nes;
+use fluxemu_system_other_chip8::Chip8;
+
+#[cfg(feature = "webgpu")]
+pub fn get_webgpu_factories<P: Platform<GraphicsApi = fluxemu_graphics::api::webgpu::Webgpu>>()
+-> FactoryManager<P> {
+    let mut factories = FactoryManager::default();
+
+    factories.insert::<Atari2600>();
+    factories.insert::<Chip8>();
+    factories.insert::<Nes>();
+
+    factories
+}
+
+pub fn get_software_factories<P: Platform<GraphicsApi = Software>>() -> FactoryManager<P> {
+    let mut factories = FactoryManager::default();
+
+    factories.insert::<Atari2600>();
+    factories.insert::<Chip8>();
+    factories.insert::<Nes>();
+
+    factories
+}

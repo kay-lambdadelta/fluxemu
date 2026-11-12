@@ -8,6 +8,8 @@ inputs:
   shell:
     required: false
     default: "destinezite"
+  emsdk:
+    required: false
 
 runs:
   using: "composite"
@@ -23,5 +25,18 @@ runs:
       if: inputs.shell && inputs.shell != 'destinezite'
       shell: bash
       run: cargo run -p xtask -- switch ${{ inputs.shell }}
+
+    # Unfortunately debian's packaging of emsdk is far too old
+    #
+    # FIXME: Revisit when debian hits 7.0.0 for the emscripten package
+    - name: Install emsdk
+      if: inputs.emsdk
+      shell: bash
+      run: |
+        version=$(cat shell/weberite/emsdk-version)
+        git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+        "$RUNNER_TEMP/emsdk/emsdk" install "$version"
+        "$RUNNER_TEMP/emsdk/emsdk" activate "$version"
+        echo "$RUNNER_TEMP/emsdk/upstream/emscripten" >> "$GITHUB_PATH"
 
     - uses: Swatinem/rust-cache@v2

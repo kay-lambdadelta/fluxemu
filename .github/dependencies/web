@@ -1,0 +1,5 @@
+rustup
+curl
+build-essential
+python3
+xz-utils

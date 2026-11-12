@@ -55,7 +55,7 @@ cargo run -p xtask -- switch nuttallite
 
 This emulator uses [Apache OpenDAL](https://opendal.apache.org/) to support loading ROMs from a multitude of backends.
 
-All leaf crates (the shell crates, and the util crates) support turning on individual OpenDAL backends, and individual backends can be [configured](https://opendal.apache.org/services/) in the GUIs or via the `environment.ron` file.
+All leaf crates (the shell crates, and the utils crate) support turning on individual OpenDAL backends, and individual backends can be [configured](https://opendal.apache.org/services/) in the GUIs or via the `environment.ron` file.
 
 For example, this enables [HTTP](https://opendal.apache.org/services/http/) ROM stores for a build of [destinezite](shell/destinezite):
 

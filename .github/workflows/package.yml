@@ -36,12 +36,31 @@ jobs:
             runner: ubuntu-26.04
             container: debian:trixie
             platform: debian
-            dependencies: debian-nuttx
+            dependencies: nuttx
             shell: nuttallite
             tools: cargo install cargo-nuttx --locked
             build: cargo nuttx build --board raspberrypi-pico-2 --release
             artifact_name: fluxemu-shell-nuttallite-(raspberrypi-pico-2)-uf2
             artifact_path: target/nuttx/raspberrypi-pico-2/release/nuttx.uf2
+
+          - name: Web (wasm32-unknown-emscripten)
+            runner: ubuntu-26.04
+            container: debian:trixie
+            platform: debian
+            dependencies: web
+            shell: weberite
+            emsdk: true
+            tools: |
+              cargo install wasm-bindgen-cli --locked --version "$(cargo pkgid wasm-bindgen | cut -d@ -f2)"
+            build: |
+              cargo build -p fluxemu-shell-weberite --target wasm32-unknown-emscripten --release
+              mkdir -p target/weberite-site
+              cp shell/weberite/web/index.html \
+                target/wasm32-unknown-emscripten/release/fluxemu-shell-weberite.js \
+                target/wasm32-unknown-emscripten/release/fluxemu_shell_weberite.wasm \
+                target/weberite-site/
+            artifact_name: fluxemu-shell-weberite-(web)
+            artifact_path: target/weberite-site
 
           - name: Windows (x86_64-pc-windows-msvc)
             runner: windows-latest
@@ -66,6 +85,7 @@ jobs:
           platform: ${{ matrix.platform }}
           dependencies: ${{ matrix.dependencies }}
           shell: ${{ matrix.shell }}
+          emsdk: ${{ matrix.emsdk }}
 
       - name: Install tools
         if: matrix.tools

@@ -1,0 +1,33 @@
+{
+  "lsp": {
+    "rust-analyzer": {
+      "initialization_options": {
+        "cargo": {
+          "target": "wasm32-unknown-emscripten",
+          "buildScripts": {
+            "overrideCommand": [
+              "cargo",
+              "check",
+              "--package",
+              "fluxemu-shell-weberite",
+              "--target",
+              "wasm32-unknown-emscripten",
+              "--message-format=json",
+            ],
+          },
+        },
+        "check": {
+          "overrideCommand": [
+            "cargo",
+            "clippy",
+            "--package",
+            "fluxemu-shell-weberite",
+            "--target",
+            "wasm32-unknown-emscripten",
+            "--message-format=json",
+          ],
+        },
+      },
+    },
+  },
+}

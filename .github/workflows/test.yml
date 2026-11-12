@@ -48,10 +48,18 @@ jobs:
             runner: ubuntu-26.04
             container: debian:trixie
             platform: debian
-            dependencies: debian-nuttx
+            dependencies: nuttx
             shell: nuttallite
             tools: cargo install cargo-nuttx --locked
             check: cargo nuttx clippy --board raspberrypi-pico-2 --release
+
+          - name: Web (wasm32-unknown-emscripten)
+            runner: ubuntu-26.04
+            container: debian:trixie
+            platform: debian
+            dependencies: web
+            shell: weberite
+            check: cargo clippy -p fluxemu-shell-weberite --target wasm32-unknown-emscripten
 
     steps:
       - name: Install checkout dependencies

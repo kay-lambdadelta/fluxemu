@@ -2346,6 +2346,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "fluxemu-shell-weberite"
+version = "0.0.1"
+dependencies = [
+ "bytemuck",
+ "fluxemu-audio",
+ "fluxemu-database",
+ "fluxemu-environment",
+ "fluxemu-frontend",
+ "fluxemu-graphics",
+ "fluxemu-input",
+ "fluxemu-locale",
+ "fluxemu-math",
+ "fluxemu-paths",
+ "fluxemu-platform",
+ "fluxemu-program",
+ "fluxemu-runtime",
+ "fluxemu-system",
+ "fluxemu-system-atari-2600",
+ "fluxemu-system-nintendo-nes",
+ "fluxemu-system-other-chip8",
+ "keyboard-types",
+ "nalgebra",
+ "opendal",
+ "palette",
+ "redb",
+ "rfd",
+ "softbuffer",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "fluxemu-system"
 version = "0.0.1"
 dependencies = [
