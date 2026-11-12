@@ -116,7 +116,7 @@ pub fn simulation_controller_loop(
         let measured_execution_time = start.elapsed().as_secs_f32();
         drop(runtime_guard);
 
-        if !measured_execution_time.is_finite() || measured_execution_time <= 0.0 {
+        if !measured_execution_time.is_finite() || measured_execution_time < 0.0 {
             tracing::warn!("{}", t!("simulation_controller.invalid_measurement"));
 
             // The OS timer might be busted, loop and try again
@@ -162,22 +162,34 @@ pub fn simulation_controller_loop(
         state.execution_jitter_ring.enqueue(iteration_jitter);
         state.execution_time_ring.enqueue(total_iteration_time);
 
-        let retained = (-total_iteration_time / HARDWARE_SPEED_TIME_CONSTANT.as_secs_f32()).exp();
-        let averages = state.execution_averages.map_or(
-            ExecutionAverages {
-                guest_time: execution_timeslice,
-                host_time: measured_execution_time,
-            },
-            |averages| ExecutionAverages {
-                guest_time: retained * averages.guest_time + (1.0 - retained) * execution_timeslice,
-                host_time: retained * averages.host_time
-                    + (1.0 - retained) * measured_execution_time,
-            },
-        );
-
-        state.execution_averages = Some(averages);
-        state.hardware_speed_ema = averages.guest_time / averages.host_time;
         state.time_since_probe += total_iteration_time;
+
+        let averages = if measured_execution_time > 0.0 {
+            let retained =
+                (-total_iteration_time / HARDWARE_SPEED_TIME_CONSTANT.as_secs_f32()).exp();
+            let averages = state.execution_averages.map_or(
+                ExecutionAverages {
+                    guest_time: execution_timeslice,
+                    host_time: measured_execution_time,
+                },
+                |averages| ExecutionAverages {
+                    guest_time: retained * averages.guest_time
+                        + (1.0 - retained) * execution_timeslice,
+                    host_time: retained * averages.host_time
+                        + (1.0 - retained) * measured_execution_time,
+                },
+            );
+
+            state.execution_averages = Some(averages);
+            state.hardware_speed_ema = averages.guest_time / averages.host_time;
+
+            averages
+        } else {
+            match state.execution_averages {
+                Some(averages) => averages,
+                None => continue,
+            }
+        };
 
         state.jitter_ratio = if state.target_timeslice > 0.0 {
             (median_jitter / state.target_timeslice).clamp(0.0, 1.0)
