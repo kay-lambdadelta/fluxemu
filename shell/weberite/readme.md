@@ -44,12 +44,9 @@ cargo install wasm-bindgen-cli --locked --version "$(cargo pkgid wasm-bindgen | 
 ### Feature specific dependencies
 
 > [!NOTE]
-> No features are on by default.
+> `webgpu` is by default
 
 #### `webgpu` — WebGPU backend for graphics rendering (via [wgpu](https://crates.io/crates/wgpu))
-
-> [!CAUTION]
-> This feature does not currently build.
 
 ## Toolchain
 
