@@ -6,27 +6,23 @@ use fluxemu_frontend::graphics::{DisplayContext, GraphicsRuntime, ProducableGrap
 use fluxemu_graphics::{
     api::{
         GraphicsApi,
-        webgpu::{self, Webgpu, suggested_framebuffer_texture_format},
+        webgpu::{self, FramebufferRenderer, Webgpu},
     },
     shader::ShaderType,
-    texture::{CowTexture, OwnedTexture},
+    texture::CowTexture,
 };
 use fluxemu_math::rectangle::Rectangle;
 use fluxemu_runtime::graphics::GraphicsRequirements;
 use palette::{Srgb, Srgba};
 use pollster::FutureExt;
 use wgpu::{
-    BufferDescriptor, BufferUsages, COPY_BYTES_PER_ROW_ALIGNMENT, CommandEncoderDescriptor,
-    CreateSurfaceError, CurrentSurfaceTexture, DeviceDescriptor, ExperimentalFeatures, Instance,
-    LoadOp, MapMode, MemoryHints, Operations, PollType, RenderPassColorAttachment,
-    RenderPassDescriptor, StoreOp, Surface, TexelCopyBufferInfo, TexelCopyBufferLayout,
-    TextureViewDescriptor, Trace, util::initialize_adapter_from_env_or_default,
+    CommandEncoderDescriptor, CreateSurfaceError, CurrentSurfaceTexture, DeviceDescriptor,
+    ExperimentalFeatures, Instance, LoadOp, MemoryHints, Operations, RenderPassColorAttachment,
+    RenderPassDescriptor, StoreOp, Surface, TextureViewDescriptor, Trace,
+    util::initialize_adapter_from_env_or_default,
 };
 
-use crate::rendering::{
-    EguiCapableGraphicsRuntime,
-    webgpu::{FramebufferCallback, Resources},
-};
+use crate::rendering::{EguiCapableGraphicsRuntime, webgpu::FramebufferCallback};
 
 pub struct WebgpuGraphicsRuntime<D> {
     configuration_dependent_data: Option<ConfigurationDependentData>,
@@ -97,55 +93,11 @@ impl<D: WebgpuCompatibleDisplayContext> GraphicsRuntime for WebgpuGraphicsRuntim
         &self,
         framebuffer: &'a <Self::GraphicsApi as GraphicsApi>::Framebuffer,
     ) -> Option<CowTexture<'a, Srgba<u8>>> {
-        if framebuffer.format() != suggested_framebuffer_texture_format() {
-            return None;
-        }
-
-        let ConfigurationDependentData {
-            context: webgpu::Context { device, queue },
-            ..
-        } = self.configuration_dependent_data.as_ref().unwrap();
-
-        let width = framebuffer.width() as usize;
-        let height = framebuffer.height() as usize;
-        let row_length = width * size_of::<Srgba<u8>>();
-        let padded_row_length = row_length.next_multiple_of(COPY_BYTES_PER_ROW_ALIGNMENT as usize);
-
-        let buffer = device.create_buffer(&BufferDescriptor {
-            label: None,
-            size: (padded_row_length * height) as u64,
-            usage: BufferUsages::COPY_DST | BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-
-        let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor::default());
-        encoder.copy_texture_to_buffer(
-            framebuffer.as_image_copy(),
-            TexelCopyBufferInfo {
-                buffer: &buffer,
-                layout: TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(padded_row_length as u32),
-                    rows_per_image: None,
-                },
-            },
-            framebuffer.size(),
-        );
-
-        queue.submit([encoder.finish()]);
-
-        let slice = buffer.slice(..);
-        slice.map_async(MapMode::Read, |_| {});
-        device.poll(PollType::wait_indefinitely()).ok()?;
-
-        let mapped = slice.get_mapped_range().ok()?;
-
-        let pixels: Vec<_> = mapped
-            .chunks_exact(padded_row_length)
-            .flat_map(|row| bytemuck::pod_collect_to_vec::<u8, Srgba<u8>>(&row[..row_length]))
-            .collect();
-
-        Some(OwnedTexture::from_storage(width, height, pixels.into_boxed_slice()).into())
+        webgpu::read_framebuffer(
+            &self.configuration_dependent_data.as_ref().unwrap().context,
+            framebuffer,
+        )
+        .map(Into::into)
     }
 }
 
@@ -153,7 +105,7 @@ struct ConfigurationDependentData {
     context: webgpu::Context,
     renderer: Renderer,
     surface: Surface<'static>,
-    framebuffer_callback_resources: Arc<Resources>,
+    framebuffer_renderer: Arc<FramebufferRenderer>,
 }
 
 impl ConfigurationDependentData {
@@ -207,12 +159,12 @@ impl ConfigurationDependentData {
 
         surface.configure(&device, &surface_config);
 
-        let framebuffer_callback_resources = Resources::new(
+        let framebuffer_renderer = Arc::new(FramebufferRenderer::new(
             device.clone(),
             queue.clone(),
             surface_config.format,
             ShaderType::default(),
-        );
+        ));
 
         let renderer = Renderer::new(
             &device,
@@ -229,7 +181,7 @@ impl ConfigurationDependentData {
             context: webgpu::Context { device, queue },
             renderer,
             surface,
-            framebuffer_callback_resources,
+            framebuffer_renderer,
         }
     }
 }
@@ -344,23 +296,19 @@ impl<D: WebgpuCompatibleDisplayContext> EguiCapableGraphicsRuntime for WebgpuGra
         shader: ShaderType,
     ) -> PaintCallback {
         let ConfigurationDependentData {
-            framebuffer_callback_resources,
+            framebuffer_renderer,
             ..
         } = self.configuration_dependent_data.as_mut().unwrap();
 
-        if framebuffer_callback_resources.shader() != shader {
-            *framebuffer_callback_resources = framebuffer_callback_resources.with_shader(shader);
+        if framebuffer_renderer.shader() != shader {
+            *framebuffer_renderer = Arc::new(framebuffer_renderer.with_shader(shader));
         }
 
         let framebuffer = framebuffer.clone();
 
         Callback::new_paint_callback(
             rect,
-            FramebufferCallback::new(
-                framebuffer,
-                display_rectangle,
-                framebuffer_callback_resources.clone(),
-            ),
+            FramebufferCallback::new(framebuffer, display_rectangle, framebuffer_renderer.clone()),
         )
     }
 }

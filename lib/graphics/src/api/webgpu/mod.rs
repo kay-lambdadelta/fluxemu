@@ -4,17 +4,21 @@ use core::ops::BitOr;
 use nalgebra::Vector2;
 use palette::Srgba;
 use wgpu::{
-    Device, Extent3d, Features, Limits, Origin3d, Queue, TexelCopyBufferLayout,
-    TexelCopyTextureInfo, Texture, TextureAspect, TextureDescriptor, TextureDimension,
-    TextureFormat, TextureUsages,
+    BufferDescriptor, BufferUsages, COPY_BYTES_PER_ROW_ALIGNMENT, CommandEncoderDescriptor, Device,
+    Extent3d, Features, Limits, MapMode, Origin3d, PollType, Queue, TexelCopyBufferInfo,
+    TexelCopyBufferLayout, TexelCopyTextureInfo, Texture, TextureAspect, TextureDescriptor,
+    TextureDimension, TextureFormat, TextureUsages,
 };
 
 use crate::{
     api::{Framebuffer, GraphicsApi},
-    texture::RefTexture,
+    texture::{OwnedTexture, RefTexture},
 };
 
+mod renderer;
 pub mod shader;
+
+pub use renderer::FramebufferRenderer;
 
 #[derive(Default, Debug)]
 pub struct Webgpu;
@@ -123,4 +127,61 @@ pub fn suggested_framebuffer_texture_usages() -> TextureUsages {
 #[must_use]
 pub fn suggested_framebuffer_texture_format() -> TextureFormat {
     TextureFormat::Rgba8UnormSrgb
+}
+
+#[must_use]
+pub fn read_framebuffer(
+    context: &Context,
+    framebuffer: &Texture,
+) -> Option<OwnedTexture<Srgba<u8>>> {
+    if framebuffer.format() != suggested_framebuffer_texture_format() {
+        return None;
+    }
+
+    let Context { device, queue } = context;
+
+    let width = framebuffer.width() as usize;
+    let height = framebuffer.height() as usize;
+    let row_length = width * size_of::<Srgba<u8>>();
+    let padded_row_length = row_length.next_multiple_of(COPY_BYTES_PER_ROW_ALIGNMENT as usize);
+
+    let buffer = device.create_buffer(&BufferDescriptor {
+        label: None,
+        size: (padded_row_length * height) as u64,
+        usage: BufferUsages::COPY_DST | BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+
+    let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor::default());
+    encoder.copy_texture_to_buffer(
+        framebuffer.as_image_copy(),
+        TexelCopyBufferInfo {
+            buffer: &buffer,
+            layout: TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(padded_row_length as u32),
+                rows_per_image: None,
+            },
+        },
+        framebuffer.size(),
+    );
+
+    queue.submit([encoder.finish()]);
+
+    let slice = buffer.slice(..);
+    slice.map_async(MapMode::Read, |_| {});
+    device.poll(PollType::wait_indefinitely()).ok()?;
+
+    let mapped = slice.get_mapped_range().ok()?;
+
+    let pixels: Vec<_> = mapped
+        .chunks_exact(padded_row_length)
+        .flat_map(|row| bytemuck::pod_collect_to_vec::<u8, Srgba<u8>>(&row[..row_length]))
+        .collect();
+
+    Some(OwnedTexture::from_storage(
+        width,
+        height,
+        pixels.into_boxed_slice(),
+    ))
 }
