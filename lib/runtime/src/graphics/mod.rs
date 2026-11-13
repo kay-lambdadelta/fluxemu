@@ -14,6 +14,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::ResourcePath;
 
+mod staging;
+
+pub use staging::StagingPool;
+
 /// Version specifier for graphics apis
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct GraphicsVersion {
