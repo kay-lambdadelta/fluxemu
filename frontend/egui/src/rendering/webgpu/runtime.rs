@@ -153,9 +153,15 @@ impl ConfigurationDependentData {
             panic!("Failed to create device");
         };
 
-        let surface_config = surface
+        let mut surface_config = surface
             .get_default_config(&adapter, dimensions.x, dimensions.y)
             .unwrap();
+
+        if let Some(format) =
+            webgpu::suggested_surface_format(&surface.get_capabilities(&adapter).formats)
+        {
+            surface_config.format = format;
+        }
 
         surface.configure(&device, &surface_config);
 

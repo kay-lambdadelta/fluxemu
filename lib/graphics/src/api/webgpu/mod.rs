@@ -126,7 +126,15 @@ pub fn suggested_framebuffer_texture_usages() -> TextureUsages {
 
 #[must_use]
 pub fn suggested_framebuffer_texture_format() -> TextureFormat {
-    TextureFormat::Rgba8UnormSrgb
+    TextureFormat::Rgba8Unorm
+}
+
+#[must_use]
+pub fn suggested_surface_format(supported_formats: &[TextureFormat]) -> Option<TextureFormat> {
+    supported_formats
+        .iter()
+        .copied()
+        .find(|format| !format.is_srgb())
 }
 
 #[must_use]
