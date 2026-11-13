@@ -133,6 +133,80 @@ impl<P: fluxemu_frontend::Platform> GamepadSink for fluxemu_frontend_egui::Front
     }
 }
 
+#[cfg(feature = "egui")]
+#[derive(Debug)]
+pub enum InputMessage {
+    Register {
+        id: PhysicalInputDeviceInstanceId,
+        name: String,
+        kind: PhysicalInputDeviceKind,
+        rely_on_frontend_input_handling: bool,
+    },
+    Unregister {
+        id: PhysicalInputDeviceInstanceId,
+    },
+    Insert {
+        id: PhysicalInputDeviceInstanceId,
+        input_id: InputId,
+        state: InputState,
+    },
+}
+
+#[cfg(feature = "egui")]
+impl InputMessage {
+    pub fn apply<P: fluxemu_frontend::Platform>(
+        self,
+        frontend: &mut fluxemu_frontend_egui::Frontend<P>,
+    ) {
+        match self {
+            InputMessage::Register {
+                id,
+                name,
+                kind,
+                rely_on_frontend_input_handling,
+            } => frontend.register_gamepad(id, name, kind, rely_on_frontend_input_handling),
+            InputMessage::Unregister { id } => frontend.unregister_gamepad(id),
+            InputMessage::Insert {
+                id,
+                input_id,
+                state,
+            } => frontend.insert_input(id, input_id, state),
+        }
+    }
+}
+
+#[cfg(feature = "egui")]
+pub struct InputMessageSink<F: FnMut(InputMessage)>(pub F);
+
+#[cfg(feature = "egui")]
+impl<F: FnMut(InputMessage)> GamepadSink for InputMessageSink<F> {
+    fn register_gamepad(&mut self, id: PhysicalInputDeviceInstanceId, name: String) {
+        (self.0)(InputMessage::Register {
+            id,
+            name,
+            kind: PhysicalInputDeviceKind::Gamepad,
+            rely_on_frontend_input_handling: true,
+        });
+    }
+
+    fn unregister_gamepad(&mut self, id: PhysicalInputDeviceInstanceId) {
+        (self.0)(InputMessage::Unregister { id });
+    }
+
+    fn insert_input(
+        &mut self,
+        id: PhysicalInputDeviceInstanceId,
+        input_id: InputId,
+        state: InputState,
+    ) {
+        (self.0)(InputMessage::Insert {
+            id,
+            input_id,
+            state,
+        });
+    }
+}
+
 #[cfg(feature = "ratatui")]
 impl GamepadSink for fluxemu_frontend_ratatui::ExternalInputSender {
     fn register_gamepad(&mut self, id: PhysicalInputDeviceInstanceId, name: String) {

@@ -1,7 +1,4 @@
-use std::{
-    sync::{Arc, Mutex},
-    time::Instant,
-};
+use std::{sync::Arc, time::Instant};
 
 use egui::{Context, ViewportId};
 use fluxemu_database::ProgramDatabase;
@@ -33,8 +30,11 @@ use winit::{
 };
 
 use crate::{
-    audio::CpalAudioRuntime, event_loop::windowing::key::winit2key, font::load_fonts,
-    gamepad::GamepadContext, platform::DesktopPlatform,
+    audio::CpalAudioRuntime,
+    event_loop::windowing::key::winit2key,
+    font::load_fonts,
+    gamepad::{GamepadContext, InputMessage, InputMessageSink},
+    platform::DesktopPlatform,
 };
 
 mod key;
@@ -70,19 +70,22 @@ pub fn run<R: ProducableGraphicsRuntime<Window> + EguiCapableGraphicsRuntime>(
     );
 
     let gamepad_context = GamepadContext::new(&mut frontend);
-    let frontend = Arc::new(Mutex::new(frontend));
+    let event_loop_proxy = event_loop.create_proxy();
 
     match gamepad_context {
         Ok(mut context) => {
-            let frontend = frontend.clone();
+            let event_loop_proxy = event_loop_proxy.clone();
 
             std::thread::Builder::new()
                 .name("Gamepad Poll Thread".to_string())
                 .spawn(move || {
+                    let mut sink = InputMessageSink(|message| {
+                        let _ = event_loop_proxy.send_event(Message::Input(message));
+                    });
+
                     loop {
                         if let Some(callback) = context.poll_gamepad_events(None) {
-                            let mut frontend = frontend.lock().unwrap();
-                            callback(&mut *frontend);
+                            callback(&mut sink);
                         }
                     }
                 })
@@ -95,8 +98,6 @@ pub fn run<R: ProducableGraphicsRuntime<Window> + EguiCapableGraphicsRuntime>(
             );
         }
     }
-
-    let event_loop_proxy = event_loop.create_proxy();
 
     let mut me = WindowingEventLoop {
         frontend,
@@ -113,6 +114,7 @@ pub fn run<R: ProducableGraphicsRuntime<Window> + EguiCapableGraphicsRuntime>(
 #[derive(Debug)]
 enum Message {
     RedrawAt(Instant),
+    Input(InputMessage),
 }
 
 struct WindowingContext<R> {
@@ -123,7 +125,7 @@ struct WindowingContext<R> {
 
 struct WindowingEventLoop<R: GraphicsRuntime> {
     windowing_context: Option<WindowingContext<R>>,
-    frontend: Arc<Mutex<Frontend<DesktopPlatform<R, true>>>>,
+    frontend: Frontend<DesktopPlatform<R, true>>,
     event_loop_proxy: EventLoopProxy<Message>,
     refresh_surface: bool,
 }
@@ -133,7 +135,7 @@ impl<R: ProducableGraphicsRuntime<Window> + EguiCapableGraphicsRuntime> Applicat
 {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         event_loop.set_control_flow(ControlFlow::Wait);
-        let frontend = self.frontend.lock().unwrap();
+        let frontend = &self.frontend;
 
         let window = Window::new(event_loop);
         let graphics_runtime = R::new(&window, GraphicsRequirements::default());
@@ -168,7 +170,7 @@ impl<R: ProducableGraphicsRuntime<Window> + EguiCapableGraphicsRuntime> Applicat
             graphics_runtime,
             egui_winit_context,
         } = self.windowing_context.as_mut().unwrap();
-        let mut frontend = self.frontend.lock().unwrap();
+        let frontend = &mut self.frontend;
 
         let response = egui_winit_context.on_window_event(&window.0, &event);
         let repaint = response.repaint && event != WindowEvent::RedrawRequested;
@@ -222,44 +224,46 @@ impl<R: ProducableGraphicsRuntime<Window> + EguiCapableGraphicsRuntime> Applicat
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        let mut frontend = self.frontend.lock().unwrap();
+        self.frontend
+            .maybe_reset_graphics_to_meet_machine_requirements(
+                |egui_context, sealed_machine_builder| {
+                    let WindowingContext {
+                        window,
+                        graphics_runtime,
+                        egui_winit_context,
+                    } = self.windowing_context.as_mut().unwrap();
+                    setup_egui_context(egui_context, self.event_loop_proxy.clone(), window.clone());
 
-        frontend.maybe_reset_graphics_to_meet_machine_requirements(
-            |egui_context, sealed_machine_builder| {
-                let WindowingContext {
-                    window,
-                    graphics_runtime,
-                    egui_winit_context,
-                } = self.windowing_context.as_mut().unwrap();
-                setup_egui_context(egui_context, self.event_loop_proxy.clone(), window.clone());
+                    // Reconfigure graphics backend
+                    graphics_runtime.reconfigure(sealed_machine_builder.graphics_requirements());
 
-                // Reconfigure graphics backend
-                graphics_runtime.reconfigure(sealed_machine_builder.graphics_requirements());
+                    *egui_winit_context = egui_winit::State::new(
+                        egui_context.clone(),
+                        ViewportId::ROOT,
+                        &window,
+                        Some(window.0.scale_factor() as f32),
+                        window.0.theme(),
+                        Some(graphics_runtime.max_texture_side() as usize),
+                    );
 
-                *egui_winit_context = egui_winit::State::new(
-                    egui_context.clone(),
-                    ViewportId::ROOT,
-                    &window,
-                    Some(window.0.scale_factor() as f32),
-                    window.0.theme(),
-                    Some(graphics_runtime.max_texture_side() as usize),
-                );
+                    let component_initialization_data =
+                        graphics_runtime.component_initialization_data();
 
-                let component_initialization_data =
-                    graphics_runtime.component_initialization_data();
+                    // Immediately refresh since the backend changed
+                    window.0.request_redraw();
 
-                // Immediately refresh since the backend changed
-                window.0.request_redraw();
-
-                component_initialization_data
-            },
-        );
+                    component_initialization_data
+                },
+            );
     }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Message) {
         match event {
             Message::RedrawAt(at) => {
                 event_loop.set_control_flow(ControlFlow::WaitUntil(at));
+            }
+            Message::Input(message) => {
+                message.apply(&mut self.frontend);
             }
         }
     }

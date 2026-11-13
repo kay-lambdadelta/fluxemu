@@ -9,8 +9,6 @@ use egui::{
     TouchId, TouchPhase,
 };
 use evdev::KeyCode;
-use fluxemu_frontend::graphics::GraphicsRuntime;
-use fluxemu_frontend_egui::Frontend;
 use fluxemu_input::{
     InputId, InputState,
     physical::{PhysicalInputDeviceInstanceId, PhysicalInputDeviceKind},
@@ -29,7 +27,7 @@ use libseat::Device as SeatDevice;
 use nalgebra::Point2;
 use xkbcommon::xkb::Keysym;
 
-use crate::{event_loop::drm::seat::SharedSeat, platform::DesktopPlatform};
+use crate::{event_loop::drm::seat::SharedSeat, gamepad::InputMessage};
 
 const TOUCH_DEVICE: TouchDeviceId = TouchDeviceId(0);
 
@@ -398,8 +396,10 @@ pub fn build_xkb_state() -> xkbcommon::xkb::State {
     xkbcommon::xkb::State::new(&keymap)
 }
 
-pub fn handle_libinput_events<R: GraphicsRuntime>(
-    frontend: &mut Frontend<DesktopPlatform<R, false>>,
+#[allow(clippy::too_many_arguments)]
+pub fn handle_libinput_events(
+    send_input: &mut impl FnMut(InputMessage),
+    machine_has_focus: bool,
     egui_input_collector: &mut EguiInputCollector,
     libinput: &mut Libinput,
     xkb_state: &mut xkbcommon::xkb::State,
@@ -420,27 +420,27 @@ pub fn handle_libinput_events<R: GraphicsRuntime>(
                 {
                     *added_keyboard = true;
 
-                    frontend.register_gamepad(
-                        PhysicalInputDeviceInstanceId::PLATFORM_RESERVED,
-                        "Keyboard",
-                        PhysicalInputDeviceKind::Keyboard,
-                        false,
-                    );
+                    send_input(InputMessage::Register {
+                        id: PhysicalInputDeviceInstanceId::PLATFORM_RESERVED,
+                        name: "Keyboard".to_string(),
+                        kind: PhysicalInputDeviceKind::Keyboard,
+                        rely_on_frontend_input_handling: false,
+                    });
                 }
             }
             input::Event::Keyboard(keyboard_event) => {
                 if let Some(key) = libinput2key(evdev::KeyCode(keyboard_event.key() as u16)) {
-                    frontend.insert_input(
-                        PhysicalInputDeviceInstanceId::PLATFORM_RESERVED,
-                        InputId::Keyboard(key),
-                        match keyboard_event.key_state() {
+                    send_input(InputMessage::Insert {
+                        id: PhysicalInputDeviceInstanceId::PLATFORM_RESERVED,
+                        input_id: InputId::Keyboard(key),
+                        state: match keyboard_event.key_state() {
                             KeyState::Pressed => InputState::PRESSED,
                             KeyState::Released => InputState::RELEASED,
                         },
-                    );
+                    });
                 }
 
-                if !frontend.machine_has_focus() {
+                if !machine_has_focus {
                     egui_input_collector.handle_keyboard(&keyboard_event, xkb_state);
                 }
             }

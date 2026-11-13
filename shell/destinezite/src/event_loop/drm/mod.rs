@@ -1,7 +1,11 @@
 use std::{
     collections::HashMap,
     os::fd::AsFd,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+        mpsc::channel,
+    },
     time::Instant,
 };
 
@@ -12,7 +16,7 @@ use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::Environment;
 use fluxemu_frontend::{
     FrontendCore,
-    graphics::{DisplayContext, GraphicsRuntime, ProducableGraphicsRuntime},
+    graphics::{DisplayContext, ProducableGraphicsRuntime},
     machine::FactoryManager,
     notification::NotificationReceiver,
 };
@@ -35,7 +39,7 @@ use crate::{
         seat::{PresentationGate, handle_seat_events, open_seat},
     },
     font::load_fonts,
-    gamepad::GamepadContext,
+    gamepad::{GamepadContext, InputMessageSink},
     platform::DesktopPlatform,
 };
 
@@ -96,11 +100,9 @@ pub fn run<R: ProducableGraphicsRuntime<DrmContext> + EguiCapableGraphicsRuntime
     let mut frontend = Frontend::new(core, notifications, load_fonts());
     let gamepad_context = GamepadContext::new(&mut frontend);
 
-    let egui_input_collector = EguiInputCollector::new(scale_factor);
-    let frontend_state = Mutex::new(FrontendState {
-        frontend,
-        egui_input_collector,
-    });
+    let egui_input_collector = Mutex::new(EguiInputCollector::new(scale_factor));
+    let machine_has_focus = AtomicBool::new(false);
+    let (input_sender, input_receiver) = channel();
 
     // TODO: This "add keyboard conglomerate upon first key input" behavior is possibly not appropriate considering we can just use libinput
     // to figure out the keyboard story more directly
@@ -108,11 +110,16 @@ pub fn run<R: ProducableGraphicsRuntime<DrmContext> + EguiCapableGraphicsRuntime
     let presentation_gate = PresentationGate::default();
 
     // Enter the scope so we can share state with the gilrs thread without refcounting
+    let libinput_sender = input_sender.clone();
+
     std::thread::scope(|scope| {
         std::thread::Builder::new()
             .name("Input Poll Thread".to_string())
             .spawn_scoped(scope, || {
                 let seat_events = seat_events;
+                let mut send_input = |message| {
+                    let _ = libinput_sender.send(message);
+                };
 
                 // Set up libinput for input reading and xkb for keyboard input interpretation
                 let mut libinput = Libinput::new_with_udev(Interface::new(seat.clone()));
@@ -146,15 +153,10 @@ pub fn run<R: ProducableGraphicsRuntime<DrmContext> + EguiCapableGraphicsRuntime
                             for event in &ready_events[..num_events] {
                                 match event.data() {
                                     LIBINPUT_EVENT_SOURCE => {
-                                        let mut frontend_state = frontend_state.lock().unwrap();
-                                        let FrontendState {
-                                            frontend,
-                                            egui_input_collector,
-                                        } = &mut *frontend_state;
-
                                         handle_libinput_events(
-                                            frontend,
-                                            egui_input_collector,
+                                            &mut send_input,
+                                            machine_has_focus.load(Ordering::Relaxed),
+                                            &mut egui_input_collector.lock().unwrap(),
                                             &mut libinput,
                                             &mut xkb_state,
                                             &mut added_keyboard,
@@ -184,13 +186,18 @@ pub fn run<R: ProducableGraphicsRuntime<DrmContext> + EguiCapableGraphicsRuntime
 
         std::thread::Builder::new()
             .name("Gamepad Poll Thread".to_string())
-            .spawn_scoped(scope, || match gamepad_context {
-                Ok(mut context) => loop {
-                    if let Some(callback) = context.poll_gamepad_events(None) {
-                        let mut frontend_state = frontend_state.lock().unwrap();
-                        callback(&mut frontend_state.frontend);
+            .spawn_scoped(scope, move || match gamepad_context {
+                Ok(mut context) => {
+                    let mut sink = InputMessageSink(|message| {
+                        let _ = input_sender.send(message);
+                    });
+
+                    loop {
+                        if let Some(callback) = context.poll_gamepad_events(None) {
+                            callback(&mut sink);
+                        }
                     }
-                },
+                }
                 Err(err) => {
                     tracing::error!(
                         "Gamepad context could not be created: {}, you will not have gamepad \
@@ -207,11 +214,9 @@ pub fn run<R: ProducableGraphicsRuntime<DrmContext> + EguiCapableGraphicsRuntime
                 graphics_runtime.refresh_surface();
             }
 
-            let mut frontend_state_guard = frontend_state.lock().unwrap();
-            let FrontendState {
-                frontend,
-                egui_input_collector,
-            } = &mut *frontend_state_guard;
+            for message in input_receiver.try_iter() {
+                message.apply(&mut frontend);
+            }
 
             // Possibly reset the graphics runtime
             frontend.maybe_reset_graphics_to_meet_machine_requirements(
@@ -221,8 +226,7 @@ pub fn run<R: ProducableGraphicsRuntime<DrmContext> + EguiCapableGraphicsRuntime
                 },
             );
 
-            // Make sure we actually drop the guard before presenting
-            let events = egui_input_collector.take_events();
+            let events = egui_input_collector.lock().unwrap().take_events();
 
             let raw_input = RawInput {
                 viewport_id: ViewportId::ROOT,
@@ -246,11 +250,9 @@ pub fn run<R: ProducableGraphicsRuntime<DrmContext> + EguiCapableGraphicsRuntime
             };
 
             let full_output = frontend.run(raw_input, &mut graphics_runtime);
-            let context = frontend.egui_context().clone();
+            machine_has_focus.store(frontend.machine_has_focus(), Ordering::Relaxed);
 
-            drop(frontend_state_guard);
-
-            graphics_runtime.present(&context, BLACK, full_output);
+            graphics_runtime.present(frontend.egui_context(), BLACK, full_output);
             presentation_gate.end_frame();
         }
     })
@@ -285,11 +287,6 @@ fn calculate_scale_factor(
     let pixel_dimensions = Vector2::new(width, height);
 
     crate::display::calculate_scale_factor(pixel_dimensions.cast(), physical_dimensions.cast())
-}
-
-struct FrontendState<R: GraphicsRuntime> {
-    frontend: Frontend<DesktopPlatform<R, false>>,
-    egui_input_collector: EguiInputCollector,
 }
 
 #[derive(Clone, Debug)]
