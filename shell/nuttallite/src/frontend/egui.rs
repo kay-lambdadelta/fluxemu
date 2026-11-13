@@ -14,7 +14,7 @@ use palette::named::BLACK;
 use tokio::runtime::Handle;
 
 use crate::{
-    build_machine::get_software_factories,
+    build_machine::get_factories,
     platform::Platform,
     runtime::{AudioRuntime, GraphicsRuntime, open_graphics_runtime},
 };
@@ -45,7 +45,7 @@ pub fn run(
     let core = FrontendCore::<Platform<GraphicsRuntime>>::new(
         runtime,
         environment,
-        get_software_factories(),
+        get_factories(),
         program_manager,
         program_database,
         AudioRuntime,

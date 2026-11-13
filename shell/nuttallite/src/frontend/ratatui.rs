@@ -9,7 +9,7 @@ use fluxemu_frontend_ratatui::external_input_channel;
 use fluxemu_program::ProgramManager;
 use tokio::runtime::Handle;
 
-use crate::{build_machine::get_software_factories, platform::Platform, runtime::AudioRuntime};
+use crate::{build_machine::get_factories, platform::Platform, runtime::AudioRuntime};
 
 pub fn run(
     runtime: Handle,
@@ -23,7 +23,7 @@ pub fn run(
     let core = FrontendCore::<Platform<PassthroughGraphicsRuntime>>::new(
         runtime,
         environment,
-        get_software_factories(),
+        get_factories(),
         program_manager,
         program_database,
         AudioRuntime,

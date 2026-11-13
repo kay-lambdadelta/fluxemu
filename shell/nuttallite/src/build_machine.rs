@@ -1,11 +1,10 @@
 use fluxemu_frontend::machine::FactoryManager;
-use fluxemu_graphics::api::software::Software;
 use fluxemu_platform::Platform;
 use fluxemu_system_atari_2600::Atari2600;
 use fluxemu_system_nintendo_nes::Nes;
 use fluxemu_system_other_chip8::Chip8;
 
-pub fn get_software_factories<P: Platform<GraphicsApi = Software>>() -> FactoryManager<P> {
+pub fn get_factories<P: Platform>() -> FactoryManager<P> {
     let mut factories = FactoryManager::default();
 
     factories.insert::<Atari2600>();

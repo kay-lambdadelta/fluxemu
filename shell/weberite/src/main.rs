@@ -13,7 +13,7 @@ use tokio::{runtime::Runtime, task::LocalSet};
 use tracing_subscriber::{filter::LevelFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::{
-    build_machine::get_software_factories, debug_overlay::DebugOverlay, display::CanvasDisplay,
+    build_machine::get_factories, debug_overlay::DebugOverlay, display::CanvasDisplay,
     platform::Platform, runtime::AudioRuntime,
 };
 
@@ -117,7 +117,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         FrontendCore::<Platform>::new(
             runtime.handle().clone(),
             environment,
-            get_software_factories(),
+            get_factories(),
             program_manager,
             program_database,
             AudioRuntime,

@@ -166,7 +166,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             runtime.handle().clone(),
             environment,
             // TODO: Support webgpu for the ratatui backend
-            build_machine::get_software_factories(),
+            build_machine::get_factories(),
             program_manager,
             program_database,
             audio_runtime,
@@ -191,7 +191,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     environment.clone(),
                     program_manager.clone(),
                     program_database.clone(),
-                    build_machine::get_software_factories(),
+                    build_machine::get_factories(),
                     initial_program.clone(),
                     notifications,
                 )?;
@@ -205,7 +205,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     environment.clone(),
                     program_manager.clone(),
                     program_database.clone(),
-                    build_machine::get_software_factories(),
+                    build_machine::get_factories(),
                     initial_program.clone(),
                     notifications,
                 )?;
@@ -227,7 +227,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         environment.clone(),
                         program_manager.clone(),
                         program_database.clone(),
-                        build_machine::get_webgpu_factories(),
+                        build_machine::get_factories(),
                         initial_program.clone(),
                         notifications,
                     )?;
@@ -239,7 +239,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         environment.clone(),
                         program_manager.clone(),
                         program_database.clone(),
-                        build_machine::get_webgpu_factories(),
+                        build_machine::get_factories(),
                         initial_program.clone(),
                         notifications,
                     )?;
