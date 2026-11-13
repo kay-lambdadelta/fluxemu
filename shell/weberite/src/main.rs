@@ -6,15 +6,20 @@ use std::{
 };
 
 use fluxemu_database::ProgramDatabase;
-use fluxemu_frontend::{FrontendCore, FrontendEvent, graphics::PassthroughGraphicsRuntime};
+use fluxemu_environment::{Environment, graphics::GraphicsApi};
+use fluxemu_frontend::{FrontendCore, FrontendEvent};
 use fluxemu_program::{DigestCache, ProgramManager};
+use fluxemu_runtime::graphics::GraphicsRequirements;
 use redb::Database;
 use tokio::{runtime::Runtime, task::LocalSet};
 use tracing_subscriber::{filter::LevelFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::{
-    build_machine::get_factories, debug_overlay::DebugOverlay, display::CanvasDisplay,
-    platform::Platform, runtime::AudioRuntime,
+    build_machine::get_factories,
+    debug_overlay::DebugOverlay,
+    display::{CanvasGraphicsRuntime, SoftwareGraphicsRuntime},
+    platform::Platform,
+    runtime::AudioRuntime,
 };
 
 mod build_machine;
@@ -31,16 +36,16 @@ mod storage;
 //
 // This will probably be possible in winit 0.31
 
-struct Application {
+struct Application<R: CanvasGraphicsRuntime> {
     runtime: Runtime,
     local_set: LocalSet,
-    core: FrontendCore<Platform>,
-    display: Option<CanvasDisplay>,
+    core: FrontendCore<Platform<R>>,
+    graphics_runtime: R,
     debug_overlay: Option<DebugOverlay>,
     picked_roms: Receiver<PathBuf>,
 }
 
-impl Application {
+impl<R: CanvasGraphicsRuntime> Application<R> {
     fn frame(&mut self) {
         self.runtime
             .block_on(self.local_set.run_until(tokio::task::yield_now()));
@@ -52,10 +57,14 @@ impl Application {
             self.core.load_roms(picked_roms);
         }
 
-        self.core.poll(&mut PassthroughGraphicsRuntime);
+        self.core.poll(&mut self.graphics_runtime);
 
         if self.core.has_pending_machine() {
-            self.core.start_pending_machine(|_| ());
+            let graphics_runtime = &mut self.graphics_runtime;
+
+            self.core.start_pending_machine(|sealed_machine_builder| {
+                graphics_runtime.reconfigure(sealed_machine_builder.graphics_requirements());
+            });
         }
 
         for event in self.core.drain_events() {
@@ -73,10 +82,12 @@ impl Application {
             debug_overlay.update(self.core.controller());
         }
 
-        if let Some(display) = &mut self.display
-            && let Some((frame, _)) = self.core.capture_framebuffer()
-            && let Err(err) = display.present(frame)
-        {
+        let shader = self.core.environment().graphics.shader;
+        let graphics_runtime = &mut self.graphics_runtime;
+
+        if let Some(Err(err)) = self.core.read_framebuffer(|framebuffer, display_geometry| {
+            graphics_runtime.present(framebuffer, display_geometry, shader)
+        }) {
             tracing::error!("Could not present frame: {}", err);
         }
     }
@@ -101,7 +112,52 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     opendal::init_default_registry();
 
     let environment = fluxemu_paths::load_environment();
+    let canvas = display::find_canvas()?;
 
+    match environment.graphics.api {
+        GraphicsApi::Software => run(
+            environment,
+            SoftwareGraphicsRuntime::new(canvas, GraphicsRequirements::default())?,
+        ),
+        #[cfg(feature = "webgpu")]
+        GraphicsApi::Webgpu => {
+            match display::WebgpuGraphicsRuntime::new(
+                canvas.clone(),
+                GraphicsRequirements::default(),
+            ) {
+                Ok(graphics_runtime) => run(environment, graphics_runtime),
+                Err(err) => {
+                    tracing::error!(
+                        "Could not initialize WebGPU, falling back to software: {}",
+                        err
+                    );
+
+                    let canvas = display::replace_canvas(&canvas)?;
+                    run(
+                        environment,
+                        SoftwareGraphicsRuntime::new(canvas, GraphicsRequirements::default())?,
+                    )
+                }
+            }
+        }
+        graphics_api => {
+            tracing::warn!(
+                "{} is not available in this build, falling back to software",
+                graphics_api
+            );
+
+            run(
+                environment,
+                SoftwareGraphicsRuntime::new(canvas, GraphicsRequirements::default())?,
+            )
+        }
+    }
+}
+
+fn run<R: CanvasGraphicsRuntime>(
+    environment: Environment,
+    graphics_runtime: R,
+) -> Result<(), Box<dyn std::error::Error>> {
     let runtime = Runtime::new()?;
     let program_database = ProgramDatabase::new(Database::create(&environment.database_location)?)?;
     let program_manager = ProgramManager::with_digest_cache(
@@ -114,7 +170,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let core = {
         let _local_set_guard = local_set.enter();
 
-        FrontendCore::<Platform>::new(
+        FrontendCore::<Platform<R>>::new(
             runtime.handle().clone(),
             environment,
             get_factories(),
@@ -127,10 +183,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (picked_roms_sender, picked_roms) = channel();
 
-    let display = CanvasDisplay::new()
-        .inspect_err(|err| tracing::warn!("No canvas to present to: {}", err))
-        .ok();
-
     let debug_overlay = DebugOverlay::new()
         .inspect_err(|err| tracing::warn!("No debug overlay: {:?}", err))
         .ok();
@@ -139,7 +191,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         runtime,
         local_set,
         core,
-        display,
+        graphics_runtime,
         debug_overlay,
         picked_roms,
     }));

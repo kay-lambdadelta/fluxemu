@@ -16,10 +16,9 @@ use fluxemu_runtime::graphics::GraphicsRequirements;
 use palette::{Srgb, Srgba};
 use pollster::FutureExt;
 use wgpu::{
-    CommandEncoderDescriptor, CreateSurfaceError, CurrentSurfaceTexture, DeviceDescriptor,
-    ExperimentalFeatures, Instance, LoadOp, MemoryHints, Operations, RenderPassColorAttachment,
-    RenderPassDescriptor, StoreOp, Surface, TextureViewDescriptor, Trace,
-    util::initialize_adapter_from_env_or_default,
+    CommandEncoderDescriptor, CreateSurfaceError, CurrentSurfaceTexture, Instance, LoadOp,
+    Operations, RenderPassColorAttachment, RenderPassDescriptor, StoreOp, Surface,
+    TextureViewDescriptor, util::initialize_adapter_from_env_or_default,
 };
 
 use crate::rendering::{EguiCapableGraphicsRuntime, webgpu::FramebufferCallback};
@@ -122,36 +121,13 @@ impl ConfigurationDependentData {
             .block_on()
             .expect("Creating adapter");
 
-        let preferred_features =
-            graphics_requirements.required.clone() | graphics_requirements.preferred.clone();
-
-        let (device, queue) = if let Ok((device, queue)) = adapter
-            .request_device(&DeviceDescriptor {
-                label: None,
-                required_features: preferred_features.features,
-                required_limits: preferred_features.limits,
-                memory_hints: MemoryHints::Performance,
-                trace: Trace::Off,
-                experimental_features: ExperimentalFeatures::disabled(),
-            })
-            .block_on()
-        {
-            (device, queue)
-        } else if let Ok((device, queue)) = adapter
-            .request_device(&DeviceDescriptor {
-                label: None,
-                required_features: graphics_requirements.required.features,
-                required_limits: graphics_requirements.required.limits,
-                memory_hints: MemoryHints::MemoryUsage,
-                trace: Trace::Off,
-                experimental_features: ExperimentalFeatures::disabled(),
-            })
-            .block_on()
-        {
-            (device, queue)
-        } else {
-            panic!("Failed to create device");
-        };
+        let (device, queue) = webgpu::request_device(
+            &adapter,
+            &graphics_requirements.required,
+            &graphics_requirements.preferred,
+        )
+        .block_on()
+        .expect("Creating device");
 
         let mut surface_config = surface
             .get_default_config(&adapter, dimensions.x, dimensions.y)

@@ -5,12 +5,12 @@ use fluxemu_program::RomId;
 use rfd::AsyncFileDialog;
 use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 
-use crate::Application;
+use crate::{Application, display::CanvasGraphicsRuntime};
 
 const OPEN_ROM_BUTTON_ID: &str = "open-rom";
 
-pub fn register_open_rom_button(
-    application: &Rc<RefCell<Application>>,
+pub fn register_open_rom_button<R: CanvasGraphicsRuntime>(
+    application: &Rc<RefCell<Application<R>>>,
     picked_roms: Sender<PathBuf>,
 ) -> Result<(), JsValue> {
     let button = web_sys::window()

@@ -29,6 +29,8 @@ keyboard-types = { workspace = true }
 nalgebra = { workspace = true }
 opendal = { workspace = true }
 palette = { workspace = true }
+pollster = { workspace = true, optional = true }
+raw-window-handle = { workspace = true, optional = true }
 redb = { workspace = true }
 rfd = { workspace = true }
 softbuffer = { workspace = true }
@@ -37,10 +39,27 @@ tokio = { workspace = true, features = ["fs", "rt-multi-thread"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 wasm-bindgen = { workspace = true }
-web-sys = { workspace = true, features = ["Document", "Element", "HtmlCanvasElement", "KeyboardEvent", "Window"] }
+web-sys = {
+  workspace = true,
+  features = [
+    "CssStyleDeclaration",
+    "Document",
+    "Element",
+    "HtmlCanvasElement",
+    "HtmlElement",
+    "KeyboardEvent",
+    "Node",
+    "Window"
+  ]
+}
+wgpu = { workspace = true, optional = true }
 
 [features]
+default = ["webgpu"]
 webgpu = [
+  "dep:pollster",
+  "dep:raw-window-handle",
+  "dep:wgpu",
   "fluxemu-graphics/webgpu",
   "fluxemu-system-atari-2600/webgpu",
   "fluxemu-system-nintendo-nes/webgpu",

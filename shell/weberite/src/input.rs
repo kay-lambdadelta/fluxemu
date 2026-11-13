@@ -8,11 +8,13 @@ use keyboard_types::Code;
 use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 use web_sys::KeyboardEvent;
 
-use crate::Application;
+use crate::{Application, display::CanvasGraphicsRuntime};
 
 const KEYBOARD: PhysicalInputDeviceInstanceId = PhysicalInputDeviceInstanceId::PLATFORM_RESERVED;
 
-pub fn register_keyboard(application: &Rc<RefCell<Application>>) -> Result<(), JsValue> {
+pub fn register_keyboard<R: CanvasGraphicsRuntime>(
+    application: &Rc<RefCell<Application<R>>>,
+) -> Result<(), JsValue> {
     let window = web_sys::window().ok_or("This environment has no window")?;
 
     application.borrow_mut().core.register_gamepad(

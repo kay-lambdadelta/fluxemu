@@ -2370,6 +2370,8 @@ dependencies = [
  "nalgebra",
  "opendal",
  "palette",
+ "pollster",
+ "raw-window-handle",
  "redb",
  "rfd",
  "softbuffer",
@@ -2379,6 +2381,7 @@ dependencies = [
  "tracing-subscriber",
  "wasm-bindgen",
  "web-sys",
+ "wgpu",
 ]
 
 [[package]]

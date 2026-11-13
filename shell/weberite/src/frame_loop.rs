@@ -6,11 +6,13 @@ use std::{
 use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 use web_sys::Window;
 
-use crate::Application;
+use crate::{Application, display::CanvasGraphicsRuntime};
 
 type FrameCallback = Rc<OnceCell<Closure<dyn FnMut()>>>;
 
-pub fn start_frame_loop(application: &Rc<RefCell<Application>>) -> Result<(), JsValue> {
+pub fn start_frame_loop<R: CanvasGraphicsRuntime>(
+    application: &Rc<RefCell<Application<R>>>,
+) -> Result<(), JsValue> {
     let window = web_sys::window().ok_or("This environment has no window")?;
     let callback = FrameCallback::default();
 

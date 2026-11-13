@@ -4,10 +4,11 @@ use core::ops::BitOr;
 use nalgebra::Vector2;
 use palette::Srgba;
 use wgpu::{
-    BufferDescriptor, BufferUsages, COPY_BYTES_PER_ROW_ALIGNMENT, CommandEncoderDescriptor, Device,
-    Extent3d, Features, Limits, MapMode, Origin3d, PollType, Queue, TexelCopyBufferInfo,
-    TexelCopyBufferLayout, TexelCopyTextureInfo, Texture, TextureAspect, TextureDescriptor,
-    TextureDimension, TextureFormat, TextureUsages,
+    Adapter, BufferDescriptor, BufferUsages, COPY_BYTES_PER_ROW_ALIGNMENT,
+    CommandEncoderDescriptor, Device, DeviceDescriptor, ExperimentalFeatures, Extent3d, Features,
+    Limits, MapMode, MemoryHints, Origin3d, PollType, Queue, RequestDeviceError,
+    TexelCopyBufferInfo, TexelCopyBufferLayout, TexelCopyTextureInfo, Texture, TextureAspect,
+    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, Trace,
 };
 
 use crate::{
@@ -29,7 +30,7 @@ pub struct Context {
     pub queue: Queue,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Requirements {
     pub features: Features,
     pub limits: Limits,
@@ -39,7 +40,7 @@ impl Default for Requirements {
     fn default() -> Self {
         Self {
             features: Features::empty(),
-            limits: Limits::downlevel_defaults(),
+            limits: Limits::downlevel_webgl2_defaults(),
         }
     }
 }
@@ -135,6 +136,34 @@ pub fn suggested_surface_format(supported_formats: &[TextureFormat]) -> Option<T
         .iter()
         .copied()
         .find(|format| !format.is_srgb())
+}
+
+pub async fn request_device(
+    adapter: &Adapter,
+    required: &Requirements,
+    preferred: &Requirements,
+) -> Result<(Device, Queue), RequestDeviceError> {
+    let adapter_limits = adapter.limits();
+    let wanted = required.clone() | preferred.clone();
+
+    let (requirements, memory_hints) = if adapter.features().contains(wanted.features)
+        && wanted.limits.check_limits(&adapter_limits)
+    {
+        (wanted, MemoryHints::Performance)
+    } else {
+        (required.clone(), MemoryHints::MemoryUsage)
+    };
+
+    adapter
+        .request_device(&DeviceDescriptor {
+            label: None,
+            required_features: requirements.features,
+            required_limits: requirements.limits.or_better_values_from(&adapter_limits),
+            memory_hints,
+            trace: Trace::Off,
+            experimental_features: ExperimentalFeatures::disabled(),
+        })
+        .await
 }
 
 #[must_use]
