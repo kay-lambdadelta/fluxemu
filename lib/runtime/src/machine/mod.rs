@@ -19,7 +19,7 @@ use tracing::Level;
 use crate::{
     CURRENT_THREAD_RUNTIME_HANDLE, DispatchGuard, RuntimeHandle,
     component::{ComponentRegistry, ComponentRegistryData},
-    graphics::DisplayGeometry,
+    graphics::{DisplayGeometry, Handle},
     input::LogicalInputDevice,
     machine::builder::MachineBuilder,
     memory::{AddressSpace, AddressSpaceData, AddressSpaceId, MemoryRegistryData},
@@ -231,7 +231,7 @@ impl RuntimeGuard<'_> {
         &self,
         path: &ResourcePath,
         target_timestamp: Period,
-        callback: impl FnOnce(&G::Framebuffer, &DisplayGeometry) -> T,
+        callback: impl FnOnce(Handle<G::Framebuffer>, &DisplayGeometry) -> T,
     ) -> Option<T> {
         // Ensure we are advanced to at least this timestamp
         self.runtime.component_registry().interact_dyn(
@@ -241,11 +241,26 @@ impl RuntimeGuard<'_> {
                 let slot = self.runtime.machine().framebuffers.get(path)?;
                 let slot = slot.lock().unwrap();
 
-                let framebuffer = slot.framebuffer.downcast_ref()?;
+                let framebuffer = *slot.framebuffer.downcast_ref()?;
 
                 Some(callback(framebuffer, &slot.display_geometry))
             },
         )?
+    }
+
+    pub fn framebuffer<G: GraphicsApi>(
+        &self,
+        path: &ResourcePath,
+    ) -> Option<(Handle<G::Framebuffer>, DisplayGeometry)> {
+        let slot = self
+            .runtime
+            .machine()
+            .framebuffers
+            .get(path)?
+            .lock()
+            .unwrap();
+
+        Some((*slot.framebuffer.downcast_ref()?, slot.display_geometry))
     }
 
     /// List of paths to any audio outputs this machine was created with

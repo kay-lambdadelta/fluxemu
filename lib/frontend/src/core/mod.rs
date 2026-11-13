@@ -8,7 +8,7 @@ use std::{
 use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::Environment;
 use fluxemu_graphics::{
-    api::GraphicsApi,
+    api::{GraphicsApi, software::Software},
     texture::{CopyMode, OwnedTexture},
 };
 use fluxemu_input::{InputState, physical::PhysicalInputDeviceInstanceId};
@@ -16,8 +16,12 @@ use fluxemu_platform::MaybeSend;
 use fluxemu_program::{
     ListingProblem, Manifest, ProgramId, ProgramManager, RomId, RomStoreSpecification,
 };
-use fluxemu_runtime::machine::{Machine, builder::SealedMachineBuilder};
+use fluxemu_runtime::{
+    graphics::{DisplayGeometry, Gpu, JobQueue, Resources},
+    machine::{Machine, builder::SealedMachineBuilder},
+};
 use indexmap::IndexMap;
+use nalgebra::Vector2;
 use palette::{Srgba, named::BLACK};
 use tokio::{
     runtime::Handle,
@@ -59,15 +63,17 @@ pub enum FrontendEvent {
     DebugOverlayToggleRequested,
 }
 
-struct MachineContext {
+struct MachineContext<G: GraphicsApi> {
     machine: Arc<Machine>,
     controller: Controller,
     _save_flusher: Option<SaveFlusher>,
+    graphics_jobs: Arc<JobQueue<G>>,
+    graphics_resources: Resources,
 }
 
 pub struct FrontendCore<P: Platform> {
     runtime: Handle,
-    machine_context: Option<MachineContext>,
+    machine_context: Option<MachineContext<P::GraphicsApi>>,
     pending_machine: Option<SealedMachineBuilder<P>>,
     machine_initialization: Option<JoinHandle<Option<SealedMachineBuilder<P>>>>,
     machine_factory_manager: Arc<FactoryManager<P>>,
@@ -289,7 +295,9 @@ impl<P: Platform> FrontendCore<P> {
     }
 
     /// Advance any in progress machine initialization
-    pub fn poll(&mut self, graphics_runtime: &P::GraphicsRuntime) {
+    pub fn poll(&mut self, graphics_runtime: &mut P::GraphicsRuntime) {
+        self.run_graphics_jobs(graphics_runtime);
+
         for slot in std::mem::take(&mut self.pending_snapshot_stores) {
             self.store_snapshot(slot, graphics_runtime);
         }
@@ -316,9 +324,7 @@ impl<P: Platform> FrontendCore<P> {
     /// Replace the current machine with the pending one, returning if the machine started
     pub fn start_pending_machine(
         &mut self,
-        initialize_graphics: impl FnOnce(
-            &SealedMachineBuilder<P>,
-        ) -> <P::GraphicsApi as GraphicsApi>::InitializationData,
+        initialize_graphics: impl FnOnce(&SealedMachineBuilder<P>),
     ) -> bool {
         let Some(sealed_machine_builder) = self.pending_machine.take() else {
             return false;
@@ -327,9 +333,10 @@ impl<P: Platform> FrontendCore<P> {
         // NOTE: This will block the ui
         self.bring_down_current_machine();
 
-        let graphics_initialization_data = initialize_graphics(&sealed_machine_builder);
+        initialize_graphics(&sealed_machine_builder);
 
-        let machine = sealed_machine_builder.build(graphics_initialization_data);
+        let graphics_jobs = Arc::new(JobQueue::default());
+        let machine = sealed_machine_builder.build(graphics_jobs.submitter());
         let runtime_guard = machine.enter_runtime();
 
         // HACK: Assign the first input device to all gamepads
@@ -366,9 +373,52 @@ impl<P: Platform> FrontendCore<P> {
             controller,
             machine,
             _save_flusher: save_flusher,
+            graphics_jobs,
+            graphics_resources: Resources::default(),
         });
 
         true
+    }
+
+    fn run_graphics_jobs(&mut self, graphics_runtime: &mut P::GraphicsRuntime) {
+        let Some(context) = &mut self.machine_context else {
+            return;
+        };
+
+        let runtime = context.machine.enter_runtime();
+
+        if let Some(path) = runtime.list_framebuffers().next() {
+            runtime.read_framebuffer::<P::GraphicsApi, _>(
+                path,
+                runtime.safe_advance_timestamp(),
+                |_, _| {},
+            );
+        }
+
+        drop(runtime);
+
+        graphics_runtime.with_context(|graphics_context| {
+            context.graphics_jobs.run(&mut Gpu {
+                context: graphics_context,
+                resources: &mut context.graphics_resources,
+            });
+        });
+    }
+
+    pub fn read_framebuffer<T>(
+        &self,
+        callback: impl FnOnce(&<P::GraphicsApi as GraphicsApi>::Framebuffer, &DisplayGeometry) -> T,
+    ) -> Option<T> {
+        let context = self.machine_context.as_ref()?;
+
+        let runtime = context.machine.enter_runtime();
+        let path = runtime.list_framebuffers().next()?;
+        let (framebuffer, display_geometry) = runtime.framebuffer::<P::GraphicsApi>(path)?;
+        drop(runtime);
+
+        let framebuffer = context.graphics_resources.get(framebuffer)?;
+
+        Some(callback(framebuffer, &display_geometry))
     }
 
     pub fn pause_machine(&mut self) {
@@ -475,6 +525,7 @@ impl<P: Platform> FrontendCore<P> {
 
             guard
                 .read_primary_framebuffer::<P::GraphicsApi, _>(|framebuffer, display_geometry| {
+                    let framebuffer = context.graphics_resources.get(framebuffer)?;
                     let display_rectangle = display_geometry.resolve_display_rectangle(framebuffer);
                     let screenshot = graphics_runtime.screenshot(framebuffer)?;
                     let screenshot =
@@ -610,6 +661,20 @@ impl<P: Platform> FrontendCore<P> {
         for physical_gamepad_state in self.physical_input_devices.values_mut() {
             physical_gamepad_state.controlling_input_devices.clear();
         }
+    }
+}
+
+impl<P: Platform<GraphicsApi = Software>> FrontendCore<P> {
+    pub fn capture_framebuffer(&self) -> Option<(OwnedTexture<Srgba<u8>>, Vector2<f32>)> {
+        self.read_framebuffer(|framebuffer, display_geometry| {
+            let display_rectangle = display_geometry.resolve_display_rectangle(framebuffer);
+            let view = framebuffer.view(display_rectangle.x_range(), display_rectangle.y_range());
+
+            let mut captured = OwnedTexture::from_value(view.width(), view.height(), BLACK.into());
+            captured.copy_from(view, CopyMode::Nearest);
+
+            (captured, display_geometry.display_size(framebuffer))
+        })
     }
 }
 

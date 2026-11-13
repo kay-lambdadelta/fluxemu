@@ -13,6 +13,7 @@ use fluxemu_paths::load_environment;
 use fluxemu_platform::TestPlatform;
 use fluxemu_program::{Manifest, ProgramManager};
 use fluxemu_runtime::{
+    graphics::Submitter,
     machine::{Machine, RuntimeGuard},
     memory::{Address, AddressSpaceId},
     scheduler::Period,
@@ -144,7 +145,7 @@ impl Context {
                 .build(S::Quirks::default(), machine)
                 .await
                 .unwrap()
-                .build(())
+                .build(Submitter::headless())
         })
     }
 }

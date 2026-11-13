@@ -1,18 +1,17 @@
 use fluxemu_definition_mos6502::{Mos6502, Mos6502Event, Pin, variant::Mos6507};
-use fluxemu_graphics::texture::AsViewTexture;
+use fluxemu_graphics::{api::GraphicsApi, texture::AsViewTexture};
 use fluxemu_runtime::{
     RuntimeHandle,
-    graphics::SimpleDisplayBackend,
     scheduler::{Period, event::EventMode},
 };
 
 use super::WriteRegisters;
 use crate::tia::{
     DelayChangeGraphicPlayer, DelayEnableChangeBall, InputControl, RSYNC_RESTART_POSITION,
-    SCANLINE_LENGTH, SupportedGraphicsApi, Tia, color::TiaColor, region::Region,
+    SCANLINE_LENGTH, Tia, color::TiaColor, region::Region,
 };
 
-impl<R: Region, G: SupportedGraphicsApi> Tia<R, G> {
+impl<R: Region, G: GraphicsApi> Tia<R, G> {
     pub(crate) fn handle_write_register(&mut self, data: u8, address: WriteRegisters) {
         match address {
             WriteRegisters::Vsync => {

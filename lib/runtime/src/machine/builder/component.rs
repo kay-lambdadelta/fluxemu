@@ -11,7 +11,7 @@ use fluxemu_program::{ProgramManager, RomId};
 
 use crate::{
     component::{Component, TaskEntry, config::ComponentConfig},
-    graphics::{DisplayGeometry, GraphicsRequirements},
+    graphics::{DisplayGeometry, GraphicsRequirements, Handle},
     input::{LogicalInputDevice, LogicalInputDeviceMetadata},
     machine::builder::{ComponentLateInitializer, MachineBuilder, MachineError, RomRequirement},
     memory::{Address, AddressSpaceId, MemoryMapCommand},
@@ -120,7 +120,7 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
             &mut C,
             &ResourcePath,
         )
-            -> <P::GraphicsApi as GraphicsApi>::Framebuffer
+            -> Handle<<P::GraphicsApi as GraphicsApi>::Framebuffer>
         + Send
         + Sync
         + 'static,

@@ -2,7 +2,10 @@ use alloc::boxed::Box;
 use core::{marker::PhantomData, ops::RangeInclusive};
 
 use fluxemu_definition_mos6502::{Mos6502, Mos6502Event, Pin, variant::Ricoh2A0x};
-use fluxemu_graphics::texture::{AsViewTexture, OwnedTexture, Texture};
+use fluxemu_graphics::{
+    api::GraphicsApi,
+    texture::{AsViewTexture, OwnedTexture, Texture},
+};
 use fluxemu_math::{range::ContiguousRange, rectangle::Rectangle};
 use fluxemu_platform::Platform;
 use fluxemu_runtime::{
@@ -11,7 +14,7 @@ use fluxemu_runtime::{
         Component,
         config::{ComponentConfig, LateContext},
     },
-    graphics::{DisplayGeometry, SimpleDisplayBackend},
+    graphics::{DisplayBackend, DisplayGeometry},
     machine::builder::ComponentBuilder,
     memory::{Address, AddressSpaceId, MemoryError, MemoryMapCommand, Permissions},
     path::ComponentPath,
@@ -28,7 +31,6 @@ use serde::{Deserialize, Serialize};
 use strum::FromRepr;
 
 use crate::ppu::{
-    backend::SupportedGraphicsApi,
     background::BackgroundState,
     oam::{OamState, SpriteEvaluationState},
     region::Region,
@@ -99,9 +101,10 @@ pub struct PpuConfig<R: Region> {
 }
 
 #[derive(Debug)]
-pub struct Ppu<R: Region, G: SupportedGraphicsApi> {
+pub struct Ppu<R: Region, G: GraphicsApi> {
     state: State,
-    backend: Option<G::Backend<R>>,
+    backend: Option<DisplayBackend<G>>,
+    _region: PhantomData<fn() -> R>,
     cpu_address_space: AddressSpaceId,
     ppu_address_space: AddressSpaceId,
     processor_path: ComponentPath,
@@ -112,14 +115,13 @@ pub struct Ppu<R: Region, G: SupportedGraphicsApi> {
     period: Period,
 }
 
-impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<P>
-    for PpuConfig<R>
-{
+impl<R: Region, P: Platform> ComponentConfig<P> for PpuConfig<R> {
     type Component = Ppu<R, P::GraphicsApi>;
 
     fn late_initialize(component: &mut Self::Component, data: &LateContext<P>) {
-        let backend = <P::GraphicsApi as SupportedGraphicsApi>::Backend::new(
-            data.graphics_initialization_data.clone(),
+        let backend = backend::display_backend::<R, P::GraphicsApi>(
+            data.graphics_submitter.clone(),
+            &component.path,
         );
         component.backend = Some(backend);
     }
@@ -260,6 +262,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<
                 vblank_end_timestamp: Period::ZERO,
             },
             backend: None,
+            _region: PhantomData,
             staging_buffer,
             cpu_address_space: self.cpu_address_space,
             processor_path: self.processor.clone(),
@@ -272,7 +275,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<
     }
 }
 
-impl<R: Region, G: SupportedGraphicsApi> PersistentComponentState<Ppu<R, G>> for State {
+impl<R: Region, G: GraphicsApi> PersistentComponentState<Ppu<R, G>> for State {
     fn capture(component: &Ppu<R, G>) -> impl Serialize {
         &component.state
     }
@@ -282,7 +285,7 @@ impl<R: Region, G: SupportedGraphicsApi> PersistentComponentState<Ppu<R, G>> for
     }
 }
 
-impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
+impl<R: Region, G: GraphicsApi> Component for Ppu<R, G> {
     type Event = PpuEvent;
     type Save = ();
     type Snapshot = State;
@@ -722,7 +725,7 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Ppu<R, G> {
     }
 }
 
-impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
+impl<R: Region, G: GraphicsApi> Ppu<R, G> {
     fn update_nmi_line(&mut self, runtime: &RuntimeHandle) {
         let line_low =
             self.state.nmi_armed && self.state.entered_vblank && self.state.vblank_nmi_enabled;

@@ -1,12 +1,13 @@
+use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_runtime::RuntimeHandle;
 
 use super::ReadRegisters;
 use crate::{
     gamepad::joystick::Joystick,
-    tia::{ObjectId, SupportedGraphicsApi, Tia, region::Region},
+    tia::{ObjectId, Tia, region::Region},
 };
 
-impl<R: Region, G: SupportedGraphicsApi> Tia<R, G> {
+impl<R: Region, G: GraphicsApi> Tia<R, G> {
     pub(crate) fn handle_read_register(&self, data: &mut u8, address: ReadRegisters) {
         match address {
             ReadRegisters::Cxm0p => {

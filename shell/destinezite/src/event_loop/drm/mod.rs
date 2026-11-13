@@ -222,7 +222,6 @@ pub fn run<R: ProducableGraphicsRuntime<DrmContext> + EguiCapableGraphicsRuntime
             frontend.maybe_reset_graphics_to_meet_machine_requirements(
                 |_, sealed_machine_builder| {
                     graphics_runtime.reconfigure(sealed_machine_builder.graphics_requirements());
-                    graphics_runtime.component_initialization_data()
                 },
             );
 

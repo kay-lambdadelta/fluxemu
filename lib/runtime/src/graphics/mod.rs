@@ -1,6 +1,6 @@
 //! Main graphics definition things for fluxemu
 
-use std::ops::BitOr;
+use std::{fmt::Debug, ops::BitOr};
 
 use fluxemu_graphics::{
     api::{Framebuffer, GraphicsApi},
@@ -14,8 +14,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::ResourcePath;
 
+mod backend;
+mod job;
 mod staging;
 
+pub use backend::{DisplayBackend, DisplayBackendSelector, SoftwareFallback};
+pub use job::{Gpu, Handle, JobQueue, Resources, Submitter};
 pub use staging::StagingPool;
 
 /// Version specifier for graphics apis
@@ -112,17 +116,16 @@ impl Default for DisplayGeometry {
 }
 
 /// A display backend for components which mostly commit a CPU side framebuffer
-pub trait SimpleDisplayBackend {
+pub trait SimpleDisplayBackend: Debug {
     type GraphicsApi: GraphicsApi;
 
-    fn new(initialization_data: <Self::GraphicsApi as GraphicsApi>::InitializationData) -> Self;
     fn produce_initial_framebuffer(
         &mut self,
         path: &ResourcePath,
-    ) -> <Self::GraphicsApi as GraphicsApi>::Framebuffer;
+    ) -> Handle<<Self::GraphicsApi as GraphicsApi>::Framebuffer>;
     fn commit_staging_buffer(
         &mut self,
         staging_buffer: RefTexture<Srgba<u8>>,
-        framebuffer: &mut <Self::GraphicsApi as GraphicsApi>::Framebuffer,
+        framebuffer: Handle<<Self::GraphicsApi as GraphicsApi>::Framebuffer>,
     );
 }

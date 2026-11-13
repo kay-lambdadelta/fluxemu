@@ -6,10 +6,7 @@ use std::{
 };
 
 use fluxemu_database::ProgramDatabase;
-use fluxemu_frontend::{
-    FrontendCore, FrontendEvent,
-    graphics::{PassthroughGraphicsRuntime, capture_framebuffer},
-};
+use fluxemu_frontend::{FrontendCore, FrontendEvent, graphics::PassthroughGraphicsRuntime};
 use fluxemu_program::{DigestCache, ProgramManager};
 use redb::Database;
 use tokio::{runtime::Runtime, task::LocalSet};
@@ -55,7 +52,7 @@ impl Application {
             self.core.load_roms(picked_roms);
         }
 
-        self.core.poll(&PassthroughGraphicsRuntime);
+        self.core.poll(&mut PassthroughGraphicsRuntime);
 
         if self.core.has_pending_machine() {
             self.core.start_pending_machine(|_| ());
@@ -77,8 +74,7 @@ impl Application {
         }
 
         if let Some(display) = &mut self.display
-            && let Some(machine) = self.core.machine()
-            && let Some((frame, _)) = capture_framebuffer(machine)
+            && let Some((frame, _)) = self.core.capture_framebuffer()
             && let Err(err) = display.present(frame)
         {
             tracing::error!("Could not present frame: {}", err);

@@ -160,7 +160,7 @@ impl<P: Platform<GraphicsApi = Software, GraphicsRuntime = PassthroughGraphicsRu
     }
 
     pub fn tick(&mut self) {
-        self.core.poll(&PassthroughGraphicsRuntime);
+        self.core.poll(&mut PassthroughGraphicsRuntime);
 
         if self.core.has_pending_machine() && self.core.start_pending_machine(|_| ()) {
             if let Some(machine) = self.core.machine() {
@@ -439,9 +439,11 @@ impl<P: Platform<GraphicsApi = Software, GraphicsRuntime = PassthroughGraphicsRu
         let refresh = std::mem::take(&mut self.machine_frame_pending);
 
         match self.core.machine() {
-            Some(machine) => {
+            Some(_) => {
                 self.machine_view
-                    .draw(frame, area, &self.picker, machine, refresh);
+                    .draw(frame, area, &self.picker, refresh, || {
+                        self.core.capture_framebuffer()
+                    });
             }
             None => {
                 let message = Paragraph::new(t!("machine.none").to_string())

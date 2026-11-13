@@ -5,7 +5,7 @@ use fluxemu_math::{range::ContiguousRange, rectangle::Rectangle};
 use fluxemu_platform::Platform;
 use fluxemu_runtime::{
     component::config::{ComponentConfig, LateContext},
-    graphics::{DisplayGeometry, SimpleDisplayBackend},
+    graphics::DisplayGeometry,
     machine::builder::ComponentBuilder,
     memory::{AddressSpaceId, MemoryMapCommand, Permissions},
     path::ComponentPath,
@@ -18,7 +18,6 @@ use strum::IntoEnumIterator;
 use super::{Tia, region::Region};
 use crate::tia::{
     InputControl, State, VISIBLE_SCANLINE_LENGTH,
-    backend::SupportedGraphicsApi,
     memory::{ReadRegisters, WriteRegisters},
 };
 
@@ -30,14 +29,13 @@ pub(crate) struct TiaConfig<R: Region> {
     pub _phantom: PhantomData<R>,
 }
 
-impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<P>
-    for TiaConfig<R>
-{
+impl<R: Region, P: Platform> ComponentConfig<P> for TiaConfig<R> {
     type Component = Tia<R, P::GraphicsApi>;
 
     fn late_initialize(component: &mut Self::Component, data: &LateContext<P>) {
-        let backend = <P::GraphicsApi as SupportedGraphicsApi>::Backend::new(
-            data.graphics_initialization_data.clone(),
+        let backend = super::backend::display_backend::<R, P::GraphicsApi>(
+            data.graphics_submitter.clone(),
+            component.framebuffer_path.parent().unwrap(),
         );
         component.backend = Some(backend);
     }
@@ -111,6 +109,7 @@ impl<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<
 
         Ok(Tia {
             backend: None,
+            _region: PhantomData,
             cpu_path: self.cpu,
             joystick_path: self.joystick,
             framebuffer_path,

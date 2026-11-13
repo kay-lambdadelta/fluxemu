@@ -1,14 +1,15 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt::Debug,
+    marker::PhantomData,
 };
 
-pub(crate) use backend::SupportedGraphicsApi;
 use color::TiaColor;
-use fluxemu_graphics::texture::OwnedTexture;
+use fluxemu_graphics::{api::GraphicsApi, texture::OwnedTexture};
 use fluxemu_runtime::{
     ComponentPath, ResourcePath, RuntimeHandle,
     component::Component,
+    graphics::DisplayBackend,
     memory::{Address, AddressSpaceId, MemoryError},
     persistence::PersistentComponentState,
     scheduler::QuantaAllocator,
@@ -119,16 +120,17 @@ pub(crate) struct State {
 }
 
 #[derive(Debug)]
-pub(crate) struct Tia<R: Region, G: SupportedGraphicsApi> {
+pub(crate) struct Tia<R: Region, G: GraphicsApi> {
     state: State,
     staging_buffer: OwnedTexture<Srgba<u8>>,
-    backend: Option<G::Backend<R>>,
+    backend: Option<DisplayBackend<G>>,
     cpu_path: ComponentPath,
     joystick_path: ComponentPath,
     framebuffer_path: ResourcePath,
+    _region: PhantomData<fn() -> R>,
 }
 
-impl<R: Region, G: SupportedGraphicsApi> PersistentComponentState<Tia<R, G>> for State {
+impl<R: Region, G: GraphicsApi> PersistentComponentState<Tia<R, G>> for State {
     fn capture(component: &Tia<R, G>) -> impl Serialize {
         &component.state
     }
@@ -138,7 +140,7 @@ impl<R: Region, G: SupportedGraphicsApi> PersistentComponentState<Tia<R, G>> for
     }
 }
 
-impl<R: Region, G: SupportedGraphicsApi> Component for Tia<R, G> {
+impl<R: Region, G: GraphicsApi> Component for Tia<R, G> {
     type Event = ();
     type Save = ();
     type Snapshot = State;
@@ -183,7 +185,7 @@ impl<R: Region, G: SupportedGraphicsApi> Component for Tia<R, G> {
     }
 }
 
-impl<R: Region, G: SupportedGraphicsApi> Tia<R, G> {
+impl<R: Region, G: GraphicsApi> Tia<R, G> {
     #[inline]
     fn task(&mut self, _runtime_handle: &RuntimeHandle, quanta_allocator: QuantaAllocator<'_, '_>) {
         for _ in quanta_allocator {

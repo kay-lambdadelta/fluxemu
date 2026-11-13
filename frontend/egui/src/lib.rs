@@ -22,7 +22,6 @@ use egui::{
 use fluxemu_frontend::{
     FrontendCore, FrontendEvent, Platform, SlotKind, notification::NotificationReceiver,
 };
-use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_runtime::machine::{Machine, builder::SealedMachineBuilder};
 use palette::{
     WithAlpha,
@@ -104,10 +103,7 @@ impl<P: Platform> Frontend<P> {
 
     pub fn maybe_reset_graphics_to_meet_machine_requirements(
         &mut self,
-        callback: impl FnOnce(
-            &egui::Context,
-            &SealedMachineBuilder<P>,
-        ) -> <P::GraphicsApi as GraphicsApi>::InitializationData,
+        callback: impl FnOnce(&egui::Context, &SealedMachineBuilder<P>),
     ) {
         if !self.core.has_pending_machine() {
             return;
@@ -234,34 +230,28 @@ impl<P: Platform> Frontend<P> {
     {
         let mut resume_requested = false;
 
-        if let Some(machine) = self.core.machine()
-            && let Some(controller) = self.core.controller()
-        {
-            let runtime = machine.enter_runtime();
-            let framebuffer = runtime.list_framebuffers().next().unwrap();
+        if let Some(controller) = self.core.controller() {
             let shader = self.core.environment().graphics.shader;
 
-            let callback = runtime
-                .read_framebuffer::<P::GraphicsApi, _>(
+            let Some(callback) = self.core.read_framebuffer(|framebuffer, display_geometry| {
+                let size = display_geometry.display_size(framebuffer);
+
+                let (rect, response) =
+                    allocate_fill_aspect(ui, size, self.machine_view_area, Sense::click());
+
+                resume_requested = response.clicked() && controller.get_paused();
+
+                graphics_runtime.produce_callback_for_framebuffer(
+                    rect,
                     framebuffer,
-                    runtime.safe_advance_timestamp(),
-                    |framebuffer, display_geometry| {
-                        let size = display_geometry.display_size(framebuffer);
-
-                        let (rect, response) =
-                            allocate_fill_aspect(ui, size, self.machine_view_area, Sense::click());
-
-                        resume_requested = response.clicked() && controller.get_paused();
-
-                        graphics_runtime.produce_callback_for_framebuffer(
-                            rect,
-                            framebuffer,
-                            display_geometry.resolve_display_rectangle(framebuffer),
-                            shader,
-                        )
-                    },
+                    display_geometry.resolve_display_rectangle(framebuffer),
+                    shader,
                 )
-                .unwrap();
+            }) else {
+                self.egui_context.request_repaint();
+
+                return;
+            };
 
             let rect = callback.rect;
             let painter = ui.painter_at(rect);

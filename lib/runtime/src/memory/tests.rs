@@ -4,6 +4,7 @@ use bytes::Bytes;
 use fluxemu_math::range::ContiguousRange;
 
 use crate::{
+    graphics::Submitter,
     machine::Machine,
     memory::{CHUNK_SIZE, MapTarget, MemoryErrorType, MemoryMapCommand, Permissions},
     scheduler::Period,
@@ -26,7 +27,7 @@ fn reads_and_writes_sanity() {
         }],
     );
 
-    let machine = machine.seal().build(());
+    let machine = machine.seal().build(Submitter::headless());
     let runtime_guard = machine.enter_runtime();
 
     let mut address_space = runtime_guard.address_space(address_space).unwrap();
@@ -59,7 +60,7 @@ fn wraparound() {
         }],
     );
 
-    let machine = machine.seal().build(());
+    let machine = machine.seal().build(Submitter::headless());
     let runtime_guard = machine.enter_runtime();
 
     let mut address_space = runtime_guard.address_space(address_space).unwrap();
@@ -88,7 +89,7 @@ fn immutable_memory_is_read_only() {
         [MemoryMapCommand::immutable_memory(0x0000, rom_contents)],
     );
 
-    let machine = machine.seal().build(());
+    let machine = machine.seal().build(Submitter::headless());
     let runtime_guard = machine.enter_runtime();
     let mut address_space = runtime_guard.address_space(address_space).unwrap();
 
@@ -127,7 +128,7 @@ fn mirror_redirects() {
         ],
     );
 
-    let machine = machine.seal().build(());
+    let machine = machine.seal().build(Submitter::headless());
     let runtime_guard = machine.enter_runtime();
     let mut address_space = runtime_guard.address_space(address_space).unwrap();
 
@@ -165,7 +166,7 @@ fn unmap() {
         }],
     );
 
-    let machine = machine.seal().build(());
+    let machine = machine.seal().build(Submitter::headless());
     let runtime_guard = machine.enter_runtime();
     let mut address_space = runtime_guard.address_space(address_space).unwrap();
 
@@ -216,7 +217,7 @@ fn permissions_are_enforced() {
         ],
     );
 
-    let machine = machine.seal().build(());
+    let machine = machine.seal().build(Submitter::headless());
     let runtime_guard = machine.enter_runtime();
     let mut address_space = runtime_guard.address_space(address_space).unwrap();
 
@@ -259,7 +260,7 @@ fn initial_contents_are_applied() {
         }],
     );
 
-    let machine = machine.seal().build(());
+    let machine = machine.seal().build(Submitter::headless());
     let runtime_guard = machine.enter_runtime();
     let mut address_space = runtime_guard.address_space(address_space).unwrap();
 

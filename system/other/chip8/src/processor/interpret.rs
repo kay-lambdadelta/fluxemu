@@ -1,3 +1,4 @@
+use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_runtime::{RuntimeHandle, memory::AddressSpace, scheduler::Period};
 use nalgebra::Point2;
 use rand::RngExt;
@@ -10,7 +11,7 @@ use super::{
 use crate::{
     CHIP8_FONT, Chip8Mode,
     audio::Chip8Audio,
-    display::{Chip8Display, SupportedGraphicsApi},
+    display::Chip8Display,
     processor::{
         Chip8Processor,
         instruction::{InstructionSetSuperChip8, Register},
@@ -21,7 +22,7 @@ use crate::{
 // Instruction interpreting can be clean and easy due to the chip8 enforcing 1
 // cycle = 1 instruction
 
-impl<G: SupportedGraphicsApi> Chip8Processor<G> {
+impl<G: GraphicsApi> Chip8Processor<G> {
     pub(super) fn interpret_instruction(
         &mut self,
         runtime: &RuntimeHandle,

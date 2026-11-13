@@ -1,9 +1,8 @@
 use std::{error::Error, fmt::Debug};
 
-use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_platform::Platform;
 
-use crate::{component::Component, machine::builder::ComponentBuilder};
+use crate::{component::Component, graphics::Submitter, machine::builder::ComponentBuilder};
 
 /// Factory config to construct a component
 pub trait ComponentConfig<P: Platform>: Debug + Sized + Sync + Send {
@@ -23,6 +22,6 @@ pub trait ComponentConfig<P: Platform>: Debug + Sized + Sync + Send {
 
 /// Late initialized data the runtime will produce for you
 pub struct LateContext<P: Platform> {
-    /// Graphics initialization data matching the specifications the component gave, or a superset of them
-    pub graphics_initialization_data: <P::GraphicsApi as GraphicsApi>::InitializationData,
+    /// Submits graphics jobs to the thread that owns the graphics api
+    pub graphics_submitter: Submitter<P::GraphicsApi>,
 }

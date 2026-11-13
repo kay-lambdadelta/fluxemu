@@ -1,3 +1,4 @@
+use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_runtime::{
     RuntimeHandle,
     memory::AddressSpace,
@@ -8,14 +9,13 @@ use nalgebra::Point2;
 use crate::ppu::{
     ATTRIBUTE_BASE_ADDRESS, BACKGROUND_PALETTE_BASE_ADDRESS, NAMETABLE_BASE_ADDRESS, Ppu,
     SPRITE_PALETTE_BASE_ADDRESS, TOTAL_SCANLINE_LENGTH,
-    backend::SupportedGraphicsApi,
     color::PpuColorIndex,
     oam::{CurrentlyRenderingSprite, OamSprite, SpriteEvaluationState},
     region::Region,
     state::VramAddressPointerContents,
 };
 
-impl<R: Region, G: SupportedGraphicsApi> Ppu<R, G> {
+impl<R: Region, G: GraphicsApi> Ppu<R, G> {
     #[inline]
     pub(super) fn task(
         &mut self,

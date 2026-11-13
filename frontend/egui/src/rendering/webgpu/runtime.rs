@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use egui::{Context, FullOutput, PaintCallback};
 use egui_wgpu::{Callback, Renderer, RendererOptions, ScreenDescriptor};
@@ -6,7 +6,7 @@ use fluxemu_frontend::graphics::{DisplayContext, GraphicsRuntime, ProducableGrap
 use fluxemu_graphics::{
     api::{
         GraphicsApi,
-        webgpu::{InitializationData, Webgpu, suggested_framebuffer_texture_format},
+        webgpu::{self, Webgpu, suggested_framebuffer_texture_format},
     },
     shader::ShaderType,
     texture::{CowTexture, OwnedTexture},
@@ -17,8 +17,8 @@ use palette::{Srgb, Srgba};
 use pollster::FutureExt;
 use wgpu::{
     BufferDescriptor, BufferUsages, COPY_BYTES_PER_ROW_ALIGNMENT, CommandEncoderDescriptor,
-    CreateSurfaceError, CurrentSurfaceTexture, Device, DeviceDescriptor, ExperimentalFeatures,
-    Instance, LoadOp, MapMode, MemoryHints, Operations, PollType, Queue, RenderPassColorAttachment,
+    CreateSurfaceError, CurrentSurfaceTexture, DeviceDescriptor, ExperimentalFeatures, Instance,
+    LoadOp, MapMode, MemoryHints, Operations, PollType, RenderPassColorAttachment,
     RenderPassDescriptor, StoreOp, Surface, TexelCopyBufferInfo, TexelCopyBufferLayout,
     TextureViewDescriptor, Trace, util::initialize_adapter_from_env_or_default,
 };
@@ -30,7 +30,6 @@ use crate::rendering::{
 
 pub struct WebgpuGraphicsRuntime<D> {
     configuration_dependent_data: Option<ConfigurationDependentData>,
-    gpu_submission_lock: Arc<Mutex<()>>,
     display_handle: D,
 }
 
@@ -43,7 +42,6 @@ impl<D: WebgpuCompatibleDisplayContext + Clone> ProducableGraphicsRuntime<D>
 
         WebgpuGraphicsRuntime {
             display_handle: display_context.clone(),
-            gpu_submission_lock: Arc::new(Mutex::new(())),
             configuration_dependent_data: Some(configuration_dependent_data),
         }
     }
@@ -69,7 +67,9 @@ impl<D: WebgpuCompatibleDisplayContext> GraphicsRuntime for WebgpuGraphicsRuntim
     fn refresh_surface(&mut self) {
         let size = self.display_handle.dimensions();
         let ConfigurationDependentData {
-            device, surface, ..
+            context: webgpu::Context { device, .. },
+            surface,
+            ..
         } = self.configuration_dependent_data.as_mut().unwrap();
 
         let mut surface_config = surface.get_configuration().unwrap();
@@ -79,23 +79,15 @@ impl<D: WebgpuCompatibleDisplayContext> GraphicsRuntime for WebgpuGraphicsRuntim
         surface.configure(device, &surface_config);
     }
 
-    fn component_initialization_data(
-        &self,
-    ) -> <Self::GraphicsApi as GraphicsApi>::InitializationData {
-        let ConfigurationDependentData { device, queue, .. } =
-            self.configuration_dependent_data.as_ref().unwrap();
-
-        InitializationData {
-            device: device.clone(),
-            queue: queue.clone(),
-            gpu_submission_lock: self.gpu_submission_lock.clone(),
-        }
+    fn with_context<T>(&mut self, callback: impl FnOnce(&mut webgpu::Context) -> T) -> T {
+        callback(&mut self.configuration_dependent_data.as_mut().unwrap().context)
     }
 
     fn max_texture_side(&self) -> u32 {
         self.configuration_dependent_data
             .as_ref()
             .unwrap()
+            .context
             .device
             .limits()
             .max_texture_dimension_2d
@@ -109,8 +101,10 @@ impl<D: WebgpuCompatibleDisplayContext> GraphicsRuntime for WebgpuGraphicsRuntim
             return None;
         }
 
-        let ConfigurationDependentData { device, queue, .. } =
-            self.configuration_dependent_data.as_ref().unwrap();
+        let ConfigurationDependentData {
+            context: webgpu::Context { device, queue },
+            ..
+        } = self.configuration_dependent_data.as_ref().unwrap();
 
         let width = framebuffer.width() as usize;
         let height = framebuffer.height() as usize;
@@ -138,10 +132,7 @@ impl<D: WebgpuCompatibleDisplayContext> GraphicsRuntime for WebgpuGraphicsRuntim
             framebuffer.size(),
         );
 
-        {
-            let _guard = self.gpu_submission_lock.lock().unwrap();
-            queue.submit([encoder.finish()]);
-        }
+        queue.submit([encoder.finish()]);
 
         let slice = buffer.slice(..);
         slice.map_async(MapMode::Read, |_| {});
@@ -159,8 +150,7 @@ impl<D: WebgpuCompatibleDisplayContext> GraphicsRuntime for WebgpuGraphicsRuntim
 }
 
 struct ConfigurationDependentData {
-    device: Device,
-    queue: Queue,
+    context: webgpu::Context,
     renderer: Renderer,
     surface: Surface<'static>,
     framebuffer_callback_resources: Arc<Resources>,
@@ -236,8 +226,7 @@ impl ConfigurationDependentData {
         );
 
         ConfigurationDependentData {
-            device,
-            queue,
+            context: webgpu::Context { device, queue },
             renderer,
             surface,
             framebuffer_callback_resources,
@@ -254,8 +243,7 @@ pub trait WebgpuCompatibleDisplayContext: DisplayContext {
 impl<D: WebgpuCompatibleDisplayContext> EguiCapableGraphicsRuntime for WebgpuGraphicsRuntime<D> {
     fn present(&mut self, context: &Context, clear_color: Srgb<u8>, mut full_output: FullOutput) {
         let ConfigurationDependentData {
-            device,
-            queue,
+            context: webgpu::Context { device, queue },
             renderer,
             surface,
             ..
@@ -337,11 +325,7 @@ impl<D: WebgpuCompatibleDisplayContext> EguiCapableGraphicsRuntime for WebgpuGra
 
                 let command_buffer = encoder.finish();
 
-                // Serialize on this submission
-                {
-                    let _guard = self.gpu_submission_lock.lock().unwrap();
-                    queue.submit([command_buffer]);
-                }
+                queue.submit([command_buffer]);
 
                 self.display_handle.pre_present_notify();
                 queue.present(surface_texture);

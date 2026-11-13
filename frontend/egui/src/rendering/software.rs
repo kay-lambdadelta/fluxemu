@@ -93,9 +93,8 @@ impl<D: SoftwareCompatibleDisplayContext, const BATCH_SIZE: usize> GraphicsRunti
             .unwrap();
     }
 
-    fn component_initialization_data(
-        &self,
-    ) -> <Self::GraphicsApi as GraphicsApi>::InitializationData {
+    fn with_context<T>(&mut self, callback: impl FnOnce(&mut ()) -> T) -> T {
+        callback(&mut ())
     }
 
     fn max_texture_side(&self) -> u32 {

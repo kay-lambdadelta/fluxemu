@@ -1,5 +1,6 @@
 use std::{marker::PhantomData, sync::Arc};
 
+use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_platform::Platform;
 use fluxemu_runtime::{
     RuntimeHandle,
@@ -21,7 +22,7 @@ use serde::{Deserialize, Serialize};
 
 use super::Chip8Mode;
 use crate::{
-    display::{Chip8Display, SupportedGraphicsApi},
+    display::Chip8Display,
     processor::{
         decoder::decode_instruction,
         input::{DEFAULT_MAPPINGS, PRESENT_INPUTS},
@@ -88,14 +89,14 @@ impl Default for ProcessorState {
 }
 
 #[derive(Debug)]
-pub struct Chip8Processor<G: SupportedGraphicsApi> {
+pub struct Chip8Processor<G: GraphicsApi> {
     state: ProcessorState,
     /// Keypad virtual gamepad
     keypad: Arc<LogicalInputDevice>,
     config: Chip8ProcessorConfig<G>,
 }
 
-impl<G: SupportedGraphicsApi> Chip8Processor<G> {
+impl<G: GraphicsApi> Chip8Processor<G> {
     #[inline]
     fn task(&mut self, runtime_handle: &RuntimeHandle, quanta_allocator: QuantaAllocator<'_, '_>) {
         let mut address_space = runtime_handle
@@ -193,7 +194,7 @@ impl<G: SupportedGraphicsApi> Chip8Processor<G> {
     }
 }
 
-impl<G: SupportedGraphicsApi> PersistentComponentState<Chip8Processor<G>> for ProcessorState {
+impl<G: GraphicsApi> PersistentComponentState<Chip8Processor<G>> for ProcessorState {
     fn capture(component: &Chip8Processor<G>) -> impl Serialize {
         &component.state
     }
@@ -203,14 +204,14 @@ impl<G: SupportedGraphicsApi> PersistentComponentState<Chip8Processor<G>> for Pr
     }
 }
 
-impl<G: SupportedGraphicsApi> Component for Chip8Processor<G> {
+impl<G: GraphicsApi> Component for Chip8Processor<G> {
     type Event = ();
     type Save = ();
     type Snapshot = ProcessorState;
 }
 
 #[derive(Debug)]
-pub struct Chip8ProcessorConfig<G: SupportedGraphicsApi> {
+pub struct Chip8ProcessorConfig<G: GraphicsApi> {
     pub cpu_address_space: AddressSpaceId,
     pub display: ComponentPath,
     pub audio: ComponentPath,
@@ -222,9 +223,7 @@ pub struct Chip8ProcessorConfig<G: SupportedGraphicsApi> {
     pub _phantom: PhantomData<fn() -> G>,
 }
 
-impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<P>
-    for Chip8ProcessorConfig<P::GraphicsApi>
-{
+impl<P: Platform> ComponentConfig<P> for Chip8ProcessorConfig<P::GraphicsApi> {
     type Component = Chip8Processor<P::GraphicsApi>;
 
     fn build_component(

@@ -1,94 +1,108 @@
-extern crate std;
-
-use alloc::sync::Arc;
 use core::marker::PhantomData;
-use std::sync::Mutex;
 
 use fluxemu_graphics::{
     api::{
         GraphicsApi,
         webgpu::{
-            InitializationData, Webgpu, suggested_framebuffer_texture_format,
-            suggested_framebuffer_texture_usages,
+            Webgpu, suggested_framebuffer_texture_format, suggested_framebuffer_texture_usages,
         },
     },
     texture::RefTexture,
 };
-use fluxemu_runtime::graphics::SimpleDisplayBackend;
+use fluxemu_runtime::{
+    ResourcePath,
+    graphics::{Handle, SimpleDisplayBackend, StagingPool, Submitter},
+};
 use palette::Srgba;
 use wgpu::{
-    Device, Extent3d, Origin3d, Queue, TexelCopyBufferLayout, TexelCopyTextureInfo, TextureAspect,
+    Extent3d, Origin3d, TexelCopyBufferLayout, TexelCopyTextureInfo, TextureAspect,
     TextureDescriptor, TextureDimension,
 };
 
-use crate::ppu::{VISIBLE_SCANLINE_LENGTH, backend::SupportedGraphicsApi, region::Region};
+use crate::ppu::{VISIBLE_SCANLINE_LENGTH, region::Region};
 
 #[derive(Debug)]
 pub struct State<R: Region> {
-    queue: Queue,
-    device: Device,
-    gpu_submission_lock: Arc<Mutex<()>>,
+    submitter: Submitter<Webgpu>,
+    staging_pool: StagingPool<Srgba<u8>>,
     _phantom: PhantomData<fn() -> R>,
+}
+
+impl<R: Region> State<R> {
+    pub fn new(submitter: Submitter<Webgpu>) -> Self {
+        State {
+            submitter,
+            staging_pool: StagingPool::default(),
+            _phantom: PhantomData,
+        }
+    }
 }
 
 impl<R: Region> SimpleDisplayBackend for State<R> {
     type GraphicsApi = Webgpu;
 
-    fn new(initialization_data: InitializationData) -> Self {
-        State {
-            queue: initialization_data.queue,
-            device: initialization_data.device,
-            gpu_submission_lock: initialization_data.gpu_submission_lock,
-            _phantom: PhantomData,
-        }
-    }
-
     fn produce_initial_framebuffer(
         &mut self,
-        _path: &fluxemu_runtime::ResourcePath,
-    ) -> <Self::GraphicsApi as GraphicsApi>::Framebuffer {
-        self.device.create_texture(&TextureDescriptor {
-            label: None,
-            size: Extent3d {
-                width: VISIBLE_SCANLINE_LENGTH as u32,
-                height: R::VISIBLE_SCANLINES as u32,
-                ..Default::default()
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: TextureDimension::D2,
-            format: suggested_framebuffer_texture_format(),
-            usage: suggested_framebuffer_texture_usages(),
-            view_formats: &[],
-        })
+        _path: &ResourcePath,
+    ) -> Handle<<Self::GraphicsApi as GraphicsApi>::Framebuffer> {
+        let framebuffer = self.submitter.reserve();
+        let size = Extent3d {
+            width: VISIBLE_SCANLINE_LENGTH as u32,
+            height: R::VISIBLE_SCANLINES as u32,
+            ..Default::default()
+        };
+
+        self.submitter.submit(move |gpu| {
+            let texture = gpu.context.device.create_texture(&TextureDescriptor {
+                label: None,
+                size,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: TextureDimension::D2,
+                format: suggested_framebuffer_texture_format(),
+                usage: suggested_framebuffer_texture_usages(),
+                view_formats: &[],
+            });
+
+            gpu.resources.insert(framebuffer, texture);
+        });
+
+        framebuffer
     }
 
     fn commit_staging_buffer(
         &mut self,
         staging_buffer: RefTexture<Srgba<u8>>,
-        framebuffer: &mut <Self::GraphicsApi as GraphicsApi>::Framebuffer,
+        framebuffer: Handle<<Self::GraphicsApi as GraphicsApi>::Framebuffer>,
     ) {
-        let _guard = self.gpu_submission_lock.lock().unwrap();
+        let bytes_per_row = (staging_buffer.width() * size_of::<Srgba<u8>>()) as u32;
+        let frame = self.staging_pool.copy(staging_buffer);
+        let staging_pool = self.staging_pool.clone();
 
-        self.queue.write_texture(
-            TexelCopyTextureInfo {
-                texture: framebuffer,
-                mip_level: 0,
-                origin: Origin3d::default(),
-                aspect: TextureAspect::All,
-            },
-            bytemuck::cast_slice(staging_buffer.as_slice().unwrap()),
-            TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some((staging_buffer.width() * size_of::<Srgba<u8>>()) as u32),
-                rows_per_image: None,
-            },
-            framebuffer.size(),
-        );
-        self.queue.submit([]);
+        self.submitter.submit_replacing(framebuffer, move |gpu| {
+            let Some(texture) = gpu.resources.get(framebuffer) else {
+                staging_pool.recycle(frame);
+
+                return;
+            };
+
+            gpu.context.queue.write_texture(
+                TexelCopyTextureInfo {
+                    texture,
+                    mip_level: 0,
+                    origin: Origin3d::default(),
+                    aspect: TextureAspect::All,
+                },
+                bytemuck::cast_slice(frame.as_slice().unwrap()),
+                TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(bytes_per_row),
+                    rows_per_image: None,
+                },
+                texture.size(),
+            );
+            gpu.context.queue.submit([]);
+            staging_pool.recycle(frame);
+        });
     }
-}
-
-impl SupportedGraphicsApi for Webgpu {
-    type Backend<R: Region> = State<R>;
 }

@@ -31,7 +31,6 @@ use crate::{
     gamepad::standard_controllers::NesControllerConfig,
     ppu::{
         BACKGROUND_PALETTE_BASE_ADDRESS, NAMETABLE_ADDRESSES, PALETTE_RAM_ADDRESSES,
-        backend::SupportedGraphicsApi,
         region::{Region, ntsc::Ntsc, pal::Pal},
     },
 };
@@ -44,7 +43,7 @@ mod ppu;
 #[derive(Debug, Default)]
 pub struct Nes;
 
-impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Nes {
+impl<P: Platform> System<P> for Nes {
     type Quirks = ();
 
     const ID: SystemId = SystemId::Nintendo(NintendoSystem::NintendoEntertainmentSystem);

@@ -3,6 +3,7 @@ use std::{hint::black_box, ops::RangeInclusive, sync::Arc};
 use criterion::{Criterion, criterion_group, criterion_main};
 use fluxemu_math::range::ContiguousRange;
 use fluxemu_runtime::{
+    graphics::Submitter,
     machine::Machine,
     memory::{AddressSpaceId, MapTarget, MemoryMapCommand, Permissions},
     scheduler::Period,
@@ -33,7 +34,7 @@ fn build_machine() -> (Arc<Machine>, AddressSpaceId) {
             ],
         )
         .seal()
-        .build(());
+        .build(Submitter::headless());
 
     (machine, address_space_id)
 }

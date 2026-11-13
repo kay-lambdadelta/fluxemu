@@ -8,6 +8,7 @@ use fluxemu_definition_mos6502::{
 };
 use fluxemu_math::range::ContiguousRange;
 use fluxemu_runtime::{
+    graphics::Submitter,
     machine::Machine,
     memory::{MapTarget, MemoryMapCommand, Permissions},
     scheduler::Frequency,
@@ -83,7 +84,7 @@ fn build_machine<V: Variant>() -> Arc<Machine> {
         )
         .unwrap();
 
-    machine.seal().build(())
+    machine.seal().build(Submitter::headless())
 }
 
 fn bench_variant<V: fluxemu_definition_mos6502::variant::Variant>(c: &mut Criterion, name: &str) {

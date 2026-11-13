@@ -5,7 +5,7 @@ use fluxemu_platform::Platform;
 use crate::{
     ResourcePath,
     component::{Component, config::LateContext},
-    graphics::GraphicsRequirements,
+    graphics::{GraphicsRequirements, Handle, Submitter},
     machine::Machine,
     path::ComponentPath,
     scheduler::Period,
@@ -35,7 +35,10 @@ type ComponentLateInitializer<P> =
 
 #[allow(type_alias_bounds)]
 type FramebufferLateInitializer<P: Platform> = Box<
-    dyn FnOnce(&mut dyn Component, &ResourcePath) -> <P::GraphicsApi as GraphicsApi>::Framebuffer
+    dyn FnOnce(
+            &mut dyn Component,
+            &ResourcePath,
+        ) -> Handle<<P::GraphicsApi as GraphicsApi>::Framebuffer>
         + Send
         + Sync,
 >;
@@ -54,13 +57,8 @@ impl<P: Platform> SealedMachineBuilder<P> {
         self.graphics_requirements.clone()
     }
 
-    pub fn build(
-        mut self,
-        graphics_initialization_data: <P::GraphicsApi as GraphicsApi>::InitializationData,
-    ) -> Arc<Machine> {
-        let late_initialized_data = LateContext {
-            graphics_initialization_data,
-        };
+    pub fn build(mut self, graphics_submitter: Submitter<P::GraphicsApi>) -> Arc<Machine> {
+        let late_initialized_data = LateContext { graphics_submitter };
 
         let runtime_guard = self.machine.enter_runtime();
 

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     ResourcePath, RuntimeHandle,
-    graphics::DisplayGeometry,
+    graphics::{DisplayGeometry, Handle},
     machine::{ExclusiveRuntimeGuard, Machine},
     persistence::{
         ArchiveKind, SnapshotError,
@@ -112,7 +112,7 @@ impl ExclusiveRuntimeGuard<'_> {
 
     pub fn read_primary_framebuffer<G: GraphicsApi, T>(
         &self,
-        callback: impl FnOnce(&G::Framebuffer, &DisplayGeometry) -> T,
+        callback: impl FnOnce(Handle<G::Framebuffer>, &DisplayGeometry) -> T,
     ) -> Option<T> {
         let framebuffers = &self.runtime().machine().framebuffers;
 
@@ -124,7 +124,7 @@ impl ExclusiveRuntimeGuard<'_> {
             .unwrap();
 
         Some(callback(
-            slot.framebuffer.downcast_ref()?,
+            *slot.framebuffer.downcast_ref()?,
             &slot.display_geometry,
         ))
     }

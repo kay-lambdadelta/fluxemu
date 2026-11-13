@@ -6,11 +6,12 @@
 
 use core::{fmt::Debug, ops::BitOr};
 
-use palette::Srgba;
+use nalgebra::Vector2;
+use palette::{Srgba, named::BLACK};
 
 use crate::{
     api::{Framebuffer, GraphicsApi},
-    texture::OwnedTexture,
+    texture::{CopyMode, OwnedTexture, RefTexture},
 };
 
 /// Marker trait for software rendering
@@ -44,8 +45,22 @@ impl Framebuffer for OwnedTexture<Srgba<u8>> {
 }
 
 impl GraphicsApi for Software {
+    /// Software backend does not and should not require any kind of context
+    type Context = ();
     type Framebuffer = OwnedTexture<Srgba<u8>>;
-    /// Software backend does not and should not require any kind of initialization data
-    type InitializationData = ();
     type Requirements = Requirements;
+
+    const NAME: &'static str = "Software";
+
+    fn create_software_framebuffer(_context: &mut (), size: Vector2<usize>) -> Self::Framebuffer {
+        OwnedTexture::from_value(size.x, size.y, BLACK.into())
+    }
+
+    fn upload_software_frame(
+        _context: &mut (),
+        framebuffer: &mut Self::Framebuffer,
+        frame: RefTexture<'_, Srgba<u8>>,
+    ) {
+        framebuffer.copy_from(frame, CopyMode::Nearest);
+    }
 }

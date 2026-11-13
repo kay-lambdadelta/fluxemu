@@ -16,10 +16,7 @@ use tia::{
     region::{Region, ntsc::Ntsc, pal::Pal, secam::Secam},
 };
 
-use crate::{
-    cartridge::{CartType, banked::BankedCartConfig, nonbanked::NonbankedCartConfig},
-    tia::SupportedGraphicsApi,
-};
+use crate::cartridge::{CartType, banked::BankedCartConfig, nonbanked::NonbankedCartConfig};
 
 mod cartridge;
 mod gamepad;
@@ -37,7 +34,7 @@ enum RegionSelection {
 #[derive(Debug, Default)]
 pub struct Atari2600;
 
-impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Atari2600 {
+impl<P: Platform> System<P> for Atari2600 {
     type Quirks = ();
 
     const ID: SystemId = SystemId::Atari(AtariSystem::_2600);
@@ -122,7 +119,7 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> System<P> for Atari2600 {
     }
 }
 
-fn common<R: Region, P: Platform<GraphicsApi: SupportedGraphicsApi>>(
+fn common<R: Region, P: Platform>(
     cpu_address_space: AddressSpaceId,
     machine_builder: MachineBuilder<P>,
 ) -> Result<MachineBuilder<P>, MachineError> {

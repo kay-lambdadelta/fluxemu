@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 
 use fluxemu_graphics::{
     api::GraphicsApi,
@@ -11,7 +11,7 @@ use fluxemu_runtime::{
         Component,
         config::{ComponentConfig, LateContext},
     },
-    graphics::{DisplayGeometry, SimpleDisplayBackend},
+    graphics::{DisplayBackend, DisplayBackendSelector, DisplayGeometry, Submitter},
     machine::builder::ComponentBuilder,
     persistence::PersistentComponentState,
     scheduler::{
@@ -42,14 +42,14 @@ pub struct State {
 }
 
 #[derive(Debug)]
-pub struct Chip8Display<G: SupportedGraphicsApi> {
-    backend: Option<G::Backend>,
+pub struct Chip8Display<G: GraphicsApi> {
+    backend: Option<DisplayBackend<G>>,
     state: State,
     config: Chip8DisplayConfig,
     framebuffer_path: ResourcePath,
 }
 
-impl<G: SupportedGraphicsApi> PersistentComponentState<Chip8Display<G>> for State {
+impl<G: GraphicsApi> PersistentComponentState<Chip8Display<G>> for State {
     fn capture(component: &Chip8Display<G>) -> impl Serialize {
         &component.state
     }
@@ -59,7 +59,7 @@ impl<G: SupportedGraphicsApi> PersistentComponentState<Chip8Display<G>> for Stat
     }
 }
 
-impl<G: SupportedGraphicsApi> Chip8Display<G> {
+impl<G: GraphicsApi> Chip8Display<G> {
     pub fn vsync_occurred(&self) -> bool {
         self.state.vsync_occurred
     }
@@ -195,7 +195,7 @@ impl<G: SupportedGraphicsApi> Chip8Display<G> {
     }
 }
 
-impl<G: SupportedGraphicsApi> Component for Chip8Display<G> {
+impl<G: GraphicsApi> Component for Chip8Display<G> {
     type Event = ();
     type Save = ();
     type Snapshot = State;
@@ -206,12 +206,13 @@ pub struct Chip8DisplayConfig {
     pub clear_on_resolution_change: bool,
 }
 
-impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<P> for Chip8DisplayConfig {
+impl<P: Platform> ComponentConfig<P> for Chip8DisplayConfig {
     type Component = Chip8Display<P::GraphicsApi>;
 
     fn late_initialize(component: &mut Self::Component, data: &LateContext<P>) {
-        let backend = <P::GraphicsApi as SupportedGraphicsApi>::Backend::new(
-            data.graphics_initialization_data.clone(),
+        let backend = display_backend::<P::GraphicsApi>(
+            data.graphics_submitter.clone(),
+            component.framebuffer_path.parent().unwrap(),
         );
         component.backend = Some(backend);
     }
@@ -251,6 +252,18 @@ impl<P: Platform<GraphicsApi: SupportedGraphicsApi>> ComponentConfig<P> for Chip
     }
 }
 
-pub(crate) trait SupportedGraphicsApi: GraphicsApi {
-    type Backend: SimpleDisplayBackend<GraphicsApi = Self> + Send + Sync + Debug;
+fn display_backend<G: GraphicsApi>(
+    submitter: Submitter<G>,
+    component: impl Display,
+) -> DisplayBackend<G> {
+    let selector = DisplayBackendSelector::new(submitter);
+
+    #[cfg(feature = "webgpu")]
+    let selector = selector.with::<fluxemu_graphics::api::webgpu::Webgpu>(|submitter| {
+        Box::new(webgpu::State::new(submitter))
+    });
+
+    selector.or_software(component, |submitter| {
+        Box::new(software::State::new(submitter))
+    })
 }

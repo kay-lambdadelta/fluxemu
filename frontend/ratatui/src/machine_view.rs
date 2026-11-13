@@ -1,8 +1,4 @@
-use std::sync::Arc;
-
-use fluxemu_frontend::graphics::capture_framebuffer;
 use fluxemu_graphics::texture::{CopyMode, OwnedTexture, RefMutTexture};
-use fluxemu_runtime::machine::Machine;
 use image::{DynamicImage, RgbaImage};
 use nalgebra::Vector2;
 use palette::Srgba;
@@ -32,8 +28,8 @@ impl MachineView {
         frame: &mut Frame,
         area: Rect,
         picker: &Picker,
-        machine: &Arc<Machine>,
         refresh: bool,
+        capture_framebuffer: impl FnOnce() -> Option<(OwnedTexture<Srgba<u8>>, Vector2<f32>)>,
     ) {
         let is_stale = self
             .encoded_frame
@@ -41,7 +37,7 @@ impl MachineView {
             .is_none_or(|encoded_frame| encoded_frame.area != area);
 
         if (refresh || is_stale)
-            && let Some((framebuffer, display_size)) = capture_framebuffer(machine)
+            && let Some((framebuffer, display_size)) = capture_framebuffer()
         {
             let image = scale_to_cells(
                 &framebuffer,

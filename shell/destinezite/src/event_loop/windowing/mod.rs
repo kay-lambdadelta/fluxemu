@@ -246,13 +246,8 @@ impl<R: ProducableGraphicsRuntime<Window> + EguiCapableGraphicsRuntime> Applicat
                         Some(graphics_runtime.max_texture_side() as usize),
                     );
 
-                    let component_initialization_data =
-                        graphics_runtime.component_initialization_data();
-
                     // Immediately refresh since the backend changed
                     window.0.request_redraw();
-
-                    component_initialization_data
                 },
             );
     }
