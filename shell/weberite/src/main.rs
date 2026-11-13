@@ -7,7 +7,7 @@ use std::{
 
 use fluxemu_database::ProgramDatabase;
 use fluxemu_frontend::{
-    FrontendCore,
+    FrontendCore, FrontendEvent,
     graphics::{PassthroughGraphicsRuntime, capture_framebuffer},
 };
 use fluxemu_program::{DigestCache, ProgramManager};
@@ -16,11 +16,12 @@ use tokio::{runtime::Runtime, task::LocalSet};
 use tracing_subscriber::{filter::LevelFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::{
-    build_machine::get_software_factories, display::CanvasDisplay, platform::Platform,
-    runtime::AudioRuntime,
+    build_machine::get_software_factories, debug_overlay::DebugOverlay, display::CanvasDisplay,
+    platform::Platform, runtime::AudioRuntime,
 };
 
 mod build_machine;
+mod debug_overlay;
 mod display;
 mod frame_loop;
 mod input;
@@ -38,6 +39,7 @@ struct Application {
     local_set: LocalSet,
     core: FrontendCore<Platform>,
     display: Option<CanvasDisplay>,
+    debug_overlay: Option<DebugOverlay>,
     picked_roms: Receiver<PathBuf>,
 }
 
@@ -57,6 +59,21 @@ impl Application {
 
         if self.core.has_pending_machine() {
             self.core.start_pending_machine(|_| ());
+        }
+
+        for event in self.core.drain_events() {
+            match event {
+                FrontendEvent::DebugOverlayToggleRequested => {
+                    if let Some(debug_overlay) = &mut self.debug_overlay {
+                        debug_overlay.toggle();
+                    }
+                }
+                FrontendEvent::MenuToggleRequested => {}
+            }
+        }
+
+        if let Some(debug_overlay) = &mut self.debug_overlay {
+            debug_overlay.update(self.core.controller());
         }
 
         if let Some(display) = &mut self.display
@@ -118,11 +135,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .inspect_err(|err| tracing::warn!("No canvas to present to: {}", err))
         .ok();
 
+    let debug_overlay = DebugOverlay::new()
+        .inspect_err(|err| tracing::warn!("No debug overlay: {:?}", err))
+        .ok();
+
     let application = Rc::new(RefCell::new(Application {
         runtime,
         local_set,
         core,
         display,
+        debug_overlay,
         picked_roms,
     }));
 

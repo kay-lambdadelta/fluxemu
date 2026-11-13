@@ -55,7 +55,7 @@ jobs:
             build: |
               cargo build -p fluxemu-shell-weberite --target wasm32-unknown-emscripten --release
               mkdir -p target/weberite-site
-              cp shell/weberite/web/index.html \
+              cp shell/weberite/web/index.html shell/weberite/web/style.css \
                 external/coi-serviceworker/coi-serviceworker.js \
                 target/wasm32-unknown-emscripten/release/fluxemu-shell-weberite.js \
                 target/wasm32-unknown-emscripten/release/fluxemu_shell_weberite.wasm \

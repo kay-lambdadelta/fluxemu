@@ -78,7 +78,7 @@ Copy both next to [`web/index.html`](web/index.html) to get a servable site:
 
 ```sh
 mkdir -p target/weberite-site
-cp shell/weberite/web/index.html \
+cp shell/weberite/web/index.html shell/weberite/web/style.css \
   external/coi-serviceworker/coi-serviceworker.js \
   target/wasm32-unknown-emscripten/release/fluxemu-shell-weberite.js \
   target/wasm32-unknown-emscripten/release/fluxemu_shell_weberite.wasm \
