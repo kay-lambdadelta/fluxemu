@@ -9,7 +9,7 @@ use std::{
 use bytes::Bytes;
 use data_encoding::HEXLOWER_PERMISSIVE;
 use fluxemu_database::ProgramDatabase;
-use fluxemu_locale::{Iso639Alpha2, Iso3166Alpha2};
+use fluxemu_locale::{Iso639Alpha2, Iso639Alpha3, Iso3166Alpha2};
 use fluxemu_program::{
     DumpStatus, NonCanonicalHeader, ProgramFlag, ProgramId, ProgramInfo, ProgramKind, Region,
     RomFile, RomHash, RomHashes, SystemId, Title, Variant,
@@ -338,22 +338,14 @@ fn program_info(game: &Game) -> ProgramInfo {
 
         let tag_regions: Vec<Region> = parts.iter().filter_map(|part| region(part)).collect();
         if !tag_regions.is_empty() && tag_regions.len() == parts.len() {
-            regions.extend(tag_regions);
+            languages.extend(tag_regions.iter().copied().filter_map(implied_language));
 
-            for part in &parts {
-                if let Some(language) = LANGUAGE_OVERRIDES.get(part) {
-                    languages.insert(language.to_alpha3());
-                }
-            }
+            regions.extend(tag_regions);
 
             continue;
         }
 
-        let tag_languages: Vec<_> = parts
-            .iter()
-            .filter_map(|part| Iso639Alpha2::from_str(part).ok())
-            .map(|language| language.to_alpha3())
-            .collect();
+        let tag_languages: Vec<_> = tag.split(',').map(str::trim).filter_map(language).collect();
         if !tag_languages.is_empty() && tag_languages.len() == parts.len() {
             languages = tag_languages.into_iter().collect();
 
@@ -453,32 +445,54 @@ fn region(name: &str) -> Option<Region> {
 static COUNTRY_ALIASES: LazyLock<HashMap<&'static str, Iso3166Alpha2>> = LazyLock::new(|| {
     HashMap::from([
         ("usa", Iso3166Alpha2::US),
-        ("uk", Iso3166Alpha2::GB),
-        ("united kingdom", Iso3166Alpha2::GB),
+        ("uae", Iso3166Alpha2::AE),
+        // Most dats call the ROK korea
         ("korea", Iso3166Alpha2::KR),
-        ("hong kong", Iso3166Alpha2::HK),
-        ("russia", Iso3166Alpha2::RU),
     ])
 });
 
-static LANGUAGE_OVERRIDES: LazyLock<HashMap<&'static str, Iso639Alpha2>> = LazyLock::new(|| {
-    HashMap::from([
-        ("usa", Iso639Alpha2::EN),
-        ("japan", Iso639Alpha2::JA),
-        ("china", Iso639Alpha2::ZH),
-        ("korea", Iso639Alpha2::KO),
-        ("australia", Iso639Alpha2::EN),
-        ("canada", Iso639Alpha2::EN),
-        ("united kingdom", Iso639Alpha2::EN),
-        ("uk", Iso639Alpha2::EN),
-        ("france", Iso639Alpha2::FR),
-        ("brazil", Iso639Alpha2::PT),
-        ("italy", Iso639Alpha2::IT),
-        ("germany", Iso639Alpha2::DE),
-        ("spain", Iso639Alpha2::ES),
-        ("taiwan", Iso639Alpha2::ZH),
-    ])
-});
+fn language(part: &str) -> Option<Iso639Alpha3> {
+    let (base, suffix) = part.split_once('-').unwrap_or((part, ""));
+
+    let is_region_or_script_suffix = suffix.is_empty()
+        || (suffix.len() == 2
+            && suffix
+                .chars()
+                .all(|character| character.is_ascii_uppercase()))
+        || (suffix.len() == 4
+            && suffix.starts_with(|character: char| character.is_ascii_uppercase())
+            && suffix[1..]
+                .chars()
+                .all(|character| character.is_ascii_lowercase()));
+
+    if !is_region_or_script_suffix {
+        return None;
+    }
+
+    let mut characters = base.chars();
+
+    match (characters.next(), characters.next(), characters.next()) {
+        (Some(first), Some(second), None)
+            if first.is_ascii_uppercase() && second.is_ascii_lowercase() =>
+        {
+            Iso639Alpha2::from_str(base)
+                .ok()
+                .map(|language| language.to_alpha3())
+        }
+        _ => None,
+    }
+}
+
+fn implied_language(region: Region) -> Option<Iso639Alpha3> {
+    match region {
+        Region::Country(country) => match country.likely_language() {
+            Iso639Alpha3::NOB => Some(Iso639Alpha3::NOR),
+            language => Some(language),
+        },
+        Region::Europe => Some(Iso639Alpha3::ENG),
+        Region::World | Region::Asia | Region::LatinAmerica | Region::Scandinavia => None,
+    }
+}
 
 fn get_data_in_parentheses(input: &str) -> Vec<String> {
     let mut result = Vec::new();

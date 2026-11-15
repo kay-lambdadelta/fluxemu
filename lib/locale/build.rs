@@ -1,33 +1,27 @@
-use std::{
-    collections::{BTreeMap, HashMap},
-    fs::File,
-    path::PathBuf,
-};
+use std::{collections::BTreeMap, fs::File, path::PathBuf};
 
-use csv::Reader;
+use csv::ReaderBuilder;
 use proc_macro2::Span;
 use quote::quote;
 use serde::Deserialize;
+use serde_json::Value;
 use syn::{Fields, Ident, Variant};
 
 #[derive(Debug, Deserialize)]
-struct CountryRecord {
-    #[serde(rename = "ISO3166-1-Alpha-2")]
-    alpha_2_code: String,
-    #[serde(rename = "ISO3166-1-Alpha-3")]
-    alpha_3_code: String,
-    official_name_en: String,
-    #[serde(rename = "UNTERM English Short")]
-    english_short_name: String,
+struct CodeMapping {
+    #[serde(rename = "_alpha3")]
+    alpha3: Option<String>,
+    #[serde(rename = "_numeric")]
+    numeric: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct LanguageRecord {
+    alpha3_bibliographic: String,
+    alpha3_terminologic: Option<String>,
     alpha2: Option<String>,
-    #[serde(rename = "alpha3-b")]
-    alpha3: String,
-    #[serde(rename = "English")]
     english_name: String,
+    _french_name: String,
 }
 
 fn main() {
@@ -35,23 +29,114 @@ fn main() {
     generate_639();
 }
 
+fn read_iso_639_2() -> Vec<LanguageRecord> {
+    let file = File::open("data/loc/ISO-639-2_utf-8.txt").expect("Could not open ISO 639-2 list");
+
+    let mut reader = ReaderBuilder::new()
+        .delimiter(b'|')
+        .has_headers(false)
+        .from_reader(file);
+
+    reader
+        .deserialize()
+        .map(|result| result.expect("ISO 639-2 list parse error"))
+        .filter(|record: &LanguageRecord| record.alpha3_bibliographic != "qaa-qtz")
+        .collect()
+}
+
+fn iso_639_2_bibliographic_code<'a>(records: &'a [LanguageRecord], code: &str) -> &'a str {
+    records
+        .iter()
+        .find(|record| {
+            record.alpha2.as_deref() == Some(code)
+                || record.alpha3_bibliographic == code
+                || record.alpha3_terminologic.as_deref() == Some(code)
+        })
+        .map(|record| record.alpha3_bibliographic.as_str())
+        .unwrap_or_else(|| panic!("Language {code} is not in the ISO 639-2 list"))
+}
+
+fn read_json_section<T: for<'de> Deserialize<'de>>(path: &str, pointer: &str) -> T {
+    let file = File::open(path).unwrap_or_else(|error| panic!("Could not open {path}: {error}"));
+
+    let mut document: Value = serde_json::from_reader(file)
+        .unwrap_or_else(|error| panic!("Could not parse {path}: {error}"));
+
+    let section = document
+        .pointer_mut(pointer)
+        .unwrap_or_else(|| panic!("{path} has no {pointer}"))
+        .take();
+
+    serde_json::from_value(section)
+        .unwrap_or_else(|error| panic!("Unexpected shape at {pointer} in {path}: {error}"))
+}
+
+fn is_user_assigned_country_code(code: &str) -> bool {
+    let mut letters = code.chars();
+    let first = letters.next();
+    let second = letters.next();
+
+    matches!(
+        (first, second),
+        (Some('A'), Some('A'))
+            | (Some('Q'), Some('M'..='Z'))
+            | (Some('X'), _)
+            | (Some('Z'), Some('Z'))
+    )
+}
+
 pub fn generate_3166() {
-    // Read CSV
-    let file = File::open("data/country-codes.csv").expect("Could not open CSV");
-    let mut reader = Reader::from_reader(file);
+    let code_mappings: BTreeMap<String, CodeMapping> =
+        read_json_section("data/cldr/codeMappings.json", "/supplemental/codeMappings");
+
+    let display_names: BTreeMap<String, String> = read_json_section(
+        "data/cldr/territories.json",
+        "/main/en/localeDisplayNames/territories",
+    );
+
+    let mut countries: Vec<_> = code_mappings
+        .iter()
+        .filter_map(|(alpha2, mapping)| {
+            let alpha3 = mapping.alpha3.as_deref()?;
+            mapping.numeric.as_ref()?;
+            let english_name = display_names.get(alpha2)?;
+
+            let is_real_country = alpha2.len() == 2
+                && !is_user_assigned_country_code(alpha2)
+                && !is_user_assigned_country_code(alpha3);
+
+            is_real_country.then_some((alpha2.as_str(), alpha3, english_name.as_str()))
+        })
+        .collect();
+    countries.sort_by_key(|(_, _, english_name)| english_name.to_lowercase());
+
+    let likely_subtags: BTreeMap<String, String> = read_json_section(
+        "data/cldr/likelySubtags.json",
+        "/supplemental/likelySubtags",
+    );
+    let languages = read_iso_639_2();
 
     // Construct variants
     let mut variants_2 = Vec::new();
     let mut variants_3 = Vec::new();
-    let mut mappings_2to3 = HashMap::new();
-    let mut mappings_3to2 = HashMap::new();
+    let mut mappings_2to3 = Vec::new();
+    let mut mappings_3to2 = Vec::new();
     let mut english_names = BTreeMap::new();
+    let mut likely_languages = Vec::new();
 
-    for result in reader.deserialize() {
-        let record: CountryRecord = result.expect("CSV parse error");
+    for (alpha2, alpha3, _) in &countries {
+        let ident2 = Ident::new(&alpha2.to_uppercase(), Span::call_site());
 
-        let ident_str = record.alpha_2_code.to_uppercase();
-        let ident2 = Ident::new(&ident_str, Span::call_site());
+        let likely_tag = likely_subtags
+            .get(&format!("und-{alpha2}"))
+            .or_else(|| likely_subtags.get("und"))
+            .expect("likelySubtags.json has no und entry");
+        let likely_language = likely_tag.split('-').next().unwrap_or_default();
+        let language_ident = Ident::new(
+            &iso_639_2_bibliographic_code(&languages, likely_language).to_uppercase(),
+            Span::call_site(),
+        );
+        likely_languages.push((ident2.clone(), language_ident));
 
         variants_2.push(Variant {
             attrs: Vec::new(),
@@ -60,8 +145,7 @@ pub fn generate_3166() {
             discriminant: None,
         });
 
-        let ident_str = record.alpha_3_code.to_uppercase();
-        let ident3 = Ident::new(&ident_str, Span::call_site());
+        let ident3 = Ident::new(&alpha3.to_uppercase(), Span::call_site());
 
         variants_3.push(Variant {
             attrs: Vec::new(),
@@ -70,16 +154,24 @@ pub fn generate_3166() {
             discriminant: None,
         });
 
-        for name in [&record.official_name_en, &record.english_short_name] {
-            let name = name.trim().trim_end_matches(" (the)").to_lowercase();
+        let name_keys = display_names
+            .keys()
+            .filter(|key| *key == alpha2 || key.starts_with(&format!("{alpha2}-alt-")));
 
-            if !name.is_empty() {
-                english_names.entry(name).or_insert_with(|| ident2.clone());
+        for key in name_keys {
+            let name = display_names[key].trim().to_lowercase();
+            let ascii_apostrophe = name.replace('\u{2019}', "'");
+            let ampersand_spelled_out = ascii_apostrophe.replace(" & ", " and ");
+
+            for spelling in [ampersand_spelled_out, ascii_apostrophe, name] {
+                english_names
+                    .entry(spelling)
+                    .or_insert_with(|| ident2.clone());
             }
         }
 
-        mappings_2to3.insert(ident2.clone(), ident3.clone());
-        mappings_3to2.insert(ident3, ident2);
+        mappings_2to3.push((ident2.clone(), ident3.clone()));
+        mappings_3to2.push((ident3, ident2));
     }
 
     let derives: Vec<_> = [
@@ -101,6 +193,9 @@ pub fn generate_3166() {
     });
     let english_name_arms = english_names.iter().map(|(name, ident)| {
         quote! { #name => Some(Self::#ident), }
+    });
+    let likely_language_arms = likely_languages.iter().map(|(country, language)| {
+        quote! { Self::#country => Iso639Alpha3::#language, }
     });
     let arms_3to2 = mappings_3to2.iter().map(|(k, v)| {
         quote! { Self::#k => Iso3166Alpha2::#v, }
@@ -144,6 +239,12 @@ pub fn generate_3166() {
                 match name.to_lowercase().as_str() {
                     #(#english_name_arms)*
                     _ => None,
+                }
+            }
+
+            pub fn likely_language(&self) -> Iso639Alpha3 {
+                match self {
+                    #(#likely_language_arms)*
                 }
             }
         }
@@ -238,29 +339,18 @@ pub fn generate_3166() {
 
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR not set"));
     let dest_path = out_dir.join("iso3166.rs");
-    std::fs::write(dest_path, file.to_string()).expect("Failed to write generated Rust file");
+    std::fs::write(dest_path, file.to_string()).expect("Failed to write generated Rust source");
 }
 
 pub fn generate_639() {
-    // Read CSV
-    let file = File::open("data/language-codes-full.csv").expect("Could not open CSV");
-    let mut reader = Reader::from_reader(file);
-
     // Construct variants
     let mut variants_2 = Vec::new();
     let mut variants_3 = Vec::new();
-    let mut mappings_2to3 = HashMap::new();
-    let mut mappings_3to2 = HashMap::new();
+    let mut mappings_2to3 = Vec::new();
+    let mut mappings_3to2 = Vec::new();
     let mut english_names = Vec::new();
 
-    for result in reader.deserialize() {
-        let record: LanguageRecord = result.expect("CSV parse error");
-
-        // Skip reserved
-        if record.alpha3 == "qaa-qtz" {
-            continue;
-        }
-
+    for record in read_iso_639_2() {
         let ident2 = record.alpha2.map(|alpha2| {
             let ident_str = alpha2.to_uppercase();
             let ident2 = Ident::new(&ident_str, Span::call_site());
@@ -275,7 +365,7 @@ pub fn generate_639() {
             ident2
         });
 
-        let ident_str = record.alpha3.to_uppercase();
+        let ident_str = record.alpha3_bibliographic.to_uppercase();
         let ident3 = Ident::new(&ident_str, Span::call_site());
 
         variants_3.push(Variant {
@@ -295,8 +385,8 @@ pub fn generate_639() {
         english_names.push((ident3.clone(), english_name));
 
         if let Some(ident2) = ident2 {
-            mappings_2to3.insert(ident2.clone(), ident3.clone());
-            mappings_3to2.insert(ident3, ident2);
+            mappings_2to3.push((ident2.clone(), ident3.clone()));
+            mappings_3to2.push((ident3, ident2));
         }
     }
 
@@ -455,5 +545,5 @@ pub fn generate_639() {
 
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR not set"));
     let dest_path = out_dir.join("iso639.rs");
-    std::fs::write(dest_path, file.to_string()).expect("Failed to write generated Rust file");
+    std::fs::write(dest_path, file.to_string()).expect("Failed to write generated Rust source");
 }

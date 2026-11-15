@@ -102,6 +102,7 @@ rustc-hash = "2.1"
 scc = "3.8"
 sdd = { version = "4.10" }
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 serde_with = "3.24"
 sevenz-rust2 = "0.25"
 sha1 = "0.11"
