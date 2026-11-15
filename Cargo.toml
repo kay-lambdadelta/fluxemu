@@ -57,7 +57,7 @@ jiff = "0.2"
 keyboard-types = { version = "0.8", default-features = false, features = ["serde"] }
 libc = "0.2"
 libseat = "0.2"
-lucide-icons = "1.72"
+lucide-icons = "1.73"
 md-5 = "0.11"
 memmap2 = "0.9"
 multiversion = "0.9"
@@ -68,7 +68,7 @@ nalgebra = {
     "serde-serialize",
   ]
 }
-nix = "0.31"
+nix = "0.32"
 nod = { git = "https://github.com/encounter/nod", rev = "ebd80cac99b48a323200d84365e07a58cc27412d" }
 num = { version = "0.4", features = ["serde"] }
 opendal = { version = "0.59", default-features = false }
