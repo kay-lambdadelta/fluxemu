@@ -53,11 +53,11 @@ input = {
   features = ["log"],
 }
 itertools = "0.15"
-jiff = "0.2"
+jiff = "1.0"
 keyboard-types = { version = "0.8", default-features = false, features = ["serde"] }
 libc = "0.2"
 libseat = "0.2"
-lucide-icons = "1.73"
+lucide-icons = "1.74"
 md-5 = "0.11"
 memmap2 = "0.9"
 multiversion = "0.9"
@@ -99,8 +99,8 @@ rust-i18n = "=4.2.2"
 rust-i18n-macro = "=4.2.2"
 rust-i18n-support = "=4.2.2"
 rustc-hash = "2.1"
-scc = "3.8"
-sdd = { version = "4.10" }
+scc = "3.9"
+sdd = "4.10"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_with = "3.24"
@@ -131,7 +131,7 @@ web-sys = "0.3"
 wgpu = "30.0"
 winit = "0.30"
 xkbcommon = "0.9"
-zip = "9.5"
+zip = "9.6"
 
 fluxemu-audio = { path = "lib/audio" }
 fluxemu-database = { path = "lib/database" }
