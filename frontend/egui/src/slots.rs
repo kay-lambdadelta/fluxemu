@@ -61,7 +61,7 @@ fn format_time(time: SystemTime) -> String {
         |_| String::new(),
         |timestamp| {
             timestamp
-                .to_zoned(TimeZone::system())
+                .to_zoned_datetime(TimeZone::system())
                 .strftime("%Y-%m-%d %H:%M")
                 .to_string()
         },

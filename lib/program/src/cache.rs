@@ -135,5 +135,5 @@ fn holds_unusable_data(err: &redb::Error) -> bool {
 }
 
 fn today() -> Date {
-    Timestamp::now().to_zoned(TimeZone::UTC).date()
+    Timestamp::now().to_zoned_datetime(TimeZone::UTC).date()
 }
