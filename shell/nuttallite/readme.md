@@ -79,4 +79,4 @@ The full list of backends is available in [OpenDAL's documentation](https://docs
 > [!WARNING]
 > NuttX is an embedded OS, so many backends for OpenDAL may not fit into flash or will break or have no way to work at runtime.
 >
-> The story for how ROM loading or other aspects of persistent storage will be done on it is still being written. Submission of ideas is welcome.
+> Most likely, the only feasible way to load ROMs will be via an SD card or an embedded ROM system.
