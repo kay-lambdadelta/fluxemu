@@ -131,7 +131,7 @@ web-sys = "0.3"
 wgpu = "30.0"
 winit = "0.30"
 xkbcommon = "0.9"
-zip = "9.6"
+zip = "9.7"
 
 fluxemu-audio = { path = "lib/audio" }
 fluxemu-database = { path = "lib/database" }
