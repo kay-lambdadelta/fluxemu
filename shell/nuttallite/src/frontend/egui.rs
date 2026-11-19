@@ -16,7 +16,7 @@ use tokio::runtime::Handle;
 use crate::{
     build_machine::get_factories,
     platform::Platform,
-    runtime::{AudioRuntime, GraphicsRuntime, open_graphics_runtime},
+    runtime::{AudioRuntime, GraphicsRuntime, Touchscreen, open_graphics_runtime},
 };
 
 const UNSCII_FONT: &[u8] = include_bytes!("../../../../external/unscii/fontfiles/unscii-16.otf");
@@ -53,6 +53,7 @@ pub fn run(
     );
     let mut frontend = Frontend::new(core, notifications, font_definitions);
     let mut graphics_runtime = open_graphics_runtime()?;
+    let mut touchscreen = Touchscreen::open();
 
     let display_dimensions = graphics_runtime.display_context().dimensions();
 
@@ -62,6 +63,12 @@ pub fn run(
         frontend.maybe_reset_graphics_to_meet_machine_requirements(|_, sealed_machine_builder| {
             graphics_runtime.reconfigure(sealed_machine_builder.graphics_requirements());
         });
+
+        let mut events = Vec::new();
+
+        if let Some(touchscreen) = &mut touchscreen {
+            touchscreen.poll(&mut events);
+        }
 
         let raw_input = RawInput {
             viewport_id: ViewportId::ROOT,
@@ -79,6 +86,8 @@ pub fn run(
                 max: [display_dimensions.x as f32, display_dimensions.y as f32].into(),
             }),
             time: Some(start_time.elapsed().as_secs_f64()),
+            max_texture_side: Some(1024),
+            events,
             focused: true,
             ..Default::default()
         };
