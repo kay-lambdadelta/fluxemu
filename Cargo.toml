@@ -57,7 +57,7 @@ jiff = "1.0"
 keyboard-types = { version = "0.8", default-features = false, features = ["serde"] }
 libc = "0.2"
 libseat = "0.2"
-lucide-icons = "1.74"
+lucide-icons = "1.76"
 md-5 = "0.11"
 memmap2 = "0.9"
 multiversion = "0.9"
@@ -87,7 +87,7 @@ ratatui-image = { version = "11.1", default-features = false, features = ["cross
 raw-window-handle = "0.6"
 rayon = "1.12"
 read-fonts = "0.47"
-redb = { version = "4.6", features = ["logging"] }
+redb = { version = "5.0", features = ["logging"] }
 reqwest = "0.13"
 rfd = "0.18"
 ringbuffer = "0.16"

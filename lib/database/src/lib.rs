@@ -10,8 +10,9 @@ use fluxemu_program::{
     versioned_table_name,
 };
 use redb::{
-    Database, MultimapTableDefinition, MultimapTableHandle, ReadOnlyDatabase, ReadableDatabase,
-    ReadableMultimapTable, ReadableTable, TableDefinition, TableHandle, WriteTransaction,
+    CompactionMode, Database, MultimapTableDefinition, MultimapTableHandle, ReadOnlyDatabase,
+    ReadableDatabase, ReadableMultimapTable, ReadableTable, TableDefinition, TableHandle,
+    WriteTransaction,
 };
 use thiserror::Error;
 
@@ -476,7 +477,7 @@ impl ProgramDatabase {
     }
 
     pub fn compact(&mut self) -> Result<bool, Error> {
-        Ok(self.database.compact()?)
+        Ok(self.database.compact(CompactionMode::Maximum)?)
     }
 }
 
