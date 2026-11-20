@@ -76,7 +76,7 @@ evdev = { workspace = true, optional = true }
 fluxemu-platform = { workspace = true }
 input = { workspace = true, optional = true }
 libseat = { workspace = true, optional = true }
-nix = { workspace = true, features = ["event", "poll"], optional = true }
+rustix = { workspace = true, features = ["event"], optional = true }
 udev = { workspace = true, optional = true }
 xkbcommon = { workspace = true, optional = true }
 
@@ -107,7 +107,7 @@ drm = [
   "dep:evdev",
   "dep:input",
   "dep:libseat",
-  "dep:nix",
+  "dep:rustix",
   "dep:udev",
   "dep:xkbcommon",
   "egui",

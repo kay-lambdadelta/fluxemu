@@ -1,3 +1,5 @@
+use std::{mem::MaybeUninit, os::fd::OwnedFd};
+
 use drm::{
     buffer::{Buffer, DrmFourcc},
     control::{
@@ -15,18 +17,15 @@ use fluxemu_graphics::{
 };
 use fluxemu_runtime::graphics::GraphicsRequirements;
 use nalgebra::Vector2;
-use nix::{
-    poll::PollTimeout,
-    sys::epoll::{Epoll, EpollCreateFlags, EpollEvent, EpollFlags},
-};
 use palette::{cast::Packed, rgb::channels::Bgra};
+use rustix::event::epoll::{self, CreateFlags, Event, EventData, EventFlags};
 
 use crate::event_loop::drm::DrmContext;
 
 pub struct Surface {
     buffers: [DumbBuffer; 2],
     framebuffers: [drm::control::framebuffer::Handle; 2],
-    epoll: Epoll,
+    epoll: OwnedFd,
     on_back_buffer: bool,
 }
 
@@ -88,10 +87,14 @@ impl ProducableGraphicsRuntime<DrmContext> for SoftwareGraphicsRuntime<DrmContex
             )
             .unwrap();
 
-        let epoll = Epoll::new(EpollCreateFlags::EPOLL_CLOEXEC).unwrap();
-        epoll
-            .add(&context.card, EpollEvent::new(EpollFlags::EPOLLIN, 0))
-            .unwrap();
+        let epoll = epoll::create(CreateFlags::CLOEXEC).unwrap();
+        epoll::add(
+            &epoll,
+            &*context.card,
+            EventData::new_u64(0),
+            EventFlags::IN,
+        )
+        .unwrap();
 
         SoftwareGraphicsRuntime::new(
             context.clone(),
@@ -158,11 +161,11 @@ impl SoftwareCompatibleDisplayContext for DrmContext {
         )?;
 
         loop {
-            let mut events = [EpollEvent::new(EpollFlags::EPOLLIN, 0)];
-            let num_events = surface.epoll.wait(&mut events, PollTimeout::NONE)?;
+            let mut events = [MaybeUninit::<Event>::uninit()];
+            let (ready_events, _) = epoll::wait(&surface.epoll, &mut events, None)?;
 
             // Wait around for a pageflip and then swap the back index
-            if num_events > 0 {
+            if !ready_events.is_empty() {
                 for event in self.card.receive_events()? {
                     if let drm::control::Event::PageFlip(_) = event {
                         surface.on_back_buffer = !surface.on_back_buffer;

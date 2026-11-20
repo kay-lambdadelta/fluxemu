@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    mem::MaybeUninit,
     os::fd::AsFd,
     sync::{
         Arc, Mutex,
@@ -24,11 +25,8 @@ use fluxemu_frontend_egui::{Frontend, rendering::EguiCapableGraphicsRuntime};
 use fluxemu_program::{ProgramManager, RomId};
 use fluxemu_runtime::graphics::GraphicsRequirements;
 use nalgebra::Vector2;
-use nix::{
-    poll::PollTimeout,
-    sys::epoll::{Epoll, EpollCreateFlags, EpollEvent, EpollFlags},
-};
 use palette::named::BLACK;
+use rustix::event::epoll::{self, CreateFlags, Event, EventData, EventFlags};
 use tokio::runtime::Handle;
 
 use crate::{
@@ -129,29 +127,31 @@ pub fn run<R: ProducableGraphicsRuntime<DrmContext> + EguiCapableGraphicsRuntime
                 let seat_name = seat.lock().unwrap().name().to_owned();
                 libinput.udev_assign_seat(&seat_name).unwrap();
 
-                let epoll = Epoll::new(EpollCreateFlags::EPOLL_CLOEXEC).unwrap();
+                let epoll = epoll::create(CreateFlags::CLOEXEC).unwrap();
 
-                epoll
-                    .add(
-                        libinput.as_fd(),
-                        EpollEvent::new(EpollFlags::EPOLLIN, LIBINPUT_EVENT_SOURCE),
-                    )
-                    .unwrap();
+                epoll::add(
+                    &epoll,
+                    libinput.as_fd(),
+                    EventData::new_u64(LIBINPUT_EVENT_SOURCE),
+                    EventFlags::IN,
+                )
+                .unwrap();
 
-                epoll
-                    .add(
-                        seat.lock().unwrap().get_fd().unwrap(),
-                        EpollEvent::new(EpollFlags::EPOLLIN, SEAT_EVENT_SOURCE),
-                    )
-                    .unwrap();
+                epoll::add(
+                    &epoll,
+                    seat.lock().unwrap().get_fd().unwrap(),
+                    EventData::new_u64(SEAT_EVENT_SOURCE),
+                    EventFlags::IN,
+                )
+                .unwrap();
 
                 loop {
-                    let mut ready_events = [EpollEvent::empty(); 2];
+                    let mut events = [MaybeUninit::<Event>::uninit(); 2];
 
-                    match epoll.wait(&mut ready_events, PollTimeout::NONE) {
-                        Ok(num_events) => {
-                            for event in &ready_events[..num_events] {
-                                match event.data() {
+                    match epoll::wait(&epoll, &mut events, None) {
+                        Ok((ready_events, _)) => {
+                            for event in ready_events.iter() {
+                                match event.data.u64() {
                                     LIBINPUT_EVENT_SOURCE => {
                                         handle_libinput_events(
                                             &mut send_input,
