@@ -57,7 +57,7 @@ jiff = "1.0"
 keyboard-types = { version = "0.8", default-features = false, features = ["serde"] }
 libc = "0.2"
 libseat = "0.2"
-lucide-icons = "1.76"
+lucide-icons = "1.77"
 md-5 = "0.11"
 memmap2 = "0.9"
 multiversion = "0.9"
@@ -131,7 +131,7 @@ web-sys = "0.3"
 wgpu = "30.0"
 winit = "0.30"
 xkbcommon = "0.9"
-zip = "9.7"
+zip = "9.8"
 
 fluxemu-audio = { path = "lib/audio" }
 fluxemu-database = { path = "lib/database" }
