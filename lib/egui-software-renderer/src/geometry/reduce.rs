@@ -136,7 +136,7 @@ impl<I: Intermediate> Vertex<I> {
                 I::from_f32(vertex.uv.x).unwrap(),
                 I::from_f32(vertex.uv.y).unwrap(),
             ),
-            color: premultiplied_color(&vertex.color),
+            color: premultiplied_color(vertex.color),
         }
     }
 }

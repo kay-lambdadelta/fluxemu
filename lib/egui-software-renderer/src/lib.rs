@@ -113,10 +113,7 @@ impl<T: Intermediate> Renderer<T> {
 
             let source_texture_view = match &image_delta.image {
                 egui::ImageData::Color(image) => {
-                    let converted_image: Vec<_> =
-                        image.pixels.iter().map(premultiplied_color).collect();
-
-                    Texture::from_storage(image.size[0], image.size[1], converted_image)
+                    Texture::from_storage(image.size[0], image.size[1], image.pixels.as_slice())
                 }
             };
 
@@ -129,7 +126,7 @@ impl<T: Intermediate> Renderer<T> {
                     texture_update_offset.y
                         ..(texture_update_offset.y + source_texture_view.height()),
                 )
-                .copy_from(&source_texture_view, CopyMode::Nearest);
+                .map_from(source_texture_view, CopyMode::Nearest, premultiplied_color);
         }
     }
 }
@@ -291,7 +288,7 @@ fn render_inner<
 
 #[inline]
 pub(crate) fn premultiplied_color<T: Intermediate>(
-    color: &egui::Color32,
+    color: egui::Color32,
 ) -> PreAlpha<Srgb<Channel<T>>> {
     let color: Srgba<Channel<T>> = Srgba::from_components(color.to_tuple()).into_format();
 
