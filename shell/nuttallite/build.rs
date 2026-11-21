@@ -19,6 +19,7 @@ fn main() {
         .clang_arg("-nostdinc")
         .clang_arg("-nostdlib")
         .clang_macro_fallback()
+        // bindgen often has difficulty representing this type in Rust, so we have to blocklist it
         .blocklist_type("max_align_t")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate()
