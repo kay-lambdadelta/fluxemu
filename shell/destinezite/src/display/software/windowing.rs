@@ -1,6 +1,6 @@
 use fluxemu_frontend::graphics::ProducableGraphicsRuntime;
 use fluxemu_frontend_egui::rendering::software::{
-    SoftwareCompatibleDisplayContext, SoftwareGraphicsRuntime,
+    RendererConfig, SoftwareCompatibleDisplayContext, SoftwareGraphicsRuntime,
 };
 use fluxemu_graphics::{
     api::software::Software,
@@ -48,7 +48,7 @@ impl ProducableGraphicsRuntime<Window> for SoftwareGraphicsRuntime<Window> {
             )
             .unwrap();
 
-        SoftwareGraphicsRuntime::new(window.clone(), surface)
+        SoftwareGraphicsRuntime::new(window.clone(), surface, RendererConfig::default())
     }
 
     fn display_context(&self) -> &Window {

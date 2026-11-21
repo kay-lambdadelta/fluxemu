@@ -1,4 +1,5 @@
 use egui::PaintCallback;
+pub use fluxemu_egui_software_renderer::RendererConfig;
 use fluxemu_egui_software_renderer::{
     Renderer,
     callback::{Callback, CallbackInfo, CallbackTrait},
@@ -48,26 +49,16 @@ pub trait SoftwareCompatibleDisplayContext: DisplayContext {
     fn present(&self, surface: &mut Self::Surface) -> Result<(), Self::PresentError>;
 }
 
-// Benchmarks say that a batch size of 16 is ideal across several low and mid power machines
-//
-// As far as throughput for realistic UI goes at the very least
-//
-// This is suggested by benchmarks on a i5-1245U and a RK3566T
-pub struct SoftwareGraphicsRuntime<
-    D: SoftwareCompatibleDisplayContext,
-    const BATCH_SIZE: usize = 16,
-> {
+pub struct SoftwareGraphicsRuntime<D: SoftwareCompatibleDisplayContext> {
     renderer: Renderer,
     surface: D::Surface,
     display_context: D,
 }
 
-impl<D: SoftwareCompatibleDisplayContext, const BATCH_SIZE: usize>
-    SoftwareGraphicsRuntime<D, BATCH_SIZE>
-{
-    pub fn new(display_context: D, surface: D::Surface) -> Self {
+impl<D: SoftwareCompatibleDisplayContext> SoftwareGraphicsRuntime<D> {
+    pub fn new(display_context: D, surface: D::Surface, renderer_config: RendererConfig) -> Self {
         Self {
-            renderer: Renderer::default(),
+            renderer: Renderer::new(renderer_config),
             surface,
             display_context,
         }
@@ -78,9 +69,7 @@ impl<D: SoftwareCompatibleDisplayContext, const BATCH_SIZE: usize>
     }
 }
 
-impl<D: SoftwareCompatibleDisplayContext, const BATCH_SIZE: usize> GraphicsRuntime
-    for SoftwareGraphicsRuntime<D, BATCH_SIZE>
-{
+impl<D: SoftwareCompatibleDisplayContext> GraphicsRuntime for SoftwareGraphicsRuntime<D> {
     type GraphicsApi = Software;
 
     fn reconfigure(&mut self, _graphics_requirements: GraphicsRequirements<Self::GraphicsApi>) {
@@ -109,8 +98,8 @@ impl<D: SoftwareCompatibleDisplayContext, const BATCH_SIZE: usize> GraphicsRunti
     }
 }
 
-impl<D: SoftwareCompatibleDisplayContext, const BATCH_SIZE: usize> EguiCapableGraphicsRuntime
-    for SoftwareGraphicsRuntime<D, BATCH_SIZE>
+impl<D: SoftwareCompatibleDisplayContext> EguiCapableGraphicsRuntime
+    for SoftwareGraphicsRuntime<D>
 {
     fn present(
         &mut self,
@@ -128,7 +117,7 @@ impl<D: SoftwareCompatibleDisplayContext, const BATCH_SIZE: usize> EguiCapableGr
         surface_buffer.fill(Srgba::from(clear_color).into());
 
         self.renderer
-            .render::<_, BATCH_SIZE>(context, full_output, &mut surface_buffer);
+            .render(context, full_output, &mut surface_buffer);
 
         drop(surface_buffer_guard);
 

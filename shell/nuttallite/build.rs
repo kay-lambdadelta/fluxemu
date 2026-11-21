@@ -2,6 +2,7 @@ use std::{env, path::PathBuf};
 
 fn main() {
     println!("cargo:rerun-if-env-changed=NUTTX_INCLUDE_DIR");
+    println!("cargo::rustc-check-cfg=cfg(cdcacm_console)");
 
     let Ok(nuttx_include_dirs) = env::var("NUTTX_INCLUDE_DIR") else {
         return;
@@ -20,6 +21,14 @@ fn main() {
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate()
         .unwrap();
+
+    // FIXME: This is a quite terrible way for config feature direction
+    if bindings
+        .to_string()
+        .contains("pub const CONFIG_CDCACM_CONSOLE: u32 = 1;")
+    {
+        println!("cargo::rustc-cfg=cdcacm_console");
+    }
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings.write_to_file(out_dir.join("bindings.rs")).unwrap();

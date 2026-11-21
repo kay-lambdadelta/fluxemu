@@ -6,6 +6,7 @@ use nalgebra::{Point2, SMatrix, Vector2, Vector3};
 use palette::{
     Alpha, Srgb, Srgba,
     blend::{Compose, PreAlpha},
+    stimulus::IntoStimulus,
 };
 
 use crate::{
@@ -13,6 +14,30 @@ use crate::{
     intermediate::{Channel, Intermediate},
     powerof2::PowerOfTwoIter,
 };
+
+pub trait Texel<I: Intermediate>: Copy {
+    fn to_premultiplied(self) -> PreAlpha<Srgb<Channel<I>>>;
+}
+
+impl<I: Intermediate> Texel<I> for PreAlpha<Srgb<Channel<I>>> {
+    #[inline(always)]
+    fn to_premultiplied(self) -> PreAlpha<Srgb<Channel<I>>> {
+        self
+    }
+}
+
+// Alpha only textures are premultiplied white
+impl<I: Intermediate> Texel<I> for u8 {
+    #[inline(always)]
+    fn to_premultiplied(self) -> PreAlpha<Srgb<Channel<I>>> {
+        let alpha: Channel<I> = self.into_stimulus();
+
+        PreAlpha {
+            color: Srgb::new(alpha, alpha, alpha),
+            alpha,
+        }
+    }
+}
 
 #[inline(always)]
 pub fn fill_quad<
@@ -49,12 +74,13 @@ pub fn fill_quad<
 pub fn fill_triangle<
     P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'static,
     I: Intermediate,
-    const BATCH_SIZE: usize,
+    S: Texel<I>,
 >(
     clip: Rectangle<I>,
     triangle: Triangle<I>,
-    source_texture: Texture<impl Storage<Pixel = PreAlpha<Srgb<Channel<I>>>>>,
+    source_texture: Texture<impl Storage<Pixel = S>>,
     mut destination_texture: Texture<impl StorageMut<Pixel = P>>,
+    batch_size: usize,
 ) {
     let source_texture = source_texture.as_view();
 
@@ -145,6 +171,7 @@ pub fn fill_triangle<
     let source_pixels = source_texture
         .as_slice()
         .expect("Source textures are always stored whole");
+
     assert!(source_pixels.len() <= u32::MAX as usize);
     let source_size = source_texture.size().map(|size| size as u32);
 
@@ -199,12 +226,12 @@ pub fn fill_triangle<
         let mut x = *x_range.start();
 
         // This power of two iterator forcing constant run lengths makes very efficient simd code
-        for len in PowerOfTwoIter::<BATCH_SIZE>::new(x_range.len()) {
+        for len in PowerOfTwoIter::new(x_range.len(), batch_size) {
             let target_row =
                 destination_texture.view_mut(RangeInclusive::from_start_and_length(x, len), y..=y);
 
             match len {
-                32 => pixel_rounds::<32, P, I>(
+                32 => pixel_rounds::<32, P, I, S>(
                     target_row,
                     source_pixels,
                     source_size,
@@ -213,7 +240,7 @@ pub fn fill_triangle<
                     step_uv,
                     step_color,
                 ),
-                16 => pixel_rounds::<16, P, I>(
+                16 => pixel_rounds::<16, P, I, S>(
                     target_row,
                     source_pixels,
                     source_size,
@@ -222,7 +249,7 @@ pub fn fill_triangle<
                     step_uv,
                     step_color,
                 ),
-                8 => pixel_rounds::<8, P, I>(
+                8 => pixel_rounds::<8, P, I, S>(
                     target_row,
                     source_pixels,
                     source_size,
@@ -231,7 +258,7 @@ pub fn fill_triangle<
                     step_uv,
                     step_color,
                 ),
-                4 => pixel_rounds::<4, P, I>(
+                4 => pixel_rounds::<4, P, I, S>(
                     target_row,
                     source_pixels,
                     source_size,
@@ -240,7 +267,7 @@ pub fn fill_triangle<
                     step_uv,
                     step_color,
                 ),
-                2 => pixel_rounds::<2, P, I>(
+                2 => pixel_rounds::<2, P, I, S>(
                     target_row,
                     source_pixels,
                     source_size,
@@ -249,7 +276,7 @@ pub fn fill_triangle<
                     step_uv,
                     step_color,
                 ),
-                1 => pixel_rounds::<1, P, I>(
+                1 => pixel_rounds::<1, P, I, S>(
                     target_row,
                     source_pixels,
                     source_size,
@@ -281,9 +308,10 @@ fn pixel_rounds<
     const C: usize,
     P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'static,
     I: Intermediate,
+    S: Texel<I>,
 >(
     mut target_row: Texture<impl StorageMut<Pixel = P>>,
-    texture_pixels: &[PreAlpha<Srgb<Channel<I>>>],
+    texture_pixels: &[S],
     texture_size: Vector2<u32>,
     current_uv: Vector2<I>,
     current_color: PreAlpha<Srgb<Channel<I>>>,
@@ -347,7 +375,8 @@ fn pixel_rounds<
         // SAFETY:
         //  We clamped to the texture size while producing the texture coordinates, and the caller
         //  ensures the texture has at most u32::MAX pixels so the index can't overflow
-        let texture_pixel = *unsafe { texture_pixels.get_unchecked(texture_index as usize) };
+        let texture_pixel =
+            unsafe { texture_pixels.get_unchecked(texture_index as usize) }.to_premultiplied();
 
         sampled_texture_color
             .row_mut(index)

@@ -12,9 +12,9 @@ use nalgebra::Point2;
 
 use crate::sys;
 
-/// NOTE: This was only tested on a single board with an extremely hacky rube goldberg-esque setup
-///
-/// It probably needs more work and more testing
+// NOTE: This was only tested on a single board with an extremely hacky rube goldberg-esque setup
+//
+// It probably needs more work and more testing
 
 const DEVICE_PATH: &str = "/dev/input0";
 

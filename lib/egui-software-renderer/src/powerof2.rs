@@ -1,16 +1,20 @@
-pub struct PowerOfTwoIter<const MAX: usize> {
+pub struct PowerOfTwoIter {
     remaining: usize,
+    max: usize,
 }
 
-impl<const MAX: usize> PowerOfTwoIter<MAX> {
-    pub fn new(start: usize) -> Self {
-        assert!(MAX.is_power_of_two());
+impl PowerOfTwoIter {
+    pub fn new(start: usize, max: usize) -> Self {
+        debug_assert!(max.is_power_of_two());
 
-        Self { remaining: start }
+        Self {
+            remaining: start,
+            max,
+        }
     }
 }
 
-impl<const MAX: usize> Iterator for PowerOfTwoIter<MAX> {
+impl Iterator for PowerOfTwoIter {
     type Item = usize;
 
     #[inline]
@@ -19,8 +23,8 @@ impl<const MAX: usize> Iterator for PowerOfTwoIter<MAX> {
             return None;
         }
 
-        let chunk = if self.remaining >= MAX {
-            MAX
+        let chunk = if self.remaining >= self.max {
+            self.max
         } else {
             1usize << self.remaining.ilog2()
         };

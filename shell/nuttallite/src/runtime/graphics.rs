@@ -2,23 +2,32 @@ use std::io;
 
 use fluxemu_frontend::graphics::DisplayContext;
 use fluxemu_frontend_egui::rendering::software::{
-    SoftwareCompatibleDisplayContext, SoftwareGraphicsRuntime,
+    RendererConfig, SoftwareCompatibleDisplayContext, SoftwareGraphicsRuntime,
 };
 use fluxemu_graphics::texture::AsViewTextureMut;
 use nalgebra::Vector2;
 
 use crate::runtime::framebuffer::{Framebuffer, FramebufferError, Pixel};
 
-pub type GraphicsRuntime = SoftwareGraphicsRuntime<FramebufferDisplay, 2>;
+pub type GraphicsRuntime = SoftwareGraphicsRuntime<FramebufferDisplay>;
 
 pub fn open_graphics_runtime() -> Result<GraphicsRuntime, FramebufferError> {
     let framebuffer = Framebuffer::open()?;
+
     let front_page = framebuffer.front_page();
     let display = FramebufferDisplay {
         dimensions: Vector2::new(front_page.width() as u32, front_page.height() as u32),
     };
 
-    Ok(GraphicsRuntime::new(display, framebuffer))
+    Ok(GraphicsRuntime::new(
+        display,
+        framebuffer,
+        RendererConfig {
+            batch_size: 2,
+            // Most boards could not possibly hold the entire font atlas at once
+            alpha_only_font: true,
+        },
+    ))
 }
 
 #[derive(Debug, Clone, Copy)]

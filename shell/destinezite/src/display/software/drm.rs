@@ -9,7 +9,7 @@ use drm::{
 };
 use fluxemu_frontend::graphics::ProducableGraphicsRuntime;
 use fluxemu_frontend_egui::rendering::software::{
-    SoftwareCompatibleDisplayContext, SoftwareGraphicsRuntime,
+    RendererConfig, SoftwareCompatibleDisplayContext, SoftwareGraphicsRuntime,
 };
 use fluxemu_graphics::{
     api::software::Software,
@@ -104,6 +104,7 @@ impl ProducableGraphicsRuntime<DrmContext> for SoftwareGraphicsRuntime<DrmContex
                 epoll,
                 on_back_buffer: true,
             },
+            RendererConfig::default(),
         )
     }
 

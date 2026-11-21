@@ -1,6 +1,8 @@
 #include <nuttx/fs/fs.h>
-#include <nuttx/video/fb.h>
+#include <nuttx/fs/partition.h>
 #include <nuttx/input/touchscreen.h>
+#include <nuttx/usb/cdcacm.h>
+#include <nuttx/video/fb.h>
 // HACK: Rust libc pollfd is wrong for NuttX
 #include <poll.h>
 #include <sys/mman.h>

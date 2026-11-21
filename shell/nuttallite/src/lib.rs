@@ -16,7 +16,11 @@ use tracing_subscriber::{
     Layer, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,
 };
 
+use crate::storage::StorageBacking;
+
 mod build_machine;
+#[cfg(cdcacm_console)]
+mod console;
 mod frontend;
 mod platform;
 mod runtime;
@@ -38,6 +42,9 @@ unsafe extern "C" fn fluxemu_shell_nuttallite_main(argc: i32, argv: *const *cons
 
         return 1;
     }
+
+    #[cfg(cdcacm_console)]
+    let _ = console::attach_usb_console();
 
     // FIXME: Our intended way to run nuttallite skips nsh, which means this code would be dead in our provided builds
     // TODO: Make this use clap somehow
@@ -96,7 +103,7 @@ impl FrontendSelection {
 fn main(arguments: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     // HACK: Ctors are not run here
     opendal::init_default_registry();
-    storage::mount_storage_partition()?;
+    let storage_backing = storage::mount_storage_partition()?;
 
     let environment = load_environment();
     let frontend_selection = FrontendSelection::from_arguments(arguments);
@@ -136,8 +143,16 @@ fn main(arguments: &[String]) -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!("FluxEMU v{}", env!("CARGO_PKG_VERSION"));
 
+    if storage_backing == StorageBacking::Tmpfs {
+        tracing::warn!("No usable SD card found, storing data in a tmpfs");
+    }
+
     let runtime = Runtime::new()?;
-    let program_database = ProgramDatabase::new(Database::create(&environment.database_location)?)?;
+    let program_database = ProgramDatabase::new(
+        Database::builder()
+            .set_cache_size(0)
+            .create(&environment.database_location)?,
+    )?;
     let program_manager = ProgramManager::new(environment.rom_stores.clone());
 
     match frontend_selection {

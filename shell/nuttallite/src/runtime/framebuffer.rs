@@ -40,10 +40,17 @@ pub struct Framebuffer {
 
 impl Framebuffer {
     pub fn open() -> Result<Self, FramebufferError> {
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(DEVICE_PATH)?;
+        let mut options = OpenOptions::new();
+        options.read(true).write(true);
+
+        let file = match options.open(DEVICE_PATH) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                register_device()?;
+                options.open(DEVICE_PATH)?
+            }
+            Err(error) => return Err(error.into()),
+        };
 
         let video_info: sys::fb_videoinfo_s = query(&file, sys::FBIOGET_VIDEOINFO)?;
         let plane_info: sys::fb_planeinfo_s = query(&file, sys::FBIOGET_PLANEINFO)?;
@@ -193,11 +200,32 @@ impl Drop for Framebuffer {
     }
 }
 
+fn register_device() -> Result<(), io::Error> {
+    const DISPLAY: i32 = 0;
+    const PLANE: i32 = 0;
+
+    let result = unsafe { sys::up_fbinitialize(DISPLAY) };
+    if result < 0 {
+        return Err(io::Error::from_raw_os_error(-result));
+    }
+
+    let vtable = unsafe { sys::up_fbgetvplane(DISPLAY, PLANE) };
+    if vtable.is_null() {
+        return Err(io::Error::from_raw_os_error(libc::EINVAL));
+    }
+
+    let result = unsafe { sys::fb_register_device(DISPLAY, PLANE, vtable) };
+    if result < 0 {
+        return Err(io::Error::from_raw_os_error(-result));
+    }
+
+    Ok(())
+}
+
 fn query<T>(file: &File, request: u32) -> Result<T, io::Error> {
     let mut value = MaybeUninit::<T>::zeroed();
 
     let result = unsafe { libc::ioctl(file.as_raw_fd(), request as i32, value.as_mut_ptr()) };
-
     if result < 0 {
         return Err(io::Error::last_os_error());
     }

@@ -7,7 +7,7 @@ use egui::{
     TextureHandle, TextureOptions, Ui, ViewportId, ViewportInfo, Window,
 };
 use fixed::types::{I16F16, I32F32};
-use fluxemu_egui_software_renderer::{Intermediate, Renderer};
+use fluxemu_egui_software_renderer::{Intermediate, Renderer, RendererConfig};
 use fluxemu_graphics::texture::{AsViewTextureMut, OwnedTexture};
 use palette::{
     Srgba, WithAlpha,
@@ -153,7 +153,6 @@ fn render<
     P: From<Srgba<u8>> + Into<Srgba<u8>> + Send + Sync + Copy + 'static,
     const W: usize,
     const H: usize,
-    const BATCH_SIZE: usize,
 >(
     renderer: &mut Renderer<I>,
     context: &Context,
@@ -184,7 +183,7 @@ fn render<
         },
     );
 
-    renderer.render::<P, BATCH_SIZE>(context, full_output, texture);
+    renderer.render::<P>(context, full_output, texture);
 }
 
 // Combinational macro to save copy pastes
@@ -207,7 +206,10 @@ macro_rules! bench_combinations {
     (@expand_format $group:ident, ($number_name:literal, $number:ty), ($w:expr, $h:expr), ($name:literal, $t:ty), [$($batch:expr),+ $(,)?]) => {
         $(
             {
-                let mut renderer = Renderer::<$number>::default();
+                let mut renderer = Renderer::<$number>::new(RendererConfig {
+                    batch_size: $batch,
+                    ..RendererConfig::default()
+                });
                 let context = setup_context();
                 let mut texture = OwnedTexture::from_value($w, $h, BLACK.with_alpha(u8::MAX).into());
 
@@ -218,7 +220,7 @@ macro_rules! bench_combinations {
 
                 $group.bench_function(BenchmarkId::new(bench_name, param_combo), |b| {
                     b.iter(|| {
-                        render::<$number, $t, $w, $h, $batch>(
+                        render::<$number, $t, $w, $h>(
                             &mut renderer,
                             &context,
                             &mut scene,
