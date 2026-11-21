@@ -6,5 +6,5 @@ rsync
 jq
 kconfig-frontends
 gcc-arm-none-eabi
-picotool
 unzip
+pipx

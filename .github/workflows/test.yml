@@ -44,14 +44,24 @@ jobs:
               cargo clippy -p fluxemu-utils
             test: cargo nextest run --workspace --exclude 'fluxemu-shell-*'
 
-          - name: NuttX (pimoroni-pico-2-plus)
+          - name: NuttX (teensy-4.x)
             runner: ubuntu-26.04
             container: debian:trixie
             platform: debian
             dependencies: nuttx
             shell: nuttallite
-            tools: cargo install cargo-nuttx --locked
-            check: cargo nuttx clippy --board pimoroni-pico-2-plus --release
+            tools: cargo install --git https://github.com/kay-lambdadelta/cargo-nuttx --locked
+            check: cargo nuttx clippy --board teensy-4.x --release
+
+          - name: NuttX (esp32p4-pico-wifi-wareshare)
+            runner: ubuntu-26.04
+            container: debian:trixie
+            platform: debian
+            dependencies: nuttx
+            shell: nuttallite
+            espressif: true
+            tools: cargo install --git https://github.com/kay-lambdadelta/cargo-nuttx --locked
+            check: cargo nuttx clippy --board esp32p4-pico-wifi-wareshare --release
 
           - name: Web (wasm32-unknown-emscripten)
             runner: ubuntu-26.04
@@ -77,6 +87,7 @@ jobs:
           platform: ${{ matrix.platform }}
           dependencies: ${{ matrix.dependencies }}
           shell: ${{ matrix.shell }}
+          espressif: ${{ matrix.espressif }}
 
       - name: Install tools
         if: matrix.tools

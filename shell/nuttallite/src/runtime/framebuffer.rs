@@ -200,6 +200,12 @@ impl Drop for Framebuffer {
     }
 }
 
+#[cfg(not(video_fb))]
+fn register_device() -> Result<(), io::Error> {
+    Err(io::Error::from_raw_os_error(libc::ENODEV))
+}
+
+#[cfg(video_fb)]
 fn register_device() -> Result<(), io::Error> {
     const DISPLAY: i32 = 0;
     const PLANE: i32 = 0;

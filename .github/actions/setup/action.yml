@@ -10,6 +10,8 @@ inputs:
     default: "destinezite"
   emsdk:
     required: false
+  espressif:
+    required: false
 
 runs:
   using: "composite"
@@ -26,9 +28,9 @@ runs:
       shell: bash
       run: cargo run -p xtask -- switch ${{ inputs.shell }}
 
-    # Unfortunately debian's packaging of emsdk is far too old
+    # Unfortunately Debian's packaging of emsdk is far too old
     #
-    # FIXME: Revisit when debian hits 7.0.0 for the emscripten package
+    # FIXME: Revisit when Debian hits 7.0.0 for the emscripten package
     - name: Install emsdk
       if: inputs.emsdk
       shell: bash
@@ -38,5 +40,17 @@ runs:
         "$RUNNER_TEMP/emsdk/emsdk" install "$version"
         "$RUNNER_TEMP/emsdk/emsdk" activate "$version"
         echo "$RUNNER_TEMP/emsdk/upstream/emscripten" >> "$GITHUB_PATH"
+
+    # The Debian toolchains won't compile anything for the ESP32 boards
+    - name: Install Espressif tools
+      if: inputs.espressif
+      shell: bash
+      run: |
+        mkdir -p "$RUNNER_TEMP/riscv-none-elf"
+        curl -sSfL "https://github.com/xpack-dev-tools/riscv-none-elf-gcc-xpack/releases/download/v14.3.0-1/xpack-riscv-none-elf-gcc-14.3.0-1-linux-x64.tar.gz" \
+          | tar -C "$RUNNER_TEMP/riscv-none-elf" --strip-components 1 -xz
+        echo "$RUNNER_TEMP/riscv-none-elf/bin" >> "$GITHUB_PATH"
+        pipx install 'esptool>=4.8,<5'
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
     - uses: Swatinem/rust-cache@v2

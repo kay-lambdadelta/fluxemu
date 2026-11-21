@@ -32,16 +32,28 @@ jobs:
             artifact_name: fluxemu-shell-destinezite-(debian-trixie-aarch64)-deb
             artifact_path: target/debian/fluxemu-shell-destinezite_*_arm64.deb
 
-          - name: NuttX (pimoroni-pico-2-plus)
+          - name: NuttX (teensy-4.x)
             runner: ubuntu-26.04
             container: debian:trixie
             platform: debian
             dependencies: nuttx
             shell: nuttallite
-            tools: cargo install cargo-nuttx --locked
-            build: cargo nuttx build --board pimoroni-pico-2-plus --release
-            artifact_name: fluxemu-shell-nuttallite-(pimoroni-pico-2-plus)-uf2
-            artifact_path: target/nuttx/pimoroni-pico-2-plus/release/nuttx.uf2
+            tools: cargo install --git https://github.com/kay-lambdadelta/cargo-nuttx --locked
+            build: cargo nuttx build --board teensy-4.x --release
+            artifact_name: fluxemu-shell-nuttallite-(teensy-4.x)-hex
+            artifact_path: target/nuttx/teensy-4.x/release/nuttx.hex
+
+          - name: NuttX (esp32p4-pico-wifi-wareshare)
+            runner: ubuntu-26.04
+            container: debian:trixie
+            platform: debian
+            dependencies: nuttx
+            shell: nuttallite
+            espressif: true
+            tools: cargo install --git https://github.com/kay-lambdadelta/cargo-nuttx --locked
+            build: cargo nuttx build --board esp32p4-pico-wifi-wareshare --release
+            artifact_name: fluxemu-shell-nuttallite-(esp32p4-pico-wifi-wareshare)-bin
+            artifact_path: target/nuttx/esp32p4-pico-wifi-wareshare/release/nuttx.bin
 
           - name: Web (wasm32-unknown-emscripten)
             runner: ubuntu-26.04
@@ -88,6 +100,7 @@ jobs:
           dependencies: ${{ matrix.dependencies }}
           shell: ${{ matrix.shell }}
           emsdk: ${{ matrix.emsdk }}
+          espressif: ${{ matrix.espressif }}
 
       - name: Install tools
         if: matrix.tools
