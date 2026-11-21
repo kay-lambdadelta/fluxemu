@@ -23,7 +23,7 @@ The instructions for listed distros should also work for their downstream distro
 
 You may need other dependencies depending on your board, and will almost certainly need a matching C toolchain.
 
-#### `raspberrypi-pico-2` — Raspberry Pi Pico 2
+#### `pimoroni-pico-2-plus` — Pimoroni Pico Plus 2
 
 | Distro | Development Package Name     |
 | ------ | ---------------------------- |
@@ -65,10 +65,10 @@ cargo install cargo-nuttx --locked
 Then, with the workspace switched to this shell, run:
 
 ```sh
-cargo nuttx build --board raspberrypi-pico-2 --release
+cargo nuttx build --board pimoroni-pico-2-plus --release
 ```
 
-The firmware ends up in `target/nuttx/<board>/<profile>/`, for example `target/nuttx/raspberrypi-pico-2/release/nuttx.uf2`.
+The firmware ends up in `target/nuttx/<board>/<profile>/`, for example `target/nuttx/pimoroni-pico-2-plus/release/nuttx.uf2`.
 
 ### ROM store backends
 
