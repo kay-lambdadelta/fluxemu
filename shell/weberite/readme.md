@@ -5,7 +5,7 @@ This is the shell implementation for web browsers, built around wasm and Emscrip
 A nightly deployment of it exists via [Github Pages](https://kay-lambdadelta.github.io/fluxemu/)
 
 > [!WARNING]
-> This shell is an early prototype. It can load a ROM through a file picker, display the machine on a canvas, and take keyboard input, anything else is unimplemented.
+> This shell is an early prototype, and is not anywhere near feature complete.
 >
 > Additionally, Emscripten has only recently started to pick up in the Rust ecosystem, and the shell might hit rough edges among browsers and ecosystem crates.
 
