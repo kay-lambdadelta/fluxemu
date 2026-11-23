@@ -1,0 +1,44 @@
+From 9cae2644095f949333f9cd63ffc88dda5e83741a Mon Sep 17 00:00:00 2001
+From: Marco Casaroli <marco.casaroli@gmail.com>
+Date: Sun, 8 Nov 2026 09:39:40 +0100
+Subject: [PATCH] fs/fat: Write at the end of the file for each write with
+ O_APPEND.
+
+fat_open() moved the file position to the end of the file for O_APPEND,
+but fat_write() wrote at the current position.  After an lseek(), a
+write with O_APPEND wrote in the middle of the file.  Two descriptors
+with O_APPEND each wrote at their own position and overwrote the data
+of the other.
+
+POSIX requires that each write() with O_APPEND sets the file offset to
+the end of the file before it writes.  fat_write() now does this under
+the mount lock, so no other write can change the size in between.
+
+It reads O_APPEND from f_oflags of the file, as tmpfs does, so that
+fcntl(F_SETFL) changes it too.  ff_oflags is 8 bits wide and cannot
+hold O_APPEND.
+
+Assisted-by: Claude Code:claude-opus-5-5
+Signed-off-by: Marco Casaroli <marco.casaroli@gmail.com>
+---
+ fs/fat/fs_fat32.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/fs/fat/fs_fat32.c b/fs/fat/fs_fat32.c
+index 747f26898d50e..0092f274167a0 100644
+--- a/fs/fat/fs_fat32.c
++++ b/fs/fat/fs_fat32.c
+@@ -1436,6 +1436,13 @@ static ssize_t fat_write(FAR struct file *filep, FAR const char *buffer,
+       goto errout_with_lock;
+     }
+ 
++  /* With O_APPEND, each write starts at the end of the file */
++
++  if ((filep->f_oflags & O_APPEND) != 0)
++    {
++      filep->f_pos = ff->ff_shared->s_size;
++    }
++
+   /* Loop until either (1) all data has been transferred, or (2) an
+    * error occurs.  We assume we start with the current sector in
+    * cache (ff_currentsector)

@@ -1,0 +1,51 @@
+From 64ac8708f138adab41dee278feab0ade5b4989bb Mon Sep 17 00:00:00 2001
+From: yushuailong <yyyusl@qq.com>
+Date: Thu, 5 Nov 2026 21:41:34 +0800
+Subject: [PATCH] fs/fat: Report ENOSPC when cluster allocation finds no space.
+
+fat_extendchain() returns zero when no free cluster is available.
+Both allocation sites in fat_get_sectors() currently turn this into
+EIO, so extending an empty file or a cluster-aligned file reports a
+different error from extending a file ending inside a cluster.
+
+Return ENOSPC for zero while retaining the existing checks for
+invalid cluster numbers. This also gives write callers the correct
+space-exhaustion error.
+
+Validated full FAT12, FAT16 and FAT32 RAM disks with empty, aligned
+and partially filled files.
+
+Assisted-by: Codex:GPT-6
+Signed-off-by: yushuailong <yyyusl@qq.com>
+---
+ fs/fat/fs_fat32.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/fs/fat/fs_fat32.c b/fs/fat/fs_fat32.c
+index d54e970f41637..061910cdda3f4 100644
+--- a/fs/fat/fs_fat32.c
++++ b/fs/fat/fs_fat32.c
+@@ -1072,6 +1072,11 @@ static int fat_get_sectors(FAR struct file *filep, bool read)
+     {
+       cluster = fat_extendchain(fs, cluster);
+ 
++      if (cluster == 0)
++        {
++          return -ENOSPC;
++        }
++
+       if (cluster < 2 || cluster >= fs->fs_nclusters + 2)
+         {
+           return -EIO;
+@@ -1095,6 +1100,11 @@ static int fat_get_sectors(FAR struct file *filep, bool read)
+     {
+       cluster = fat_extendchain(fs, cluster);
+ 
++      if (cluster == 0)
++        {
++          return -ENOSPC;
++        }
++
+       if (cluster < 2 || cluster >= fs->fs_nclusters + 2)
+         {
+           return -EIO;

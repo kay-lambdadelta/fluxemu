@@ -1,0 +1,60 @@
+From 986281f9f79d00f4ea57e6a41014bd364038acc5 Mon Sep 17 00:00:00 2001
+From: Marco Casaroli <marco.casaroli@gmail.com>
+Date: Sun, 8 Nov 2026 09:41:32 +0100
+Subject: [PATCH] fs/fat: Return the count of a partial write.
+
+When fat_write() wrote some of the data and then failed, it returned
+the error and not the bytes that it wrote.  A write that filled the
+volume gave -1 with ENOSPC, but the data was in the file, the file size
+and the file position included it.  The caller could not know how much
+was written, and a retry wrote the same data again.
+
+POSIX requires that write() returns the number of bytes written when it
+writes some of the data.  Return that count after an error, if it is not
+0.  The next write then starts where no space is left and returns the
+error.
+
+Assisted-by: Claude Code:claude-opus-5-5
+Signed-off-by: Marco Casaroli <marco.casaroli@gmail.com>
+---
+ fs/fat/fs_fat32.c | 13 +++++++++++--
+ 1 file changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/fs/fat/fs_fat32.c b/fs/fat/fs_fat32.c
+index 0092f274167a0..aab22a1f33b3c 100644
+--- a/fs/fat/fs_fat32.c
++++ b/fs/fat/fs_fat32.c
+@@ -1377,7 +1377,7 @@ static ssize_t fat_write(FAR struct file *filep, FAR const char *buffer,
+   FAR struct inode *inode;
+   FAR struct fat_mountpt_s *fs;
+   FAR struct fat_file_s *ff;
+-  unsigned int byteswritten;
++  unsigned int byteswritten = 0;
+   unsigned int writesize;
+   FAR uint8_t *userbuffer = (FAR uint8_t *)buffer;
+   int sectorindex;
+@@ -1448,7 +1448,6 @@ static ssize_t fat_write(FAR struct file *filep, FAR const char *buffer,
+    * cache (ff_currentsector)
+    */
+ 
+-  byteswritten = 0;
+   sectorindex = filep->f_pos & SEC_NDXMASK(fs);
+ 
+   while (buflen > 0)
+@@ -1619,6 +1618,16 @@ static ssize_t fat_write(FAR struct file *filep, FAR const char *buffer,
+ 
+ errout_with_lock:
+   nxmutex_unlock(&fs->fs_lock);
++
++  /* Return the bytes that were written before the error, if any.  The
++   * next write then reports the error.
++   */
++
++  if (byteswritten > 0)
++    {
++      return byteswritten;
++    }
++
+   return ret;
+ }
+ 

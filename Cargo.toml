@@ -5,6 +5,7 @@ members = [
   "frontend/*",
   "lib/*",
   "shell/*",
+  "shell/nuttallite/nuttx/boards/*/custom/rust",
   "system/*/*",
   "utils/",
   "xtask",

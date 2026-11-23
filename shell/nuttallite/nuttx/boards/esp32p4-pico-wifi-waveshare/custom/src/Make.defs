@@ -1,0 +1,4 @@
+CSRCS =
+
+DEPPATH += --dep-path board
+VPATH += :board

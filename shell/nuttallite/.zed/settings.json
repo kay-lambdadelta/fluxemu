@@ -3,14 +3,14 @@
     "rust-analyzer": {
       "initialization_options": {
         "cargo": {
-          "target": "thumbv8m.main-nuttx-eabihf",
+          "target": "riscv32imac-unknown-nuttx-elf",
           "buildScripts": {
             "overrideCommand": [
               "cargo",
               "nuttx",
               "check",
               "--board",
-              "pimoroni-pico-2-plus",
+              "esp32p4-pico-wifi-waveshare",
               "--no-default-features",
               "--features",
               "egui",
@@ -24,7 +24,7 @@
             "nuttx",
             "clippy",
             "--board",
-            "pimoroni-pico-2-plus",
+            "esp32p4-pico-wifi-waveshare",
             "--no-default-features",
             "--features",
             "egui",

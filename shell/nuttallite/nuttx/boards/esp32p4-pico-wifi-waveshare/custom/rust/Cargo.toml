@@ -1,0 +1,19 @@
+[package]
+name = "fluxemu-nuttallite-board-esp32p4-pico-wifi-waveshare"
+version = "0.0.1"
+edition = { workspace = true }
+rust-version = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
+publish = false
+
+[lib]
+crate-type = ["staticlib"]
+doctest = false
+test = false
+
+[build-dependencies]
+bindgen = { workspace = true }
+
+[lints]
+workspace = true

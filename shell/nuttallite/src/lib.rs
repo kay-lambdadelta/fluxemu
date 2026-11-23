@@ -1,5 +1,5 @@
 use std::{
-    ffi::{CStr, c_char},
+    ffi::{CStr, c_char, c_int},
     fs::File,
     io::LineWriter,
     sync::atomic::{AtomicBool, Ordering},
@@ -36,7 +36,7 @@ mod sys;
 static ALREADY_RAN: AtomicBool = AtomicBool::new(false);
 
 #[unsafe(no_mangle)]
-unsafe extern "C" fn fluxemu_shell_nuttallite_main(argc: i32, argv: *const *const u8) -> i32 {
+unsafe extern "C" fn fluxemu_shell_nuttallite_main(argc: c_int, argv: *mut *mut c_char) -> c_int {
     if ALREADY_RAN.swap(true, Ordering::AcqRel) {
         println!("Cannot run again");
 

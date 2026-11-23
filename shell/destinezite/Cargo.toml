@@ -52,7 +52,7 @@ fontique = { workspace = true }
 gilrs = { workspace = true }
 keyboard-types = { workspace = true }
 nalgebra = { workspace = true }
-opendal = { workspace = true }
+opendal = { workspace = true, features = ["auto-register-services"] }
 palette = { workspace = true }
 raw-window-handle = { workspace = true, optional = true }
 redb = { workspace = true }

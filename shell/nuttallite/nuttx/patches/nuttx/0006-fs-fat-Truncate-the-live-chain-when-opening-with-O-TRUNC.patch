@@ -1,0 +1,39 @@
+From 60e9308583214b20920f0aec4db6d905e365c0d8 Mon Sep 17 00:00:00 2001
+From: yushuailong <yyyusl@qq.com>
+Date: Thu, 5 Nov 2026 21:41:34 +0800
+Subject: [PATCH] fs/fat: Truncate the live chain when opening with O_TRUNC.
+
+An open file may have allocated clusters without syncing its start
+cluster to the directory entry. Opening the same file with O_TRUNC
+must release that live chain rather than the stale on-disk chain.
+
+Copy the shared start cluster into the directory entry before calling
+fat_dirtruncate(), as fat_truncate() already does. This prevents lost
+clusters while preserving the shared size and cursor updates.
+
+Validated unsynced three-cluster files through two handles on FAT12,
+FAT16 and FAT32 RAM disks, including raw FAT and remount checks.
+
+Assisted-by: Codex:GPT-6
+Signed-off-by: yushuailong <yyyusl@qq.com>
+---
+ fs/fat/fs_fat32.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/fs/fat/fs_fat32.c b/fs/fat/fs_fat32.c
+index 7badc47e02bb4..d54e970f41637 100644
+--- a/fs/fat/fs_fat32.c
++++ b/fs/fat/fs_fat32.c
+@@ -553,6 +553,12 @@ static int fat_open(FAR struct file *filep, FAR const char *relpath,
+                 {
+                   goto errout_with_lock;
+                 }
++
++              /* The directory entry may not describe the live chain yet. */
++
++              DIR_PUTFSTCLUSTHI(direntry, truncshared->s_startcluster >> 16);
++              DIR_PUTFSTCLUSTLO(direntry,
++                               truncshared->s_startcluster & 0xffff);
+             }
+ 
+           ret = fat_dirtruncate(fs, direntry);

@@ -27,7 +27,7 @@ fluxemu-system-nintendo-nes = { workspace = true }
 fluxemu-system-other-chip8 = { workspace = true }
 keyboard-types = { workspace = true }
 nalgebra = { workspace = true }
-opendal = { workspace = true }
+opendal = { workspace = true, features = ["auto-register-services"] }
 palette = { workspace = true }
 pollster = { workspace = true, optional = true }
 raw-window-handle = { workspace = true, optional = true }

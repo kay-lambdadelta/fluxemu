@@ -1,0 +1,59 @@
+From 078b6c73e70d0f360d7f0b5cf64dafc70ada716b Mon Sep 17 00:00:00 2001
+From: Marco Casaroli <marco.casaroli@gmail.com>
+Date: Sat, 17 Oct 2026 23:57:54 +0200
+Subject: [PATCH] fs/fat: Report execute permission for files and directories.
+
+FAT has no execute permission.  fat_stat() and fat_fstat() reported
+r--r--r-- or rw-rw-rw- for every file and directory, also for the root
+directory.  So a program on a FAT volume had no execute bit, and no
+directory had the search bit.
+
+Report the execute bit for all files and directories, in the same way
+as the read bit.  Other systems mount FAT with these bits by default.
+
+Assisted-by: Claude Code:claude-opus-5-5
+Signed-off-by: Marco Casaroli <marco.casaroli@gmail.com>
+---
+ fs/fat/fs_fat32.c | 13 +++++++------
+ 1 file changed, 7 insertions(+), 6 deletions(-)
+
+diff --git a/fs/fat/fs_fat32.c b/fs/fat/fs_fat32.c
+index b18c9f7da9ad9..d5199d5b5a054 100644
+--- a/fs/fat/fs_fat32.c
++++ b/fs/fat/fs_fat32.c
+@@ -2624,7 +2624,8 @@ static int fat_fstat(FAR const struct file *filep, FAR struct stat *buf)
+ 
+       memset(buf, 0, sizeof(struct stat));
+ 
+-      buf->st_mode = S_IROTH | S_IRGRP | S_IRUSR | S_IFREG;
++      buf->st_mode = S_IROTH | S_IRGRP | S_IRUSR | S_IXOTH | S_IXGRP |
++                     S_IXUSR | S_IFREG;
+       if ((fstatshared->s_attr & FATATTR_READONLY) == 0)
+         {
+           buf->st_mode |= S_IWOTH | S_IWGRP | S_IWUSR;
+@@ -3900,11 +3901,12 @@ static int fat_stat_file(FAR struct fat_mountpt_s *fs,
+       return -ENOENT;
+     }
+ 
+-  /* Set the access permissions.  The file/directory is always readable
+-   * by everyone but may be writeable by no-one.
++  /* Set the access permissions.  FAT has no execute permission.  The
++   * file/directory is always readable and executable by everyone, as on
++   * other systems, but may be writeable by no-one.
+    */
+ 
+-  buf->st_mode = S_IROTH | S_IRGRP | S_IRUSR;
++  buf->st_mode = S_IROTH | S_IRGRP | S_IRUSR | S_IXOTH | S_IXGRP | S_IXUSR;
+   if ((attribute & FATATTR_READONLY) == 0)
+     {
+       buf->st_mode |= S_IWOTH | S_IWGRP | S_IWUSR;
+@@ -3940,8 +3942,7 @@ static int fat_stat_root(FAR struct fat_mountpt_s *fs, FAR struct stat *buf)
+ 
+   /* It's directory name of the mount point */
+ 
+-  buf->st_mode = S_IFDIR | S_IROTH | S_IRGRP | S_IRUSR | S_IWOTH |
+-                 S_IWGRP | S_IWUSR;
++  buf->st_mode = S_IFDIR | S_IRWXO | S_IRWXG | S_IRWXU;
+ 
+   return OK;
+ }

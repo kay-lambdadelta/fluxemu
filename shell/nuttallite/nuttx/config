@@ -14,7 +14,8 @@ CONFIG_FS_LINKS=y
 CONFIG_FS_FAT=y
 CONFIG_GPT_PARTITION=y
 CONFIG_FAT_LFN=y
-CONFIG_FAT_LFN_UTF8=y
+# NOTE: NuttX (as of 13.1.0) runs strlen and memcpy on the 16-bit UTF-8 long name buffer, so "ABC" gets stored as the short name "A", breaking everything
+CONFIG_FAT_LFN_UTF8=n
 CONFIG_FAT_LFN_ALIAS_HASH=y
 CONFIG_FS_FATTIME=y
 CONFIG_FS_PROCFS_REGISTER=y

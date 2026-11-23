@@ -1,0 +1,36 @@
+From 5047285b6b3a18949eae7f5dd64ffce422c740c0 Mon Sep 17 00:00:00 2001
+From: Marco Casaroli <marco.casaroli@gmail.com>
+Date: Wed, 4 Nov 2026 22:34:37 +0100
+Subject: [PATCH] fs/fat: Keep the last cluster of a file on a write past EOF.
+
+A write past EOF on a file whose size is a multiple of the cluster size
+zeroes the last cluster of the file.  fat_get_sectors() zeroes the gap in
+that cluster from "s_size & (clu_size - 1)", which is 0 when the size is
+on a cluster boundary.  This cluster is full of file data and has no gap.
+
+Skip area (1) at a cluster boundary.  The gap then starts in the next
+cluster, and areas (2) and (3) already zero it, as for an empty file.
+
+Assisted-by: Claude Code:claude-opus-5-5
+Signed-off-by: Marco Casaroli <marco.casaroli@gmail.com>
+---
+ fs/fat/fs_fat32.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/fs/fat/fs_fat32.c b/fs/fat/fs_fat32.c
+index 2eed2411f17c9..2cd168edf768a 100644
+--- a/fs/fat/fs_fat32.c
++++ b/fs/fat/fs_fat32.c
+@@ -1034,10 +1034,10 @@ static int fat_get_sectors(FAR struct file *filep, bool read)
+    *          s_size                              f_pos
+    */
+ 
+-  /* zero area (1) */
++  /* zero area (1): there is none if s_size is on a cluster boundary */
+ 
+   if (i == num_clu && filep->f_pos > shared->s_size &&
+-      shared->s_size != 0)
++      (shared->s_size & (clu_size - 1)) != 0)
+     {
+       zero_start = ff->ff_shared->s_size & (clu_size - 1);
+ 

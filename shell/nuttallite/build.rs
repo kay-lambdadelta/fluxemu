@@ -5,13 +5,13 @@ fn main() {
     println!("cargo::rustc-check-cfg=cfg(cdcacm_console)");
     println!("cargo::rustc-check-cfg=cfg(video_fb)");
 
-    let Ok(nuttx_include_dirs) = env::var("NUTTX_INCLUDE_DIR") else {
+    let Ok(nuttx_include_directories) = env::var("NUTTX_INCLUDE_DIR") else {
         return;
     };
     let mut builder = bindgen::Builder::default();
 
-    for dir in nuttx_include_dirs.split(':') {
-        builder = builder.clang_arg(format!("-I{dir}"));
+    for directory in nuttx_include_directories.split(':') {
+        builder = builder.clang_arg(format!("-I{directory}"));
     }
 
     let bindings = builder

@@ -24,7 +24,7 @@
 
 MEMORY
 {
-  /* Teensy 4.1 code flash, upstream NuttX uses the Teensy 4.0's 1984K, which is too small */
+  /* Teensy 4.1 code flash, upstream NuttX uses the Teensy 4.0's flash size, which is too small */
 
   flash (rx)  : ORIGIN = 0x60000000, LENGTH = 7936K
   sram  (rwx) : ORIGIN = 0x20200000, LENGTH = 512K

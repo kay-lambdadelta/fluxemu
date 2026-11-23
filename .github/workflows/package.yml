@@ -38,22 +38,22 @@ jobs:
             platform: debian
             dependencies: nuttx
             shell: nuttallite
-            tools: cargo install --git https://github.com/kay-lambdadelta/cargo-nuttx --locked
+            tools: cargo install cargo-nuttx
             build: cargo nuttx build --board teensy-4.x --release
             artifact_name: fluxemu-shell-nuttallite-(teensy-4.x)-hex
             artifact_path: target/nuttx/teensy-4.x/release/nuttx.hex
 
-          - name: NuttX (esp32p4-pico-wifi-wareshare)
+          - name: NuttX (esp32p4-pico-wifi-waveshare)
             runner: ubuntu-26.04
             container: debian:trixie
             platform: debian
             dependencies: nuttx
             shell: nuttallite
             espressif: true
-            tools: cargo install --git https://github.com/kay-lambdadelta/cargo-nuttx --locked
-            build: cargo nuttx build --board esp32p4-pico-wifi-wareshare --release
-            artifact_name: fluxemu-shell-nuttallite-(esp32p4-pico-wifi-wareshare)-bin
-            artifact_path: target/nuttx/esp32p4-pico-wifi-wareshare/release/nuttx.bin
+            tools: cargo install cargo-nuttx
+            build: cargo nuttx build --board esp32p4-pico-wifi-waveshare --release
+            artifact_name: fluxemu-shell-nuttallite-(esp32p4-pico-wifi-waveshare)-bin
+            artifact_path: target/nuttx/esp32p4-pico-wifi-waveshare/release/nuttx.bin
 
           - name: Web (wasm32-unknown-emscripten)
             runner: ubuntu-26.04

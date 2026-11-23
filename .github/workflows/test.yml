@@ -50,18 +50,18 @@ jobs:
             platform: debian
             dependencies: nuttx
             shell: nuttallite
-            tools: cargo install --git https://github.com/kay-lambdadelta/cargo-nuttx --locked
+            tools: cargo install cargo-nuttx
             check: cargo nuttx clippy --board teensy-4.x --release
 
-          - name: NuttX (esp32p4-pico-wifi-wareshare)
+          - name: NuttX (esp32p4-pico-wifi-waveshare)
             runner: ubuntu-26.04
             container: debian:trixie
             platform: debian
             dependencies: nuttx
             shell: nuttallite
             espressif: true
-            tools: cargo install --git https://github.com/kay-lambdadelta/cargo-nuttx --locked
-            check: cargo nuttx clippy --board esp32p4-pico-wifi-wareshare --release
+            tools: cargo install cargo-nuttx
+            check: cargo nuttx clippy --board esp32p4-pico-wifi-waveshare --release
 
           - name: Web (wasm32-unknown-emscripten)
             runner: ubuntu-26.04

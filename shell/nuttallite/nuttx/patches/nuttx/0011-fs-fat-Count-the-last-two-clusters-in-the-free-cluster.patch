@@ -1,0 +1,56 @@
+From 40a36486078ed804acb1ffdd7bbc665e8b02d587 Mon Sep 17 00:00:00 2001
+From: Marco Casaroli <marco.casaroli@gmail.com>
+Date: Sun, 8 Nov 2026 14:22:08 +0100
+Subject: [PATCH] fs/fat: Count the last two clusters in the free cluster
+ count.
+
+The data clusters have the FAT entries 2 to fs_nclusters + 1.  For FAT16
+and FAT32, fat_computefreeclusters() read fs_nclusters entries from entry
+0, so it never read the entries of the last two clusters.  statfs() then
+gave a free block count that was 2 too low when these clusters were free.
+The FAT12 path already reads entries 2 to fs_nclusters + 1.
+
+Read the entries 0 to fs_nclusters + 1 and skip the two reserved entries.
+
+Assisted-by: Claude Code:claude-opus-5-5
+Signed-off-by: Marco Casaroli <marco.casaroli@gmail.com>
+---
+ fs/fat/fs_fat32util.c | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/fs/fat/fs_fat32util.c b/fs/fat/fs_fat32util.c
+index 4fc6b13cbbc12..5cfde8afeb46a 100644
+--- a/fs/fat/fs_fat32util.c
++++ b/fs/fat/fs_fat32util.c
+@@ -2093,9 +2093,11 @@ int fat_computefreeclusters(struct fat_mountpt_s *fs)
+       fatsector    = fs->fs_fatbase;
+       offset       = fs->fs_hwsectorsize;
+ 
+-      /* Examine each cluster in the fat */
++      /* Examine each cluster in the fat.  Entries 0 and 1 are reserved,
++       * the data clusters are 2 to fs_nclusters + 1.
++       */
+ 
+-      for (cluster = fs->fs_nclusters; cluster > 0; cluster--)
++      for (cluster = 0; cluster < fs->fs_nclusters + 2; cluster++)
+         {
+           /* If we are starting a new sector, then read the new sector in
+            * fs_buffer
+@@ -2123,7 +2125,7 @@ int fat_computefreeclusters(struct fat_mountpt_s *fs)
+ 
+           if (fs->fs_type == FSTYPE_FAT16)
+             {
+-              if (FAT_GETFAT16(fs->fs_buffer, offset) == 0)
++              if (cluster >= 2 && FAT_GETFAT16(fs->fs_buffer, offset) == 0)
+                 {
+                   nfreeclusters++;
+                 }
+@@ -2132,7 +2134,7 @@ int fat_computefreeclusters(struct fat_mountpt_s *fs)
+             }
+           else
+             {
+-              if (FAT_GETFAT32(fs->fs_buffer, offset) == 0)
++              if (cluster >= 2 && FAT_GETFAT32(fs->fs_buffer, offset) == 0)
+                 {
+                   nfreeclusters++;
+                 }

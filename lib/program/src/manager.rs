@@ -484,6 +484,7 @@ fn build_rom_store(
     name: String,
     specification: RomStoreSpecification,
 ) -> Result<RomStore, opendal::Error> {
+    opendal::init_default_registry();
     let operator = Operator::via_iter(&specification.scheme, specification.options)?;
     #[cfg(feature = "filesystem")]
     let filesystem_root = {

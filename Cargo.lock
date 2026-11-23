@@ -2162,6 +2162,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "fluxemu-nuttallite-board-esp32p4-pico-wifi-waveshare"
+version = "0.0.1"
+dependencies = [
+ "bindgen",
+]
+
+[[package]]
 name = "fluxemu-paths"
 version = "0.0.1"
 dependencies = [

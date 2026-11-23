@@ -10,8 +10,6 @@ license = { workspace = true }
 [package.metadata.nuttx]
 priority = 100
 stack-size = 16384
-config = "nuttx/config"
-board-config-directory = "nuttx/board"
 nuttx-version = "13.1.0"
 
 [package.metadata.nuttx.boards.pimoroni-pico-2-plus]
@@ -26,17 +24,17 @@ runner = ["picotool", "load", "-x"]
 board-config = "lcd-4.1"
 target = "thumbv7em-nuttx-eabihf"
 target-cpu = "cortex-m7"
+# IMPORTANT: This is a tight fit. When adding major pieces of code that will be linked in, ensure it still builds for this board
 opt-level = "3"
 firmware-file = "nuttx.hex"
-# This is actually targeting the teensy 4.1, in which the NuttX linker script is simply just wrong for
-linker-script = "nuttx/linker/teensy-4.1.ld"
 runner = ["teensy_loader_cli", "--mcu=TEENSY41", "-w", "-v"]
 
-[package.metadata.nuttx.boards.esp32p4-pico-wifi-wareshare]
+[package.metadata.nuttx.boards.esp32p4-pico-wifi-waveshare]
 target = "riscv32imac-unknown-nuttx-elf"
 opt-level = "3"
 firmware-file = "nuttx.bin"
-runner = ["espflash", "write-bin", "--chip", "esp32p4", "0x2000"]
+# WARNING: My board survives this baud rate, if this breaks yours, open an issue
+runner = ["espflash", "write-bin", "--baud", "1500000", "--chip", "esp32p4", "0x2000"]
 
 # NOTE: Rust's support for nuttx has no x86 stuff wired up, so we hardcode to aarch64 here
 #
@@ -66,6 +64,9 @@ fluxemu-program = { workspace = true }
 fluxemu-runtime = { workspace = true }
 libc = { workspace = true }
 nalgebra = { workspace = true }
+# IMPORTANT: Do not turn on `auto-register-services`. It causes TLS corruption in the Rust std on NuttX
+#
+# This will be very difficult to debug if you do
 opendal = { workspace = true }
 palette = { workspace = true }
 redb = { workspace = true }

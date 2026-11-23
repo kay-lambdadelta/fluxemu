@@ -55,7 +55,7 @@ impl Framebuffer {
         let video_info: sys::fb_videoinfo_s = query(&file, sys::FBIOGET_VIDEOINFO)?;
         let plane_info: sys::fb_planeinfo_s = query(&file, sys::FBIOGET_PLANEINFO)?;
 
-        // We only support RGB565 for now
+        // FIXME: We only support RGB565 for now
         if u32::from(video_info.fmt) != sys::FB_FMT_RGB16_565 {
             return Err(FramebufferError::UnsupportedFormat(video_info.fmt));
         }
@@ -72,6 +72,7 @@ impl Framebuffer {
             .min(plane_info.fblen / (page_length * size_of::<Pixel>()))
             .max(1);
 
+        // FIXME: Replace the memory mapping code with `memmap2` when it is possible to compile it for NuttX
         let mapping = unsafe {
             libc::mmap(
                 ptr::null_mut(),

@@ -1,0 +1,75 @@
+From 28e62940ecdcc651357fe822018bf3fa5c099d85 Mon Sep 17 00:00:00 2001
+From: Marco Casaroli <marco.casaroli@gmail.com>
+Date: Wed, 4 Nov 2026 10:47:48 +0100
+Subject: [PATCH] fs: Truncate on open with O_RDWR and O_TRUNC.
+
+Commit 9e141acab36 changed O_RDWR to 2, so O_RDWR no longer contains
+the O_WRONLY bit.  tmpfs, FAT, SmartFS and NFS still test
+(oflags & (O_TRUNC | O_WRONLY)) == (O_TRUNC | O_WRONLY) in open.  This
+test is false for O_RDWR: open(O_RDWR | O_TRUNC) and fopen("w+") keep
+the old contents of the file.
+
+Test the access mode with O_ACCMODE, as mnemofs does.  O_TRUNC without
+write access is still ignored.
+
+Assisted-by: Claude Code:claude-opus-5-5
+Signed-off-by: Marco Casaroli <marco.casaroli@gmail.com>
+---
+ fs/fat/fs_fat32.c          | 2 +-
+ fs/nfs/nfs_vfsops.c        | 2 +-
+ fs/smartfs/smartfs_smart.c | 2 +-
+ fs/tmpfs/fs_tmpfs.c        | 2 +-
+ 4 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/fs/fat/fs_fat32.c b/fs/fat/fs_fat32.c
+index d5199d5b5a054..2eed2411f17c9 100644
+--- a/fs/fat/fs_fat32.c
++++ b/fs/fat/fs_fat32.c
+@@ -534,7 +534,7 @@ static int fat_open(FAR struct file *filep, FAR const char *relpath,
+        * access is ignored.
+        */
+ 
+-      if ((oflags & (O_TRUNC | O_WRONLY)) == (O_TRUNC | O_WRONLY))
++      if ((oflags & O_TRUNC) != 0 && (oflags & O_ACCMODE) != O_RDONLY)
+         {
+           /* Truncate the file to zero length.  If the file is already
+            * open elsewhere, the shared state is updated as well so that
+diff --git a/fs/nfs/nfs_vfsops.c b/fs/nfs/nfs_vfsops.c
+index ea0fbaf0ad581..784367cd05ee5 100644
+--- a/fs/nfs/nfs_vfsops.c
++++ b/fs/nfs/nfs_vfsops.c
+@@ -624,7 +624,7 @@ static int nfs_fileopen(FAR struct nfsmount *nmp, FAR struct nfsnode *np,
+    * access is ignored.
+    */
+ 
+-  if ((oflags & (O_TRUNC | O_WRONLY)) == (O_TRUNC | O_WRONLY))
++  if ((oflags & O_TRUNC) != 0 && (oflags & O_ACCMODE) != O_RDONLY)
+     {
+       struct stat buf;
+ 
+diff --git a/fs/smartfs/smartfs_smart.c b/fs/smartfs/smartfs_smart.c
+index 7b75bf1ccacfe..7a79c8e1256eb 100644
+--- a/fs/smartfs/smartfs_smart.c
++++ b/fs/smartfs/smartfs_smart.c
+@@ -285,7 +285,7 @@ static int smartfs_open(FAR struct file *filep, FAR const char *relpath,
+        * is writeable. O_TRUNC without write access is ignored.
+        */
+ 
+-      if ((oflags & (O_TRUNC | O_WRONLY)) == (O_TRUNC | O_WRONLY))
++      if ((oflags & O_TRUNC) != 0 && (oflags & O_ACCMODE) != O_RDONLY)
+         {
+           /* Truncate the file as part of the open */
+ 
+diff --git a/fs/tmpfs/fs_tmpfs.c b/fs/tmpfs/fs_tmpfs.c
+index 1328510957569..b762a214257a6 100644
+--- a/fs/tmpfs/fs_tmpfs.c
++++ b/fs/tmpfs/fs_tmpfs.c
+@@ -1740,7 +1740,7 @@ static int tmpfs_open(FAR struct file *filep, FAR const char *relpath,
+        * access is ignored.
+        */
+ 
+-      if ((oflags & (O_TRUNC | O_WRONLY)) == (O_TRUNC | O_WRONLY))
++      if ((oflags & O_TRUNC) != 0 && (oflags & O_ACCMODE) != O_RDONLY)
+         {
+           /* Truncate the file to zero length (if it is not already
+            * zero length)

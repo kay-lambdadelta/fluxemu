@@ -1,0 +1,166 @@
+From 983b96e8225e28a14fb67adadc46b5c75d1c5f8f Mon Sep 17 00:00:00 2001
+From: yushuailong <yyyusl@qq.com>
+Date: Thu, 5 Nov 2026 00:31:53 +0800
+Subject: [PATCH] fs/fat: Preserve live chains and cursors across truncation.
+
+Terminate retained clusters with an EOC marker rather than marking
+live file data free. Restore the directory sector after FAT traversal
+and use the shared start cluster when the file has not been synced.
+
+Position zero extension at actual EOF and reset shared traversal
+cursors after success or failure. Mark changed metadata for sync so
+subsequent writes and remounts retain the intended file contents.
+
+Validation: RAM-disk simulator regressions covered FAT12/16/32,
+linked and unlinked shrink/extend, caller offsets, shared handles,
+remounts and writes after ENOSPC. Upstream failed 66 of 327 checks;
+this fix passed all 327 in direct and forced-indirect modes.
+The nucleo-h743zi:composite ARM build, image size and style checks
+passed. No new hardware runtime testing was performed.
+
+Assisted-by: Codex:GPT-6
+Signed-off-by: yushuailong <yyyusl@qq.com>
+---
+ fs/fat/fs_fat32.c     | 44 ++++++++++++++++++++++++++++++++++++++++---
+ fs/fat/fs_fat32util.c | 14 ++++++++++----
+ 2 files changed, 51 insertions(+), 7 deletions(-)
+
+diff --git a/fs/fat/fs_fat32.c b/fs/fat/fs_fat32.c
+index 2cd168edf768a..78773a11308b1 100644
+--- a/fs/fat/fs_fat32.c
++++ b/fs/fat/fs_fat32.c
+@@ -266,6 +266,7 @@ static void fat_shared_reset_cursors(FAR struct fat_mountpt_s *fs,
+       if (ff->ff_shared == shared)
+         {
+           ff->ff_currentcluster   = shared->s_startcluster;
++          ff->ff_currentsector    = 0;
+           ff->ff_sectorsincluster = fs->fs_fatsecperclus;
+           ff->ff_pos              = 0;
+         }
+@@ -388,11 +389,11 @@ static int fat_shrinkshared(FAR struct fat_mountpt_s *fs,
+ 
+       if (remaining <= clustersize)
+         {
+-          /* No.. then nullify next cluster -- removing it from the
+-           * chain.
++          /* Keep the retained cluster allocated and terminate its chain.
++           * A zero FAT entry would mark this live cluster as free.
+            */
+ 
+-          ret = fat_putcluster(fs, lastcluster, 0);
++          ret = fat_putcluster(fs, lastcluster, FAT_EOF);
+           if (ret < 0)
+             {
+               return ret;
+@@ -2805,6 +2806,13 @@ static int fat_truncate(FAR struct file *filep, off_t length)
+           ndx      = (shared->s_dirindex & DIRSEC_NDXMASK(fs)) * DIR_SIZE;
+           direntry = &fs->fs_buffer[ndx];
+ 
++          /* The open file may have grown without a directory sync yet.
++           * Truncate the canonical chain rather than a stale on-disk one.
++           */
++
++          DIR_PUTFSTCLUSTHI(direntry, shared->s_startcluster >> 16);
++          DIR_PUTFSTCLUSTLO(direntry, shared->s_startcluster & 0xffff);
++
+           /* Handle the simple case where we are shrinking the file to
+            * zero length.
+            */
+@@ -2840,12 +2848,37 @@ static int fat_truncate(FAR struct file *filep, off_t length)
+     }
+   else
+     {
++      off_t savepos;
++
+       /* Otherwise we are extending the file.  This is essentially the same
+        * as a write except that (1) we write zeros and (2) we don't update
+        * the file position.
+        */
+ 
++      ret = fat_shared_invalidate(fs, ff->ff_shared);
++      if (ret < 0)
++        {
++          goto errout_with_lock;
++        }
++
++      /* Position the traversal cursor at EOF. The caller's file offset
++       * can be anywhere, and a newly opened handle starts at the first
++       * cluster of the file.
++       */
++
++      savepos = filep->f_pos;
++      filep->f_pos = oldsize;
++      ret = fat_get_sectors(filep, false);
++      filep->f_pos = savepos;
++      if (ret < 0)
++        {
++          fat_shared_reset_cursors(fs, ff->ff_shared);
++          goto errout_with_lock;
++        }
++
++      ff->ff_bflags |= FFBUFF_MODIFIED;
+       ret = fat_dirextend(fs, ff, length);
++      fat_shared_reset_cursors(fs, ff->ff_shared);
+       if (ret >= 0)
+         {
+           /* The truncation has completed without error.  Update the file
+@@ -2857,6 +2890,11 @@ static int fat_truncate(FAR struct file *filep, off_t length)
+         }
+     }
+ 
++  if (ret == OK && oldsize != length)
++    {
++      ff->ff_bflags |= FFBUFF_MODIFIED;
++    }
++
+ errout_with_lock:
+   nxmutex_unlock(&fs->fs_lock);
+   return ret;
+diff --git a/fs/fat/fs_fat32util.c b/fs/fat/fs_fat32util.c
+index 155454c974e0c..09a9737c4646b 100644
+--- a/fs/fat/fs_fat32util.c
++++ b/fs/fat/fs_fat32util.c
+@@ -1520,6 +1520,7 @@ int fat_dirshrink(struct fat_mountpt_s *fs, FAR uint8_t *direntry,
+ {
+   off_t clustersize;
+   off_t remaining;
++  off_t savesector;
+   uint32_t writetime;
+   int32_t lastcluster;
+   int32_t cluster;
+@@ -1545,6 +1546,7 @@ int fat_dirshrink(struct fat_mountpt_s *fs, FAR uint8_t *direntry,
+   /* This sector needs to be written back to disk eventually */
+ 
+   fs->fs_dirty = true;
++  savesector = fs->fs_currentsector;
+ 
+   /* Now find the cluster change to be removed.  Start with the cluster
+    * after the current one (which we know contains data).
+@@ -1565,11 +1567,11 @@ int fat_dirshrink(struct fat_mountpt_s *fs, FAR uint8_t *direntry,
+ 
+       if (remaining <= clustersize)
+         {
+-          /* No.. then nullify next cluster -- removing it from the
+-           * chain.
++          /* Keep the retained cluster allocated and terminate its chain.
++           * A zero FAT entry would mark this live cluster as free.
+            */
+ 
+-          ret = fat_putcluster(fs, lastcluster, 0);
++          ret = fat_putcluster(fs, lastcluster, FAT_EOF);
+           if (ret < 0)
+             {
+               return ret;
+@@ -1602,7 +1604,11 @@ int fat_dirshrink(struct fat_mountpt_s *fs, FAR uint8_t *direntry,
+       remaining  -= clustersize;
+     }
+ 
+-  return OK;
++  /* FAT lookups reuse fs_buffer. Restore the directory sector for callers
++   * that still hold a pointer into it, just as fat_dirtruncate() does.
++   */
++
++  return fat_fscacheread(fs, savesector);
+ }
+ 
+ /****************************************************************************

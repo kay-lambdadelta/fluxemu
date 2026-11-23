@@ -1,0 +1,43 @@
+From 44ad836abf080db9bdb9465f8454800d17cb7b57 Mon Sep 17 00:00:00 2001
+From: Marco Casaroli <marco.casaroli@gmail.com>
+Date: Mon, 9 Nov 2026 17:38:16 +0100
+Subject: [PATCH] fs/fat: Write the zeros of ftruncate() to the volume.
+
+When ftruncate() makes a file longer, fat_dirextend() writes zeros to the
+new part of the file in the sector cache of the handle.  The last of these
+sectors stayed in that cache, and the volume kept the old data of the
+sector.  Each handle has its own sector cache, so another handle of the
+same file read the old data from the volume: bytes that were cut off by an
+earlier ftruncate(), or the data of a deleted file on a new cluster.
+
+fat_truncate() already writes back and drops the caches of all handles of
+the file before it extends the file.  Write the last sector back at the
+end of fat_dirextend(), so that the other handles read the zeros.
+
+Assisted-by: Claude Code:claude-opus-5-5
+Signed-off-by: Marco Casaroli <marco.casaroli@gmail.com>
+---
+ fs/fat/fs_fat32util.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/fs/fat/fs_fat32util.c b/fs/fat/fs_fat32util.c
+index 5cfde8afeb46a..2ef84b5226146 100644
+--- a/fs/fat/fs_fat32util.c
++++ b/fs/fat/fs_fat32util.c
+@@ -1777,6 +1777,16 @@ int fat_dirextend(FAR struct fat_mountpt_s *fs, FAR struct fat_file_s *ff,
+       sectndx    = pos & SEC_NDXMASK(fs);
+     }
+ 
++  /* Write the last sector back.  The other handles of the file read it
++   * from the volume, and must see the zeros.
++   */
++
++  ret = fat_ffcacheflush(fs, ff);
++  if (ret < 0)
++    {
++      return ret;
++    }
++
+   /* The truncation has completed without error.  Update the file size */
+ 
+   ff->ff_shared->s_size = length;
