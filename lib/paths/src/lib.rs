@@ -73,13 +73,13 @@ pub fn load_environment() -> Environment {
             .with_default_extension(Extensions::IMPLICIT_SOME)
             .from_str(&loaded_environment)
     {
-        config_builder.preloaded(loaded_environment)
+        config_builder.layer(loaded_environment)
     } else {
         config_builder
     };
 
     let environment = config_builder
-        .preloaded(
+        .layer(
             Options::default()
                 .with_default_extension(Extensions::IMPLICIT_SOME)
                 .from_str(&default_environment_string)

@@ -26,7 +26,7 @@ byte-unit = "5.2"
 bytemuck = { version = "1.25", features = ["derive"] }
 bytes = "1.12"
 clap = { version = "4.6", features = ["derive"] }
-confique = "0.4"
+confique = "0.5"
 cpal = "0.18"
 crc32fast = "1.5"
 criterion = "0.8"
@@ -58,7 +58,7 @@ jiff = "1.0"
 keyboard-types = { version = "0.8", default-features = false, features = ["serde"] }
 libc = "0.2"
 libseat = "0.2"
-lucide-icons = "1.77"
+lucide-icons = "1.78"
 md-5 = "0.11"
 memmap2 = "0.9"
 multiversion = "0.9"
