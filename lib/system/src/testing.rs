@@ -94,10 +94,10 @@ impl Context {
     fn resolve(&self, rom: &TestRom) -> Option<Manifest> {
         self.runtime.block_on(async {
             match rom {
-                TestRom::Stored { name, id } => {
+                TestRom::Stored { name: _, id } => {
                     let id = match id.parse() {
                         Ok(id) => id,
-                        Err(err) => {
+                        Err(_) => {
                             return None;
                         }
                     };
