@@ -93,7 +93,7 @@ pub struct Chip8Processor<G: GraphicsApi> {
     state: ProcessorState,
     /// Keypad virtual gamepad
     keypad: Arc<LogicalInputDevice>,
-    config: Chip8ProcessorConfig<G>,
+    config: ProcessorConfig<G>,
 }
 
 impl<G: GraphicsApi> Chip8Processor<G> {
@@ -211,7 +211,7 @@ impl<G: GraphicsApi> Component for Chip8Processor<G> {
 }
 
 #[derive(Debug)]
-pub struct Chip8ProcessorConfig<G: GraphicsApi> {
+pub struct ProcessorConfig<G: GraphicsApi> {
     pub cpu_address_space: AddressSpaceId,
     pub display: ComponentPath,
     pub audio: ComponentPath,
@@ -223,7 +223,7 @@ pub struct Chip8ProcessorConfig<G: GraphicsApi> {
     pub _phantom: PhantomData<fn() -> G>,
 }
 
-impl<P: Platform> ComponentConfig<P> for Chip8ProcessorConfig<P::GraphicsApi> {
+impl<P: Platform> ComponentConfig<P> for ProcessorConfig<P::GraphicsApi> {
     type Component = Chip8Processor<P::GraphicsApi>;
 
     fn build_component(

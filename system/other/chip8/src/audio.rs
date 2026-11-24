@@ -27,23 +27,23 @@ pub struct State {
 }
 
 #[derive(Debug)]
-pub struct Chip8Audio {
+pub struct Audio {
     state: State,
     buffer: AllocRingBuffer<SVector<f32, 1>>,
     processor_frequency: Frequency,
 }
 
-impl PersistentComponentState<Chip8Audio> for State {
-    fn capture(component: &Chip8Audio) -> impl Serialize {
+impl PersistentComponentState<Audio> for State {
+    fn capture(component: &Audio) -> impl Serialize {
         &component.state
     }
 
-    fn apply(self, component: &mut Chip8Audio) {
+    fn apply(self, component: &mut Audio) {
         component.state = self;
     }
 }
 
-impl Chip8Audio {
+impl Audio {
     pub fn set(&mut self, value: u8) {
         self.state.timer = value;
     }
@@ -79,7 +79,7 @@ impl Chip8Audio {
     }
 }
 
-impl Component for Chip8Audio {
+impl Component for Audio {
     type Event = ();
     type Save = ();
     type Snapshot = State;
@@ -98,7 +98,7 @@ pub struct Chip8AudioConfig {
 }
 
 impl<P: Platform> ComponentConfig<P> for Chip8AudioConfig {
-    type Component = Chip8Audio;
+    type Component = Audio;
 
     fn build_component(
         self,
@@ -112,7 +112,7 @@ impl<P: Platform> ComponentConfig<P> for Chip8AudioConfig {
             )
             .audio_channel("mono");
 
-        Ok(Chip8Audio {
+        Ok(Audio {
             state: State {
                 timer: 0,
                 wave_generator: SquareWave::new(440.0, INTERNAL_SAMPLE_RATE, 0.5),

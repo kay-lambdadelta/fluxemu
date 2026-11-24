@@ -45,7 +45,7 @@ pub struct State {
 pub struct Chip8Display<G: GraphicsApi> {
     backend: Option<DisplayBackend<G>>,
     state: State,
-    config: Chip8DisplayConfig,
+    config: DisplayConfig,
     framebuffer_path: ResourcePath,
 }
 
@@ -202,11 +202,11 @@ impl<G: GraphicsApi> Component for Chip8Display<G> {
 }
 
 #[derive(Debug, Default)]
-pub struct Chip8DisplayConfig {
+pub struct DisplayConfig {
     pub clear_on_resolution_change: bool,
 }
 
-impl<P: Platform> ComponentConfig<P> for Chip8DisplayConfig {
+impl<P: Platform> ComponentConfig<P> for DisplayConfig {
     type Component = Chip8Display<P::GraphicsApi>;
 
     fn late_initialize(component: &mut Self::Component, data: &LateContext<P>) {

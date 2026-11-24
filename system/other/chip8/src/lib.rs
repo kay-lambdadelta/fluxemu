@@ -2,7 +2,7 @@ use std::{error::Error, marker::PhantomData, ops::RangeInclusive};
 
 use audio::Chip8AudioConfig;
 use bytes::Bytes;
-use display::Chip8DisplayConfig;
+use display::DisplayConfig;
 use fluxemu_math::range::ContiguousRange;
 use fluxemu_platform::Platform;
 use fluxemu_program::{OtherSystem, SystemId};
@@ -13,9 +13,9 @@ use fluxemu_runtime::{
 };
 use fluxemu_system::System;
 use font::CHIP8_FONT;
-use processor::Chip8ProcessorConfig;
+use processor::ProcessorConfig;
 use serde::{Deserialize, Serialize};
-use timer::Chip8TimerConfig;
+use timer::TimerConfig;
 
 mod audio;
 mod display;
@@ -47,8 +47,7 @@ impl<P: Platform> System<P> for Chip8 {
         machine_builder: MachineBuilder<P>,
     ) -> Result<SealedMachineBuilder<P>, Box<dyn Error>> {
         let (machine_builder, cpu_address_space) = machine_builder.address_space(12);
-        let (machine_builder, timer) =
-            machine_builder.default_component::<Chip8TimerConfig>("timer")?;
+        let (machine_builder, timer) = machine_builder.default_component::<TimerConfig>("timer")?;
         let (machine_builder, audio) = machine_builder.component(
             "audio",
             Chip8AudioConfig {
@@ -56,10 +55,10 @@ impl<P: Platform> System<P> for Chip8 {
             },
         )?;
         let (machine_builder, display) =
-            machine_builder.default_component::<Chip8DisplayConfig>("display")?;
+            machine_builder.default_component::<DisplayConfig>("display")?;
         let (machine_builder, _) = machine_builder.component(
             "cpu",
-            Chip8ProcessorConfig {
+            ProcessorConfig {
                 cpu_address_space,
                 timer,
                 audio,

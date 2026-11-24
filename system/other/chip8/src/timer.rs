@@ -56,9 +56,9 @@ impl Component for Chip8Timer {
 }
 
 #[derive(Debug, Default)]
-pub struct Chip8TimerConfig;
+pub struct TimerConfig;
 
-impl<P: Platform> ComponentConfig<P> for Chip8TimerConfig {
+impl<P: Platform> ComponentConfig<P> for TimerConfig {
     type Component = Chip8Timer;
 
     fn build_component(

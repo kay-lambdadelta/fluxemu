@@ -10,7 +10,7 @@ use super::{
 };
 use crate::{
     CHIP8_FONT, Chip8Mode,
-    audio::Chip8Audio,
+    audio::Audio,
     display::Chip8Display,
     processor::{
         Chip8Processor,
@@ -276,7 +276,7 @@ impl<G: GraphicsApi> Chip8Processor<G> {
 
                 runtime
                     .component_registry()
-                    .interact::<Chip8Audio, _>(&self.config.audio, timestamp, |component| {
+                    .interact::<Audio, _>(&self.config.audio, timestamp, |component| {
                         component.set(register_value);
                     })
                     .unwrap();
