@@ -262,7 +262,7 @@ impl AddressSpace<'_> {
         current_timestamp: Period,
         value: T,
     ) -> Result<(), MemoryError> {
-        self.write(address, current_timestamp, &value.to_le_bytes())
+        self.write_value_bytes(address, current_timestamp, &value.to_le_bytes())
     }
 
     /// Convenience method for writing a big endian value to an address
@@ -275,7 +275,55 @@ impl AddressSpace<'_> {
         current_timestamp: Period,
         value: T,
     ) -> Result<(), MemoryError> {
-        self.write(address, current_timestamp, &value.to_be_bytes())
+        self.write_value_bytes(address, current_timestamp, &value.to_be_bytes())
+    }
+
+    #[inline]
+    fn write_value_bytes<B: NumBytes + ?Sized>(
+        &mut self,
+        address: Address,
+        current_timestamp: Period,
+        buffer: &B,
+    ) -> Result<(), MemoryError> {
+        let page_table = self.data.get_write_table(&self.guard);
+        let width_mask = self.data.width_mask;
+
+        if let Some((
+            PageTableTarget::Memory {
+                offset: destination_start,
+                id,
+            },
+            offset,
+        )) = find_covering_entry(
+            address & width_mask,
+            buffer.as_ref().len(),
+            width_mask,
+            page_table,
+        ) {
+            // SAFETY: `commit` only creates memory entries for registered regions that fit within them, and the access lies within this entry
+            unsafe {
+                self.runtime.memory_registry().write(
+                    *id,
+                    destination_start + offset,
+                    buffer.as_ref(),
+                );
+            }
+
+            return Ok(());
+        }
+
+        self.write_value_bytes_slow(address, current_timestamp, buffer)
+    }
+
+    #[cold]
+    #[inline]
+    fn write_value_bytes_slow<B: NumBytes + ?Sized>(
+        &mut self,
+        address: Address,
+        current_timestamp: Period,
+        buffer: &B,
+    ) -> Result<(), MemoryError> {
+        self.write(address, current_timestamp, buffer)
     }
 }
 
