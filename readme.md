@@ -1,5 +1,8 @@
 # FluxEMU
 
+[![Check](https://github.com/kay-lambdadelta/fluxemu/actions/workflows/check.yml/badge.svg)](https://github.com/kay-lambdadelta/fluxemu/actions/workflows/check.yml)
+[![Package](https://github.com/kay-lambdadelta/fluxemu/actions/workflows/package.yml/badge.svg)](https://github.com/kay-lambdadelta/fluxemu/actions/workflows/package.yml)
+
 FluxEMU is a prototype multisystem hardware emulation framework written in Rust.
 
 The goal is to create a framework that can represent _any_ hardware system with as little hacks or workarounds as possible,
