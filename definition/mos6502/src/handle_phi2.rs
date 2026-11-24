@@ -612,10 +612,23 @@ impl<V: Variant> Mos6502<V> {
 
     #[inline]
     fn decode(&mut self) {
-        let instruction_identifier =
-            InstructionGroup::from_repr(self.state.bus.data & 0b11).unwrap();
-        let secondary_instruction_identifier = (self.state.bus.data >> 5) & 0b111;
-        let argument = (self.state.bus.data >> 2) & 0b111;
+        let instruction = self.decode_table[usize::from(self.state.bus.data)];
+
+        assert!(
+            instruction
+                .addressing_mode
+                .is_none_or(|addressing_mode| { V::is_addressing_mode_valid(&addressing_mode) }),
+            "Invalid addressing mode for instruction for mode: {:?}",
+            instruction,
+        );
+
+        self.push_steps_for_instruction(&instruction);
+    }
+
+    pub(crate) fn decode_opcode(opcode: u8) -> Mos6502InstructionSet {
+        let instruction_identifier = InstructionGroup::from_repr(opcode & 0b11).unwrap();
+        let secondary_instruction_identifier = (opcode >> 5) & 0b111;
+        let argument = (opcode >> 2) & 0b111;
 
         let (opcode, addressing_mode) = match instruction_identifier {
             InstructionGroup::Group3 => {
@@ -633,19 +646,9 @@ impl<V: Variant> Mos6502<V> {
             ),
         };
 
-        let instruction = Mos6502InstructionSet {
+        Mos6502InstructionSet {
             opcode,
             addressing_mode,
-        };
-
-        assert!(
-            instruction
-                .addressing_mode
-                .is_none_or(|addressing_mode| { V::is_addressing_mode_valid(&addressing_mode) }),
-            "Invalid addressing mode for instruction for mode: {:?}",
-            instruction,
-        );
-
-        self.push_steps_for_instruction(&instruction);
+        }
     }
 }

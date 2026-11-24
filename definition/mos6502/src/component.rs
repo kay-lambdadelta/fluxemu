@@ -20,6 +20,7 @@ use crate::{
     Bus, FlagRegister, IRQ_VECTOR, Mos6502Event, NMI_VECTOR, NmiFlag, Pin, RESET_VECTOR,
     STACK_BASE_ADDRESS, State,
     cycle::{BusMode, Cycle, Flag, MoveDestination, MoveSource, Phi1Source, Phi2},
+    instruction::Mos6502InstructionSet,
     variant::Variant,
 };
 
@@ -27,6 +28,7 @@ use crate::{
 pub struct Mos6502<V: Variant> {
     pub(crate) state: State,
     pub(crate) config: Config<V>,
+    pub(crate) decode_table: [Mos6502InstructionSet; 256],
     _variant: PhantomData<V>,
 }
 
@@ -115,6 +117,7 @@ impl<P: Platform, V: Variant> ComponentConfig<P> for Config<V> {
                 interrupt_vector: IRQ_VECTOR,
             },
             config: self,
+            decode_table: core::array::from_fn(|opcode| Mos6502::<V>::decode_opcode(opcode as u8)),
             _variant: PhantomData::<V>,
         };
 
