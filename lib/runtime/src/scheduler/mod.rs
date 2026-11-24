@@ -5,7 +5,7 @@ use fixed::{FixedU128, types::extra::U64};
 use crate::{
     DispatchGuard, RuntimeHandle,
     component::ComponentRegistry,
-    scheduler::queue::{Generation, Queue},
+    scheduler::queue::{Generation, PreemptionSignal, Queue},
 };
 
 pub mod event;
@@ -68,25 +68,20 @@ impl<'a> Context<'a> {
     /// or the runtime preempts the task
     #[inline]
     pub fn quanta_allocator<'b>(&'b mut self, period: Period) -> QuantaAllocator<'b, 'a> {
-        let last_seen_generation = self
-            .runtime
-            .machine()
-            .scheduler
-            .queue
-            .preemption_signal()
-            .generation();
+        let preemption_signal = self.runtime.machine().scheduler.queue.preemption_signal();
+        let last_seen_generation = preemption_signal.generation();
+        let current_timestamp = *self.current_timestamp;
 
-        let mut allocator = QuantaAllocator {
+        QuantaAllocator {
             period,
-            budget: u32::MAX,
+            half_period: period / 2,
+            current_timestamp,
+            budget: rebudget(self, u32::MAX, current_timestamp, period),
             last_seen_generation,
             quantum_in_progress: false,
+            preemption_signal,
             context: self,
-        };
-
-        allocator.rebudget();
-
-        allocator
+        }
     }
 }
 
@@ -94,9 +89,12 @@ impl<'a> Context<'a> {
 #[must_use = "The cooperative scheduler needs your task to allocate time to advance"]
 pub struct QuantaAllocator<'b, 'a> {
     period: Period,
+    half_period: Period,
+    current_timestamp: Period,
     budget: u32,
     last_seen_generation: Generation,
     quantum_in_progress: bool,
+    preemption_signal: &'a PreemptionSignal,
     context: &'b mut Context<'a>,
 }
 
@@ -121,6 +119,7 @@ fn quanta_acting_before(current_timestamp: Period, period: Period, stop_time: Pe
 pub struct Quantum {
     start: Period,
     period: Period,
+    midpoint: Period,
 }
 
 impl Quantum {
@@ -141,7 +140,7 @@ impl Quantum {
 
     #[inline]
     pub fn midpoint(&self) -> Period {
-        self.start + self.period / 2
+        self.midpoint
     }
 }
 
@@ -149,79 +148,79 @@ impl Iterator for QuantaAllocator<'_, '_> {
     type Item = Quantum;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.finish_quantum();
+        let finished_quantum = core::mem::take(&mut self.quantum_in_progress);
+        if finished_quantum {
+            self.current_timestamp += self.period;
+        }
 
-        let preemption_signal = self
-            .context
-            .runtime
-            .machine()
-            .scheduler
-            .queue
-            .preemption_signal();
-
-        let current_generation = preemption_signal.generation();
+        let current_generation = self.preemption_signal.generation();
         if current_generation != self.last_seen_generation {
             self.last_seen_generation = current_generation;
-            self.rebudget();
+            self.budget = rebudget(
+                self.context,
+                self.budget,
+                self.current_timestamp,
+                self.period,
+            );
         }
-        *self.context.required_next_allocation = self.period;
 
         if self.budget != 0 {
             self.budget -= 1;
         } else {
             std::hint::cold_path();
 
+            self.write_back();
+            if finished_quantum {
+                DispatchGuard::advance(self.current_timestamp);
+            }
+
             return None;
         }
 
         self.quantum_in_progress = true;
 
-        let quantum = Quantum {
-            start: *self.context.current_timestamp,
-            period: self.period,
-        };
-        DispatchGuard::advance(quantum.midpoint());
+        let start = self.current_timestamp;
+        let midpoint = start + self.half_period;
+        DispatchGuard::advance(midpoint);
 
-        Some(quantum)
+        Some(Quantum {
+            start,
+            period: self.period,
+            midpoint,
+        })
     }
 }
 
 impl Drop for QuantaAllocator<'_, '_> {
     fn drop(&mut self) {
-        self.finish_quantum();
+        if core::mem::take(&mut self.quantum_in_progress) {
+            self.current_timestamp += self.period;
+            self.write_back();
+            DispatchGuard::advance(self.current_timestamp);
+        }
     }
 }
 
 impl QuantaAllocator<'_, '_> {
     #[inline]
-    fn finish_quantum(&mut self) {
-        if core::mem::take(&mut self.quantum_in_progress) {
-            let next_timestamp = *self.context.current_timestamp + self.period;
-            *self.context.current_timestamp = next_timestamp;
-            DispatchGuard::advance(next_timestamp);
-        }
+    fn write_back(&mut self) {
+        *self.context.current_timestamp = self.current_timestamp;
+        *self.context.required_next_allocation = self.period;
+    }
+}
+
+#[cold]
+#[inline(never)]
+fn rebudget(context: &Context<'_>, budget: u32, current_timestamp: Period, period: Period) -> u32 {
+    let mut stop_time = context.target_timestamp;
+
+    // If an event exists, allow it to cut our budget short
+    if let Some(next_event) = context.runtime.machine().scheduler.queue.next_deadline() {
+        stop_time = stop_time.min(next_event);
     }
 
-    #[cold]
-    fn rebudget(&mut self) {
-        let mut stop_time = self.context.target_timestamp;
+    // Recalculate budget
+    let new_budget = quanta_acting_before(current_timestamp, period, stop_time);
 
-        // If a event exists, allow it to cut our budget short
-        if let Some(next_event) = self
-            .context
-            .runtime
-            .machine()
-            .scheduler
-            .queue
-            .next_deadline()
-        {
-            stop_time = stop_time.min(next_event);
-        }
-
-        // Recalculate budget
-        let new_budget =
-            quanta_acting_before(*self.context.current_timestamp, self.period, stop_time);
-
-        self.budget = self.budget.min(new_budget);
-    }
+    budget.min(new_budget)
 }
