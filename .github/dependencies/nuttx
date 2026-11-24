@@ -9,3 +9,4 @@ gcc-arm-none-eabi
 unzip
 pipx
 genromfs
+xxd
