@@ -26,7 +26,7 @@ use fluxemu_runtime::{
     },
 };
 use nalgebra::Point2;
-use palette::{Srgb, Srgba, named::BLACK};
+use palette::{Srgba, named::BLACK};
 use serde::{Deserialize, Serialize};
 use strum::FromRepr;
 
@@ -109,7 +109,7 @@ pub struct Ppu<R: Region, G: GraphicsApi> {
     ppu_address_space: AddressSpaceId,
     processor_path: ComponentPath,
     staging_buffer: OwnedTexture<Srgba<u8>>,
-    palette: [[Srgb<u8>; 64]; 8],
+    palette: [[Srgba<u8>; 64]; 8],
     path: ComponentPath,
     framebuffer_path: ResourcePath,
     period: Period,
@@ -267,7 +267,7 @@ impl<R: Region, P: Platform> ComponentConfig<P> for PpuConfig<R> {
             cpu_address_space: self.cpu_address_space,
             processor_path: self.processor.clone(),
             ppu_address_space: self.ppu_address_space,
-            palette: R::generate_palette(),
+            palette: R::generate_palette().map(|emphasis| emphasis.map(Srgba::from)),
             path: component_builder.path().clone(),
             period: frequency.recip(),
             framebuffer_path,

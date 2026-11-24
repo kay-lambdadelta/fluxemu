@@ -205,7 +205,7 @@ impl<R: Region, G: GraphicsApi> Ppu<R, G> {
 
                 self.staging_buffer
                     [Point2::new(scanline_position_x, self.state.cycle_counter.y).cast()] =
-                    palette[clamped_index].into();
+                    palette[clamped_index];
             }
 
             self.sprite_zero_check(scanline_position_x, is_background_opaque);
