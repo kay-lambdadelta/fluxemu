@@ -49,7 +49,7 @@ impl Touchscreen {
         })
     }
 
-    pub fn poll(&mut self, events: &mut Vec<Event>) {
+    pub fn poll(&mut self, events: &mut Vec<Event>, pixels_per_point: f32) {
         while let Ok(point) = self.points.try_recv() {
             let flags = u32::from(point.flags);
 
@@ -58,7 +58,8 @@ impl Touchscreen {
             }
 
             if flags & sys::TOUCH_POS_VALID != 0 {
-                self.last_position = Point2::new(f32::from(point.x), f32::from(point.y));
+                self.last_position =
+                    Point2::new(f32::from(point.x), f32::from(point.y)) / pixels_per_point;
             }
 
             let id = TouchId(point.id.into());

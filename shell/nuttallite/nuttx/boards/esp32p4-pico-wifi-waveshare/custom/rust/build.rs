@@ -20,6 +20,8 @@ fn main() {
     let arch_include_directories = [
         nuttx_directory.join("arch/risc-v/src/common"),
         nuttx_directory.join("boards/risc-v/esp32p4/common/include"),
+        nuttx_directory
+            .join("arch/risc-v/src/esp32p4/esp-hal-3rdparty/components/soc/esp32p4/include"),
     ];
 
     for directory in arch_include_directories {

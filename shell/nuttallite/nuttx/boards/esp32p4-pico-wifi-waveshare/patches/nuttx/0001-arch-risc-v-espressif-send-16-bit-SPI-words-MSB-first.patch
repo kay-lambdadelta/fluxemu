@@ -1,0 +1,90 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kay-lambdadelta <lambdadeltakay@proton.me>
+Date: Mon, 23 Nov 2026 04:30:00 -0800
+Subject: [PATCH] arch/risc-v/espressif: send 16-bit SPI words MSB first.
+---
+diff --git a/arch/risc-v/src/common/espressif/esp_spi.c b/arch/risc-v/src/common/espressif/esp_spi.c
+index 1a80e47..7111415 100644
+--- a/arch/risc-v/src/common/espressif/esp_spi.c
++++ b/arch/risc-v/src/common/espressif/esp_spi.c
+@@ -580,6 +580,20 @@ static lp_spi_device_config_t esp_lpspi_device_config =
+ 
+ static uint32_t blank_arr[SPI_BLANK_ARRAY_SIZE];
+ 
++static void esp_spi_swap_words(uint8_t *dest, const uint8_t *src,
++                               uint32_t bytes)
++{
++  uint32_t i;
++
++  for (i = 0; i + 1 < bytes; i += 2)
++    {
++      uint8_t low = src[i];
++
++      dest[i] = src[i + 1];
++      dest[i + 1] = low;
++    }
++}
++
+ /****************************************************************************
+  * Private Functions
+  ****************************************************************************/
+@@ -1217,6 +1231,11 @@ static uint32_t esp_spi_poll_send(struct esp_spi_priv_s *priv, uint32_t wd)
+       0
+     };
+ 
++  if (priv->nbits == 16)
++    {
++      wd = ((wd & 0xff) << 8) | ((wd >> 8) & 0xff);
++    }
++
+   trans.tx_bitlen = priv->nbits;
+   trans.rx_bitlen = priv->nbits;
+   trans.rcv_buffer = (uint8_t *)&val;
+@@ -1238,6 +1257,11 @@ static uint32_t esp_spi_poll_send(struct esp_spi_priv_s *priv, uint32_t wd)
+   while (!spi_hal_usr_is_done(priv->ctx));
+   spi_hal_fetch_result(priv->ctx);
+ 
++  if (priv->nbits == 16)
++    {
++      val = ((val & 0xff) << 8) | ((val >> 8) & 0xff);
++    }
++
+   spiinfo("send=0x%" PRIx32 " and recv=0x%" PRIx32 "\n", wd, val);
+ 
+   return val;
+@@ -1305,6 +1329,8 @@ static void esp_spi_poll_exchange(struct esp_spi_priv_s *priv,
+   uintptr_t bytes_remaining = total_bytes;
+   uint8_t *tp = (uint8_t *)txbuffer;
+   uint8_t *rp = (uint8_t *)rxbuffer;
++  bool swap = priv->nbits == 16;
++  uint32_t swapped[SPI_MAX_BUF_SIZE / sizeof(uint32_t)];
+   spi_hal_trans_config_t trans =
+     {
+       0
+@@ -1337,6 +1363,13 @@ static void esp_spi_poll_exchange(struct esp_spi_priv_s *priv,
+           spiinfo("send %" PRIu32 " bytes value=0x%" PRIx32 "\n",
+                   transfer_size, blank_arr[0]);
+         }
++      else if (swap)
++        {
++          esp_spi_swap_words((uint8_t *)swapped, tp, transfer_size);
++          trans.send_buffer = (uint8_t *)swapped;
++          spiinfo("send %" PRIu32 " bytes addr=0x%p\n",
++                  transfer_size, tp);
++        }
+       else
+         {
+           trans.send_buffer = (uint8_t *)tp;
+@@ -1357,6 +1390,12 @@ static void esp_spi_poll_exchange(struct esp_spi_priv_s *priv,
+       if (rp != NULL)
+         {
+           spi_hal_fetch_result(priv->ctx);
++
++          if (swap)
++            {
++              esp_spi_swap_words(rp, rp, transfer_size);
++            }
++
+           spiinfo("recv %" PRIu32 " bytes addr=0x%p\n",
+                   transfer_size, rp);
+           rp += transfer_size;

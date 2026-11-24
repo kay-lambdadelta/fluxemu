@@ -10,6 +10,7 @@ use fluxemu_frontend::{
 };
 use fluxemu_frontend_egui::{Frontend, rendering::EguiCapableGraphicsRuntime};
 use fluxemu_program::ProgramManager;
+use nalgebra::Vector2;
 use palette::named::BLACK;
 use tokio::runtime::Handle;
 
@@ -19,7 +20,9 @@ use crate::{
     runtime::{AudioRuntime, GraphicsRuntime, Touchscreen, open_graphics_runtime},
 };
 
-const UNSCII_FONT: &[u8] = include_bytes!("../../../../external/unscii/fontfiles/unscii-16.otf");
+// Many test screens are entirely too small and need this to keep anything visible
+const MINIMUM_LOGICAL_DIMENSIONS: Vector2<f32> = Vector2::new(320.0, 240.0);
+const UNSCII_FONT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/unscii-16.otf"));
 
 pub fn run(
     runtime: Handle,
@@ -55,7 +58,15 @@ pub fn run(
     let mut graphics_runtime = open_graphics_runtime()?;
     let mut touchscreen = Touchscreen::open();
 
-    let display_dimensions = graphics_runtime.display_context().dimensions();
+    let display_dimensions = graphics_runtime
+        .display_context()
+        .dimensions()
+        .cast::<f32>();
+    let pixels_per_point = display_dimensions
+        .component_div(&MINIMUM_LOGICAL_DIMENSIONS)
+        .min()
+        .min(1.0);
+    let logical_dimensions = display_dimensions / pixels_per_point;
 
     let start_time = Instant::now();
 
@@ -67,7 +78,7 @@ pub fn run(
         let mut events = Vec::new();
 
         if let Some(touchscreen) = &mut touchscreen {
-            touchscreen.poll(&mut events);
+            touchscreen.poll(&mut events, pixels_per_point);
         }
 
         let raw_input = RawInput {
@@ -77,13 +88,13 @@ pub fn run(
                 ViewportInfo {
                     focused: Some(true),
                     fullscreen: Some(true),
-                    native_pixels_per_point: Some(1.0),
+                    native_pixels_per_point: Some(pixels_per_point),
                     ..Default::default()
                 },
             )]),
             screen_rect: Some(Rect {
                 min: [0.0, 0.0].into(),
-                max: [display_dimensions.x as f32, display_dimensions.y as f32].into(),
+                max: [logical_dimensions.x, logical_dimensions.y].into(),
             }),
             time: Some(start_time.elapsed().as_secs_f64()),
             max_texture_side: Some(1024),

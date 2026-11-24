@@ -3,6 +3,7 @@
 #![no_std]
 
 mod bringup;
+mod display;
 mod panic;
 mod reset;
 mod sd_card;

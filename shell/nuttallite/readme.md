@@ -80,3 +80,22 @@ The full list of backends is available in [OpenDAL's documentation](https://docs
 > NuttX is an embedded OS, so many backends for OpenDAL may not fit into flash or will break or have no way to work at runtime.
 >
 > Most likely, the only feasible way to load ROMs will be via an SD card or an embedded ROM system.
+
+## Board wiring
+
+Some boards need external parts wired before the shell has anything to show.
+
+### `esp32p4-pico-wifi-waveshare` — Waveshare ESP32-P4-Pico (wifi model or not)
+
+An ST7735 128x160 SPI display driven over SPI2:
+
+| ST7735 module pin  | ESP32-P4 GPIO |
+| ------------------ | ------------- |
+| `SCK` / `SCL`      | GPIO20        |
+| `SDA` / `MOSI`     | GPIO21        |
+| `CS`               | GPIO22        |
+| `DC` / `A0` / `RS` | GPIO23        |
+| `RST` / `RESET`    | GPIO32        |
+| `VCC`              | 3V3           |
+| `BL` / `LED`       | 3V3           |
+| `GND`              | GND           |

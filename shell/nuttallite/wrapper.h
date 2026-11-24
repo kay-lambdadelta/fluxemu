@@ -7,6 +7,7 @@
 #include <poll.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
+#include <termios.h>
 
 #ifndef FBIO_UPDATE
 #define FBIO_UPDATE _FBIOC(0x0007)

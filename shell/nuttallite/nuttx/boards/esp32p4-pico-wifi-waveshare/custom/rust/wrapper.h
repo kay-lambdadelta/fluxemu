@@ -1,8 +1,14 @@
 #include <assert.h>
 #include <esp_board_mmcsd.h>
+#include <espressif/esp_gpio.h>
 #include <espressif/esp_ldo.h>
+#include <espressif/esp_spi.h>
 #include <espressif/esp_systemreset.h>
 #include <nuttx/arch.h>
 #include <nuttx/config.h>
 #include <nuttx/fs/fs.h>
+#include <nuttx/lcd/lcd.h>
+#include <nuttx/lcd/st7735.h>
+#include <nuttx/sched.h>
+#include <soc/gpio_sig_map.h>
 #include <syslog.h>
