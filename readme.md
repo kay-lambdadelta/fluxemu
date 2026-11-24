@@ -11,6 +11,19 @@ For further details check the `readme.md` files scattered among the crates in th
 
 ## Global Project Information
 
+### Platform Support
+
+FluxEMU supports platforms via its shell crates, which each target a specific subset of environments.
+
+| [Destinezite]                                     | [Weberite]   | [Nuttallite]                                                 |
+| ------------------------------------------------- | ------------ | ------------------------------------------------------------ |
+| Standard platforms (Linux, Windows, macOS, \*BSD) | Web browsers | [Apache NuttX][nuttx] supported microcontroller class boards |
+
+[destinezite]: shell/destinezite
+[weberite]: shell/weberite
+[nuttallite]: shell/nuttallite
+[nuttx]: https://nuttx.apache.org/docs/latest/platforms/index.html
+
 ### Test and Benchmark Builds
 
 Test and benchmark builds embed third party test ROMs, many of which have unclear or restrictive licenses.
