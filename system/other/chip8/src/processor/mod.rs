@@ -135,7 +135,7 @@ impl<G: GraphicsApi> Chip8Processor<G> {
                         let mut pressed = Vec::new();
 
                         // Go through every chip8 key
-                        for key in 0x0..0xf {
+                        for key in 0x0..=0xf {
                             let keycode = Chip8KeyCode(key);
 
                             if self
