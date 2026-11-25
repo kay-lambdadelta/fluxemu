@@ -11,7 +11,7 @@ use egui::{
 use evdev::KeyCode;
 use fluxemu_input::{
     InputId, InputState,
-    physical::{PhysicalInputDeviceInstanceId, PhysicalInputDeviceKind},
+    host::{HostInputDeviceInstanceId, HostInputDeviceKind},
 };
 use input::{
     DeviceCapability, Libinput, LibinputInterface,
@@ -421,9 +421,9 @@ pub fn handle_libinput_events(
                     *added_keyboard = true;
 
                     send_input(InputMessage::Register {
-                        id: PhysicalInputDeviceInstanceId::PLATFORM_RESERVED,
+                        id: HostInputDeviceInstanceId::PLATFORM_RESERVED,
                         name: "Keyboard".to_string(),
-                        kind: PhysicalInputDeviceKind::Keyboard,
+                        kind: HostInputDeviceKind::Keyboard,
                         rely_on_frontend_input_handling: false,
                     });
                 }
@@ -431,7 +431,7 @@ pub fn handle_libinput_events(
             input::Event::Keyboard(keyboard_event) => {
                 if let Some(key) = libinput2key(evdev::KeyCode(keyboard_event.key() as u16)) {
                     send_input(InputMessage::Insert {
-                        id: PhysicalInputDeviceInstanceId::PLATFORM_RESERVED,
+                        id: HostInputDeviceInstanceId::PLATFORM_RESERVED,
                         input_id: InputId::Keyboard(key),
                         state: match keyboard_event.key_state() {
                             KeyState::Pressed => InputState::PRESSED,

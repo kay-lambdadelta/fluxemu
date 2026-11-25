@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use fluxemu_frontend::InputRouting;
 use fluxemu_input::{
     InputId, InputState,
-    physical::{PhysicalInputDeviceInstanceId, PhysicalInputDeviceKind},
+    host::{HostInputDeviceInstanceId, HostInputDeviceKind},
 };
 
 use crate::{Frontend, Platform};
@@ -11,7 +11,7 @@ use crate::{Frontend, Platform};
 impl<P: Platform> Frontend<P> {
     pub fn insert_input(
         &mut self,
-        origin: PhysicalInputDeviceInstanceId,
+        origin: HostInputDeviceInstanceId,
         input_id: InputId,
         state: InputState,
     ) {
@@ -33,9 +33,9 @@ impl<P: Platform> Frontend<P> {
 
     pub fn register_gamepad(
         &mut self,
-        id: PhysicalInputDeviceInstanceId,
+        id: HostInputDeviceInstanceId,
         name: impl Into<Cow<'static, str>>,
-        kind: PhysicalInputDeviceKind,
+        kind: HostInputDeviceKind,
         rely_on_frontend_input_handling: bool,
     ) {
         // Make sure our main loop is ran
@@ -45,7 +45,7 @@ impl<P: Platform> Frontend<P> {
             .register_gamepad(id, name, kind, rely_on_frontend_input_handling);
     }
 
-    pub fn unregister_gamepad(&mut self, id: PhysicalInputDeviceInstanceId) {
+    pub fn unregister_gamepad(&mut self, id: HostInputDeviceInstanceId) {
         self.egui_context.request_repaint();
 
         self.core.unregister_gamepad(id);

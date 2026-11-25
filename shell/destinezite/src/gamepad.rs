@@ -2,7 +2,7 @@ use std::{collections::HashMap, time::Duration};
 
 use fluxemu_input::{
     GamepadInputId, InputId, InputState,
-    physical::{PhysicalInputDeviceId, PhysicalInputDeviceInstanceId, PhysicalInputDeviceKind},
+    host::{HostInputDeviceId, HostInputDeviceInstanceId, HostInputDeviceKind},
 };
 use gilrs::{Axis, Button, Event, GamepadId, Gilrs, GilrsBuilder};
 use uuid::{NonNilUuid, Uuid};
@@ -85,9 +85,9 @@ fn convert_gilrs2axis(axis: Axis, value: f32) -> Option<[(InputId, InputState); 
 }
 
 #[inline]
-fn calculate_gamepad_id(gamepad: gilrs::Gamepad<'_>) -> PhysicalInputDeviceId {
+fn calculate_gamepad_id(gamepad: gilrs::Gamepad<'_>) -> HostInputDeviceId {
     if let Some(uuid) = NonNilUuid::new(Uuid::from_bytes(gamepad.uuid())) {
-        PhysicalInputDeviceId::new(uuid)
+        HostInputDeviceId::new(uuid)
     } else {
         tracing::warn!(
             "Gamepad {} is not giving us an ID, assigning it one",
@@ -98,34 +98,29 @@ fn calculate_gamepad_id(gamepad: gilrs::Gamepad<'_>) -> PhysicalInputDeviceId {
 
         let uuid = Uuid::from_slice(&hash.as_bytes()[..16]).unwrap();
 
-        PhysicalInputDeviceId(uuid)
+        HostInputDeviceId(uuid)
     }
 }
 
 pub trait GamepadSink {
-    fn register_gamepad(&mut self, id: PhysicalInputDeviceInstanceId, name: String);
-    fn unregister_gamepad(&mut self, id: PhysicalInputDeviceInstanceId);
-    fn insert_input(
-        &mut self,
-        id: PhysicalInputDeviceInstanceId,
-        input_id: InputId,
-        state: InputState,
-    );
+    fn register_gamepad(&mut self, id: HostInputDeviceInstanceId, name: String);
+    fn unregister_gamepad(&mut self, id: HostInputDeviceInstanceId);
+    fn insert_input(&mut self, id: HostInputDeviceInstanceId, input_id: InputId, state: InputState);
 }
 
 #[cfg(feature = "egui")]
 impl<P: fluxemu_frontend::Platform> GamepadSink for fluxemu_frontend_egui::Frontend<P> {
-    fn register_gamepad(&mut self, id: PhysicalInputDeviceInstanceId, name: String) {
-        self.register_gamepad(id, name, PhysicalInputDeviceKind::Gamepad, true);
+    fn register_gamepad(&mut self, id: HostInputDeviceInstanceId, name: String) {
+        self.register_gamepad(id, name, HostInputDeviceKind::Gamepad, true);
     }
 
-    fn unregister_gamepad(&mut self, id: PhysicalInputDeviceInstanceId) {
+    fn unregister_gamepad(&mut self, id: HostInputDeviceInstanceId) {
         self.unregister_gamepad(id);
     }
 
     fn insert_input(
         &mut self,
-        id: PhysicalInputDeviceInstanceId,
+        id: HostInputDeviceInstanceId,
         input_id: InputId,
         state: InputState,
     ) {
@@ -137,16 +132,16 @@ impl<P: fluxemu_frontend::Platform> GamepadSink for fluxemu_frontend_egui::Front
 #[derive(Debug)]
 pub enum InputMessage {
     Register {
-        id: PhysicalInputDeviceInstanceId,
+        id: HostInputDeviceInstanceId,
         name: String,
-        kind: PhysicalInputDeviceKind,
+        kind: HostInputDeviceKind,
         rely_on_frontend_input_handling: bool,
     },
     Unregister {
-        id: PhysicalInputDeviceInstanceId,
+        id: HostInputDeviceInstanceId,
     },
     Insert {
-        id: PhysicalInputDeviceInstanceId,
+        id: HostInputDeviceInstanceId,
         input_id: InputId,
         state: InputState,
     },
@@ -180,22 +175,22 @@ pub struct InputMessageSink<F: FnMut(InputMessage)>(pub F);
 
 #[cfg(feature = "egui")]
 impl<F: FnMut(InputMessage)> GamepadSink for InputMessageSink<F> {
-    fn register_gamepad(&mut self, id: PhysicalInputDeviceInstanceId, name: String) {
+    fn register_gamepad(&mut self, id: HostInputDeviceInstanceId, name: String) {
         (self.0)(InputMessage::Register {
             id,
             name,
-            kind: PhysicalInputDeviceKind::Gamepad,
+            kind: HostInputDeviceKind::Gamepad,
             rely_on_frontend_input_handling: true,
         });
     }
 
-    fn unregister_gamepad(&mut self, id: PhysicalInputDeviceInstanceId) {
+    fn unregister_gamepad(&mut self, id: HostInputDeviceInstanceId) {
         (self.0)(InputMessage::Unregister { id });
     }
 
     fn insert_input(
         &mut self,
-        id: PhysicalInputDeviceInstanceId,
+        id: HostInputDeviceInstanceId,
         input_id: InputId,
         state: InputState,
     ) {
@@ -209,17 +204,17 @@ impl<F: FnMut(InputMessage)> GamepadSink for InputMessageSink<F> {
 
 #[cfg(feature = "ratatui")]
 impl GamepadSink for fluxemu_frontend_ratatui::ExternalInputSender {
-    fn register_gamepad(&mut self, id: PhysicalInputDeviceInstanceId, name: String) {
+    fn register_gamepad(&mut self, id: HostInputDeviceInstanceId, name: String) {
         fluxemu_frontend_ratatui::ExternalInputSender::register_gamepad(self, id, name);
     }
 
-    fn unregister_gamepad(&mut self, id: PhysicalInputDeviceInstanceId) {
+    fn unregister_gamepad(&mut self, id: HostInputDeviceInstanceId) {
         fluxemu_frontend_ratatui::ExternalInputSender::unregister_gamepad(self, id);
     }
 
     fn insert_input(
         &mut self,
-        id: PhysicalInputDeviceInstanceId,
+        id: HostInputDeviceInstanceId,
         input_id: InputId,
         state: InputState,
     ) {
@@ -228,20 +223,20 @@ impl GamepadSink for fluxemu_frontend_ratatui::ExternalInputSender {
 }
 
 #[derive(Debug)]
-struct IdMappings(HashMap<GamepadId, PhysicalInputDeviceInstanceId>);
+struct IdMappings(HashMap<GamepadId, HostInputDeviceInstanceId>);
 
 impl IdMappings {
     fn allocate(
         &mut self,
         gamepad_id: GamepadId,
-        device: PhysicalInputDeviceId,
-    ) -> Option<PhysicalInputDeviceInstanceId> {
+        device: HostInputDeviceId,
+    ) -> Option<HostInputDeviceInstanceId> {
         if self.0.contains_key(&gamepad_id) {
             return None;
         }
 
         let instance = (0..=u8::MAX)
-            .map(|slot| PhysicalInputDeviceInstanceId::new(device, slot))
+            .map(|slot| HostInputDeviceInstanceId::new(device, slot))
             .find(|instance| !self.0.values().any(|used| used == instance))
             .expect("Ran out of slots for identical gamepads");
 

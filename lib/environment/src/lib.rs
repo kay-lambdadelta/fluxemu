@@ -2,12 +2,12 @@ use std::{collections::BTreeMap, num::Wrapping, path::PathBuf, time::Duration};
 
 use audio::AudioSettings;
 use confique::Config;
-use fluxemu_input::physical::PhysicalInputDeviceId;
+use fluxemu_input::host::HostInputDeviceId;
 use fluxemu_program::RomStoreSpecification;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
-use crate::{graphics::GraphicsSettings, input::PhysicalGamepadConfiguration};
+use crate::{graphics::GraphicsSettings, input::HostGamepadConfiguration};
 
 /// Audio related config types
 pub mod audio;
@@ -18,7 +18,7 @@ pub mod input;
 
 #[derive(Config, Serialize, Deserialize, Debug, Clone)]
 pub struct Environment {
-    pub gamepads: BTreeMap<PhysicalInputDeviceId, PhysicalGamepadConfiguration>,
+    pub gamepads: BTreeMap<HostInputDeviceId, HostGamepadConfiguration>,
     pub graphics: GraphicsSettings,
     pub audio: AudioSettings,
     pub file_browser_home_directory: PathBuf,

@@ -2,7 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use fluxemu_input::{
     InputId, InputState,
-    physical::{PhysicalInputDeviceInstanceId, PhysicalInputDeviceKind},
+    host::{HostInputDeviceInstanceId, HostInputDeviceKind},
 };
 use keyboard_types::Code;
 use wasm_bindgen::{JsCast, JsValue, closure::Closure};
@@ -10,7 +10,7 @@ use web_sys::KeyboardEvent;
 
 use crate::{Application, display::CanvasGraphicsRuntime};
 
-const KEYBOARD: PhysicalInputDeviceInstanceId = PhysicalInputDeviceInstanceId::PLATFORM_RESERVED;
+const KEYBOARD: HostInputDeviceInstanceId = HostInputDeviceInstanceId::PLATFORM_RESERVED;
 
 pub fn register_keyboard<R: CanvasGraphicsRuntime>(
     application: &Rc<RefCell<Application<R>>>,
@@ -20,7 +20,7 @@ pub fn register_keyboard<R: CanvasGraphicsRuntime>(
     application.borrow_mut().core.register_gamepad(
         KEYBOARD,
         "Keyboard",
-        PhysicalInputDeviceKind::Keyboard,
+        HostInputDeviceKind::Keyboard,
         false,
     );
 

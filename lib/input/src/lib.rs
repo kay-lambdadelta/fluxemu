@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// Virtual gamepad
 mod gamepad;
 
-pub mod physical;
+pub mod host;
 
 pub use gamepad::*;
 

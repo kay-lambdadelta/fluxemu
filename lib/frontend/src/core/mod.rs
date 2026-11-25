@@ -11,7 +11,7 @@ use fluxemu_graphics::{
     api::{GraphicsApi, software::Software},
     texture::{CopyMode, OwnedTexture},
 };
-use fluxemu_input::{InputState, physical::PhysicalInputDeviceInstanceId};
+use fluxemu_input::{InputState, host::HostInputDeviceInstanceId};
 use fluxemu_platform::MaybeSend;
 use fluxemu_program::{
     ListingProblem, Manifest, ProgramId, ProgramManager, RomId, RomStoreSpecification,
@@ -29,8 +29,8 @@ use tokio::{
     task::JoinHandle,
 };
 
+use self::input::HostInputDeviceState;
 pub use self::input::InputRouting;
-use self::input::PhysicalInputDeviceState;
 use crate::{
     Platform,
     audio::{AudioRuntime, mixer::AudioMixer},
@@ -79,7 +79,7 @@ pub struct FrontendCore<P: Platform> {
     machine_factory_manager: Arc<FactoryManager<P>>,
     program_manager: Arc<ProgramManager>,
     program_database: Arc<ProgramDatabase>,
-    physical_input_devices: HashMap<PhysicalInputDeviceInstanceId, PhysicalInputDeviceState>,
+    host_input_devices: HashMap<HostInputDeviceInstanceId, HostInputDeviceState>,
     #[allow(unused)]
     audio_runtime: P::AudioRuntime,
     audio_mixer: Arc<AudioMixer>,
@@ -115,7 +115,7 @@ impl<P: Platform> FrontendCore<P> {
             machine_factory_manager: Arc::new(machine_factories),
             program_manager,
             program_database,
-            physical_input_devices: HashMap::default(),
+            host_input_devices: HashMap::default(),
             audio_runtime,
             audio_mixer,
             events: Vec::default(),
@@ -341,8 +341,8 @@ impl<P: Platform> FrontendCore<P> {
 
         // HACK: Assign the first input device to all gamepads
         if let Some(logical_input_device_path) = runtime_guard.input_devices().keys().min() {
-            for physical_input_device_state in self.physical_input_devices.values_mut() {
-                physical_input_device_state
+            for host_input_device_state in self.host_input_devices.values_mut() {
+                host_input_device_state
                     .controlling_input_devices
                     .insert(logical_input_device_path.clone());
             }
@@ -658,8 +658,8 @@ impl<P: Platform> FrontendCore<P> {
         self.machine_context = None;
 
         // Let go of any registered input devices
-        for physical_gamepad_state in self.physical_input_devices.values_mut() {
-            physical_gamepad_state.controlling_input_devices.clear();
+        for host_gamepad_state in self.host_input_devices.values_mut() {
+            host_gamepad_state.controlling_input_devices.clear();
         }
     }
 }

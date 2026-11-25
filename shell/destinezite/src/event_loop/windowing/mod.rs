@@ -12,7 +12,7 @@ use fluxemu_frontend::{
 use fluxemu_frontend_egui::{Frontend, rendering::EguiCapableGraphicsRuntime};
 use fluxemu_input::{
     InputId, InputState,
-    physical::{PhysicalInputDeviceInstanceId, PhysicalInputDeviceKind},
+    host::{HostInputDeviceInstanceId, HostInputDeviceKind},
 };
 use fluxemu_program::{ProgramManager, RomId};
 use fluxemu_runtime::graphics::GraphicsRequirements;
@@ -63,9 +63,9 @@ pub fn run<R: ProducableGraphicsRuntime<Window> + EguiCapableGraphicsRuntime>(
     let mut frontend = Frontend::new(core, notifications, load_fonts());
 
     frontend.register_gamepad(
-        PhysicalInputDeviceInstanceId::PLATFORM_RESERVED,
+        HostInputDeviceInstanceId::PLATFORM_RESERVED,
         "Keyboard",
-        PhysicalInputDeviceKind::Keyboard,
+        HostInputDeviceKind::Keyboard,
         false,
     );
 
@@ -206,7 +206,7 @@ impl<R: ProducableGraphicsRuntime<Window> + EguiCapableGraphicsRuntime> Applicat
                     && let Some(key) = winit2key(event.physical_key)
                 {
                     frontend.insert_input(
-                        PhysicalInputDeviceInstanceId::PLATFORM_RESERVED,
+                        HostInputDeviceInstanceId::PLATFORM_RESERVED,
                         InputId::Keyboard(key),
                         if event.state == ElementState::Pressed {
                             InputState::PRESSED

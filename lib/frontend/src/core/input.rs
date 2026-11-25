@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use fluxemu_input::{
     InputId, InputState,
-    physical::{PhysicalInputDeviceInstanceId, PhysicalInputDeviceKind, hotkey::Hotkey},
+    host::{HostInputDeviceInstanceId, HostInputDeviceKind, hotkey::Hotkey},
 };
 use fluxemu_runtime::ResourcePath;
 use indexmap::{IndexMap, IndexSet};
@@ -17,11 +17,11 @@ pub enum InputRouting {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct PhysicalInputDeviceState {
+pub(super) struct HostInputDeviceState {
     /// Should the runtime translate this input device into something the UI can understand
     pub rely_on_frontend_input_handling: bool,
     pub name: Cow<'static, str>,
-    pub kind: PhysicalInputDeviceKind,
+    pub kind: HostInputDeviceKind,
     pub gui_relevant_input_state: IndexMap<InputId, InputState>,
     pub controlling_input_devices: IndexSet<ResourcePath>,
 }
@@ -29,7 +29,7 @@ pub(super) struct PhysicalInputDeviceState {
 impl<P: Platform> FrontendCore<P> {
     pub fn insert_input(
         &mut self,
-        origin: PhysicalInputDeviceInstanceId,
+        origin: HostInputDeviceInstanceId,
         input_id: InputId,
         state: InputState,
         machine_has_focus: bool,
@@ -60,13 +60,13 @@ impl<P: Platform> FrontendCore<P> {
 
     fn route_input(
         &mut self,
-        origin: PhysicalInputDeviceInstanceId,
+        origin: HostInputDeviceInstanceId,
         input_id: InputId,
         state: InputState,
         machine_has_focus: bool,
         deferred_hotkey: &mut Option<Hotkey>,
     ) -> InputRouting {
-        let Some(physical_input_device_state) = self.physical_input_devices.get_mut(&origin) else {
+        let Some(host_input_device_state) = self.host_input_devices.get_mut(&origin) else {
             tracing::error!("Ignoring unknown device {}", origin);
 
             return InputRouting::Handled;
@@ -77,13 +77,13 @@ impl<P: Platform> FrontendCore<P> {
             ?input_id,
             ?state,
             "{}",
-            physical_input_device_state.name
+            host_input_device_state.name
         );
 
-        let physical_gamepad_configuration =
+        let host_gamepad_configuration =
             self.environment.gamepads.entry(origin.device).or_default();
 
-        let was_pressed = physical_input_device_state
+        let was_pressed = host_input_device_state
             .gui_relevant_input_state
             .insert(input_id, state)
             .is_some_and(|previous_state| previous_state.as_digital(None));
@@ -92,13 +92,13 @@ impl<P: Platform> FrontendCore<P> {
         let mut was_relevant_for_hotkeys = false;
 
         // Check for hotkeys
-        for (combinations, hotkey_action) in &physical_gamepad_configuration.hotkey {
+        for (combinations, hotkey_action) in &host_gamepad_configuration.hotkey {
             if !combinations.contains(&input_id) {
                 continue;
             }
 
             let is_activated = combinations.iter().all(|input_id| {
-                physical_input_device_state
+                host_input_device_state
                     .gui_relevant_input_state
                     .get(input_id)
                     .copied()
@@ -161,13 +161,13 @@ impl<P: Platform> FrontendCore<P> {
                     // Enter runtime
                     let runtime_guard = machine.enter_runtime();
 
-                    let program_specific_mappings = physical_gamepad_configuration
+                    let program_specific_mappings = host_gamepad_configuration
                         .program_specific_mappings
                         .entry(program_specification.id.clone())
                         .or_default();
 
                     for logical_input_device_path in
-                        &physical_input_device_state.controlling_input_devices
+                        &host_input_device_state.controlling_input_devices
                     {
                         let logical_input_device_specific_mappings = program_specific_mappings
                             .entry(logical_input_device_path.clone())
@@ -211,7 +211,7 @@ impl<P: Platform> FrontendCore<P> {
                         }
                     }
                 }
-            } else if physical_input_device_state.rely_on_frontend_input_handling {
+            } else if host_input_device_state.rely_on_frontend_input_handling {
                 routing = InputRouting::Ui;
             }
         }
@@ -221,9 +221,9 @@ impl<P: Platform> FrontendCore<P> {
 
     pub fn register_gamepad(
         &mut self,
-        id: PhysicalInputDeviceInstanceId,
+        id: HostInputDeviceInstanceId,
         name: impl Into<Cow<'static, str>>,
-        kind: PhysicalInputDeviceKind,
+        kind: HostInputDeviceKind,
         rely_on_frontend_input_handling: bool,
     ) {
         let name = name.into();
@@ -241,9 +241,9 @@ impl<P: Platform> FrontendCore<P> {
             }
         }
 
-        self.physical_input_devices.insert(
+        self.host_input_devices.insert(
             id,
-            PhysicalInputDeviceState {
+            HostInputDeviceState {
                 name,
                 kind,
                 rely_on_frontend_input_handling,
@@ -253,8 +253,8 @@ impl<P: Platform> FrontendCore<P> {
         );
     }
 
-    pub fn unregister_gamepad(&mut self, id: PhysicalInputDeviceInstanceId) {
-        let Some(physical_input_device_state) = self.physical_input_devices.remove(&id) else {
+    pub fn unregister_gamepad(&mut self, id: HostInputDeviceInstanceId) {
+        let Some(host_input_device_state) = self.host_input_devices.remove(&id) else {
             return;
         };
 
@@ -276,14 +276,14 @@ impl<P: Platform> FrontendCore<P> {
 
         let runtime_guard = machine.enter_runtime();
 
-        for logical_input_device_path in &physical_input_device_state.controlling_input_devices {
+        for logical_input_device_path in &host_input_device_state.controlling_input_devices {
             let Some(mappings) = program_specific_mappings.get(logical_input_device_path) else {
                 continue;
             };
 
             let logical_input_device = &runtime_guard.input_devices()[logical_input_device_path];
 
-            let released_inputs = physical_input_device_state
+            let released_inputs = host_input_device_state
                 .gui_relevant_input_state
                 .iter()
                 .filter(|(_, state)| state.as_analog() > 0.0)
@@ -300,10 +300,10 @@ impl<P: Platform> FrontendCore<P> {
         }
     }
 
-    pub fn physical_input_devices(
+    pub fn host_input_devices(
         &self,
-    ) -> impl Iterator<Item = (PhysicalInputDeviceInstanceId, &str, PhysicalInputDeviceKind)> {
-        self.physical_input_devices
+    ) -> impl Iterator<Item = (HostInputDeviceInstanceId, &str, HostInputDeviceKind)> {
+        self.host_input_devices
             .iter()
             .map(|(id, state)| (*id, state.name.as_ref(), state.kind))
     }
