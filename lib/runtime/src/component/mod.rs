@@ -14,8 +14,10 @@ use crate::{
 
 /// Component config (factory) related items
 pub mod config;
+mod handle;
 mod registry;
 
+pub use handle::ComponentHandle;
 pub use registry::*;
 
 /// Basic supertrait for all components

@@ -15,7 +15,7 @@ use rustc_hash::FxBuildHasher;
 
 use crate::{
     ResourcePath,
-    component::{ComponentRegistryData, config::ComponentConfig},
+    component::{ComponentHandle, ComponentId, ComponentRegistryData, config::ComponentConfig},
     graphics::{DisplayGeometry, GraphicsRequirements},
     input::LogicalInputDevice,
     machine::{
@@ -142,7 +142,7 @@ impl<P: Platform> MachineBuilder<P> {
         &mut self,
         path: ComponentPath,
         config: B,
-    ) -> Result<(), MachineError> {
+    ) -> Result<ComponentId, MachineError> {
         let mut component_data = ComponentData::new::<B>();
 
         let component_builder = ComponentBuilder::<P, B::Component> {
@@ -176,7 +176,7 @@ impl<P: Platform> MachineBuilder<P> {
 
         self.component_data.insert(path, component_data);
 
-        Ok(())
+        Ok(id)
     }
 
     /// Insert a component into the machine
@@ -185,11 +185,11 @@ impl<P: Platform> MachineBuilder<P> {
         mut self,
         name: impl Into<Cow<'static, str>>,
         config: B,
-    ) -> Result<(Self, ComponentPath), MachineError> {
+    ) -> Result<(Self, ComponentHandle<B::Component>), MachineError> {
         let path = ComponentPath::new(name).unwrap();
-        self.insert_component_with_path(path.clone(), config)?;
+        let id = self.insert_component_with_path(path.clone(), config)?;
 
-        Ok((self, path))
+        Ok((self, ComponentHandle::new(id, path)))
     }
 
     /// Insert a component with a default config
@@ -197,7 +197,7 @@ impl<P: Platform> MachineBuilder<P> {
     pub fn default_component<B: ComponentConfig<P> + Default>(
         self,
         name: impl Into<Cow<'static, str>>,
-    ) -> Result<(Self, ComponentPath), MachineError> {
+    ) -> Result<(Self, ComponentHandle<B::Component>), MachineError> {
         let config = B::default();
         self.component(name, config)
     }

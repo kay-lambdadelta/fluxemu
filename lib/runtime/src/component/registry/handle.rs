@@ -10,7 +10,7 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct ComponentHandle {
+pub struct ComponentSlot {
     pub data: Option<MutableData>,
     pub path: ComponentPath,
 }

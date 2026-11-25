@@ -4,7 +4,10 @@ use fluxemu_graphics::texture::Texture;
 use fluxemu_math::{range::ContiguousRange, rectangle::Rectangle};
 use fluxemu_platform::Platform;
 use fluxemu_runtime::{
-    component::config::{ComponentConfig, LateContext},
+    component::{
+        ComponentHandle,
+        config::{ComponentConfig, LateContext},
+    },
     graphics::DisplayGeometry,
     machine::builder::ComponentBuilder,
     memory::{AddressSpaceId, MemoryMapCommand, Permissions},
@@ -16,16 +19,19 @@ use palette::named::BLACK;
 use strum::IntoEnumIterator;
 
 use super::{Tia, region::Region};
-use crate::tia::{
-    InputControl, State, VISIBLE_SCANLINE_LENGTH,
-    memory::{ReadRegisters, WriteRegisters},
+use crate::{
+    gamepad::joystick::Joystick,
+    tia::{
+        InputControl, State, VISIBLE_SCANLINE_LENGTH,
+        memory::{ReadRegisters, WriteRegisters},
+    },
 };
 
 #[derive(Debug, Clone)]
 pub(crate) struct TiaConfig<R: Region> {
     pub cpu: ComponentPath,
     pub cpu_address_space: AddressSpaceId,
-    pub joystick: ComponentPath,
+    pub joystick: ComponentHandle<Joystick>,
     pub _phantom: PhantomData<R>,
 }
 
@@ -111,7 +117,7 @@ impl<R: Region, P: Platform> ComponentConfig<P> for TiaConfig<R> {
             backend: None,
             _region: PhantomData,
             cpu_path: self.cpu,
-            joystick_path: self.joystick,
+            joystick: self.joystick,
             framebuffer_path,
             state: State {
                 collision_matrix: BTreeMap::default(),

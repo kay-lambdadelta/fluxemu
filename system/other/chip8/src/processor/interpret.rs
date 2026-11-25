@@ -10,13 +10,10 @@ use super::{
 };
 use crate::{
     CHIP8_FONT, Chip8Mode,
-    audio::Audio,
-    display::Chip8Display,
     processor::{
         Chip8Processor,
         instruction::{InstructionSetSuperChip8, Register},
     },
-    timer::Chip8Timer,
 };
 
 // Instruction interpreting can be clean and easy due to the chip8 enforcing 1
@@ -34,7 +31,7 @@ impl<G: GraphicsApi> Chip8Processor<G> {
             Chip8InstructionSet::Chip8(InstructionSetChip8::Clr) => {
                 runtime
                     .component_registry()
-                    .interact::<Chip8Display<G>, _>(&self.config.display, timestamp, |component| {
+                    .interact_handle(&self.config.display, timestamp, |component| {
                         component.clear_display();
                     })
                     .unwrap();
@@ -253,9 +250,7 @@ impl<G: GraphicsApi> Chip8Processor<G> {
             Chip8InstructionSet::Chip8(InstructionSetChip8::Moved { register }) => {
                 self.state.registers.work_registers[register as usize] = runtime
                     .component_registry()
-                    .interact::<Chip8Timer, _>(&self.config.timer, timestamp, |component| {
-                        component.get()
-                    })
+                    .interact_handle(&self.config.timer, timestamp, |component| component.get())
                     .unwrap();
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Keyd { key: register }) => {
@@ -266,7 +261,7 @@ impl<G: GraphicsApi> Chip8Processor<G> {
 
                 runtime
                     .component_registry()
-                    .interact::<Chip8Timer, _>(&self.config.timer, timestamp, |component| {
+                    .interact_handle(&self.config.timer, timestamp, |component| {
                         component.set(register_value);
                     })
                     .unwrap();
@@ -276,7 +271,7 @@ impl<G: GraphicsApi> Chip8Processor<G> {
 
                 runtime
                     .component_registry()
-                    .interact::<Audio, _>(&self.config.audio, timestamp, |component| {
+                    .interact_handle(&self.config.audio, timestamp, |component| {
                         component.set(register_value);
                     })
                     .unwrap();
@@ -373,7 +368,7 @@ impl<G: GraphicsApi> Chip8Processor<G> {
             InstructionSetSuperChip8::Lores => {
                 runtime
                     .component_registry()
-                    .interact::<Chip8Display<G>, _>(&self.config.display, timestamp, |component| {
+                    .interact_handle(&self.config.display, timestamp, |component| {
                         component.set_hires(false);
                     })
                     .unwrap();
@@ -381,7 +376,7 @@ impl<G: GraphicsApi> Chip8Processor<G> {
             InstructionSetSuperChip8::Hires => {
                 runtime
                     .component_registry()
-                    .interact::<Chip8Display<G>, _>(&self.config.display, timestamp, |component| {
+                    .interact_handle(&self.config.display, timestamp, |component| {
                         component.set_hires(true);
                     })
                     .unwrap();
@@ -427,7 +422,7 @@ impl<G: GraphicsApi> Chip8Processor<G> {
 
             self.state.registers.work_registers[0xf] = runtime
                 .component_registry()
-                .interact::<Chip8Display<G>, _>(&self.config.display, timestamp, |component| {
+                .interact_handle(&self.config.display, timestamp, |component| {
                     u8::from(component.draw_supersized_sprite(position, buffer))
                 })
                 .unwrap();
@@ -448,7 +443,7 @@ impl<G: GraphicsApi> Chip8Processor<G> {
 
             self.state.registers.work_registers[0xf] = runtime
                 .component_registry()
-                .interact::<Chip8Display<G>, _>(&self.config.display, timestamp, |component| {
+                .interact_handle(&self.config.display, timestamp, |component| {
                     u8::from(component.draw_sprite(position, &buffer))
                 })
                 .unwrap();

@@ -324,7 +324,7 @@ impl<P: Platform> System<P> for Nes {
                     PpuConfig::<Ntsc> {
                         ppu_address_space,
                         cpu_address_space,
-                        processor,
+                        processor: processor.path().clone(),
                         _phantom: PhantomData,
                     },
                 )?;
@@ -348,7 +348,7 @@ impl<P: Platform> System<P> for Nes {
                     PpuConfig::<Pal> {
                         ppu_address_space,
                         cpu_address_space,
-                        processor,
+                        processor: processor.path().clone(),
                         _phantom: PhantomData,
                     },
                 )?;

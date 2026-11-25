@@ -70,22 +70,26 @@ impl<P: Platform> System<P> for Atari2600 {
         tracing::info!("Cart type {:?}", cart_type);
 
         let (machine_builder, _) = match cart_type {
-            CartType::Raw2k | CartType::Raw4k => machine_builder.component(
-                "cartridge",
-                NonbankedCartConfig {
-                    rom,
-                    cpu_address_space,
-                    cart_type,
-                },
-            )?,
-            CartType::F6 | CartType::F8 => machine_builder.component(
-                "cartridge",
-                BankedCartConfig {
-                    rom,
-                    cpu_address_space,
-                    cart_type,
-                },
-            )?,
+            CartType::Raw2k | CartType::Raw4k => machine_builder
+                .component(
+                    "cartridge",
+                    NonbankedCartConfig {
+                        rom,
+                        cpu_address_space,
+                        cart_type,
+                    },
+                )
+                .map(|(machine_builder, _)| (machine_builder, ()))?,
+            CartType::F6 | CartType::F8 => machine_builder
+                .component(
+                    "cartridge",
+                    BankedCartConfig {
+                        rom,
+                        cpu_address_space,
+                        cart_type,
+                    },
+                )
+                .map(|(machine_builder, _)| (machine_builder, ()))?,
         };
 
         let machine_builder = machine_builder.map_memory(
@@ -138,8 +142,8 @@ fn common<R: Region, P: Platform>(
     let (machine_builder, _) = machine_builder.component(
         "mos6532_riot",
         Mos6532RiotConfig {
-            swcha: Some(joystick.clone()),
-            swchb: Some(joystick.clone()),
+            swcha: Some(joystick.path().clone()),
+            swchb: Some(joystick.path().clone()),
             frequency: R::frequency() / 3,
             registers_assigned_address: RIOT_REGISTERS_ADDRESS,
             ram_assigned_address: 0x80,
@@ -150,7 +154,7 @@ fn common<R: Region, P: Platform>(
     let (machine, _) = machine_builder.component(
         "tia",
         TiaConfig::<R> {
-            cpu,
+            cpu: cpu.path().clone(),
             cpu_address_space,
             joystick,
             _phantom: PhantomData,

@@ -87,7 +87,7 @@ impl<P: Platform> System<P> for AtariLynx {
             MapctlConfig {
                 cpu_address_space,
                 ram: ram_path,
-                suzy,
+                suzy: suzy.path().clone(),
                 mikey: Err(MachineError::UnimplementedComponent {
                     name: "mikey".into(),
                 })?,

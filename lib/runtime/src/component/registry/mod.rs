@@ -12,8 +12,8 @@ use rustc_hash::FxBuildHasher;
 use crate::{
     DispatchGuard, RuntimeHandle,
     component::{
-        Component, ComponentId,
-        registry::handle::{ComponentHandle, MutableData},
+        Component, ComponentHandle, ComponentId,
+        registry::handle::{ComponentSlot, MutableData},
     },
     path::ComponentPath,
     persistence::{ComponentCodec, ComponentRecord, SnapshotError, TaskTiming},
@@ -32,7 +32,7 @@ struct GlobalComponentMetadata {
 
 #[derive(Debug, Default)]
 struct GlobalState {
-    global_component_store: HashMap<ComponentId, ComponentHandle, FxBuildHasher>,
+    global_component_store: HashMap<ComponentId, ComponentSlot, FxBuildHasher>,
     component_condvars: HashMap<ComponentId, Arc<Condvar>, FxBuildHasher>,
 }
 
@@ -68,7 +68,7 @@ impl ComponentRegistryData {
 
         self.state.get_mut().unwrap().global_component_store.insert(
             id,
-            ComponentHandle {
+            ComponentSlot {
                 data: Some(MutableData {
                     component: Box::new(component),
                     tasks: tasks.into_iter().collect(),
@@ -132,6 +132,21 @@ impl<'a> ComponentRegistry<'a> {
 
                 callback(component)
             },
+        )
+    }
+
+    #[inline]
+    pub fn interact_handle<T: ?Sized, R>(
+        &self,
+        handle: &ComponentHandle<T>,
+        target_timestamp: Period,
+        callback: impl FnOnce(&mut T) -> R,
+    ) -> Option<R> {
+        self.interact_dyn(
+            handle,
+            target_timestamp,
+            #[inline]
+            |component| callback(handle.cast(component)),
         )
     }
 
@@ -335,7 +350,7 @@ impl<'a> ComponentRegistry<'a> {
         &self,
         id: ComponentId,
         local_data: &'b mut LocalComponentRegistryData,
-    ) -> &'b mut ComponentHandle {
+    ) -> &'b mut ComponentSlot {
         if local_data.get_slot(id).is_some() {
             let component_handle = local_data.get_slot(id);
 
@@ -350,7 +365,7 @@ impl<'a> ComponentRegistry<'a> {
         &self,
         id: ComponentId,
         local_data: &'b mut LocalComponentRegistryData,
-    ) -> &'b mut ComponentHandle {
+    ) -> &'b mut ComponentSlot {
         let mut sync_state_guard = self.data().state.lock().unwrap();
 
         loop {
@@ -637,7 +652,7 @@ impl From<ComponentId> for ComponentIdentifier<'_> {
 }
 
 #[derive(Debug)]
-pub(crate) struct LocalComponentRegistryData(Vec<Option<ComponentHandle>>);
+pub(crate) struct LocalComponentRegistryData(Vec<Option<ComponentSlot>>);
 
 impl LocalComponentRegistryData {
     pub fn new(registry_data: &ComponentRegistryData) -> Self {
@@ -647,7 +662,7 @@ impl LocalComponentRegistryData {
     }
 
     #[inline]
-    fn get_slot(&mut self, id: ComponentId) -> &mut Option<ComponentHandle> {
+    fn get_slot(&mut self, id: ComponentId) -> &mut Option<ComponentSlot> {
         debug_assert!(id.0 < self.0.len() as u16);
 
         // SAFETY:
@@ -657,7 +672,7 @@ impl LocalComponentRegistryData {
     }
 
     #[inline]
-    fn iter_mut(&mut self) -> impl Iterator<Item = (ComponentId, &mut Option<ComponentHandle>)> {
+    fn iter_mut(&mut self) -> impl Iterator<Item = (ComponentId, &mut Option<ComponentSlot>)> {
         self.0
             .iter_mut()
             .enumerate()

@@ -8,7 +8,7 @@ use color::TiaColor;
 use fluxemu_graphics::{api::GraphicsApi, texture::OwnedTexture};
 use fluxemu_runtime::{
     ComponentPath, ResourcePath, RuntimeHandle,
-    component::Component,
+    component::{Component, ComponentHandle},
     graphics::DisplayBackend,
     memory::{Address, AddressSpaceId, MemoryError},
     persistence::PersistentComponentState,
@@ -20,7 +20,10 @@ use palette::Srgba;
 use region::Region;
 use serde::{Deserialize, Serialize};
 
-use crate::tia::memory::{ReadRegisters, WriteRegisters};
+use crate::{
+    gamepad::joystick::Joystick,
+    tia::memory::{ReadRegisters, WriteRegisters},
+};
 
 mod backend;
 mod color;
@@ -125,7 +128,7 @@ pub(crate) struct Tia<R: Region, G: GraphicsApi> {
     staging_buffer: OwnedTexture<Srgba<u8>>,
     backend: Option<DisplayBackend<G>>,
     cpu_path: ComponentPath,
-    joystick_path: ComponentPath,
+    joystick: ComponentHandle<Joystick>,
     framebuffer_path: ResourcePath,
     _region: PhantomData<fn() -> R>,
 }

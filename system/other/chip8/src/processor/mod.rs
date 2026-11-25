@@ -4,11 +4,10 @@ use fluxemu_graphics::api::GraphicsApi;
 use fluxemu_platform::Platform;
 use fluxemu_runtime::{
     RuntimeHandle,
-    component::{Component, config::ComponentConfig},
+    component::{Component, ComponentHandle, config::ComponentConfig},
     input::LogicalInputDevice,
     machine::builder::ComponentBuilder,
     memory::AddressSpaceId,
-    path::ComponentPath,
     persistence::{PersistentComponentState, PersistentRandomGenerator},
     scheduler::{
         Frequency, QuantaAllocator,
@@ -22,11 +21,13 @@ use serde::{Deserialize, Serialize};
 
 use super::Chip8Mode;
 use crate::{
+    audio::Audio,
     display::Chip8Display,
     processor::{
         decoder::decode_instruction,
         input::{DEFAULT_MAPPINGS, PRESENT_INPUTS},
     },
+    timer::Chip8Timer,
 };
 
 pub mod decoder;
@@ -173,11 +174,9 @@ impl<G: GraphicsApi> Chip8Processor<G> {
                     ExecutionState::AwaitingVsync => {
                         let vsync_occured = runtime_handle
                             .component_registry()
-                            .interact::<Chip8Display<G>, _>(
-                                &self.config.display,
-                                timestamp,
-                                |component| component.vsync_occurred(),
-                            )
+                            .interact_handle(&self.config.display, timestamp, |component| {
+                                component.vsync_occurred()
+                            })
                             .unwrap();
 
                         if vsync_occured {
@@ -213,9 +212,9 @@ impl<G: GraphicsApi> Component for Chip8Processor<G> {
 #[derive(Debug)]
 pub struct ProcessorConfig<G: GraphicsApi> {
     pub cpu_address_space: AddressSpaceId,
-    pub display: ComponentPath,
-    pub audio: ComponentPath,
-    pub timer: ComponentPath,
+    pub display: ComponentHandle<Chip8Display<G>>,
+    pub audio: ComponentHandle<Audio>,
+    pub timer: ComponentHandle<Chip8Timer>,
     pub frequency: Frequency,
     pub force_mode: Option<Chip8Mode>,
     pub always_shr_in_place: bool,

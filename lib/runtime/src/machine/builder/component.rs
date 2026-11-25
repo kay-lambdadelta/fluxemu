@@ -10,7 +10,7 @@ use fluxemu_platform::Platform;
 use fluxemu_program::{ProgramManager, RomId};
 
 use crate::{
-    component::{Component, TaskEntry, config::ComponentConfig},
+    component::{Component, ComponentHandle, TaskEntry, config::ComponentConfig},
     graphics::{DisplayGeometry, GraphicsRequirements, Handle},
     input::{LogicalInputDevice, LogicalInputDeviceMetadata},
     machine::builder::{ComponentLateInitializer, MachineBuilder, MachineError, RomRequirement},
@@ -80,20 +80,21 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
         self,
         name: impl Into<Cow<'static, str>>,
         config: B,
-    ) -> Result<(Self, ComponentPath), MachineError> {
+    ) -> Result<(Self, ComponentHandle<B::Component>), MachineError> {
         let component_path = self.path.join(&name.into()).unwrap();
 
-        self.machine_builder
+        let id = self
+            .machine_builder
             .insert_component_with_path(component_path.clone(), config)?;
 
-        Ok((self, component_path))
+        Ok((self, ComponentHandle::new(id, component_path)))
     }
 
     /// Insert a component with a default config
     pub fn default_component<B: ComponentConfig<P> + Default>(
         self,
         name: impl Into<Cow<'static, str>>,
-    ) -> Result<(Self, ComponentPath), MachineError> {
+    ) -> Result<(Self, ComponentHandle<B::Component>), MachineError> {
         let config = B::default();
 
         self.component(name, config)
