@@ -28,7 +28,10 @@ use crate::{
             uxrom::UxRomConfig,
         },
     },
-    gamepad::standard_controllers::NesControllerConfig,
+    gamepad::{
+        controller_ports::ControllerPortsConfig, port_device::PortDevice,
+        standard_controller::StandardControllerConfig,
+    },
     ppu::{
         BACKGROUND_PALETTE_BASE_ADDRESS, NAMETABLE_ADDRESSES, PALETTE_RAM_ADDRESSES,
         region::{Region, ntsc::Ntsc, pal::Pal},
@@ -293,20 +296,8 @@ impl<P: Platform> System<P> for Nes {
         }
         .unwrap_or(DefaultExpansionDevice::StandardControllers { swapped: false });
 
-        if !matches!(
-            default_expansion_device,
-            DefaultExpansionDevice::StandardControllers { .. }
-        ) {
-            tracing::warn!(
-                "Expansion device {:?} is not emulated, falling back to standard controllers",
-                default_expansion_device
-            );
-        }
-
-        let (machine_builder, _) = machine_builder.component(
-            "standard-nes-controllers",
-            NesControllerConfig { cpu_address_space },
-        )?;
+        let machine_builder =
+            setup_controller_ports(machine_builder, cpu_address_space, default_expansion_device)?;
 
         Ok(match header.timing_mode {
             // FIXME: Implementing Multi as NTSC for now
@@ -377,4 +368,49 @@ fn setup_ppu_nametables<P: Platform>(
         ppu_address_space,
         Mirroring::from(ines.mirroring).nametable_commands(nametables),
     )
+}
+
+fn setup_controller_ports<P: Platform>(
+    machine_builder: MachineBuilder<P>,
+    cpu_address_space: AddressSpaceId,
+    default_expansion_device: DefaultExpansionDevice,
+) -> Result<MachineBuilder<P>, Box<dyn Error>> {
+    let (machine_builder, controller_0) =
+        machine_builder.component("standard-controller-0", StandardControllerConfig)?;
+    let controller_0 = controller_0.as_interface::<dyn PortDevice>(|controller| controller);
+
+    let (machine_builder, ports) = {
+        let swapped = match default_expansion_device {
+            DefaultExpansionDevice::StandardControllers { swapped } => swapped,
+            _ => {
+                tracing::warn!(
+                    "Expansion device {:?} is not emulated, falling back to standard controllers",
+                    default_expansion_device
+                );
+
+                false
+            }
+        };
+
+        let (machine_builder, controller_1) =
+            machine_builder.component("standard-controller-1", StandardControllerConfig)?;
+        let controller_1 = controller_1.as_interface::<dyn PortDevice>(|controller| controller);
+
+        let mut ports = [Some(controller_0), Some(controller_1)];
+        if swapped {
+            ports.swap(0, 1);
+        }
+
+        (machine_builder, ports)
+    };
+
+    let (machine_builder, _) = machine_builder.component(
+        "controller-ports",
+        ControllerPortsConfig {
+            cpu_address_space,
+            ports,
+        },
+    )?;
+
+    Ok(machine_builder)
 }

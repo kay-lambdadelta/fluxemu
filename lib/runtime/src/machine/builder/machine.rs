@@ -17,7 +17,7 @@ use crate::{
     ResourcePath,
     component::{ComponentHandle, ComponentId, ComponentRegistryData, config::ComponentConfig},
     graphics::{DisplayGeometry, GraphicsRequirements},
-    input::LogicalInputDevice,
+    input::ErasedGuestInputDevice,
     machine::{
         FramebufferSlot, Machine,
         builder::{
@@ -61,7 +61,7 @@ pub struct MachineBuilder<P: Platform> {
     pub(super) component_registry_data: ComponentRegistryData,
     pub(super) address_spaces: HashMap<AddressSpaceId, AddressSpaceSetupData, FxBuildHasher>,
     pub(super) component_data: HashMap<ComponentPath, ComponentData<P>, FxBuildHasher>,
-    pub(super) input_devices: HashMap<ResourcePath, Arc<LogicalInputDevice>, FxBuildHasher>,
+    pub(super) input_devices: HashMap<ResourcePath, Arc<dyn ErasedGuestInputDevice>, FxBuildHasher>,
     pub(super) framebuffer_late_initializers:
         HashMap<ResourcePath, FramebufferLateInitializer<P>, FxBuildHasher>,
     pub(super) framebuffer_display_geometries:

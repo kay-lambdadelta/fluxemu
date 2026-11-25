@@ -11,7 +11,7 @@ use fluxemu_graphics::{
     api::{GraphicsApi, software::Software},
     texture::{CopyMode, OwnedTexture},
 };
-use fluxemu_input::{InputState, host::HostInputDeviceInstanceId};
+use fluxemu_input::host::HostInputDeviceInstanceId;
 use fluxemu_platform::MaybeSend;
 use fluxemu_program::{
     ListingProblem, Manifest, ProgramId, ProgramManager, RomId, RomStoreSpecification,
@@ -340,11 +340,11 @@ impl<P: Platform> FrontendCore<P> {
         let runtime_guard = machine.enter_runtime();
 
         // HACK: Assign the first input device to all gamepads
-        if let Some(logical_input_device_path) = runtime_guard.input_devices().keys().min() {
+        if let Some(guest_input_device_path) = runtime_guard.input_devices().keys().min() {
             for host_input_device_state in self.host_input_devices.values_mut() {
                 host_input_device_state
                     .controlling_input_devices
-                    .insert(logical_input_device_path.clone());
+                    .insert(guest_input_device_path.clone());
             }
         }
 
@@ -658,8 +658,8 @@ impl<P: Platform> FrontendCore<P> {
         self.machine_context = None;
 
         // Let go of any registered input devices
-        for host_gamepad_state in self.host_input_devices.values_mut() {
-            host_gamepad_state.controlling_input_devices.clear();
+        for host_input_device_state in self.host_input_devices.values_mut() {
+            host_input_device_state.controlling_input_devices.clear();
         }
     }
 }
@@ -690,15 +690,14 @@ pub(crate) fn release_all_inputs(machine: &Arc<Machine>) {
     let runtime_guard = machine.enter_runtime();
 
     // Unset ALL inputs
-    for (logical_input_device_path, logical_input_device) in runtime_guard.input_devices() {
-        let unset_inputs = logical_input_device
+    for (guest_input_device_path, guest_input_device) in runtime_guard.input_devices() {
+        let unset_inputs = guest_input_device
             .metadata()
-            .present_inputs
+            .inputs
             .iter()
-            .copied()
-            .map(|input_id| (input_id, InputState::RELEASED));
+            .map(|descriptor| (&*descriptor.serialized, descriptor.shape.neutral()));
 
-        runtime_guard.insert_inputs(logical_input_device_path, unset_inputs);
+        runtime_guard.insert_inputs(guest_input_device_path, unset_inputs);
     }
 }
 

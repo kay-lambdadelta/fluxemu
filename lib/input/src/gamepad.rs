@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
+use crate::{DirectionPart, InputShape};
+
 /// Inputs that a gamepad could have
 #[non_exhaustive]
 #[derive(
@@ -20,21 +22,39 @@ pub enum GamepadInputId {
     Mode,
     LeftThumb,
     RightThumb,
-    DPadUp,
-    DPadDown,
-    DPadLeft,
-    DPadRight,
+    DPad(DirectionPart),
     LeftTrigger,
     RightTrigger,
     ZTrigger,
     LeftSecondaryTrigger,
     RightSecondaryTrigger,
-    LeftStickUp,
-    LeftStickDown,
-    LeftStickLeft,
-    LeftStickRight,
-    RightStickUp,
-    RightStickDown,
-    RightStickLeft,
-    RightStickRight,
+    LeftStick(DirectionPart),
+    RightStick(DirectionPart),
+}
+
+impl GamepadInputId {
+    pub fn shape(&self) -> InputShape {
+        match self {
+            Self::DPad(_) | Self::LeftStick(_) | Self::RightStick(_) => InputShape::Direction,
+            _ => InputShape::Button,
+        }
+    }
+
+    pub fn split(self) -> (Self, DirectionPart) {
+        match self {
+            Self::DPad(part) => (Self::DPad(DirectionPart::All), part),
+            Self::LeftStick(part) => (Self::LeftStick(DirectionPart::All), part),
+            Self::RightStick(part) => (Self::RightStick(DirectionPart::All), part),
+            whole => (whole, DirectionPart::All),
+        }
+    }
+
+    pub fn with_part(self, part: DirectionPart) -> Self {
+        match self {
+            Self::DPad(_) => Self::DPad(part),
+            Self::LeftStick(_) => Self::LeftStick(part),
+            Self::RightStick(_) => Self::RightStick(part),
+            whole => whole,
+        }
+    }
 }

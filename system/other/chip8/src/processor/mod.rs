@@ -5,7 +5,7 @@ use fluxemu_platform::Platform;
 use fluxemu_runtime::{
     RuntimeHandle,
     component::{Component, ComponentHandle, config::ComponentConfig},
-    input::LogicalInputDevice,
+    input::GuestInputDevice,
     machine::builder::ComponentBuilder,
     memory::AddressSpaceId,
     persistence::{PersistentComponentState, PersistentRandomGenerator},
@@ -14,7 +14,7 @@ use fluxemu_runtime::{
         task::{FrequencyBased, Mode},
     },
 };
-use input::Chip8KeyCode;
+use input::{Chip8Key, Chip8KeyCode};
 use instruction::Register;
 use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
@@ -23,10 +23,7 @@ use super::Chip8Mode;
 use crate::{
     audio::Audio,
     display::Chip8Display,
-    processor::{
-        decoder::decode_instruction,
-        input::{DEFAULT_MAPPINGS, PRESENT_INPUTS},
-    },
+    processor::{decoder::decode_instruction, input::DEFAULT_MAPPINGS},
     timer::Chip8Timer,
 };
 
@@ -93,7 +90,7 @@ impl Default for ProcessorState {
 pub struct Chip8Processor<G: GraphicsApi> {
     state: ProcessorState,
     /// Keypad virtual gamepad
-    keypad: Arc<LogicalInputDevice>,
+    keypad: Arc<GuestInputDevice<Chip8Key>>,
     config: ProcessorConfig<G>,
 }
 
@@ -139,11 +136,7 @@ impl<G: GraphicsApi> Chip8Processor<G> {
                         for key in 0x0..=0xf {
                             let keycode = Chip8KeyCode(key);
 
-                            if self
-                                .keypad
-                                .get_state(keycode.try_into().unwrap())
-                                .as_digital(None)
-                            {
+                            if self.keypad.is_held(keycode.try_into().unwrap()) {
                                 pressed.push(keycode);
                             }
                         }
@@ -159,11 +152,7 @@ impl<G: GraphicsApi> Chip8Processor<G> {
                     }
                     ExecutionState::AwaitingKeyRelease { register, keys } => {
                         for key_code in keys {
-                            if !self
-                                .keypad
-                                .get_state((*key_code).try_into().unwrap())
-                                .as_digital(None)
-                            {
+                            if !self.keypad.is_held((*key_code).try_into().unwrap()) {
                                 let register = *register;
                                 self.state.registers.work_registers[register as usize] = key_code.0;
                                 self.state.execution_state = ExecutionState::Normal;
@@ -241,7 +230,7 @@ impl<P: Platform> ComponentConfig<P> for ProcessorConfig<P::GraphicsApi> {
                 Mode::Always,
                 FrequencyBased::new(self.frequency, Self::Component::task),
             )
-            .input("keypad", PRESENT_INPUTS, DEFAULT_MAPPINGS);
+            .input("keypad", DEFAULT_MAPPINGS);
 
         Ok(Chip8Processor {
             state,

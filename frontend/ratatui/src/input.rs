@@ -4,7 +4,7 @@ use std::{
 };
 
 use crossterm::event::{KeyCode, MediaKeyCode, ModifierKeyCode};
-use fluxemu_input::GamepadInputId;
+use fluxemu_input::{DirectionPart, GamepadInputId};
 use keyboard_types::Code;
 
 const SYNTHETIC_RELEASE_DELAY: Duration = Duration::from_millis(200);
@@ -146,10 +146,15 @@ fn function2key(number: u8) -> Option<Code> {
 
 pub fn gamepad2key(input_id: GamepadInputId) -> Option<KeyCode> {
     Some(match input_id {
-        GamepadInputId::DPadUp | GamepadInputId::LeftStickUp => KeyCode::Up,
-        GamepadInputId::DPadDown | GamepadInputId::LeftStickDown => KeyCode::Down,
-        GamepadInputId::DPadLeft | GamepadInputId::LeftStickLeft => KeyCode::Left,
-        GamepadInputId::DPadRight | GamepadInputId::LeftStickRight => KeyCode::Right,
+        GamepadInputId::DPad(DirectionPart::Up) | GamepadInputId::LeftStick(DirectionPart::Up) => {
+            KeyCode::Up
+        }
+        GamepadInputId::DPad(DirectionPart::Down)
+        | GamepadInputId::LeftStick(DirectionPart::Down) => KeyCode::Down,
+        GamepadInputId::DPad(DirectionPart::Left)
+        | GamepadInputId::LeftStick(DirectionPart::Left) => KeyCode::Left,
+        GamepadInputId::DPad(DirectionPart::Right)
+        | GamepadInputId::LeftStick(DirectionPart::Right) => KeyCode::Right,
         GamepadInputId::FPadDown => KeyCode::Enter,
         GamepadInputId::FPadRight => KeyCode::Backspace,
         GamepadInputId::LeftTrigger => KeyCode::BackTab,

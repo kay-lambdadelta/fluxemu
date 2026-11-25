@@ -11,7 +11,7 @@ use fluxemu_frontend::{
 };
 use fluxemu_graphics::api::software::Software;
 use fluxemu_input::{
-    GamepadInputId, InputId, InputState,
+    DirectionPart, GamepadInputId, InputId, InputShape, InputState,
     host::{HostInputDeviceInstanceId, HostInputDeviceKind},
 };
 use ratatui::{
@@ -218,21 +218,30 @@ impl<P: Platform<GraphicsApi = Software, GraphicsRuntime = PassthroughGraphicsRu
             return;
         };
 
-        let is_held = state.as_digital(None);
-        let was_held = self
-            .gamepad_ui_inputs_held
-            .insert((id, gamepad_input_id), is_held)
-            .unwrap_or(false);
+        let parts: &[_] = match gamepad_input_id.shape() {
+            InputShape::Button => &[DirectionPart::All],
+            InputShape::Direction => &DirectionPart::CARDINALS,
+        };
 
-        if routing == InputRouting::Ui
-            && is_held
-            && !was_held
-            && let Some(code) = gamepad2key(gamepad_input_id)
-        {
-            let key = KeyEvent::from(code);
+        for &part in parts {
+            let gamepad_input_part = gamepad_input_id.with_part(part);
 
-            self.handle_ui_key(key, &Event::Key(key));
-            self.redraw_requested = true;
+            let is_held = state.part(part).is_some_and(|value| value.is_held());
+            let was_held = self
+                .gamepad_ui_inputs_held
+                .insert((id, gamepad_input_part), is_held)
+                .unwrap_or(false);
+
+            if routing == InputRouting::Ui
+                && is_held
+                && !was_held
+                && let Some(code) = gamepad2key(gamepad_input_part)
+            {
+                let key = KeyEvent::from(code);
+
+                self.handle_ui_key(key, &Event::Key(key));
+                self.redraw_requested = true;
+            }
         }
     }
 

@@ -9,10 +9,11 @@ use std::{
 };
 
 use fluxemu_graphics::api::GraphicsApi;
-use fluxemu_input::{InputId, InputState};
+use fluxemu_input::InputState;
 use fluxemu_platform::{Platform, TestPlatform};
 use fluxemu_program::{Manifest, ProgramManager};
 use num::FromPrimitive;
+use ron::value::RawValue;
 use rustc_hash::FxBuildHasher;
 use tracing::Level;
 
@@ -20,7 +21,7 @@ use crate::{
     CURRENT_THREAD_RUNTIME_HANDLE, DispatchGuard, RuntimeHandle,
     component::{ComponentRegistry, ComponentRegistryData},
     graphics::{DisplayGeometry, Handle},
-    input::LogicalInputDevice,
+    input::ErasedGuestInputDevice,
     machine::builder::MachineBuilder,
     memory::{AddressSpace, AddressSpaceData, AddressSpaceId, MemoryRegistryData},
     path::{ComponentPath, ResourcePath},
@@ -51,7 +52,7 @@ where
     /// Memory translation table
     pub(crate) address_spaces: HashMap<AddressSpaceId, AddressSpaceData, FxBuildHasher>,
     /// All virtual gamepads inserted by components
-    pub(crate) input_devices: HashMap<ResourcePath, Arc<LogicalInputDevice>, FxBuildHasher>,
+    pub(crate) input_devices: HashMap<ResourcePath, Arc<dyn ErasedGuestInputDevice>, FxBuildHasher>,
     /// Component Registry
     pub(crate) component_registry_data: ComponentRegistryData,
     /// Memory Registry
@@ -197,25 +198,30 @@ impl RuntimeGuard<'_> {
         self.runtime.machine().scheduler.start_time()
     }
 
-    /// Insert inputs into the machine, storing them into the logical device state and directly giving input devices the
-    /// new input change
+    /// Insert inputs into the machine, storing them into the guest device state
     #[inline]
-    pub fn insert_inputs(
+    pub fn insert_inputs<'a>(
         &self,
         path: &ResourcePath,
-        inputs: impl IntoIterator<Item = (InputId, InputState)>,
+        inputs: impl IntoIterator<Item = (&'a RawValue, InputState)>,
     ) {
-        let logical_input_device = self.runtime.machine().input_devices.get(path).unwrap();
+        let guest_input_device = self.runtime.machine().input_devices.get(path).unwrap();
 
         self.component_registry()
             .interact_dyn(
                 path.parent().unwrap(),
                 self.safe_advance_timestamp(),
-                |component| {
-                    for (input_id, state) in inputs {
-                        logical_input_device.set_state(input_id, state);
-
-                        component.handle_input(path.name(), input_id, state);
+                |_| {
+                    for (input, value) in inputs {
+                        if !guest_input_device.set_state(input, value) {
+                            tracing::warn!(
+                                "Ignoring input {} {:?}, which {} does not have as a whole input \
+                                 of that shape",
+                                input,
+                                value,
+                                path
+                            );
+                        }
                     }
                 },
             )
@@ -273,7 +279,7 @@ impl RuntimeGuard<'_> {
     #[inline]
     pub fn input_devices(
         &self,
-    ) -> &HashMap<ResourcePath, Arc<LogicalInputDevice>, impl BuildHasher> {
+    ) -> &HashMap<ResourcePath, Arc<dyn ErasedGuestInputDevice>, impl BuildHasher> {
         &self.runtime.machine().input_devices
     }
 

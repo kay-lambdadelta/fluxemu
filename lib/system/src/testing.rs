@@ -7,7 +7,7 @@ use std::{
 
 use criterion::{Criterion, Throughput};
 use fluxemu_database::ProgramDatabase;
-use fluxemu_input::{InputId, InputState};
+use fluxemu_input::{DirectionPart, InputShape, InputState};
 use fluxemu_math::range::ContiguousRange;
 use fluxemu_paths::load_environment;
 use fluxemu_platform::TestPlatform;
@@ -154,23 +154,32 @@ fn frame() -> Period {
     Period::from_num(1) / Period::from_num(60)
 }
 
-fn set_input(machine: &Arc<Machine>, selection: usize, state: InputState) {
+fn active_value(shape: InputShape) -> InputState {
+    match shape {
+        InputShape::Button => InputState::PRESSED,
+        InputShape::Direction => InputState::direction(DirectionPart::Up.unit_vector().unwrap()),
+    }
+}
+
+fn set_input(machine: &Arc<Machine>, selection: usize, pressed: bool) {
     let runtime = machine.enter_runtime();
 
     let mut device_paths: Vec<_> = runtime.input_devices().keys().cloned().collect();
     device_paths.sort_unstable();
 
     for path in device_paths {
-        let mut inputs: Vec<InputId> = runtime.input_devices()[&path]
-            .metadata()
-            .present_inputs
-            .iter()
-            .copied()
-            .collect();
-        inputs.sort_unstable();
+        let inputs = &runtime.input_devices()[&path].metadata().inputs;
 
         if !inputs.is_empty() {
-            runtime.insert_inputs(&path, [(inputs[selection % inputs.len()], state)]);
+            let input = &inputs[selection % inputs.len()];
+
+            let value = if pressed {
+                active_value(input.shape)
+            } else {
+                input.shape.neutral()
+            };
+
+            runtime.insert_inputs(&path, [(&*input.serialized, value)]);
         }
     }
 }
@@ -180,8 +189,8 @@ fn drive(machine: &Arc<Machine>, frames: u32) {
         let selection = (index / INPUT_INTERVAL_FRAMES) as usize;
 
         match index % INPUT_INTERVAL_FRAMES {
-            0 => set_input(machine, selection, InputState::PRESSED),
-            INPUT_HOLD_FRAMES => set_input(machine, selection, InputState::RELEASED),
+            0 => set_input(machine, selection, true),
+            INPUT_HOLD_FRAMES => set_input(machine, selection, false),
             _ => {}
         }
 

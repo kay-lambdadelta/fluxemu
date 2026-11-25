@@ -1,10 +1,10 @@
-use alloc::collections::btree_set::BTreeSet;
+use std::collections::BTreeSet;
 
 use keyboard_types::Code;
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
-use crate::{GamepadInputId, InputId};
+use crate::{DirectionPart, GamepadInputId, InputId};
 
 /// Possible hotkeys this emulator could use
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash, EnumIter)]
@@ -43,7 +43,7 @@ pub fn default_hotkeys() -> impl Iterator<Item = (BTreeSet<InputId>, Hotkey)> {
         (
             [
                 InputId::Gamepad(GamepadInputId::Mode),
-                InputId::Gamepad(GamepadInputId::DPadLeft),
+                InputId::Gamepad(GamepadInputId::DPad(DirectionPart::Left)),
             ]
             .into(),
             Hotkey::StoreSnapshot,
@@ -52,7 +52,7 @@ pub fn default_hotkeys() -> impl Iterator<Item = (BTreeSet<InputId>, Hotkey)> {
         (
             [
                 InputId::Gamepad(GamepadInputId::Mode),
-                InputId::Gamepad(GamepadInputId::DPadRight),
+                InputId::Gamepad(GamepadInputId::DPad(DirectionPart::Right)),
             ]
             .into(),
             Hotkey::LoadSnapshot,
@@ -61,7 +61,7 @@ pub fn default_hotkeys() -> impl Iterator<Item = (BTreeSet<InputId>, Hotkey)> {
         (
             [
                 InputId::Gamepad(GamepadInputId::Mode),
-                InputId::Gamepad(GamepadInputId::DPadUp),
+                InputId::Gamepad(GamepadInputId::DPad(DirectionPart::Up)),
             ]
             .into(),
             Hotkey::IncrementSnapshotCounter,
@@ -73,7 +73,7 @@ pub fn default_hotkeys() -> impl Iterator<Item = (BTreeSet<InputId>, Hotkey)> {
         (
             [
                 InputId::Gamepad(GamepadInputId::Mode),
-                InputId::Gamepad(GamepadInputId::DPadDown),
+                InputId::Gamepad(GamepadInputId::DPad(DirectionPart::Down)),
             ]
             .into(),
             Hotkey::DecrementSnapshotCounter,

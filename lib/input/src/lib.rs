@@ -1,7 +1,3 @@
-#![no_std]
-
-extern crate alloc;
-
 use keyboard_types::Code;
 use serde::{Deserialize, Serialize};
 
@@ -9,8 +5,10 @@ use serde::{Deserialize, Serialize};
 mod gamepad;
 
 pub mod host;
+mod state;
 
 pub use gamepad::*;
+pub use state::*;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Enum covering all possible input types
@@ -21,27 +19,22 @@ pub enum InputId {
     Keyboard(Code),
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Default)]
-pub struct InputState(f32);
-
-impl InputState {
-    /// Digital press
-    pub const PRESSED: Self = Self(1.0);
-    /// Digital release
-    pub const RELEASED: Self = Self(0.0);
-
-    pub fn new(value: f32) -> Self {
-        Self(value.clamp(0.0, 1.0))
+impl InputId {
+    pub fn shape(&self) -> InputShape {
+        match self {
+            Self::Gamepad(input) => input.shape(),
+            Self::Keyboard(_) => InputShape::Button,
+        }
     }
 
-    pub fn as_analog(&self) -> f32 {
-        self.0
-    }
+    pub fn split(self) -> (Self, DirectionPart) {
+        match self {
+            Self::Gamepad(input) => {
+                let (whole, part) = input.split();
 
-    /// Interprets self as a digital input
-    pub fn as_digital(&self, threshhold: Option<f32>) -> bool {
-        let threshhold = threshhold.unwrap_or(0.5);
-
-        self.0 >= threshhold
+                (Self::Gamepad(whole), part)
+            }
+            Self::Keyboard(_) => (self, DirectionPart::All),
+        }
     }
 }

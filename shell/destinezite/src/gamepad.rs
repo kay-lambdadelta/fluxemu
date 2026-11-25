@@ -1,15 +1,16 @@
 use std::{collections::HashMap, time::Duration};
 
 use fluxemu_input::{
-    GamepadInputId, InputId, InputState,
+    DirectionPart, GamepadInputId, InputId, InputShape, InputState,
     host::{HostInputDeviceId, HostInputDeviceInstanceId, HostInputDeviceKind},
 };
 use gilrs::{Axis, Button, Event, GamepadId, Gilrs, GilrsBuilder};
+use nalgebra::Vector2;
 use uuid::{NonNilUuid, Uuid};
 
 #[inline]
-fn convert_gilrs2input(button: Button) -> Option<InputId> {
-    Some(InputId::Gamepad(match button {
+fn convert_gilrs2input(button: Button) -> Option<GamepadInputId> {
+    Some(match button {
         Button::South => GamepadInputId::FPadDown,
         Button::East => GamepadInputId::FPadRight,
         Button::North => GamepadInputId::FPadUp,
@@ -25,62 +26,39 @@ fn convert_gilrs2input(button: Button) -> Option<InputId> {
         Button::Mode => GamepadInputId::Mode,
         Button::LeftThumb => GamepadInputId::LeftThumb,
         Button::RightThumb => GamepadInputId::RightThumb,
-        Button::DPadUp => GamepadInputId::DPadUp,
-        Button::DPadDown => GamepadInputId::DPadDown,
-        Button::DPadLeft => GamepadInputId::DPadLeft,
-        Button::DPadRight => GamepadInputId::DPadRight,
+        Button::DPadUp | Button::DPadDown | Button::DPadLeft | Button::DPadRight => {
+            GamepadInputId::DPad(DirectionPart::All)
+        }
         Button::Unknown => return None,
-    }))
+    })
 }
 
 #[inline]
-fn split_axis(
-    negative: GamepadInputId,
-    positive: GamepadInputId,
-    value: f32,
-) -> [(InputId, InputState); 2] {
-    [
-        (InputId::Gamepad(negative), InputState::new(-value)),
-        (InputId::Gamepad(positive), InputState::new(value)),
-    ]
-}
-
-#[inline]
-fn convert_gilrs2axis(axis: Axis, value: f32) -> Option<[(InputId, InputState); 2]> {
-    match axis {
-        Axis::LeftStickX => Some(split_axis(
-            GamepadInputId::LeftStickLeft,
-            GamepadInputId::LeftStickRight,
-            value,
-        )),
-        Axis::LeftStickY => Some(split_axis(
-            GamepadInputId::LeftStickDown,
-            GamepadInputId::LeftStickUp,
-            value,
-        )),
-        Axis::RightStickX => Some(split_axis(
-            GamepadInputId::RightStickLeft,
-            GamepadInputId::RightStickRight,
-            value,
-        )),
-        Axis::RightStickY => Some(split_axis(
-            GamepadInputId::RightStickDown,
-            GamepadInputId::RightStickUp,
-            value,
-        )),
+fn convert_gilrs2axis(axis: Axis) -> Option<GamepadInputId> {
+    Some(match axis {
+        Axis::LeftStickX | Axis::LeftStickY => GamepadInputId::LeftStick(DirectionPart::All),
+        Axis::RightStickX | Axis::RightStickY => GamepadInputId::RightStick(DirectionPart::All),
+        Axis::DPadX | Axis::DPadY => GamepadInputId::DPad(DirectionPart::All),
         // Needs investigation what this actually means
-        Axis::LeftZ | Axis::RightZ => None,
-        Axis::DPadX => Some(split_axis(
-            GamepadInputId::DPadLeft,
-            GamepadInputId::DPadRight,
-            value,
+        Axis::LeftZ | Axis::RightZ => return None,
+        Axis::Unknown => return None,
+    })
+}
+
+fn gamepad_value(gamepad: gilrs::Gamepad<'_>, input_id: GamepadInputId) -> InputState {
+    let pressed = |button| if gamepad.is_pressed(button) { 1.0 } else { 0.0 };
+    let stick = |x_axis, y_axis| {
+        InputState::direction(Vector2::new(gamepad.value(x_axis), -gamepad.value(y_axis)))
+    };
+
+    match input_id {
+        GamepadInputId::DPad(_) => InputState::direction(Vector2::new(
+            pressed(Button::DPadRight) - pressed(Button::DPadLeft) + gamepad.value(Axis::DPadX),
+            pressed(Button::DPadDown) - pressed(Button::DPadUp) - gamepad.value(Axis::DPadY),
         )),
-        Axis::DPadY => Some(split_axis(
-            GamepadInputId::DPadDown,
-            GamepadInputId::DPadUp,
-            value,
-        )),
-        Axis::Unknown => None,
+        GamepadInputId::LeftStick(_) => stick(Axis::LeftStickX, Axis::LeftStickY),
+        GamepadInputId::RightStick(_) => stick(Axis::RightStickX, Axis::RightStickY),
+        _ => unreachable!("{input_id:?} is not a direction"),
     }
 }
 
@@ -95,7 +73,6 @@ fn calculate_gamepad_id(gamepad: gilrs::Gamepad<'_>) -> HostInputDeviceId {
         );
 
         let hash = blake3::hash(gamepad.name().as_bytes());
-
         let uuid = Uuid::from_slice(&hash.as_bytes()[..16]).unwrap();
 
         HostInputDeviceId(uuid)
@@ -303,21 +280,28 @@ impl GamepadContext {
                         return;
                     };
 
-                    if let Some(button) = convert_gilrs2input(button) {
-                        frontend.insert_input(instance, button, InputState::new(value));
+                    if let Some(input_id) = convert_gilrs2input(button) {
+                        let value = match input_id.shape() {
+                            InputShape::Button => InputState::button(value),
+                            InputShape::Direction => gamepad_value(gamepad, input_id),
+                        };
+
+                        frontend.insert_input(instance, InputId::Gamepad(input_id), value);
                     } else {
                         tracing::debug!("Did not recognize button: {:?}", button);
                     }
                 }
-                gilrs::EventType::AxisChanged(axis, value, _) => {
+                gilrs::EventType::AxisChanged(axis, _, _) => {
                     let Some(&instance) = self.id_mappings.0.get(&id) else {
                         return;
                     };
 
-                    if let Some(inputs) = convert_gilrs2axis(axis, value) {
-                        for (input_id, state) in inputs {
-                            frontend.insert_input(instance, input_id, state);
-                        }
+                    if let Some(input_id) = convert_gilrs2axis(axis) {
+                        frontend.insert_input(
+                            instance,
+                            InputId::Gamepad(input_id),
+                            gamepad_value(gamepad, input_id),
+                        );
                     } else {
                         tracing::debug!("Did not recognize axis: {:?}", axis);
                     }

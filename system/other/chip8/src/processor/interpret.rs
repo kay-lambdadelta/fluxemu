@@ -232,18 +232,14 @@ impl<G: GraphicsApi> Chip8Processor<G> {
             Chip8InstructionSet::Chip8(InstructionSetChip8::Skpr { key }) => {
                 let key = Chip8KeyCode(self.state.registers.work_registers[key as usize]);
 
-                let key_value = self.keypad.get_state(key.try_into().unwrap());
-
-                if key_value.as_digital(None) {
+                if self.keypad.is_held(key.try_into().unwrap()) {
                     self.state.registers.program = self.state.registers.program.wrapping_add(2);
                 }
             }
             Chip8InstructionSet::Chip8(InstructionSetChip8::Skup { key }) => {
                 let key = Chip8KeyCode(self.state.registers.work_registers[key as usize]);
 
-                let key_value = self.keypad.get_state(key.try_into().unwrap());
-
-                if !key_value.as_digital(None) {
+                if !self.keypad.is_held(key.try_into().unwrap()) {
                     self.state.registers.program = self.state.registers.program.wrapping_add(2);
                 }
             }

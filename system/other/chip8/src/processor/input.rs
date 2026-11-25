@@ -1,131 +1,62 @@
 use fluxemu_input::InputId;
+use fluxemu_runtime::input::GuestInput;
 use keyboard_types::Code;
 use serde::{Deserialize, Serialize};
+use strum::{EnumIter, FromRepr, IntoEnumIterator};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub(super) struct Chip8KeyCode(pub u8);
 
-impl TryFrom<InputId> for Chip8KeyCode {
-    type Error = ();
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, EnumIter, FromRepr)]
+#[repr(u8)]
+pub enum Chip8Key {
+    Key0,
+    Key1,
+    Key2,
+    Key3,
+    Key4,
+    Key5,
+    Key6,
+    Key7,
+    Key8,
+    Key9,
+    KeyA,
+    KeyB,
+    KeyC,
+    KeyD,
+    KeyE,
+    KeyF,
+}
 
-    fn try_from(value: InputId) -> Result<Self, Self::Error> {
-        match value {
-            InputId::Keyboard(Code::Numpad0) => Ok(Chip8KeyCode(0x0)),
-            InputId::Keyboard(Code::Numpad1) => Ok(Chip8KeyCode(0x1)),
-            InputId::Keyboard(Code::Numpad2) => Ok(Chip8KeyCode(0x2)),
-            InputId::Keyboard(Code::Numpad3) => Ok(Chip8KeyCode(0x3)),
-            InputId::Keyboard(Code::Numpad4) => Ok(Chip8KeyCode(0x4)),
-            InputId::Keyboard(Code::Numpad5) => Ok(Chip8KeyCode(0x5)),
-            InputId::Keyboard(Code::Numpad6) => Ok(Chip8KeyCode(0x6)),
-            InputId::Keyboard(Code::Numpad7) => Ok(Chip8KeyCode(0x7)),
-            InputId::Keyboard(Code::Numpad8) => Ok(Chip8KeyCode(0x8)),
-            InputId::Keyboard(Code::Numpad9) => Ok(Chip8KeyCode(0x9)),
-            InputId::Keyboard(Code::KeyA) => Ok(Chip8KeyCode(0xa)),
-            InputId::Keyboard(Code::KeyB) => Ok(Chip8KeyCode(0xb)),
-            InputId::Keyboard(Code::KeyC) => Ok(Chip8KeyCode(0xc)),
-            InputId::Keyboard(Code::KeyD) => Ok(Chip8KeyCode(0xd)),
-            InputId::Keyboard(Code::KeyE) => Ok(Chip8KeyCode(0xe)),
-            InputId::Keyboard(Code::KeyF) => Ok(Chip8KeyCode(0xf)),
-            _ => Err(()),
-        }
+impl GuestInput for Chip8Key {
+    fn all() -> impl Iterator<Item = Self> {
+        Self::iter()
     }
 }
 
-impl TryFrom<Chip8KeyCode> for InputId {
+impl TryFrom<Chip8KeyCode> for Chip8Key {
     type Error = ();
 
     fn try_from(value: Chip8KeyCode) -> Result<Self, Self::Error> {
-        match value.0 {
-            0x0 => Ok(InputId::Keyboard(Code::Numpad0)),
-            0x1 => Ok(InputId::Keyboard(Code::Numpad1)),
-            0x2 => Ok(InputId::Keyboard(Code::Numpad2)),
-            0x3 => Ok(InputId::Keyboard(Code::Numpad3)),
-            0x4 => Ok(InputId::Keyboard(Code::Numpad4)),
-            0x5 => Ok(InputId::Keyboard(Code::Numpad5)),
-            0x6 => Ok(InputId::Keyboard(Code::Numpad6)),
-            0x7 => Ok(InputId::Keyboard(Code::Numpad7)),
-            0x8 => Ok(InputId::Keyboard(Code::Numpad8)),
-            0x9 => Ok(InputId::Keyboard(Code::Numpad9)),
-            0xa => Ok(InputId::Keyboard(Code::KeyA)),
-            0xb => Ok(InputId::Keyboard(Code::KeyB)),
-            0xc => Ok(InputId::Keyboard(Code::KeyC)),
-            0xd => Ok(InputId::Keyboard(Code::KeyD)),
-            0xe => Ok(InputId::Keyboard(Code::KeyE)),
-            0xf => Ok(InputId::Keyboard(Code::KeyF)),
-            _ => Err(()),
-        }
+        Self::from_repr(value.0).ok_or(())
     }
 }
 
-pub const DEFAULT_MAPPINGS: [(InputId, InputId); 16] = [
-    // Keyboard mappings
-    (
-        InputId::Keyboard(Code::Digit1),
-        InputId::Keyboard(Code::Numpad1),
-    ),
-    (
-        InputId::Keyboard(Code::Digit2),
-        InputId::Keyboard(Code::Numpad2),
-    ),
-    (
-        InputId::Keyboard(Code::Digit3),
-        InputId::Keyboard(Code::Numpad3),
-    ),
-    (
-        InputId::Keyboard(Code::Digit4),
-        InputId::Keyboard(Code::KeyC),
-    ),
-    (
-        InputId::Keyboard(Code::KeyQ),
-        InputId::Keyboard(Code::Numpad4),
-    ),
-    (
-        InputId::Keyboard(Code::KeyW),
-        InputId::Keyboard(Code::Numpad5),
-    ),
-    (
-        InputId::Keyboard(Code::KeyE),
-        InputId::Keyboard(Code::Numpad6),
-    ),
-    (InputId::Keyboard(Code::KeyR), InputId::Keyboard(Code::KeyD)),
-    (
-        InputId::Keyboard(Code::KeyA),
-        InputId::Keyboard(Code::Numpad7),
-    ),
-    (
-        InputId::Keyboard(Code::KeyS),
-        InputId::Keyboard(Code::Numpad8),
-    ),
-    (
-        InputId::Keyboard(Code::KeyD),
-        InputId::Keyboard(Code::Numpad9),
-    ),
-    (InputId::Keyboard(Code::KeyF), InputId::Keyboard(Code::KeyE)),
-    (InputId::Keyboard(Code::KeyZ), InputId::Keyboard(Code::KeyA)),
-    (
-        InputId::Keyboard(Code::KeyX),
-        InputId::Keyboard(Code::Numpad0),
-    ),
-    (InputId::Keyboard(Code::KeyC), InputId::Keyboard(Code::KeyB)),
-    (InputId::Keyboard(Code::KeyV), InputId::Keyboard(Code::KeyF)),
-];
-
-pub const PRESENT_INPUTS: [InputId; 16] = [
-    // Interpreting the numbers on the chip8 keypad as "numpad"
-    InputId::Keyboard(Code::Numpad1),
-    InputId::Keyboard(Code::Numpad2),
-    InputId::Keyboard(Code::Numpad3),
-    InputId::Keyboard(Code::KeyC),
-    InputId::Keyboard(Code::Numpad4),
-    InputId::Keyboard(Code::Numpad5),
-    InputId::Keyboard(Code::Numpad6),
-    InputId::Keyboard(Code::KeyD),
-    InputId::Keyboard(Code::Numpad7),
-    InputId::Keyboard(Code::Numpad8),
-    InputId::Keyboard(Code::Numpad9),
-    InputId::Keyboard(Code::KeyE),
-    InputId::Keyboard(Code::KeyA),
-    InputId::Keyboard(Code::Numpad0),
-    InputId::Keyboard(Code::KeyB),
-    InputId::Keyboard(Code::KeyF),
+pub const DEFAULT_MAPPINGS: [(InputId, Chip8Key); 16] = [
+    (InputId::Keyboard(Code::Digit1), Chip8Key::Key1),
+    (InputId::Keyboard(Code::Digit2), Chip8Key::Key2),
+    (InputId::Keyboard(Code::Digit3), Chip8Key::Key3),
+    (InputId::Keyboard(Code::Digit4), Chip8Key::KeyC),
+    (InputId::Keyboard(Code::KeyQ), Chip8Key::Key4),
+    (InputId::Keyboard(Code::KeyW), Chip8Key::Key5),
+    (InputId::Keyboard(Code::KeyE), Chip8Key::Key6),
+    (InputId::Keyboard(Code::KeyR), Chip8Key::KeyD),
+    (InputId::Keyboard(Code::KeyA), Chip8Key::Key7),
+    (InputId::Keyboard(Code::KeyS), Chip8Key::Key8),
+    (InputId::Keyboard(Code::KeyD), Chip8Key::Key9),
+    (InputId::Keyboard(Code::KeyF), Chip8Key::KeyE),
+    (InputId::Keyboard(Code::KeyZ), Chip8Key::KeyA),
+    (InputId::Keyboard(Code::KeyX), Chip8Key::Key0),
+    (InputId::Keyboard(Code::KeyC), Chip8Key::KeyB),
+    (InputId::Keyboard(Code::KeyV), Chip8Key::KeyF),
 ];

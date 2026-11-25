@@ -12,7 +12,7 @@ use fluxemu_program::{ProgramManager, RomId};
 use crate::{
     component::{Component, ComponentHandle, TaskEntry, config::ComponentConfig},
     graphics::{DisplayGeometry, GraphicsRequirements, Handle},
-    input::{LogicalInputDevice, LogicalInputDeviceMetadata},
+    input::{GuestInput, GuestInputDevice},
     machine::builder::{ComponentLateInitializer, MachineBuilder, MachineError, RomRequirement},
     memory::{Address, AddressSpaceId, MemoryMapCommand},
     path::{ComponentPath, ResourcePath},
@@ -150,21 +150,17 @@ impl<P: Platform, C: Component> ComponentBuilder<'_, P, C> {
     }
 
     /// Create a input device resource that this component owns
-    ///
-    /// Note that this also gives the component wake up events for relevant input changes
-    pub fn input(
+    pub fn input<T: GuestInput>(
         self,
         name: impl Into<Cow<'static, str>>,
-        present_inputs: impl IntoIterator<Item = InputId>,
-        default_mappings: impl IntoIterator<Item = (InputId, InputId)>,
-    ) -> (Self, Arc<LogicalInputDevice>) {
+        default_mappings: impl IntoIterator<Item = (InputId, T)>,
+    ) -> (Self, Arc<GuestInputDevice<T>>) {
         let resource_path = self.path.clone().into_resource(name).unwrap();
 
-        let device = Arc::new(LogicalInputDevice::new(LogicalInputDeviceMetadata {
-            path: resource_path.clone(),
-            present_inputs: present_inputs.into_iter().collect(),
-            default_mappings: default_mappings.into_iter().collect(),
-        }));
+        let device = Arc::new(GuestInputDevice::new(
+            resource_path.clone(),
+            default_mappings,
+        ));
 
         let previous = self
             .machine_builder

@@ -6,9 +6,10 @@ use fluxemu_input::{
 };
 use fluxemu_program::ProgramId;
 use fluxemu_runtime::ResourcePath;
+use ron::value::RawValue;
 use serde::{Deserialize, Serialize};
 
-pub type InputMapping = BTreeMap<InputId, InputId>;
+pub type InputMapping = BTreeMap<InputId, Box<RawValue>>;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct HostGamepadConfiguration {

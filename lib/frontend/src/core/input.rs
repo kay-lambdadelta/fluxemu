@@ -1,11 +1,16 @@
 use std::borrow::Cow;
 
+use fluxemu_environment::input::InputMapping;
 use fluxemu_input::{
-    InputId, InputState,
+    DirectionPart, InputId, InputShape, InputState,
     host::{HostInputDeviceInstanceId, HostInputDeviceKind, hotkey::Hotkey},
 };
-use fluxemu_runtime::ResourcePath;
+use fluxemu_runtime::{
+    ResourcePath,
+    input::{ErasedGuestInputDevice, ResolvedGuestInput},
+};
 use indexmap::{IndexMap, IndexSet};
+use nalgebra::Vector2;
 
 use super::{FrontendCore, FrontendEvent, MachineContext};
 use crate::Platform;
@@ -34,6 +39,16 @@ impl<P: Platform> FrontendCore<P> {
         state: InputState,
         machine_has_focus: bool,
     ) -> InputRouting {
+        if input_id.split().1 != DirectionPart::All || input_id.shape() != state.shape() {
+            tracing::error!(
+                "Ignoring {:?} for {:?}, which is not a whole input of that shape",
+                state,
+                input_id
+            );
+
+            return InputRouting::Handled;
+        }
+
         let mut deferred_hotkey = None;
 
         let routing = self.route_input(
@@ -83,33 +98,45 @@ impl<P: Platform> FrontendCore<P> {
         let host_gamepad_configuration =
             self.environment.gamepads.entry(origin.device).or_default();
 
-        let was_pressed = host_input_device_state
+        let hotkeys_activated_before: Vec<_> = host_gamepad_configuration
+            .hotkey
+            .keys()
+            .map(|combination| {
+                is_combination_held(
+                    &host_input_device_state.gui_relevant_input_state,
+                    combination,
+                )
+            })
+            .collect();
+
+        host_input_device_state
             .gui_relevant_input_state
-            .insert(input_id, state)
-            .is_some_and(|previous_state| previous_state.as_digital(None));
-        let is_press_edge = !was_pressed && state.as_digital(None);
+            .insert(input_id, state);
 
         let mut was_relevant_for_hotkeys = false;
 
         // Check for hotkeys
-        for (combinations, hotkey_action) in &host_gamepad_configuration.hotkey {
-            if !combinations.contains(&input_id) {
+        for ((combination, hotkey_action), was_activated) in host_gamepad_configuration
+            .hotkey
+            .iter()
+            .zip(hotkeys_activated_before)
+        {
+            if !combination
+                .iter()
+                .any(|member| member.split().0 == input_id)
+            {
                 continue;
             }
 
-            let is_activated = combinations.iter().all(|input_id| {
-                host_input_device_state
-                    .gui_relevant_input_state
-                    .get(input_id)
-                    .copied()
-                    .unwrap_or(InputState::RELEASED)
-                    .as_digital(None)
-            });
+            let is_activated = is_combination_held(
+                &host_input_device_state.gui_relevant_input_state,
+                combination,
+            );
 
             if is_activated {
                 was_relevant_for_hotkeys = true;
 
-                if is_press_edge {
+                if !was_activated {
                     match hotkey_action {
                         Hotkey::ToggleMenu => {
                             self.events.push(FrontendEvent::MenuToggleRequested);
@@ -166,49 +193,66 @@ impl<P: Platform> FrontendCore<P> {
                         .entry(program_specification.id.clone())
                         .or_default();
 
-                    for logical_input_device_path in
+                    for guest_input_device_path in
                         &host_input_device_state.controlling_input_devices
                     {
-                        let logical_input_device_specific_mappings = program_specific_mappings
-                            .entry(logical_input_device_path.clone())
-                            .or_insert_with(|| {
-                                let logical_input_device = runtime_guard
-                                    .input_devices()
-                                    .get(logical_input_device_path)
-                                    .unwrap();
+                        let guest_input_device = runtime_guard
+                            .input_devices()
+                            .get(guest_input_device_path)
+                            .unwrap();
 
-                                logical_input_device
+                        let guest_input_device_specific_mappings = program_specific_mappings
+                            .entry(guest_input_device_path.clone())
+                            .or_insert_with(|| {
+                                guest_input_device
                                     .metadata()
                                     .default_mappings
                                     .iter()
-                                    .map(|(from, to)| (*from, *to))
+                                    .map(|(from, to)| (*from, to.clone()))
                                     .collect()
                             });
 
-                        if let Some(transformed_input) =
-                            logical_input_device_specific_mappings.get(&input_id)
-                        {
-                            let is_present = runtime_guard
-                                .input_devices()
-                                .get(logical_input_device_path)
-                                .unwrap()
-                                .metadata()
-                                .present_inputs
-                                .contains(transformed_input);
+                        let host_input_state = &host_input_device_state.gui_relevant_input_state;
 
-                            if is_present {
-                                runtime_guard.insert_inputs(
-                                    logical_input_device_path,
-                                    [(*transformed_input, state)],
-                                );
-                            } else {
-                                tracing::warn!(
-                                    "Ignoring mapping to {:?}, which {} does not have",
-                                    transformed_input,
-                                    logical_input_device_path
-                                );
+                        let mut affected_inputs: Vec<_> = Vec::new();
+
+                        for (host_input, guest_input) in guest_input_device_specific_mappings.iter()
+                        {
+                            if host_input.split().0 != input_id {
+                                continue;
+                            }
+
+                            let Some(resolved) = guest_input_device.resolve(guest_input) else {
+                                continue;
+                            };
+
+                            if !affected_inputs.iter().any(|affected: &ResolvedGuestInput| {
+                                affected.whole == resolved.whole
+                            }) {
+                                affected_inputs.push(resolved);
                             }
                         }
+
+                        let combined_inputs: Vec<_> = affected_inputs
+                            .into_iter()
+                            .map(|affected| {
+                                let value = combine_bound_inputs(
+                                    &**guest_input_device,
+                                    guest_input_device_specific_mappings,
+                                    host_input_state,
+                                    &affected,
+                                );
+
+                                (affected.whole, value)
+                            })
+                            .collect();
+
+                        runtime_guard.insert_inputs(
+                            guest_input_device_path,
+                            combined_inputs
+                                .iter()
+                                .map(|(whole, value)| (&**whole, *value)),
+                        );
                     }
                 }
             } else if host_input_device_state.rely_on_frontend_input_handling {
@@ -276,27 +320,35 @@ impl<P: Platform> FrontendCore<P> {
 
         let runtime_guard = machine.enter_runtime();
 
-        for logical_input_device_path in &host_input_device_state.controlling_input_devices {
-            let Some(mappings) = program_specific_mappings.get(logical_input_device_path) else {
+        for guest_input_device_path in &host_input_device_state.controlling_input_devices {
+            let Some(mappings) = program_specific_mappings.get(guest_input_device_path) else {
                 continue;
             };
 
-            let logical_input_device = &runtime_guard.input_devices()[logical_input_device_path];
+            let Some(guest_input_device) =
+                runtime_guard.input_devices().get(guest_input_device_path)
+            else {
+                continue;
+            };
 
-            let released_inputs = host_input_device_state
-                .gui_relevant_input_state
+            let released_inputs: Vec<_> = mappings
                 .iter()
-                .filter(|(_, state)| state.as_analog() > 0.0)
-                .filter_map(|(input_id, _)| mappings.get(input_id))
-                .filter(|input_id| {
-                    logical_input_device
-                        .metadata()
-                        .present_inputs
-                        .contains(*input_id)
+                .filter(|(host_input, _)| {
+                    host_input_device_state
+                        .gui_relevant_input_state
+                        .get(&host_input.split().0)
+                        .is_some_and(|value| *value != value.shape().neutral())
                 })
-                .map(|input_id| (*input_id, InputState::RELEASED));
+                .filter_map(|(_, guest_input)| guest_input_device.resolve(guest_input))
+                .map(|resolved| (resolved.whole, resolved.shape.neutral()))
+                .collect();
 
-            runtime_guard.insert_inputs(logical_input_device_path, released_inputs);
+            runtime_guard.insert_inputs(
+                guest_input_device_path,
+                released_inputs
+                    .iter()
+                    .map(|(whole, value)| (&**whole, *value)),
+            );
         }
     }
 
@@ -306,5 +358,66 @@ impl<P: Platform> FrontendCore<P> {
         self.host_input_devices
             .iter()
             .map(|(id, state)| (*id, state.name.as_ref(), state.kind))
+    }
+}
+
+fn host_part_value(state: &IndexMap<InputId, InputState>, input: InputId) -> Option<InputState> {
+    let (whole, part) = input.split();
+
+    state
+        .get(&whole)
+        .copied()
+        .unwrap_or_else(|| whole.shape().neutral())
+        .part(part)
+}
+
+fn is_combination_held<'a>(
+    state: &IndexMap<InputId, InputState>,
+    combination: impl IntoIterator<Item = &'a InputId>,
+) -> bool {
+    combination
+        .into_iter()
+        .all(|member| host_part_value(state, *member).is_some_and(|value| value.is_held()))
+}
+
+fn combine_bound_inputs(
+    guest_input_device: &dyn ErasedGuestInputDevice,
+    mappings: &InputMapping,
+    host_input_state: &IndexMap<InputId, InputState>,
+    target: &ResolvedGuestInput,
+) -> InputState {
+    let mut button = 0.0f32;
+    let mut direction = Vector2::zeros();
+
+    for (host_input, guest_input) in mappings {
+        let Some(resolved) = guest_input_device.resolve(guest_input) else {
+            continue;
+        };
+
+        if resolved.whole != target.whole {
+            continue;
+        }
+
+        let Some(host_value) = host_part_value(host_input_state, *host_input) else {
+            continue;
+        };
+
+        match (target.shape, resolved.part.unit_vector(), host_value) {
+            (InputShape::Button, _, InputState::Button(value)) => button = button.max(value),
+            (InputShape::Direction, None, InputState::Direction(value)) => direction += value,
+            (InputShape::Direction, Some(cardinal), InputState::Button(value)) => {
+                direction += cardinal * value
+            }
+            _ => tracing::warn!(
+                "Binding {:?} to {} has mismatched shapes",
+                host_input,
+                guest_input
+            ),
+        }
+    }
+
+    match target.shape {
+        InputShape::Button => InputState::button(button),
+        InputShape::Direction => InputState::direction(direction),
     }
 }

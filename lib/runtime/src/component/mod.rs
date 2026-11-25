@@ -1,6 +1,5 @@
 use std::{any::Any, fmt::Debug, ops::RangeInclusive};
 
-use fluxemu_input::{InputId, InputState};
 use fluxemu_math::range::ContiguousRange;
 use nalgebra::SVector;
 use ringbuffer::AllocRingBuffer;
@@ -78,11 +77,6 @@ pub trait Component: Send + Sync + Debug + Any {
 
     /// Handle an event targeted towards this component
     fn handle_event(&mut self, event: Box<dyn Event>) {}
-
-    /// Inform the component of an input event from the runtime
-    ///
-    /// This will as an invariant, only pass in inputs the component registered as supporting
-    fn handle_input(&mut self, destination: &str, id: InputId, state: InputState) {}
 
     /// Called after a snapshot or save has been loaded
     ///

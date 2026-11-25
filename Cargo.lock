@@ -2011,6 +2011,7 @@ dependencies = [
  "fluxemu-program",
  "fluxemu-runtime",
  "indexmap 2.14.2",
+ "ron",
  "serde",
  "serde_with",
  "strum",
@@ -2133,6 +2134,7 @@ name = "fluxemu-input"
 version = "0.0.1"
 dependencies = [
  "keyboard-types",
+ "nalgebra",
  "serde",
  "strum",
  "uuid",
@@ -2242,6 +2244,7 @@ dependencies = [
  "ringbuffer",
  "rmp",
  "rmp-serde",
+ "ron",
  "rustc-hash 2.1.3",
  "scc",
  "sdd",

@@ -1,7 +1,7 @@
 use std::{collections::HashSet, sync::Once};
 
 use egui::{Context, Event, Key, Modifiers, PointerButton, ViewportId};
-use fluxemu_input::{GamepadInputId, InputId, InputState};
+use fluxemu_input::{DirectionPart, GamepadInputId, InputId, InputState};
 use fluxemu_math::rectangle::Rectangle;
 use keyboard_types::Code;
 use nalgebra::{Point2, Vector2};
@@ -67,14 +67,14 @@ impl EguiInputTranslator {
     fn gamepadinput2egui(&mut self, input_id: GamepadInputId, state: InputState) {
         match input_id {
             GamepadInputId::FPadUp => {
-                self.key_event(Key::Menu, state.as_digital(None));
+                self.key_event(Key::Menu, state.is_held());
             }
             GamepadInputId::FPadDown => {
-                self.key_event(Key::Enter, state.as_digital(None));
+                self.key_event(Key::Enter, state.is_held());
             }
             GamepadInputId::FPadLeft => {}
             GamepadInputId::FPadRight => {
-                self.key_event(Key::Escape, state.as_digital(None));
+                self.key_event(Key::Escape, state.is_held());
             }
             GamepadInputId::CPadUp => {}
             GamepadInputId::CPadDown => {}
@@ -82,57 +82,42 @@ impl EguiInputTranslator {
             GamepadInputId::CPadRight => {}
             GamepadInputId::Select => {}
             GamepadInputId::Start => {
-                self.key_event(Key::Enter, state.as_digital(None));
+                self.key_event(Key::Enter, state.is_held());
             }
             GamepadInputId::Mode => {}
             GamepadInputId::LeftThumb => {}
             GamepadInputId::RightThumb => {}
-            GamepadInputId::DPadUp => {
-                self.key_event(Key::ArrowUp, state.as_digital(None));
-            }
-            GamepadInputId::DPadDown => {
-                self.key_event(Key::ArrowDown, state.as_digital(None));
-            }
-            GamepadInputId::DPadLeft => {
-                self.key_event(Key::ArrowLeft, state.as_digital(None));
-            }
-            GamepadInputId::DPadRight => {
-                self.key_event(Key::ArrowRight, state.as_digital(None));
+            GamepadInputId::DPad(_) | GamepadInputId::LeftStick(_) => {
+                self.direction_key_events(state);
             }
             GamepadInputId::LeftTrigger => {}
             GamepadInputId::RightTrigger => {}
             GamepadInputId::ZTrigger => {}
             GamepadInputId::LeftSecondaryTrigger => {
-                self.pointer_button_event(PointerButton::Primary, state.as_digital(None));
+                self.pointer_button_event(PointerButton::Primary, state.is_held());
             }
             GamepadInputId::RightSecondaryTrigger => {
-                self.pointer_button_event(PointerButton::Secondary, state.as_digital(None));
+                self.pointer_button_event(PointerButton::Secondary, state.is_held());
             }
-            GamepadInputId::LeftStickUp => {
-                self.key_event(Key::ArrowUp, state.as_digital(None));
-            }
-            GamepadInputId::LeftStickDown => {
-                self.key_event(Key::ArrowDown, state.as_digital(None));
-            }
-            GamepadInputId::LeftStickLeft => {
-                self.key_event(Key::ArrowLeft, state.as_digital(None));
-            }
-            GamepadInputId::LeftStickRight => {
-                self.key_event(Key::ArrowRight, state.as_digital(None));
-            }
-            GamepadInputId::RightStickUp => {
-                self.pointer_delta_event(Vector2::new(0.0, -state.as_analog()))
-            }
-            GamepadInputId::RightStickDown => {
-                self.pointer_delta_event(Vector2::new(0.0, state.as_analog()))
-            }
-            GamepadInputId::RightStickLeft => {
-                self.pointer_delta_event(Vector2::new(-state.as_analog(), 0.0))
-            }
-            GamepadInputId::RightStickRight => {
-                self.pointer_delta_event(Vector2::new(state.as_analog(), 0.0))
+            GamepadInputId::RightStick(_) => {
+                if let Some(direction) = state.as_direction() {
+                    self.pointer_delta_event(direction);
+                }
             }
             _ => {}
+        }
+    }
+
+    fn direction_key_events(&mut self, state: InputState) {
+        for (part, key) in [
+            (DirectionPart::Up, Key::ArrowUp),
+            (DirectionPart::Down, Key::ArrowDown),
+            (DirectionPart::Left, Key::ArrowLeft),
+            (DirectionPart::Right, Key::ArrowRight),
+        ] {
+            let is_held = state.part(part).is_some_and(|value| value.is_held());
+
+            self.key_event(key, is_held);
         }
     }
 
@@ -277,7 +262,7 @@ impl EguiInputTranslator {
         };
 
         if let Some(key) = key {
-            self.key_event(key, state.as_digital(None));
+            self.key_event(key, state.is_held());
         }
     }
 
