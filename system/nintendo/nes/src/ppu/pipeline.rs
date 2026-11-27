@@ -7,10 +7,10 @@ use fluxemu_runtime::{
 use nalgebra::Point2;
 
 use crate::ppu::{
-    ATTRIBUTE_BASE_ADDRESS, BACKGROUND_PALETTE_BASE_ADDRESS, NAMETABLE_BASE_ADDRESS, Ppu,
-    SPRITE_PALETTE_BASE_ADDRESS, TOTAL_SCANLINE_LENGTH,
+    ATTRIBUTE_BASE_ADDRESS, BACKGROUND_PALETTE_BASE_INDEX, NAMETABLE_BASE_ADDRESS, Ppu,
+    SPRITE_PALETTE_BASE_INDEX, TOTAL_SCANLINE_LENGTH,
     color::PpuColorIndex,
-    oam::{CurrentlyRenderingSprite, OamSprite, SpriteEvaluationState},
+    oam::{CurrentlyRenderingSprite, OamSprite, SECONDARY_OAM_SIZE, SpriteEvaluationState},
     region::Region,
     state::VramAddressPointerContents,
 };
@@ -144,12 +144,7 @@ impl<R: Region, G: GraphicsApi> Ppu<R, G> {
                 .unwrap_or(false);
 
             if let Some((sprite, color_index)) = color_relevant_sprite {
-                sprite_color_index = Some(self.calculate_sprite_color(
-                    ppu_address_space,
-                    timestamp,
-                    sprite.oam,
-                    color_index,
-                ));
+                sprite_color_index = Some(self.calculate_sprite_color(sprite.oam, color_index));
             }
 
             let tile_pixel = (scanline_position_x % 8) as u8;
@@ -168,15 +163,10 @@ impl<R: Region, G: GraphicsApi> Ppu<R, G> {
             let is_background_opaque = is_background_visible && background_color_bits != 0;
 
             let background_color_index = if is_background_opaque {
-                self.calculate_background_color(
-                    ppu_address_space,
-                    timestamp,
-                    attribute as u8,
-                    background_color_bits as u8,
-                )
+                self.calculate_background_color(attribute as u8, background_color_bits as u8)
             } else {
                 // Backdrop color
-                self.calculate_background_color(ppu_address_space, timestamp, 0, 0)
+                self.calculate_background_color(0, 0)
             };
 
             let is_sprite_visible = self.state.oam.rendering_enabled
@@ -265,7 +255,7 @@ impl<R: Region, G: GraphicsApi> Ppu<R, G> {
     #[inline]
     pub(super) fn oam_bus_value(&self) -> u8 {
         if self.state.cycle_counter.x > 320 || self.state.cycle_counter.x == 0 {
-            self.state.oam.secondary_data[0]
+            self.state.oam.secondary_data.read_le_value(0)
         } else {
             self.state.oam.bus_latch
         }
@@ -336,7 +326,10 @@ impl<R: Region, G: GraphicsApi> Ppu<R, G> {
         self.state.oam.bus_latch = 0xff;
 
         if self.state.cycle_counter.x.is_multiple_of(2) {
-            self.state.oam.secondary_data[usize::from(self.state.cycle_counter.x / 2 - 1)] = 0xff;
+            self.state
+                .oam
+                .secondary_data
+                .write_le_value(usize::from(self.state.cycle_counter.x / 2 - 1), 0xffu8);
         }
     }
 
@@ -361,19 +354,20 @@ impl<R: Region, G: GraphicsApi> Ppu<R, G> {
 
     #[inline]
     fn store_secondary_oam(&mut self, value: u8) {
-        if let Some(slot) = self
-            .state
-            .oam
-            .secondary_data
-            .get_mut(usize::from(self.state.oam.secondary_address))
-        {
-            *slot = value;
+        let address = usize::from(self.state.oam.secondary_address);
+
+        if address < SECONDARY_OAM_SIZE {
+            self.state.oam.secondary_data.write_le_value(address, value);
         }
     }
 
     fn evaluate_sprites(&mut self) {
         if !self.state.cycle_counter.x.is_multiple_of(2) {
-            self.state.oam.bus_latch = self.state.oam.data[usize::from(self.state.oam.oam_addr)];
+            self.state.oam.bus_latch = self
+                .state
+                .oam
+                .data
+                .read_le_value(usize::from(self.state.oam.oam_addr));
             return;
         }
 
@@ -508,16 +502,21 @@ impl<R: Region, G: GraphicsApi> Ppu<R, G> {
         let phase = usize::from(position % 8);
         let secondary_offset = sprite_index * 4;
 
-        self.state.oam.bus_latch = self.state.oam.secondary_data[secondary_offset + phase.min(3)];
+        self.state.oam.bus_latch = self
+            .state
+            .oam
+            .secondary_data
+            .read_le_value(secondary_offset + phase.min(3));
 
         if secondary_offset >= usize::from(self.state.oam.secondary_address) {
             return;
         }
 
         let mut bytes = [0; 4];
-        bytes.copy_from_slice(
-            &self.state.oam.secondary_data[secondary_offset..secondary_offset + 4],
-        );
+        self.state
+            .oam
+            .secondary_data
+            .read(secondary_offset, &mut bytes);
         let sprite = OamSprite::from_bytes(bytes);
 
         match phase {
@@ -677,46 +676,20 @@ impl<R: Region, G: GraphicsApi> Ppu<R, G> {
     }
 
     #[inline]
-    pub fn calculate_background_color(
-        &self,
-        ppu_address_space: &mut AddressSpace<'_>,
-        timestamp: Period,
-        attribute: u8,
-        color: u8,
-    ) -> PpuColorIndex {
+    pub fn calculate_background_color(&self, attribute: u8, color: u8) -> PpuColorIndex {
         let color_bits = color & 0b11;
 
         // Combine into a 4-bit palette index
         let palette_index = color_bits | (attribute << 2);
 
-        ppu_address_space
-            .read_le_value::<u8, false>(
-                BACKGROUND_PALETTE_BASE_ADDRESS + palette_index as usize,
-                timestamp,
-            )
-            .unwrap()
-            & 0b0011_1111
+        self.read_palette_ram(BACKGROUND_PALETTE_BASE_INDEX + palette_index)
     }
 
     #[inline]
-    pub fn calculate_sprite_color(
-        &self,
-        ppu_address_space: &mut AddressSpace<'_>,
-        timestamp: Period,
-        sprite: OamSprite,
-        color: u8,
-    ) -> PpuColorIndex {
+    pub fn calculate_sprite_color(&self, sprite: OamSprite, color: u8) -> PpuColorIndex {
         let color_bits = color & 0b11;
 
-        ppu_address_space
-            .read_le_value::<u8, false>(
-                SPRITE_PALETTE_BASE_ADDRESS
-                    + (usize::from(sprite.palette_index) * 4)
-                    + usize::from(color_bits),
-                timestamp,
-            )
-            .unwrap()
-            & 0b0011_1111
+        self.read_palette_ram(SPRITE_PALETTE_BASE_INDEX + (sprite.palette_index * 4) + color_bits)
     }
 }
 

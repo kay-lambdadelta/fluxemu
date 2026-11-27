@@ -33,7 +33,7 @@ use crate::{
         standard_controller::StandardControllerConfig,
     },
     ppu::{
-        BACKGROUND_PALETTE_BASE_ADDRESS, NAMETABLE_ADDRESSES, PALETTE_RAM_ADDRESSES,
+        NAMETABLE_ADDRESSES,
         region::{Region, ntsc::Ntsc, pal::Pal},
     },
 };
@@ -86,19 +86,6 @@ impl<P: Platform> System<P> for Nes {
             }],
         );
 
-        let (machine_builder, palette_ram_path) = machine_builder.memory("palette-ram", 0x20, []);
-        let machine_builder = machine_builder.map_memory(
-            ppu_address_space,
-            [MemoryMapCommand::Map {
-                range: PALETTE_RAM_ADDRESSES,
-                permissions: Permissions::ALL,
-                target: MapTarget::Memory {
-                    path: palette_ram_path,
-                    subrange: None,
-                },
-            }],
-        );
-
         // Workram mirrors
         let machine_builder = machine_builder.map_memory(
             cpu_address_space,
@@ -112,55 +99,16 @@ impl<P: Platform> System<P> for Nes {
             ),
         );
 
-        // Background palette mirrors
         let machine_builder = machine_builder.map_memory(
-            ppu_address_space,
-            [
-                MemoryMapCommand::mirror(
-                    Permissions::ALL,
-                    RangeInclusive::from_single(0x3f10),
-                    0x3f00,
-                ),
-                MemoryMapCommand::mirror(
-                    Permissions::ALL,
-                    RangeInclusive::from_single(0x3f14),
-                    0x3f04,
-                ),
-                MemoryMapCommand::mirror(
-                    Permissions::ALL,
-                    RangeInclusive::from_single(0x3f18),
-                    0x3f08,
-                ),
-                MemoryMapCommand::mirror(
-                    Permissions::ALL,
-                    RangeInclusive::from_single(0x3f1c),
-                    0x3f0c,
-                ),
-            ],
+            cpu_address_space,
+            MemoryMapCommand::with_mirrors_to_destination(
+                RangeInclusive::from_start_and_length(0x2000, 8),
+                RangeInclusive::from_start_and_length(0x2000, 0x2000)
+                    .step_by(8)
+                    .skip(1)
+                    .map(|address| (address, Permissions::ALL)),
+            ),
         );
-
-        // full palette mirror blocks
-        let machine_builder = machine_builder
-            .map_memory(
-                ppu_address_space,
-                MemoryMapCommand::with_mirrors_to_destination(
-                    PALETTE_RAM_ADDRESSES,
-                    RangeInclusive::from_start_and_length(BACKGROUND_PALETTE_BASE_ADDRESS, 0x100)
-                        .step_by(0x20)
-                        .skip(1)
-                        .map(|address| (address, Permissions::ALL)),
-                ),
-            )
-            .map_memory(
-                cpu_address_space,
-                MemoryMapCommand::with_mirrors_to_destination(
-                    RangeInclusive::from_start_and_length(0x2000, 8),
-                    RangeInclusive::from_start_and_length(0x2000, 0x2000)
-                        .step_by(8)
-                        .skip(1)
-                        .map(|address| (address, Permissions::ALL)),
-                ),
-            );
 
         let program_file = machine_builder
             .open_program_file(&rom_path, RomRequirement::Required)
@@ -204,7 +152,7 @@ impl<P: Platform> System<P> for Nes {
             ppu_address_space,
             [MemoryMapCommand::mirror(
                 Permissions::ALL,
-                0x3000..=0x3eff,
+                0x3000..=0x3fff,
                 0x2000,
             )],
         );

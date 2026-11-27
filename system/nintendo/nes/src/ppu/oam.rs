@@ -1,6 +1,8 @@
+use fluxemu_runtime::memory::PrivateRam;
 use nalgebra::{Point2, Vector2};
 use serde::{Deserialize, Serialize};
-use serde_with::{Bytes, serde_as};
+
+pub const SECONDARY_OAM_SIZE: usize = 32;
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone, Copy)]
 pub struct OamSprite {
@@ -63,15 +65,12 @@ pub enum SpriteEvaluationState {
     Finished,
 }
 
-#[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct OamState {
     /// Sprite data buffer 4 byte sprites and 64 of them
-    #[serde_as(as = "Bytes")]
-    pub data: [u8; 256],
+    pub data: PrivateRam<256>,
     /// Secondary data buffer that is filled with sprite evaluation
-    #[serde_as(as = "Bytes")]
-    pub secondary_data: [u8; 32],
+    pub secondary_data: PrivateRam<SECONDARY_OAM_SIZE>,
     pub secondary_address: u8,
     pub bus_latch: u8,
     pub sprite_zero_in_secondary: bool,
@@ -91,11 +90,13 @@ pub struct OamState {
 impl OamState {
     #[inline]
     pub fn write(&mut self, address: u8, value: u8) {
-        self.data[usize::from(address)] = if address & 0b11 == 2 {
+        let value = if address & 0b11 == 2 {
             value & 0b1110_0011
         } else {
             value
         };
+
+        self.data.write_le_value(usize::from(address), value);
     }
 
     #[inline]

@@ -1,9 +1,9 @@
-use fluxemu_runtime::scheduler::Period;
+use fluxemu_runtime::{memory::PrivateRam, scheduler::Period};
 use nalgebra::{Point2, Vector2};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::ppu::{ColorEmphasis, background::BackgroundState, oam::OamState};
+use crate::ppu::{ColorEmphasis, PALETTE_RAM_SIZE, background::BackgroundState, oam::OamState};
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug)]
@@ -23,6 +23,7 @@ pub struct State {
     pub vram_address_pointer: u16,
     /// Actually 15 bits, usually called t
     pub shadow_vram_address_pointer: u16,
+    pub palette_ram: PrivateRam<PALETTE_RAM_SIZE>,
     pub odd_frame: bool,
     pub skipped_dot_this_frame: bool,
     pub emphasis_index: u8,

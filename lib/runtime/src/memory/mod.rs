@@ -7,6 +7,7 @@ use std::{
 
 use bytes::Bytes;
 use fluxemu_math::range::ContiguousRange;
+pub use private_ram::PrivateRam;
 use rangemap::RangeInclusiveMap;
 pub(crate) use registry::{
     LocalMemoryRegistryData, MemoryId, MemoryRegistryData, RegionInitializationData,
@@ -21,6 +22,7 @@ use crate::{
 };
 
 mod ops;
+mod private_ram;
 mod registry;
 mod remap;
 #[cfg(test)]

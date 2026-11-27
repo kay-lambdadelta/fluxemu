@@ -16,7 +16,7 @@ use fluxemu_runtime::{
     },
     graphics::{DisplayBackend, DisplayGeometry},
     machine::builder::ComponentBuilder,
-    memory::{Address, AddressSpaceId, MemoryError, MemoryMapCommand, Permissions},
+    memory::{Address, AddressSpaceId, MemoryError, MemoryMapCommand, Permissions, PrivateRam},
     path::ComponentPath,
     persistence::PersistentComponentState,
     scheduler::{
@@ -32,7 +32,7 @@ use strum::FromRepr;
 
 use crate::ppu::{
     background::BackgroundState,
-    oam::{OamState, SpriteEvaluationState},
+    oam::{OamState, SECONDARY_OAM_SIZE, SpriteEvaluationState},
     region::Region,
     state::{State, VramAddressPointerContents},
 };
@@ -66,9 +66,10 @@ pub const NAMETABLE_ADDRESSES: [RangeInclusive<Address>; 4] = [
     0x2c00..=0x2fff,
 ];
 pub const NAMETABLE_BASE_ADDRESS: Address = *NAMETABLE_ADDRESSES[0].start();
-pub const BACKGROUND_PALETTE_BASE_ADDRESS: Address = 0x3f00;
-pub const SPRITE_PALETTE_BASE_ADDRESS: Address = 0x3f10;
-pub const PALETTE_RAM_ADDRESSES: RangeInclusive<Address> = BACKGROUND_PALETTE_BASE_ADDRESS..=0x3f1f;
+pub const PALETTE_ADDRESSES: RangeInclusive<u16> = 0x3f00..=0x3fff;
+const PALETTE_RAM_SIZE: usize = 0x20;
+const BACKGROUND_PALETTE_BASE_INDEX: u8 = 0x00;
+const SPRITE_PALETTE_BASE_INDEX: u8 = 0x10;
 pub const ATTRIBUTE_BASE_ADDRESS: Address = NAMETABLE_BASE_ADDRESS + 0x3c0;
 const DUMMY_SCANLINE_COUNT: u16 = 2;
 const VISIBLE_SCANLINE_LENGTH: u16 = 256;
@@ -210,7 +211,7 @@ impl<R: Region, P: Platform> ComponentConfig<P> for PpuConfig<R> {
                 },
                 cycle_counter: Point2::new(1, R::PRERENDER_SCANLINE),
                 oam: OamState {
-                    data: core::array::from_fn(|index| {
+                    data: PrivateRam::new(core::array::from_fn(|index| {
                         let value: u8 = rand::random();
 
                         if index % 4 == 2 {
@@ -218,10 +219,10 @@ impl<R: Region, P: Platform> ComponentConfig<P> for PpuConfig<R> {
                         } else {
                             value
                         }
-                    }),
+                    })),
                     oam_addr: 0x00,
                     sprite_evaluation_state: SpriteEvaluationState::Searching,
-                    secondary_data: [0xff; 32],
+                    secondary_data: PrivateRam::new([0xff; SECONDARY_OAM_SIZE]),
                     secondary_address: 0,
                     bus_latch: 0xff,
                     sprite_zero_in_secondary: false,
@@ -249,6 +250,7 @@ impl<R: Region, P: Platform> ComponentConfig<P> for PpuConfig<R> {
                 },
                 vram_address_pointer: 0,
                 shadow_vram_address_pointer: 0,
+                palette_ram: PrivateRam::default(),
                 odd_frame: false,
                 skipped_dot_this_frame: false,
                 emphasis_index: 0,
@@ -338,7 +340,10 @@ impl<R: Region, G: GraphicsApi> Component for Ppu<R, G> {
                     let value = if self.is_evaluating_sprites() {
                         self.oam_bus_value()
                     } else {
-                        self.state.oam.data[self.state.oam.oam_addr as usize]
+                        self.state
+                            .oam
+                            .data
+                            .read_le_value(usize::from(self.state.oam.oam_addr))
                     };
 
                     *buffer = value;
@@ -354,48 +359,48 @@ impl<R: Region, G: GraphicsApi> Component for Ppu<R, G> {
                         let mut ppu_address_space =
                             runtime.address_space(self.ppu_address_space).unwrap();
 
-                        let vram_address_pointer = self.state.vram_address_pointer as usize;
+                        let vram_address_pointer = self.state.vram_address_pointer & 0x3fff;
+                        let palette_data = PALETTE_ADDRESSES
+                            .contains(&vram_address_pointer)
+                            .then(|| self.read_palette_ram(vram_address_pointer as u8));
 
                         if avoid_side_effects {
-                            *buffer = ppu_address_space
-                                .read_le_value::<_, true>(vram_address_pointer, timestamp)
-                                .unwrap_or_default();
+                            *buffer = match palette_data {
+                                Some(data) => data,
+                                None => ppu_address_space
+                                    .read_le_value::<_, true>(
+                                        vram_address_pointer as usize,
+                                        timestamp,
+                                    )
+                                    .unwrap_or_default(),
+                            };
                         } else {
-                            // RGB models do not have this quirk
-                            let bypass_read_buffer = R::BYPASS_READ_BUFFER_FOR_PPUDATA_PALETTE_READS
-                                // Cover the ENTIRE range, including the mirrors
-                                && vram_address_pointer & 0x3fff
-                                    >= *PALETTE_RAM_ADDRESSES.start();
+                            let bus_data: u8 = ppu_address_space
+                                .read_le_value::<_, false>(vram_address_pointer as usize, timestamp)
+                                .unwrap_or_default();
 
-                            if bypass_read_buffer {
-                                let data: u8 = ppu_address_space
-                                    .read_le_value::<_, false>(vram_address_pointer, timestamp)
-                                    .unwrap_or_default();
-                                let color_mask = if self.state.greyscale {
-                                    0b0011_0000
-                                } else {
-                                    0b0011_1111
-                                };
+                            match palette_data {
+                                // RGB models do not have this quirk
+                                Some(data) if R::BYPASS_READ_BUFFER_FOR_PPUDATA_PALETTE_READS => {
+                                    let color_mask = if self.state.greyscale {
+                                        0b0011_0000
+                                    } else {
+                                        0b0011_1111
+                                    };
 
-                                *buffer = (self.state.io_latch & 0b1100_0000) | (data & color_mask);
-                                self.refresh_io_latch(*buffer, 0b0011_1111);
+                                    *buffer =
+                                        (self.state.io_latch & 0b1100_0000) | (data & color_mask);
+                                    self.refresh_io_latch(*buffer, 0b0011_1111);
+                                    self.state.vram_read_buffer = bus_data;
+                                }
+                                _ => {
+                                    let data = palette_data.unwrap_or(bus_data);
 
-                                // HACK: The memory subsystem does not (yet) support dealing with memory shadowing
-                                //
-                                // This should work, but it is a hack
-                                let underlying_address = (vram_address_pointer & 0x0fff) | 0x2000;
-                                self.state.vram_read_buffer = ppu_address_space
-                                    .read_le_value::<_, false>(underlying_address, timestamp)
-                                    .unwrap_or_default();
-                            } else {
-                                let data = ppu_address_space
-                                    .read_le_value::<_, false>(vram_address_pointer, timestamp)
-                                    .unwrap_or_default();
-
-                                // Delay the read through the buffer
-                                *buffer =
-                                    core::mem::replace(&mut self.state.vram_read_buffer, data);
-                                self.refresh_io_latch(*buffer, 0b1111_1111);
+                                    // Delay the read through the buffer
+                                    *buffer =
+                                        core::mem::replace(&mut self.state.vram_read_buffer, data);
+                                    self.refresh_io_latch(*buffer, 0b1111_1111);
+                                }
                             }
 
                             self.increment_vram_address_pointer();
@@ -554,12 +559,18 @@ impl<R: Region, G: GraphicsApi> Component for Ppu<R, G> {
                         let mut ppu_address_space =
                             runtime.address_space(self.ppu_address_space).unwrap();
 
-                        // Redirect into the ppu address space
-                        let _ = ppu_address_space.write_le_value(
-                            self.state.vram_address_pointer as usize,
-                            timestamp,
-                            *buffer,
-                        );
+                        let vram_address_pointer = self.state.vram_address_pointer & 0x3fff;
+
+                        if PALETTE_ADDRESSES.contains(&vram_address_pointer) {
+                            self.write_palette_ram(vram_address_pointer as u8, *buffer);
+                        } else {
+                            // Redirect into the ppu address space
+                            let _ = ppu_address_space.write_le_value(
+                                vram_address_pointer as usize,
+                                timestamp,
+                                *buffer,
+                            );
+                        }
 
                         self.increment_vram_address_pointer();
                     });
@@ -744,6 +755,19 @@ impl<R: Region, G: GraphicsApi> Ppu<R, G> {
         }
     }
 
+    #[inline]
+    fn read_palette_ram(&self, address: u8) -> u8 {
+        self.state
+            .palette_ram
+            .read_le_value(palette_ram_index(address))
+    }
+
+    fn write_palette_ram(&mut self, address: u8, value: u8) {
+        self.state
+            .palette_ram
+            .write_le_value(palette_ram_index(address), value & 0b0011_1111);
+    }
+
     fn refresh_io_latch(&mut self, value: u8, mask: u8) {
         self.state.io_latch = (self.state.io_latch & !mask) | (value & mask);
 
@@ -773,4 +797,15 @@ pub enum PpuEvent {
     FrameLengthDecided,
     ApplyVramAddress,
     ApplyRenderingEnable { background: bool, sprites: bool },
+}
+
+#[inline]
+fn palette_ram_index(address: u8) -> Address {
+    let index = Address::from(address) % PALETTE_RAM_SIZE;
+
+    if index & 0b1_0011 == 0b1_0000 {
+        index & !0b1_0000
+    } else {
+        index
+    }
 }
