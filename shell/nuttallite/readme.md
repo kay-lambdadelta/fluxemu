@@ -89,13 +89,13 @@ Some boards need external parts wired before the shell has anything to show.
 
 An ST7735 128x160 SPI display driven over SPI2:
 
-| ST7735 module pin  | ESP32-P4 GPIO |
-| ------------------ | ------------- |
-| `SCK` / `SCL`      | GPIO20        |
-| `SDA` / `MOSI`     | GPIO21        |
-| `CS`               | GPIO22        |
-| `DC` / `A0` / `RS` | GPIO23        |
-| `RST` / `RESET`    | GPIO32        |
-| `VCC`              | 3V3           |
-| `BL` / `LED`       | 3V3           |
-| `GND`              | GND           |
+| ST7735 module pin  | Board pin |
+| ------------------ | --------- |
+| `SCK` / `SCL`      | GPIO20    |
+| `SDA` / `MOSI`     | GPIO21    |
+| `CS`               | GPIO22    |
+| `DC` / `A0` / `RS` | GPIO23    |
+| `RST` / `RESET`    | GPIO32    |
+| `VCC`              | 3V3       |
+| `BL` / `LED`       | 3V3       |
+| `GND`              | GND       |
