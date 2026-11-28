@@ -50,7 +50,13 @@ skera = { workspace = true }
 
 [features]
 external-file-dialog = ["dep:rfd"]
-webgpu = ["dep:egui-wgpu", "dep:pollster", "dep:wgpu", "fluxemu-graphics/webgpu"]
+webgpu = [
+  "dep:egui-wgpu",
+  "dep:pollster",
+  "dep:wgpu",
+  "fluxemu-frontend/shader-support",
+  "fluxemu-graphics/webgpu",
+]
 
 [lints]
 workspace = true

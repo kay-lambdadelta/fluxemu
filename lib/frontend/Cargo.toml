@@ -21,6 +21,12 @@ fluxemu-system = { workspace = true }
 futures = { workspace = true }
 image = { workspace = true, features = ["webp"] }
 indexmap = { workspace = true }
+naga = { workspace = true, optional = true, features = [
+  "glsl-in",
+  "glsl-out",
+  "wgsl-in",
+  "wgsl-out",
+] }
 nalgebra = { workspace = true }
 palette = { workspace = true }
 rand = { workspace = true }
@@ -29,7 +35,10 @@ ron = { workspace = true }
 rust-i18n = { workspace = true }
 rust-i18n-macro = { workspace = true }
 rust-i18n-support = { workspace = true }
+scc = { workspace = true, optional = true }
 serde = { workspace = true }
+strum = { workspace = true }
+thiserror = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["rt", "sync"] }
 toml = { workspace = true }
 tracing = { workspace = true }
@@ -37,6 +46,7 @@ tracing-subscriber = { workspace = true }
 
 [features]
 filesystem = ["fluxemu-program/filesystem"]
+shader-support = ["dep:naga", "dep:scc", "dep:thiserror"]
 
 [lints]
 workspace = true

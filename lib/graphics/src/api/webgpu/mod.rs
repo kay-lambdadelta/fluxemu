@@ -13,6 +13,7 @@ use wgpu::{
 
 use crate::{
     api::{Framebuffer, GraphicsApi},
+    shader::ShaderLanguage,
     texture::{OwnedTexture, RefTexture},
 };
 
@@ -72,6 +73,7 @@ impl GraphicsApi for Webgpu {
     type Requirements = Requirements;
 
     const NAME: &'static str = "WebGPU";
+    const SHADER_LANGUAGE: Option<ShaderLanguage> = Some(ShaderLanguage::Wgsl);
 
     fn create_software_framebuffer(context: &mut Context, size: Vector2<usize>) -> Texture {
         context.device.create_texture(&TextureDescriptor {

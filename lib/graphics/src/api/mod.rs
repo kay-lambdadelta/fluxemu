@@ -3,7 +3,7 @@ use core::{any::Any, fmt::Debug, ops::BitOr};
 use nalgebra::Vector2;
 use palette::Srgba;
 
-use crate::texture::RefTexture;
+use crate::{shader::ShaderLanguage, texture::RefTexture};
 
 /// Software
 pub mod software;
@@ -15,6 +15,7 @@ pub mod webgpu;
 /// Trait for marker structs representing rendering backends
 pub trait GraphicsApi: Debug + Any + Sized + Send + Sync + 'static {
     const NAME: &'static str;
+    const SHADER_LANGUAGE: Option<ShaderLanguage>;
 
     /// State graphics jobs run against, owned by the thread that owns the graphics api
     type Context: 'static;

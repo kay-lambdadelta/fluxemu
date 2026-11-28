@@ -1,4 +1,5 @@
-use fluxemu_graphics::shader::ShaderType;
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumIter};
 
@@ -30,17 +31,9 @@ pub struct GraphicsSettings {
     /// When scaling the display buffer to the render surface, should fractional
     /// scaling be disabled?
     pub integer_scaling: bool,
-    /// Api to use
+    /// API to use
     pub api: GraphicsApi,
+    /// Shader the UI is currently using
     #[serde(default)]
-    pub shader: ShaderType,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum OverlayDisableBehavior {
-    /// This bypasses the ui machinery when the overlay is disabled. This may gain performance at the costs of toasts being nonvisible
-    Bypass,
-    /// Go through the ui machinery in order to draw toasts over an active game when the overlay is disabled
-    #[default]
-    Toasts,
+    pub shader: PathBuf,
 }

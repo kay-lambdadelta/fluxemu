@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use egui::PaintCallback;
 pub use fluxemu_egui_software_renderer::RendererConfig;
 use fluxemu_egui_software_renderer::{
@@ -7,7 +9,7 @@ use fluxemu_egui_software_renderer::{
 use fluxemu_frontend::graphics::{DisplayContext, GraphicsRuntime};
 use fluxemu_graphics::{
     api::{GraphicsApi, software::Software},
-    shader::ShaderType,
+    shader::ShaderSource,
     texture::{AsViewTexture, AsViewTextureMut, CopyMode, CowTexture, OwnedTexture, RefMutTexture},
 };
 use fluxemu_math::rectangle::Rectangle;
@@ -130,7 +132,7 @@ impl<D: SoftwareCompatibleDisplayContext> EguiCapableGraphicsRuntime
         rect: egui::Rect,
         framebuffer: &<Self::GraphicsApi as GraphicsApi>::Framebuffer,
         display_rectangle: Rectangle<usize>,
-        _shader: ShaderType,
+        _shader: Option<&Arc<ShaderSource>>,
     ) -> PaintCallback {
         let framebuffer =
             framebuffer.view(display_rectangle.x_range(), display_rectangle.y_range());

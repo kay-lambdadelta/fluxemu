@@ -1,9 +1,9 @@
-use std::num::NonZero;
+use std::{num::NonZero, sync::Arc};
 
 use fluxemu_frontend::graphics::GraphicsRuntime;
 use fluxemu_graphics::{
     api::software::Software,
-    shader::ShaderType,
+    shader::ShaderSource,
     texture::{AsViewTexture, CopyMode, CowTexture, OwnedTexture, RefMutTexture},
 };
 use fluxemu_runtime::graphics::{DisplayGeometry, GraphicsRequirements};
@@ -62,7 +62,7 @@ impl CanvasGraphicsRuntime for SoftwareGraphicsRuntime {
         &mut self,
         framebuffer: &OwnedTexture<Srgba<u8>>,
         display_geometry: &DisplayGeometry,
-        _shader: ShaderType,
+        _shader: Option<&Arc<ShaderSource>>,
     ) -> Result<(), DisplayError> {
         let display_rectangle = display_geometry.resolve_display_rectangle(framebuffer);
         let frame = framebuffer.view(display_rectangle.x_range(), display_rectangle.y_range());

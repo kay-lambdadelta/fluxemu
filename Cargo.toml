@@ -62,6 +62,7 @@ lucide-icons = "1.81"
 md-5 = "0.11"
 memmap2 = "0.9"
 multiversion = "0.9"
+naga = "30.0"
 nalgebra = {
   version = "0.35",
   features = [

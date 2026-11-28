@@ -8,7 +8,7 @@ use fluxemu_graphics::{
         GraphicsApi,
         webgpu::{self, FramebufferRenderer, Webgpu},
     },
-    shader::ShaderType,
+    shader::ShaderSource,
     texture::CowTexture,
 };
 use fluxemu_math::rectangle::Rectangle;
@@ -17,7 +17,7 @@ use palette::{Srgb, Srgba};
 use pollster::FutureExt;
 use wgpu::{
     CommandEncoderDescriptor, CreateSurfaceError, CurrentSurfaceTexture, Instance, LoadOp,
-    Operations, RenderPassColorAttachment, RenderPassDescriptor, StoreOp, Surface,
+    Operations, RenderPassColorAttachment, RenderPassDescriptor, StoreOp, Surface, TextureFormat,
     TextureViewDescriptor, util::initialize_adapter_from_env_or_default,
 };
 
@@ -104,7 +104,9 @@ struct ConfigurationDependentData {
     context: webgpu::Context,
     renderer: Renderer,
     surface: Surface<'static>,
-    framebuffer_renderer: Arc<FramebufferRenderer>,
+    surface_format: TextureFormat,
+    framebuffer_renderer: Option<Arc<FramebufferRenderer>>,
+    requested_shader: Option<Arc<ShaderSource>>,
 }
 
 impl ConfigurationDependentData {
@@ -141,13 +143,6 @@ impl ConfigurationDependentData {
 
         surface.configure(&device, &surface_config);
 
-        let framebuffer_renderer = Arc::new(FramebufferRenderer::new(
-            device.clone(),
-            queue.clone(),
-            surface_config.format,
-            ShaderType::default(),
-        ));
-
         let renderer = Renderer::new(
             &device,
             surface_config.format,
@@ -163,7 +158,9 @@ impl ConfigurationDependentData {
             context: webgpu::Context { device, queue },
             renderer,
             surface,
-            framebuffer_renderer,
+            surface_format: surface_config.format,
+            framebuffer_renderer: None,
+            requested_shader: None,
         }
     }
 }
@@ -275,15 +272,29 @@ impl<D: WebgpuCompatibleDisplayContext> EguiCapableGraphicsRuntime for WebgpuGra
         rect: egui::Rect,
         framebuffer: &<Self::GraphicsApi as GraphicsApi>::Framebuffer,
         display_rectangle: Rectangle<usize>,
-        shader: ShaderType,
+        shader: Option<&Arc<ShaderSource>>,
     ) -> PaintCallback {
         let ConfigurationDependentData {
+            context: webgpu::Context { device, queue },
+            surface_format,
             framebuffer_renderer,
+            requested_shader,
             ..
         } = self.configuration_dependent_data.as_mut().unwrap();
 
-        if framebuffer_renderer.shader() != shader {
-            *framebuffer_renderer = Arc::new(framebuffer_renderer.with_shader(shader));
+        if let Some(shader) = shader
+            && requested_shader
+                .as_ref()
+                .is_none_or(|requested| !Arc::ptr_eq(requested, shader))
+        {
+            *requested_shader = Some(shader.clone());
+
+            match FramebufferRenderer::new(device.clone(), queue.clone(), *surface_format, shader)
+                .block_on()
+            {
+                Ok(renderer) => *framebuffer_renderer = Some(Arc::new(renderer)),
+                Err(error) => tracing::error!("Could not compile shader: {}", error),
+            }
         }
 
         let framebuffer = framebuffer.clone();

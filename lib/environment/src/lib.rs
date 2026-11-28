@@ -32,6 +32,8 @@ pub struct Environment {
     pub save_directory: PathBuf,
     #[config(env = "FLUXEMU_SNAPSHOT_DIRECTORY")]
     pub snapshot_directory: PathBuf,
+    #[config(env = "FLUXEMU_SHADER_DIRECTORY")]
+    pub shader_directory: PathBuf,
     pub rom_stores: IndexMap<String, RomStoreSpecification>,
     pub active_snapshot_slot: Wrapping<u8>,
     pub check_archive_hashes: bool,

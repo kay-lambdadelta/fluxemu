@@ -7,6 +7,8 @@ mod metadata;
 pub mod notification;
 mod platform;
 mod save;
+#[cfg(feature = "shader-support")]
+pub mod shader;
 pub mod simulation_controller;
 mod snapshot;
 mod spawn;

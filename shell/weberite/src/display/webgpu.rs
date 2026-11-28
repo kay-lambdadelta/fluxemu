@@ -1,7 +1,9 @@
+use std::sync::Arc;
+
 use fluxemu_frontend::graphics::GraphicsRuntime;
 use fluxemu_graphics::{
     api::webgpu::{self, FramebufferRenderer, Webgpu},
-    shader::ShaderType,
+    shader::ShaderSource,
     texture::CowTexture,
 };
 use fluxemu_runtime::graphics::{DisplayGeometry, GraphicsRequirements};
@@ -32,7 +34,8 @@ pub struct WebgpuGraphicsRuntime {
 struct DeviceState {
     context: webgpu::Context,
     surface_configuration: SurfaceConfiguration,
-    renderer: FramebufferRenderer,
+    renderer: Option<FramebufferRenderer>,
+    requested_shader: Option<Arc<ShaderSource>>,
 }
 
 impl DeviceState {
@@ -61,17 +64,11 @@ impl DeviceState {
 
         surface.configure(&device, &surface_configuration);
 
-        let renderer = FramebufferRenderer::new(
-            device.clone(),
-            queue.clone(),
-            surface_configuration.format,
-            ShaderType::default(),
-        );
-
         Ok(Self {
             context: webgpu::Context { device, queue },
             surface_configuration,
-            renderer,
+            renderer: None,
+            requested_shader: None,
         })
     }
 }
@@ -187,7 +184,7 @@ impl CanvasGraphicsRuntime for WebgpuGraphicsRuntime {
         &mut self,
         framebuffer: &Texture,
         display_geometry: &DisplayGeometry,
-        shader: ShaderType,
+        shader: Option<&Arc<ShaderSource>>,
     ) -> Result<(), DisplayError> {
         let display_rectangle = display_geometry.resolve_display_rectangle(framebuffer);
         let dimensions = display_rectangle.size().map(|side| side as u32);
@@ -203,8 +200,32 @@ impl CanvasGraphicsRuntime for WebgpuGraphicsRuntime {
             self.resize(dimensions);
         }
 
-        if self.device_state.renderer.shader() != shader {
-            self.device_state.renderer = self.device_state.renderer.with_shader(shader);
+        if let Some(shader) = shader
+            && self
+                .device_state
+                .requested_shader
+                .as_ref()
+                .is_none_or(|requested| !Arc::ptr_eq(requested, shader))
+        {
+            self.device_state.requested_shader = Some(shader.clone());
+
+            let DeviceState {
+                context: webgpu::Context { device, queue },
+                surface_configuration,
+                ..
+            } = &self.device_state;
+
+            match FramebufferRenderer::new(
+                device.clone(),
+                queue.clone(),
+                surface_configuration.format,
+                shader,
+            )
+            .block_on()
+            {
+                Ok(renderer) => self.device_state.renderer = Some(renderer),
+                Err(error) => tracing::error!("Could not compile shader: {}", error),
+            }
         }
 
         let surface_texture = match self.surface.get_current_texture() {
@@ -246,12 +267,14 @@ impl CanvasGraphicsRuntime for WebgpuGraphicsRuntime {
                 multiview_mask: None,
             });
 
-            renderer.draw(
-                &mut render_pass,
-                framebuffer,
-                display_rectangle,
-                dimensions.cast::<f32>(),
-            );
+            if let Some(renderer) = renderer {
+                renderer.draw(
+                    &mut render_pass,
+                    framebuffer,
+                    display_rectangle,
+                    dimensions.cast::<f32>(),
+                );
+            }
         }
 
         queue.submit([encoder.finish()]);

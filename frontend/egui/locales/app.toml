@@ -82,6 +82,12 @@ en = "Graphics API"
 [settings.shader]
 en = "Shader"
 
+[settings.reload_shaders]
+en = "Reload"
+
+[settings.reload_shaders_hint]
+en = "Rescan the shader directory and reload the selected shader from disk"
+
 [settings.requires_restart]
 en = "Takes effect after restarting"
 

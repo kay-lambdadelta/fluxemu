@@ -14,14 +14,14 @@ pub use runtime::{WebgpuCompatibleDisplayContext, WebgpuGraphicsRuntime};
 pub struct FramebufferCallback {
     framebuffer: Texture,
     display_rectangle: Rectangle<usize>,
-    renderer: Arc<FramebufferRenderer>,
+    renderer: Option<Arc<FramebufferRenderer>>,
 }
 
 impl FramebufferCallback {
     pub fn new(
         framebuffer: Texture,
         display_rectangle: Rectangle<usize>,
-        renderer: Arc<FramebufferRenderer>,
+        renderer: Option<Arc<FramebufferRenderer>>,
     ) -> Self {
         Self {
             framebuffer,
@@ -38,7 +38,11 @@ impl CallbackTrait for FramebufferCallback {
         render_pass: &mut RenderPass<'static>,
         _callback_resources: &CallbackResources,
     ) {
-        self.renderer.draw(
+        let Some(renderer) = &self.renderer else {
+            return;
+        };
+
+        renderer.draw(
             render_pass,
             &self.framebuffer,
             self.display_rectangle,

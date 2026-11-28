@@ -1,6 +1,8 @@
+use std::sync::Arc;
+
 use egui::{Context, FullOutput, PaintCallback};
 use fluxemu_frontend::graphics::GraphicsRuntime;
-use fluxemu_graphics::{api::GraphicsApi, shader::ShaderType};
+use fluxemu_graphics::{api::GraphicsApi, shader::ShaderSource};
 use fluxemu_math::rectangle::Rectangle;
 use palette::Srgb;
 
@@ -16,6 +18,6 @@ pub trait EguiCapableGraphicsRuntime: GraphicsRuntime {
         rect: egui::Rect,
         framebuffer: &<Self::GraphicsApi as GraphicsApi>::Framebuffer,
         display_rectangle: Rectangle<usize>,
-        shader: ShaderType,
+        shader: Option<&Arc<ShaderSource>>,
     ) -> PaintCallback;
 }

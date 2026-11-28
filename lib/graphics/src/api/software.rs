@@ -11,6 +11,7 @@ use palette::{Srgba, named::BLACK};
 
 use crate::{
     api::{Framebuffer, GraphicsApi},
+    shader::ShaderLanguage,
     texture::{CopyMode, OwnedTexture, RefTexture},
 };
 
@@ -51,6 +52,7 @@ impl GraphicsApi for Software {
     type Requirements = Requirements;
 
     const NAME: &'static str = "Software";
+    const SHADER_LANGUAGE: Option<ShaderLanguage> = None;
 
     fn create_software_framebuffer(_context: &mut (), size: Vector2<usize>) -> Self::Framebuffer {
         OwnedTexture::from_value(size.x, size.y, BLACK.into())

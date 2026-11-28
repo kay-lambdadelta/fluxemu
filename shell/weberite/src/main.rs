@@ -82,11 +82,11 @@ impl<R: CanvasGraphicsRuntime> Application<R> {
             debug_overlay.update(self.core.controller());
         }
 
-        let shader = self.core.environment().graphics.shader;
+        let shader = self.core.shader().cloned();
         let graphics_runtime = &mut self.graphics_runtime;
 
         if let Some(Err(err)) = self.core.read_framebuffer(|framebuffer, display_geometry| {
-            graphics_runtime.present(framebuffer, display_geometry, shader)
+            graphics_runtime.present(framebuffer, display_geometry, shader.as_ref())
         }) {
             tracing::error!("Could not present frame: {}", err);
         }

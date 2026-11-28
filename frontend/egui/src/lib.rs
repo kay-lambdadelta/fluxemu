@@ -231,7 +231,7 @@ impl<P: Platform> Frontend<P> {
         let mut resume_requested = false;
 
         if let Some(controller) = self.core.controller() {
-            let shader = self.core.environment().graphics.shader;
+            let shader = self.core.shader().cloned();
 
             let Some(callback) = self.core.read_framebuffer(|framebuffer, display_geometry| {
                 let size = display_geometry.display_size(framebuffer);
@@ -245,7 +245,7 @@ impl<P: Platform> Frontend<P> {
                     rect,
                     framebuffer,
                     display_geometry.resolve_display_rectangle(framebuffer),
-                    shader,
+                    shader.as_ref(),
                 )
             }) else {
                 self.egui_context.request_repaint();

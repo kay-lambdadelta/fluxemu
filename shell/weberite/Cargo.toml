@@ -60,6 +60,7 @@ webgpu = [
   "dep:pollster",
   "dep:raw-window-handle",
   "dep:wgpu",
+  "fluxemu-frontend/shader-support",
   "fluxemu-graphics/webgpu",
   "fluxemu-system-atari-2600/webgpu",
   "fluxemu-system-nintendo-nes/webgpu",

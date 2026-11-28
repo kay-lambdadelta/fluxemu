@@ -46,7 +46,10 @@ pub fn load_environment() -> Environment {
 
     let default_environment_string = ron::to_string(&Environment {
         gamepads: BTreeMap::default(),
-        graphics: GraphicsSettings::default(),
+        graphics: GraphicsSettings {
+            shader: PathBuf::from("standard"),
+            ..Default::default()
+        },
         audio: AudioSettings::default(),
         file_browser_home_directory: std::env::home_dir().unwrap_or(STORAGE_DIRECTORY.clone()),
         log_location: STORAGE_DIRECTORY.join("log"),
@@ -54,6 +57,7 @@ pub fn load_environment() -> Environment {
         digest_cache_location: CACHE_DIRECTORY.join("digests.redb"),
         save_directory: STORAGE_DIRECTORY.join("saves"),
         snapshot_directory: STORAGE_DIRECTORY.join("snapshots"),
+        shader_directory: STORAGE_DIRECTORY.join("shaders"),
         rom_stores: IndexMap::from_iter([(
             "default".to_string(),
             RomStoreSpecification::filesystem(STORAGE_DIRECTORY.join("roms")),

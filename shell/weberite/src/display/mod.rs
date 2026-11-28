@@ -1,5 +1,7 @@
+use std::sync::Arc;
+
 use fluxemu_frontend::graphics::GraphicsRuntime;
-use fluxemu_graphics::{api::GraphicsApi, shader::ShaderType};
+use fluxemu_graphics::{api::GraphicsApi, shader::ShaderSource};
 use fluxemu_runtime::graphics::{DisplayGeometry, GraphicsRequirements};
 use nalgebra::Vector2;
 use softbuffer::SoftBufferError;
@@ -49,7 +51,7 @@ pub trait CanvasGraphicsRuntime: GraphicsRuntime {
         &mut self,
         framebuffer: &<Self::GraphicsApi as GraphicsApi>::Framebuffer,
         display_geometry: &DisplayGeometry,
-        shader: ShaderType,
+        shader: Option<&Arc<ShaderSource>>,
     ) -> Result<(), DisplayError>;
 }
 

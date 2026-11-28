@@ -1,7 +1,6 @@
 use egui::{ComboBox, Grid, ScrollArea, Slider, Ui, WidgetText};
 use fluxemu_environment::graphics::GraphicsApi;
 use fluxemu_frontend::Platform;
-use fluxemu_graphics::shader::ShaderType;
 use rust_i18n::t;
 use strum::IntoEnumIterator;
 
@@ -29,6 +28,7 @@ impl<P: Platform> Frontend<P> {
 
                         ui.label(t!("settings.graphics_api"))
                             .on_hover_text(t!("settings.requires_restart"));
+
                         ComboBox::from_id_salt("graphics_api")
                             .selected_text(environment.graphics.api.to_string())
                             .show_ui(ui, |ui| {
@@ -42,18 +42,39 @@ impl<P: Platform> Frontend<P> {
                             });
                         ui.end_row();
 
+                        let current_shader = environment.graphics.shader.clone();
+                        let mut selected_shader = None;
+
                         ui.label(t!("settings.shader"));
-                        ComboBox::from_id_salt("shader")
-                            .selected_text(environment.graphics.shader.to_string())
-                            .show_ui(ui, |ui| {
-                                for shader in ShaderType::iter() {
-                                    ui.selectable_value(
-                                        &mut environment.graphics.shader,
-                                        shader,
-                                        shader.to_string(),
-                                    );
-                                }
-                            });
+                        ui.horizontal(|ui| {
+                            ComboBox::from_id_salt("shader")
+                                .selected_text(current_shader.display().to_string())
+                                .show_ui(ui, |ui| {
+                                    for shader in self.core.available_shaders() {
+                                        if ui
+                                            .selectable_label(
+                                                *shader == current_shader,
+                                                shader.display().to_string(),
+                                            )
+                                            .clicked()
+                                        {
+                                            selected_shader = Some(shader.clone());
+                                        }
+                                    }
+                                });
+
+                            if ui
+                                .button(t!("settings.reload_shaders"))
+                                .on_hover_text(t!("settings.reload_shaders_hint"))
+                                .clicked()
+                            {
+                                self.core.reload_shaders();
+                            }
+                        });
+
+                        if let Some(shader) = selected_shader {
+                            self.core.set_shader(shader);
+                        }
                         ui.end_row();
                     });
             });

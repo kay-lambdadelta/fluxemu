@@ -9,6 +9,7 @@ use fluxemu_database::ProgramDatabase;
 use fluxemu_environment::Environment;
 use fluxemu_graphics::{
     api::{GraphicsApi, software::Software},
+    shader::ShaderSource,
     texture::{CopyMode, OwnedTexture},
 };
 use fluxemu_input::host::HostInputDeviceInstanceId;
@@ -31,6 +32,8 @@ use tokio::{
 
 use self::input::HostInputDeviceState;
 pub use self::input::InputRouting;
+#[cfg(feature = "shader-support")]
+use crate::shader::{ShaderManager, ShaderScan};
 use crate::{
     Platform,
     audio::{AudioRuntime, mixer::AudioMixer},
@@ -90,6 +93,12 @@ pub struct FrontendCore<P: Platform> {
     listing_problems: BTreeMap<String, ListingProblem>,
     library_scan: Option<LibraryScan>,
     refresh_library_after_initialization: bool,
+    #[cfg(feature = "shader-support")]
+    shader_manager: Arc<ShaderManager>,
+    shader: Option<Arc<ShaderSource>>,
+    available_shaders: Vec<PathBuf>,
+    #[cfg(feature = "shader-support")]
+    shader_scan: Option<JoinHandle<ShaderScan>>,
     environment: Environment,
 }
 
@@ -106,6 +115,16 @@ impl<P: Platform> FrontendCore<P> {
         let sample_rate = audio_runtime.sample_rate();
         let audio_mixer = Arc::new(AudioMixer::new(sample_rate, environment.audio.volume));
         audio_runtime.set_audio_mixer(audio_mixer.clone());
+
+        #[cfg(feature = "shader-support")]
+        let shader_manager = Arc::new(ShaderManager::new(environment.shader_directory.clone()));
+
+        #[cfg(feature = "shader-support")]
+        let shader = P::GraphicsApi::SHADER_LANGUAGE
+            .map(|language| shader_manager.get_or_default(language, &environment.graphics.shader));
+
+        #[cfg(not(feature = "shader-support"))]
+        let shader = None;
 
         let mut core = Self {
             runtime,
@@ -125,8 +144,16 @@ impl<P: Platform> FrontendCore<P> {
             listing_problems: BTreeMap::default(),
             library_scan: None,
             refresh_library_after_initialization: false,
+            #[cfg(feature = "shader-support")]
+            shader_manager,
+            shader,
+            available_shaders: Vec::default(),
+            #[cfg(feature = "shader-support")]
+            shader_scan: None,
             environment,
         };
+
+        core.start_shader_scan();
 
         if let Some(roms) = initial_program {
             core.start_machine_initialization(async move { Some(roms) });
@@ -261,6 +288,59 @@ impl<P: Platform> FrontendCore<P> {
         ));
     }
 
+    pub fn shader(&self) -> Option<&Arc<ShaderSource>> {
+        self.shader.as_ref()
+    }
+
+    pub fn available_shaders(&self) -> &[PathBuf] {
+        &self.available_shaders
+    }
+
+    pub fn set_shader(&mut self, shader: PathBuf) {
+        self.environment.graphics.shader = shader;
+        self.start_shader_scan();
+    }
+
+    pub fn reload_shaders(&mut self) {
+        #[cfg(feature = "shader-support")]
+        self.shader_manager.clear();
+
+        self.start_shader_scan();
+    }
+
+    #[cfg(not(feature = "shader-support"))]
+    fn start_shader_scan(&mut self) {}
+
+    #[cfg(feature = "shader-support")]
+    fn start_shader_scan(&mut self) {
+        if let Some(scan) = self.shader_scan.take() {
+            scan.abort();
+        }
+
+        let shader_manager = self.shader_manager.clone();
+        let selected = self.environment.graphics.shader.clone();
+        let language = P::GraphicsApi::SHADER_LANGUAGE;
+
+        self.shader_scan = Some(spawn(&self.runtime, async move {
+            shader_manager.scan(language, &selected)
+        }));
+    }
+
+    #[cfg(not(feature = "shader-support"))]
+    fn receive_shader_scan(&mut self) {}
+
+    #[cfg(feature = "shader-support")]
+    fn receive_shader_scan(&mut self) {
+        let Some(job) = self.shader_scan.take_if(|job| job.is_finished()) else {
+            return;
+        };
+
+        if let Ok(ShaderScan { available, source }) = self.runtime.block_on(job) {
+            self.available_shaders = available;
+            self.shader = source;
+        }
+    }
+
     pub fn set_volume(&mut self, volume: f32) {
         self.environment.audio.volume = volume;
         self.audio_mixer.set_volume(volume);
@@ -303,6 +383,7 @@ impl<P: Platform> FrontendCore<P> {
         }
 
         self.receive_library_entries();
+        self.receive_shader_scan();
 
         let Some(job) = self.machine_initialization.take_if(|job| job.is_finished()) else {
             return;

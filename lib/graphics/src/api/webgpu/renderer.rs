@@ -3,18 +3,15 @@ use nalgebra::Vector2;
 use wgpu::{
     BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingResource, BindingType, BlendState, Buffer, BufferBindingType,
-    BufferDescriptor, BufferUsages, ColorTargetState, ColorWrites, Device, FilterMode,
-    FragmentState, MultisampleState, PipelineCompilationOptions, PipelineLayoutDescriptor,
-    PrimitiveState, Queue, RenderPass, RenderPipeline, RenderPipelineDescriptor, Sampler,
-    SamplerBindingType, SamplerDescriptor, ShaderModuleDescriptor, ShaderSource, ShaderStages,
-    Texture, TextureFormat, TextureSampleType, TextureViewDescriptor, TextureViewDimension,
-    VertexState,
+    BufferDescriptor, BufferUsages, ColorTargetState, ColorWrites, Device, Error, ErrorFilter,
+    FilterMode, FragmentState, MultisampleState, PipelineCompilationOptions,
+    PipelineLayoutDescriptor, PrimitiveState, Queue, RenderPass, RenderPipeline,
+    RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor, ShaderModule,
+    ShaderModuleDescriptor, ShaderStages, Texture, TextureFormat, TextureSampleType,
+    TextureViewDescriptor, TextureViewDimension, VertexState,
 };
 
-use crate::{
-    api::webgpu::shader::ShaderUniform,
-    shader::{BUILTIN_SHADERS, ShaderLanguage, ShaderType},
-};
+use crate::{api::webgpu::shader::ShaderUniform, shader::ShaderSource};
 
 #[derive(Debug)]
 pub struct FramebufferRenderer {
@@ -25,20 +22,23 @@ pub struct FramebufferRenderer {
     device: Device,
     queue: Queue,
     view_format: TextureFormat,
-    shader: ShaderType,
 }
 
 impl FramebufferRenderer {
-    pub fn new(
+    pub async fn new(
         device: Device,
         queue: Queue,
         view_format: TextureFormat,
-        shader: ShaderType,
-    ) -> Self {
-        let shader_module = device.create_shader_module(ShaderModuleDescriptor {
-            label: None,
-            source: ShaderSource::Wgsl(BUILTIN_SHADERS[&shader][&ShaderLanguage::Wgsl].into()),
-        });
+        shader: &ShaderSource,
+    ) -> Result<Self, Error> {
+        let error_scope = device.push_error_scope(ErrorFilter::Validation);
+
+        let vertex_module = create_shader_module(&device, &shader.vertex);
+        let fragment_module = if shader.is_shared() {
+            vertex_module.clone()
+        } else {
+            create_shader_module(&device, &shader.fragment)
+        };
 
         let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: None,
@@ -82,14 +82,14 @@ impl FramebufferRenderer {
             label: None,
             layout: Some(&pipeline_layout),
             vertex: VertexState {
-                module: &shader_module,
-                entry_point: Some("vs_main"),
+                module: &vertex_module,
+                entry_point: None,
                 buffers: &[],
                 compilation_options: PipelineCompilationOptions::default(),
             },
             fragment: Some(FragmentState {
-                module: &shader_module,
-                entry_point: Some("fs_main"),
+                module: &fragment_module,
+                entry_point: None,
                 targets: &[Some(ColorTargetState {
                     format: view_format,
                     blend: Some(BlendState::REPLACE),
@@ -104,6 +104,10 @@ impl FramebufferRenderer {
             cache: None,
         });
 
+        if let Some(error) = error_scope.pop().await {
+            return Err(error);
+        }
+
         let uniform_buffer = device.create_buffer(&BufferDescriptor {
             label: None,
             size: size_of::<ShaderUniform>() as u64,
@@ -117,7 +121,7 @@ impl FramebufferRenderer {
             ..Default::default()
         });
 
-        FramebufferRenderer {
+        Ok(FramebufferRenderer {
             bind_group_layout,
             pipeline,
             uniform_buffer,
@@ -125,21 +129,17 @@ impl FramebufferRenderer {
             device,
             queue,
             view_format,
-            shader,
-        }
+        })
     }
 
-    pub fn shader(&self) -> ShaderType {
-        self.shader
-    }
-
-    pub fn with_shader(&self, shader: ShaderType) -> Self {
+    pub async fn with_shader(&self, shader: &ShaderSource) -> Result<Self, Error> {
         Self::new(
             self.device.clone(),
             self.queue.clone(),
             self.view_format,
             shader,
         )
+        .await
     }
 
     pub fn draw(
@@ -196,4 +196,11 @@ impl FramebufferRenderer {
         render_pass.set_bind_group(0, &bind_group, &[]);
         render_pass.draw(0..3, 0..1);
     }
+}
+
+fn create_shader_module(device: &Device, source: &str) -> ShaderModule {
+    device.create_shader_module(ShaderModuleDescriptor {
+        label: None,
+        source: wgpu::ShaderSource::Wgsl(source.into()),
+    })
 }
